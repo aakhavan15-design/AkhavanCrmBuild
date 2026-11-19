@@ -1,0 +1,14 @@
+import fs from 'node:fs';
+import assert from 'node:assert/strict';
+const css = fs.readFileSync('src/index.css','utf8');
+const pkg = JSON.parse(fs.readFileSync('package.json','utf8'));
+const version = fs.readFileSync('src/lib/version.ts','utf8');
+assert.match(pkg.version, /^\d+\.\d+\.\d+$/);
+assert.ok(version.includes(`APP_VERSION = '${pkg.version}'`), 'src/lib/version.ts must match package.json');
+assert.match(css, /Phase 8 — page-wide navigation and content hierarchy refinement/);
+assert.match(css, /role="tablist"[\s\S]*?border-bottom:1px solid var\(--c-border\)/);
+assert.match(css, /role="tab"\]\[aria-selected="true"[\s\S]*?background:transparent/);
+assert.match(css, /env\(safe-area-inset-bottom/);
+assert.match(css, /prefers-reduced-motion:reduce/);
+assert.match(css, /font-family: var\(--font-family-ui\)/);
+console.log('workspaceHierarchyContracts.test.mjs: PASS');

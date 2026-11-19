@@ -1,0 +1,776 @@
+[
+  {
+    "file": "tests/cashFlowRecoveryContracts.test.mjs",
+    "flags": [
+      "--experimental-strip-types"
+    ]
+  },
+  {
+    "file": "tests/ledgerPnlQueryContracts.test.mjs",
+    "flags": []
+  },
+  {
+    "file": "tests/dataQueryRaceContracts.test.mjs",
+    "flags": []
+  },
+  {
+    "file": "tests/tableEngine.test.mjs",
+    "flags": [
+      "--experimental-strip-types"
+    ]
+  },
+  {
+    "file": "tests/audit2026Contracts.test.mjs",
+    "flags": [
+      "--experimental-strip-types"
+    ]
+  },
+  {
+    "file": "tests/customerSyncExperienceContracts.test.mjs",
+    "flags": []
+  },
+  {
+    "file": "tests/rbac.test.mjs",
+    "flags": [
+      "--experimental-strip-types"
+    ]
+  },
+  {
+    "file": "tests/reminders.test.mjs",
+    "flags": [
+      "--experimental-strip-types"
+    ]
+  },
+  {
+    "file": "tests/policy.test.mjs",
+    "flags": [
+      "--experimental-strip-types"
+    ]
+  },
+  {
+    "file": "tests/receipt.test.mjs",
+    "flags": [
+      "--experimental-strip-types"
+    ]
+  },
+  {
+    "file": "tests/onboarding.test.mjs",
+    "flags": [
+      "--experimental-strip-types"
+    ]
+  },
+  {
+    "file": "tests/financeRequests.test.mjs",
+    "flags": [
+      "--experimental-strip-types"
+    ]
+  },
+  {
+    "file": "tests/negotiationEngine.test.mjs",
+    "flags": [
+      "--experimental-strip-types"
+    ]
+  },
+  {
+    "file": "tests/quoteLifecycle.test.mjs",
+    "flags": []
+  },
+  {
+    "file": "tests/rbacScopeContracts.test.mjs",
+    "flags": []
+  },
+  {
+    "file": "tests/operationsEngine.test.mjs",
+    "flags": [
+      "--experimental-strip-types"
+    ]
+  },
+  {
+    "file": "tests/erpContracts.test.mjs",
+    "flags": [
+      "--experimental-strip-types"
+    ]
+  },
+  {
+    "file": "tests/operationsWorkspaceAccessContracts.test.mjs",
+    "flags": []
+  },
+  {
+    "file": "tests/operationsSeed.test.mjs",
+    "flags": [
+      "--experimental-strip-types"
+    ]
+  },
+  {
+    "file": "tests/rbac-configurability.test.mjs",
+    "flags": [
+      "--experimental-strip-types"
+    ]
+  },
+  {
+    "file": "tests/geoIntelligence.test.mjs",
+    "flags": [
+      "--experimental-strip-types"
+    ]
+  },
+  {
+    "file": "tests/geoWorkspaceContracts.test.mjs",
+    "flags": []
+  },
+  {
+    "file": "tests/collectionTaskOutcome.test.mjs",
+    "flags": [
+      "--experimental-strip-types"
+    ]
+  },
+  {
+    "file": "tests/collectionTaskEvidence.test.mjs",
+    "flags": [
+      "--experimental-strip-types"
+    ]
+  },
+  {
+    "file": "tests/geoCollectionReporting.test.mjs",
+    "flags": [
+      "--experimental-strip-types"
+    ]
+  },
+  {
+    "file": "tests/receivableReconciliation.test.mjs",
+    "flags": [
+      "--experimental-strip-types"
+    ]
+  },
+  {
+    "file": "tests/receivableCredits.test.mjs",
+    "flags": [
+      "--experimental-strip-types"
+    ]
+  },
+  {
+    "file": "tests/creditNoteSqlContracts.test.mjs",
+    "flags": []
+  },
+  {
+    "file": "tests/accessibilityContracts.test.mjs",
+    "flags": []
+  },
+  {
+    "file": "tests/recordTaskActionContracts.test.mjs",
+    "flags": []
+  },
+  {
+    "file": "tests/phase01EmptyLoadingStateContracts.test.mjs",
+    "flags": []
+  },
+  {
+    "file": "tests/atmosphereContracts.test.mjs",
+    "flags": []
+  },
+  {
+    "file": "tests/domainIntegrationContracts.test.mjs",
+    "flags": []
+  },
+  {
+    "file": "tests/phase2Flow.test.mjs",
+    "flags": [
+      "--experimental-strip-types"
+    ]
+  },
+  {
+    "file": "tests/erpImportService.test.mjs",
+    "flags": [
+      "--experimental-strip-types"
+    ]
+  },
+  {
+    "file": "tests/auditRemediationContracts.test.mjs",
+    "flags": []
+  },
+  {
+    "file": "tests/recordLifecycle.test.mjs",
+    "flags": [
+      "--experimental-strip-types"
+    ]
+  },
+  {
+    "file": "tests/taskIntelligence.test.mjs",
+    "flags": [
+      "--experimental-strip-types"
+    ]
+  },
+  {
+    "file": "tests/mentionEngine.test.mjs",
+    "flags": [
+      "--experimental-strip-types"
+    ]
+  },
+  {
+    "file": "tests/taskAccessEngine.test.mjs",
+    "flags": [
+      "--experimental-strip-types"
+    ]
+  },
+  {
+    "file": "tests/erpContextService.test.mjs",
+    "flags": [
+      "--experimental-strip-types"
+    ]
+  },
+  {
+    "file": "tests/taskArchitectureContracts.test.mjs",
+    "flags": []
+  },
+  {
+    "file": "tests/universalMentionsChat.test.mjs",
+    "flags": []
+  },
+  {
+    "file": "tests/formMentionPlacement.test.mjs",
+    "flags": []
+  },
+  {
+    "file": "tests/chatEntityPreviewContracts.test.mjs",
+    "flags": []
+  },
+  {
+    "file": "tests/taskSlaActions.test.mjs",
+    "flags": [
+      "--experimental-strip-types"
+    ]
+  },
+  {
+    "file": "tests/taskTriageWorkspaceContracts.test.mjs",
+    "flags": []
+  },
+  {
+    "file": "tests/taskActivity.test.mjs",
+    "flags": [
+      "--experimental-strip-types"
+    ]
+  },
+  {
+    "file": "tests/taskWorkflow.test.mjs",
+    "flags": [
+      "--experimental-strip-types"
+    ]
+  },
+  {
+    "file": "tests/internalWorkflow.test.mjs",
+    "flags": [
+      "--experimental-strip-types"
+    ]
+  },
+  {
+    "file": "tests/internalWorkflowWorkspaceContracts.test.mjs",
+    "flags": []
+  },
+  {
+    "file": "tests/taskWorkflowWorkspaceContracts.test.mjs",
+    "flags": []
+  },
+  {
+    "file": "tests/operationalExceptionCenter.test.mjs",
+    "flags": [
+      "--experimental-strip-types"
+    ]
+  },
+  {
+    "file": "tests/collectionDeterminism.test.mjs",
+    "flags": [
+      "--experimental-strip-types"
+    ]
+  },
+  {
+    "file": "tests/operationalExceptionAccessContracts.test.mjs",
+    "flags": []
+  },
+  {
+    "file": "tests/operationalExceptionDataQuality.test.mjs",
+    "flags": [
+      "--experimental-strip-types"
+    ]
+  },
+  {
+    "file": "tests/sourceSurfaceAudit.test.mjs",
+    "flags": []
+  },
+  {
+    "file": "tests/backendSecurityContracts.test.mjs",
+    "flags": []
+  },
+  {
+    "file": "tests/authSecurityContracts.test.mjs",
+    "flags": []
+  },
+  {
+    "file": "tests/productionSeedSafety.test.mjs",
+    "flags": [
+      "--experimental-strip-types"
+    ]
+  },
+  {
+    "file": "tests/churnPredictionService.test.mjs",
+    "flags": [
+      "--experimental-strip-types"
+    ]
+  },
+  {
+    "file": "tests/interactiveTour.test.mjs",
+    "flags": [
+      "--experimental-strip-types"
+    ]
+  },
+  {
+    "file": "tests/tourCoverageContracts.test.mjs",
+    "flags": [
+      "--experimental-strip-types"
+    ]
+  },
+  {
+    "file": "tests/b15_b18_truth_contracts.test.mjs",
+    "flags": []
+  },
+  {
+    "file": "tests/phase2027ExperienceContracts.test.mjs",
+    "flags": []
+  },
+  {
+    "file": "tests/compactUiContracts.test.mjs",
+    "flags": []
+  },
+  {
+    "file": "tests/mobileMinimalUiContracts.test.mjs",
+    "flags": []
+  },
+  {
+    "file": "tests/seedCoverageContracts.test.mjs",
+    "flags": [
+      "--experimental-strip-types"
+    ]
+  },
+  {
+    "file": "tests/designSystem2026Contracts.test.mjs",
+    "flags": []
+  },
+  {
+    "file": "tests/workspaceHierarchyContracts.test.mjs",
+    "flags": []
+  },
+  {
+    "file": "tests/workspaceRedesignContracts.test.mjs",
+    "flags": []
+  },
+  {
+    "file": "tests/workspaceContinuationContracts.test.mjs",
+    "flags": []
+  },
+  {
+    "file": "tests/primaryWorkspaceRedesignContracts.test.mjs",
+    "flags": []
+  },
+  {
+    "file": "tests/navigationHierarchyContracts.test.mjs",
+    "flags": [
+      "--experimental-strip-types"
+    ]
+  },
+  {
+    "file": "tests/deepAuditRegressionContracts.test.mjs",
+    "flags": []
+  },
+  {
+    "file": "tests/agingBucketsContracts.test.mjs",
+    "flags": [
+      "--experimental-strip-types"
+    ]
+  },
+  {
+    "file": "tests/etlPipelineContracts.test.mjs",
+    "flags": [
+      "--experimental-strip-types"
+    ]
+  },
+  {
+    "file": "tests/sqlSchemaContracts.test.mjs",
+    "flags": []
+  },
+  {
+    "file": "tests/metricRegistryContracts.test.mjs",
+    "flags": [
+      "--experimental-strip-types"
+    ]
+  },
+  {
+    "file": "tests/receivableSingleSourceContracts.test.mjs",
+    "flags": [
+      "--experimental-strip-types"
+    ]
+  },
+  {
+    "file": "tests/reportAnalyticsContracts.test.mjs",
+    "flags": [
+      "--experimental-strip-types"
+    ]
+  },
+  {
+    "file": "tests/reportEngineUiContracts.test.mjs",
+    "flags": []
+  },
+  {
+    "file": "tests/profitabilityTruthContracts.test.mjs",
+    "flags": []
+  },
+  {
+    "file": "tests/reportDemoSeed.test.mjs",
+    "flags": [
+      "--experimental-strip-types"
+    ]
+  },
+  {
+    "file": "tests/payrollEngineContracts.test.mjs",
+    "flags": [
+      "--experimental-strip-types"
+    ]
+  },
+  {
+    "file": "tests/hrIntegrationContracts.test.mjs",
+    "flags": [
+      "--experimental-strip-types"
+    ]
+  },
+  {
+    "file": "tests/analyticsReportIntegration.test.mjs",
+    "flags": [
+      "--experimental-strip-types"
+    ]
+  },
+  {
+    "file": "tests/dataProviderParityContracts.test.mjs",
+    "flags": [
+      "--experimental-strip-types",
+      "--import",
+      "./scripts/register-ts-resolver.mjs"
+    ]
+  },
+  {
+    "file": "tests/compactNavigationRefinement.test.mjs",
+    "flags": []
+  },
+  {
+    "file": "tests/experienceRegression.test.mjs",
+    "flags": []
+  },
+  {
+    "file": "tests/taxAndPayaContracts.test.mjs",
+    "flags": [
+      "--experimental-strip-types"
+    ]
+  },
+  {
+    "file": "tests/chatPersonalizationContracts.test.mjs",
+    "flags": [
+      "--experimental-strip-types"
+    ]
+  },
+  {
+    "file": "tests/wiredModulesContracts.test.mjs",
+    "flags": [
+      "--experimental-strip-types"
+    ]
+  },
+  {
+    "file": "tests/sqlFirstStateLayer.test.mjs",
+    "flags": [
+      "--experimental-strip-types"
+    ]
+  },
+  {
+    "file": "tests/demoSeedExtended.test.mjs",
+    "flags": [
+      "--experimental-strip-types"
+    ]
+  },
+  {
+    "file": "tests/analyticsConstitutionContracts.test.mjs",
+    "flags": []
+  },
+  {
+    "file": "tests/financialIntelligence.test.mjs",
+    "flags": [
+      "--experimental-strip-types",
+      "--import",
+      "./scripts/register-ts-resolver.mjs"
+    ]
+  },
+  {
+    "file": "tests/crossModuleConsistencyContracts.test.mjs",
+    "flags": []
+  },
+  {
+    "file": "tests/dataTrustAndReportPortContracts.test.mjs",
+    "flags": []
+  },
+  {
+    "file": "tests/paletteLockContracts.test.mjs",
+    "flags": []
+  },
+  {
+    "file": "tests/documentCaptureContracts.test.mjs",
+    "flags": [
+      "--experimental-strip-types"
+    ]
+  },
+  {
+    "file": "tests/useDocumentAutoFillAndSync.test.mjs",
+    "flags": [
+      "--experimental-strip-types",
+      "--import",
+      "./scripts/register-ts-resolver.mjs"
+    ]
+  },
+  {
+    "file": "tests/seamlessHeaderContracts.test.mjs",
+    "flags": []
+  },
+  {
+    "file": "tests/documentationSetContracts.test.mjs",
+    "flags": []
+  },
+  {
+    "file": "tests/designLockContracts.test.mjs",
+    "flags": []
+  },
+  {
+    "file": "tests/persianLocalizationContracts.test.mjs",
+    "flags": []
+  },
+  {
+    "file": "tests/designTokenMigrationContracts.test.mjs",
+    "flags": []
+  },
+  {
+    "file": "tests/smartSearchEngine.test.mjs",
+    "flags": [
+      "--experimental-strip-types",
+      "--import",
+      "./scripts/register-ts-resolver.mjs"
+    ]
+  },
+  {
+    "file": "tests/formConditionalFieldsContracts.test.mjs",
+    "flags": [
+      "--experimental-strip-types",
+      "--import",
+      "./scripts/register-ts-resolver.mjs"
+    ]
+  },
+  {
+    "file": "tests/designSystemControlsContracts.test.mjs",
+    "flags": []
+  },
+  {
+    "file": "tests/moduleLandingContracts.test.mjs",
+    "flags": []
+  },
+  {
+    "file": "tests/plannedModulesContracts.test.mjs",
+    "flags": []
+  },
+  {
+    "file": "tests/reportsDashboardStyleContracts.test.mjs",
+    "flags": []
+  },
+  {
+    "file": "tests/singleSyncEngine.test.mjs",
+    "flags": []
+  },
+  {
+    "file": "tests/profitLossWidgetLedger.test.mjs",
+    "flags": [
+      "--experimental-strip-types"
+    ]
+  },
+  {
+    "file": "tests/customerListBalancePermission.test.mjs",
+    "flags": [
+      "--experimental-strip-types"
+    ]
+  },
+  {
+    "file": "tests/intakeCommitRouting.test.mjs",
+    "flags": [
+      "--experimental-strip-types"
+    ]
+  },
+  {
+    "file": "tests/intakePrefillBridge.test.mjs",
+    "flags": [
+      "--experimental-strip-types"
+    ]
+  },
+  {
+    "file": "tests/reportStatusHonesty.test.mjs",
+    "flags": []
+  },
+  {
+    "file": "tests/payrollNoHardcodes.test.mjs",
+    "flags": [
+      "--experimental-strip-types"
+    ]
+  },
+  {
+    "file": "tests/chartOfAccountsDetailGroupsSql.test.mjs",
+    "flags": []
+  },
+  {
+    "file": "tests/fiscalPeriodBalanceViewSql.test.mjs",
+    "flags": []
+  },
+  {
+    "file": "tests/detailSubsidiaryBalance.test.mjs",
+    "flags": [
+      "--experimental-strip-types"
+    ]
+  },
+  {
+    "file": "tests/customerProposalContract.test.mjs",
+    "flags": [
+      "--experimental-strip-types"
+    ]
+  },
+  {
+    "file": "tests/customerBalanceView.test.mjs",
+    "flags": [
+      "--experimental-strip-types"
+    ]
+  },
+  {
+    "file": "tests/subsidiaryBalancesPanel.test.mjs",
+    "flags": [
+      "--experimental-strip-types"
+    ]
+  },
+  {
+    "file": "tests/providerHonestyAndPayroll.test.mjs",
+    "flags": [
+      "--experimental-strip-types",
+      "--import",
+      "./scripts/register-ts-resolver.mjs"
+    ]
+  },
+  {
+    "file": "tests/erpDataQuality.test.mjs",
+    "flags": [
+      "--experimental-strip-types",
+      "--import",
+      "./scripts/register-ts-resolver.mjs"
+    ]
+  },
+  {
+    "file": "tests/auditLandingContracts.test.mjs",
+    "flags": []
+  },
+  {
+    "file": "tests/notificationCenterWiring.test.mjs",
+    "flags": [
+      "--experimental-strip-types",
+      "--import",
+      "./scripts/register-ts-resolver.mjs"
+    ]
+  },
+  {
+    "file": "tests/ledgerOnlyBalances.test.mjs",
+    "flags": []
+  },
+  {
+    "file": "tests/ledgerReceivablesSummary.test.mjs",
+    "flags": [
+      "--experimental-strip-types"
+    ]
+  },
+  {
+    "file": "tests/reportReceivablesLedgerOnly.test.mjs",
+    "flags": [
+      "--experimental-strip-types"
+    ]
+  },
+  {
+    "file": "tests/invoiceLifoRemaining.test.mjs",
+    "flags": [
+      "--experimental-strip-types"
+    ]
+  },
+  {
+    "file": "tests/productTaxEtl.test.mjs",
+    "flags": [
+      "--experimental-strip-types"
+    ]
+  },
+  {
+    "file": "tests/churnErpInvoiceSource.test.mjs",
+    "flags": [
+      "--experimental-strip-types"
+    ]
+  },
+  {
+    "file": "tests/headerQuickActionsAndNav.test.mjs",
+    "flags": [
+      "--experimental-strip-types",
+      "--import",
+      "./scripts/register-ts-resolver.mjs"
+    ]
+  },
+  {
+    "file": "tests/ledgerBalanceProjection.test.mjs",
+    "flags": []
+  },
+  {
+    "file": "tests/ledgerJournalQuery.test.mjs",
+    "flags": []
+  },
+  {
+    "file": "tests/ledgerProviderFilterParity.test.mjs",
+    "flags": [
+      "--experimental-strip-types",
+      "--import",
+      "./scripts/register-ts-resolver.mjs"
+    ]
+  },
+  {
+    "file": "tests/ledgerProviderUiFailureContracts.test.mjs",
+    "flags": []
+  },
+  {
+    "file": "tests/uxAuditPatchContracts.test.mjs",
+    "flags": [
+      "--experimental-strip-types"
+    ]
+  },
+  {
+    "file": "tests/reportPnlDataProviderContracts.test.mjs",
+    "flags": [
+      "--experimental-strip-types"
+    ]
+  },
+  {
+    "file": "tests/geoAssignmentSyncContracts.test.mjs",
+    "flags": []
+  },
+  {
+    "file": "tests/productZoneHeatmap.test.mjs",
+    "flags": []
+  },
+  {
+    "file": "tests/geoMapControlsContracts.test.mjs",
+    "flags": []
+  },
+  {
+    "file": "tests/dataQualityProviderContracts.test.mjs",
+    "flags": []
+  },
+  {
+    "file": "tests/fifoInventoryHonestyContracts.test.mjs",
+    "flags": []
+  }
+]

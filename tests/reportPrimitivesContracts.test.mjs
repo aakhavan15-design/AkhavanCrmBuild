@@ -1,0 +1,10 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+const source = readFileSync(new URL('../src/components/charts/ReportPrimitives.tsx', import.meta.url), 'utf8');
+const index = readFileSync(new URL('../src/components/charts/index.ts', import.meta.url), 'utf8');
+test('exports all reusable report primitives through existing chart kit', () => { for (const name of ['SectionHeader','StatusChip','RankList','FilterChips','SegmentedTabs','ReportTimeline','ReportSkeleton','ReportEmptyState']) assert.match(source, new RegExp(`export function ${name}\\(`)); assert.match(index, /ReportPrimitives/); });
+test('rank values are finite, nonnegative and accessible', () => { assert.match(source, /Number\.isFinite/); assert.match(source, /role="meter"/); assert.match(source, /aria-valuenow/); });
+test('filter state is controlled and options can be disabled', () => { assert.match(source, /aria-pressed/); assert.match(source, /disabled=\{option\.disabled\}/); assert.match(source, /onChange\(selected\.includes/); });
+test('segmented tabs have keyboard navigation', () => { assert.match(source, /role="tablist"/); assert.match(source, /ArrowLeft/); assert.match(source, /ArrowRight/); assert.match(source, /aria-selected/); });
+test('timeline, loading and missing data are explicit', () => { assert.match(source, /رویدادی ثبت نشده است/); assert.match(source, /aria-busy="true"/); assert.match(source, /داده‌ای در دسترس نیست/); });

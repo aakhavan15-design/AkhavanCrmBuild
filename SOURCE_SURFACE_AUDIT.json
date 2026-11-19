@@ -1,0 +1,18 @@
+{
+  "generatedAt": "2026-11-18T16:02:21.281Z",
+  "method": "static relative-import graph from src/main.tsx; dynamic/runtime registries, CSS references, tests and framework conventions may require manual review",
+  "sourceFiles": 245,
+  "reachableFiles": 236,
+  "unreachableCandidates": 9,
+  "unreachableCandidatesFiles": [
+    "src/components/ReportEnginePanels.tsx",
+    "src/components/auth/LightHighwayCanvas.tsx",
+    "src/components/charts/ProfitWaterfallChart.tsx",
+    "src/components/shared/MotionListItem.tsx",
+    "src/hooks/useDocumentAutoFill.ts",
+    "src/lib/confetti.ts",
+    "src/lib/metricRegistry.ts",
+    "src/lib/negotiationErpLifecycle.ts",
+    "src/lib/reportAnalytics.ts"
+  ]
+}

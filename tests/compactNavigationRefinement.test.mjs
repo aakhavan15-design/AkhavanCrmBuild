@@ -1,0 +1,16 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+const read = (p) => fs.readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
+const drawer = read('src/components/NavigationDrawer.tsx');
+const nav = read('src/components/BottomNav.tsx');
+const css = read('src/index.css');
+assert.match(drawer, /w-\[min\(148px,40vw\)\]/, 'drawer uses compact floating width');
+assert.match(drawer, /backdrop-blur-\[12px\]/, 'overlay uses strong backdrop blur');
+assert.match(drawer, /const directContacts = \(state\?\.users \|\| \[\]\)/, 'contacts come from real user directory');
+assert.doesNotMatch(drawer, /علی اخوان|سارا رضایی|رضا کمالی/, 'no hardcoded sample contacts');
+assert.match(nav, /se-bottom-nav fixed/, 'bottom navigation has a stable style hook');
+assert.match(nav, /aria-current=\{isActive \? 'page' : undefined\}/, 'active tab is accessible');
+assert.match(css, /\.se-bottom-nav\s*\{[\s\S]*?background: transparent !important/, 'outer dock stays transparent around the floating capsule');
+assert.match(css, /\.se-bottom-nav button\[aria-current="page"\][\s\S]*?background: var\(--c-primary\)/, 'active item receives semantic primary fill');
+assert.match(css, /\.se-floating-header h1 \{ font-size: clamp\(18px/, 'mobile page title hierarchy remains readable');
+console.log('compactNavigationRefinement.test.mjs: PASS');

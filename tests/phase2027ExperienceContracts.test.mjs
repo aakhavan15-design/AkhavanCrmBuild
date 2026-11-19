@@ -1,0 +1,31 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+
+const read = (path) => fs.readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
+const autocomplete = read('src/components/ui/SearchableSelect.tsx');
+const quoteWizard = read('src/components/QuoteWizardModal.tsx');
+const quotes = read('src/components/QuotesWorkspace.tsx');
+const drawer = read('src/components/NavigationDrawer.tsx');
+const settings = read('src/components/SettingsWorkspace.tsx');
+const bottomNav = read('src/components/BottomNav.tsx');
+
+assert.match(autocomplete, /onSearch\?: \(query: string\) => void/);
+assert.match(autocomplete, /debounceMs/);
+assert.match(autocomplete, /aria-autocomplete="list"/);
+assert.match(autocomplete, /ArrowDown/);
+assert.match(autocomplete, /maxResults/);
+assert.match(quoteWizard, /SearchableSelect options=\{customerOptions\}/);
+assert.match(quoteWizard, /SearchableSelect options=\{productOptions\}/);
+assert.match(quotes, /quoteStatusFilter/);
+assert.match(quotes, /quoteFromDate/);
+assert.match(quotes, /quoteToDate/);
+assert.match(quotes, /quoteSellerId/);
+assert.match(quotes, /quoteCustomerId/);
+assert.match(quotes, /quoteMinAmount/);
+assert.match(quotes, /quoteMaxAmount/);
+assert.match(quotes, /filteredQuotes\.map/);
+assert.doesNotMatch(quotes, /پیش‌نویس سریع/);
+assert.match(drawer, /جست‌وجوی منوی اصلی/);
+assert.match(settings, /جست‌وجوی تنظیمات/);
+assert.match(bottomNav, /se-dock-pill absolute inset-x-3 -top-1 h-\[2px\] rounded-full bg-primary/);
+console.log('phase2027ExperienceContracts.test.mjs: all assertions passed');

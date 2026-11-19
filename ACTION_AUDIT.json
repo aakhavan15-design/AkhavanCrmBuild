@@ -1,0 +1,502 @@
+{
+  "generatedAt": "2026-11-11T20:36:22.932Z",
+  "method": "static handler scan; login submit is excluded because it is a pre-authentication credential flow",
+  "mutatingHandlers": 66,
+  "guardedHandlers": 63,
+  "unguardedHandlers": 3,
+  "handlers": [
+    {
+      "file": "App.tsx",
+      "handler": "handleKeyDown",
+      "line": 65,
+      "guarded": false,
+      "hookPresent": true
+    },
+    {
+      "file": "App.tsx",
+      "handler": "handleNotificationClick",
+      "line": 123,
+      "guarded": false,
+      "hookPresent": true
+    },
+    {
+      "file": "CalendarWorkspace.tsx",
+      "handler": "handleCreateMeeting",
+      "line": 117,
+      "guarded": true,
+      "hookPresent": true
+    },
+    {
+      "file": "CalendarWorkspace.tsx",
+      "handler": "handleCreateDecisionTask",
+      "line": 149,
+      "guarded": true,
+      "hookPresent": true
+    },
+    {
+      "file": "Customer360.tsx",
+      "handler": "handleCreateNewQuote",
+      "line": 295,
+      "guarded": true,
+      "hookPresent": true
+    },
+    {
+      "file": "CustomersWorkspace.tsx",
+      "handler": "handleDynamicFormSubmit",
+      "line": 79,
+      "guarded": true,
+      "hookPresent": true
+    },
+    {
+      "file": "EnterpriseWorkspaces.tsx",
+      "handler": "handleCreateCase",
+      "line": 35,
+      "guarded": true,
+      "hookPresent": true
+    },
+    {
+      "file": "EnterpriseWorkspaces.tsx",
+      "handler": "handleCreateCampaign",
+      "line": 182,
+      "guarded": true,
+      "hookPresent": true
+    },
+    {
+      "file": "EnterpriseWorkspaces.tsx",
+      "handler": "handleEvaluateAudience",
+      "line": 213,
+      "guarded": true,
+      "hookPresent": true
+    },
+    {
+      "file": "EnterpriseWorkspaces.tsx",
+      "handler": "handleCreateArticle",
+      "line": 301,
+      "guarded": true,
+      "hookPresent": true
+    },
+    {
+      "file": "FinanceWorkspace.tsx",
+      "handler": "handleCreatePayment",
+      "line": 161,
+      "guarded": true,
+      "hookPresent": true
+    },
+    {
+      "file": "GeoIntelligenceWorkspace.tsx",
+      "handler": "saveZone",
+      "line": 121,
+      "guarded": true,
+      "hookPresent": true
+    },
+    {
+      "file": "GeoIntelligenceWorkspace.tsx",
+      "handler": "saveCollectionOutcome",
+      "line": 212,
+      "guarded": true,
+      "hookPresent": true
+    },
+    {
+      "file": "GeoIntelligenceWorkspace.tsx",
+      "handler": "createBulkCollectionTasks",
+      "line": 241,
+      "guarded": true,
+      "hookPresent": true
+    },
+    {
+      "file": "GeoIntelligenceWorkspace.tsx",
+      "handler": "createCollectionTask",
+      "line": 265,
+      "guarded": true,
+      "hookPresent": true
+    },
+    {
+      "file": "GeoIntelligenceWorkspace.tsx",
+      "handler": "assignCustomersInZone",
+      "line": 293,
+      "guarded": true,
+      "hookPresent": true
+    },
+    {
+      "file": "GroupsWorkspace.tsx",
+      "handler": "removeMsg",
+      "line": 204,
+      "guarded": true,
+      "hookPresent": true
+    },
+    {
+      "file": "GroupsWorkspace.tsx",
+      "handler": "createTask",
+      "line": 208,
+      "guarded": true,
+      "hookPresent": true
+    },
+    {
+      "file": "GroupsWorkspace.tsx",
+      "handler": "createGroup",
+      "line": 244,
+      "guarded": true,
+      "hookPresent": true
+    },
+    {
+      "file": "GroupsWorkspace.tsx",
+      "handler": "togglePin",
+      "line": 259,
+      "guarded": true,
+      "hookPresent": true
+    },
+    {
+      "file": "GroupsWorkspace.tsx",
+      "handler": "toggleGroupFlag",
+      "line": 260,
+      "guarded": true,
+      "hookPresent": true
+    },
+    {
+      "file": "GroupsWorkspace.tsx",
+      "handler": "toggleReaction",
+      "line": 261,
+      "guarded": true,
+      "hookPresent": true
+    },
+    {
+      "file": "GroupsWorkspace.tsx",
+      "handler": "toggleMember",
+      "line": 262,
+      "guarded": true,
+      "hookPresent": true
+    },
+    {
+      "file": "InternalAutomationWorkspace.tsx",
+      "handler": "handleApprove",
+      "line": 149,
+      "guarded": true,
+      "hookPresent": true
+    },
+    {
+      "file": "InternalAutomationWorkspace.tsx",
+      "handler": "handleReject",
+      "line": 211,
+      "guarded": true,
+      "hookPresent": true
+    },
+    {
+      "file": "InternalAutomationWorkspace.tsx",
+      "handler": "handleCreateRequest",
+      "line": 230,
+      "guarded": true,
+      "hookPresent": true
+    },
+    {
+      "file": "LeadsWorkspace.tsx",
+      "handler": "handleCreateLead",
+      "line": 52,
+      "guarded": true,
+      "hookPresent": true
+    },
+    {
+      "file": "LeadsWorkspace.tsx",
+      "handler": "handleUpdateStage",
+      "line": 84,
+      "guarded": true,
+      "hookPresent": true
+    },
+    {
+      "file": "LeadsWorkspace.tsx",
+      "handler": "handleConvertLeadToAccount",
+      "line": 94,
+      "guarded": true,
+      "hookPresent": true
+    },
+    {
+      "file": "NegotiationsWorkspace.tsx",
+      "handler": "handleCreateOpportunity",
+      "line": 60,
+      "guarded": true,
+      "hookPresent": true
+    },
+    {
+      "file": "NegotiationsWorkspace.tsx",
+      "handler": "handleUpdateStage",
+      "line": 91,
+      "guarded": true,
+      "hookPresent": true
+    },
+    {
+      "file": "OperationsControlWorkspace.tsx",
+      "handler": "handleCreateInsightTask",
+      "line": 131,
+      "guarded": true,
+      "hookPresent": true
+    },
+    {
+      "file": "OperationsControlWorkspace.tsx",
+      "handler": "createOrder",
+      "line": 271,
+      "guarded": true,
+      "hookPresent": true
+    },
+    {
+      "file": "OperationsControlWorkspace.tsx",
+      "handler": "createDispatch",
+      "line": 286,
+      "guarded": true,
+      "hookPresent": true
+    },
+    {
+      "file": "OperationsSupplementalTabs.tsx",
+      "handler": "submit",
+      "line": 24,
+      "guarded": true,
+      "hookPresent": true
+    },
+    {
+      "file": "QuoteWizardModal.tsx",
+      "handler": "handleAddLineItem",
+      "line": 86,
+      "guarded": false,
+      "hookPresent": true
+    },
+    {
+      "file": "QuoteWizardModal.tsx",
+      "handler": "handleFinishAndCreate",
+      "line": 121,
+      "guarded": true,
+      "hookPresent": true
+    },
+    {
+      "file": "QuoteWizardModal.tsx",
+      "handler": "handleClearDraft",
+      "line": 191,
+      "guarded": true,
+      "hookPresent": true
+    },
+    {
+      "file": "QuotesWorkspace.tsx",
+      "handler": "handleApplyNegotiationScenario",
+      "line": 129,
+      "guarded": true,
+      "hookPresent": true
+    },
+    {
+      "file": "QuotesWorkspace.tsx",
+      "handler": "handleCreateDraftQuote",
+      "line": 158,
+      "guarded": true,
+      "hookPresent": true
+    },
+    {
+      "file": "QuotesWorkspace.tsx",
+      "handler": "handleAddLine",
+      "line": 226,
+      "guarded": true,
+      "hookPresent": true
+    },
+    {
+      "file": "QuotesWorkspace.tsx",
+      "handler": "handleAddBundle",
+      "line": 268,
+      "guarded": true,
+      "hookPresent": true
+    },
+    {
+      "file": "QuotesWorkspace.tsx",
+      "handler": "handleRemoveLine",
+      "line": 337,
+      "guarded": true,
+      "hookPresent": true
+    },
+    {
+      "file": "QuotesWorkspace.tsx",
+      "handler": "handleAction",
+      "line": 359,
+      "guarded": true,
+      "hookPresent": true
+    },
+    {
+      "file": "QuotesWorkspace.tsx",
+      "handler": "handleConvertToInvoice",
+      "line": 483,
+      "guarded": true,
+      "hookPresent": true
+    },
+    {
+      "file": "SettingsWorkspace.tsx",
+      "handler": "handleUpdateRole",
+      "line": 143,
+      "guarded": true,
+      "hookPresent": true
+    },
+    {
+      "file": "SettingsWorkspace.tsx",
+      "handler": "handleUpdateUserManager",
+      "line": 167,
+      "guarded": true,
+      "hookPresent": true
+    },
+    {
+      "file": "SettingsWorkspace.tsx",
+      "handler": "handleTogglePermission",
+      "line": 186,
+      "guarded": true,
+      "hookPresent": true
+    },
+    {
+      "file": "SettingsWorkspace.tsx",
+      "handler": "handleCreateRole",
+      "line": 199,
+      "guarded": true,
+      "hookPresent": true
+    },
+    {
+      "file": "SettingsWorkspace.tsx",
+      "handler": "handleOrgNumber",
+      "line": 217,
+      "guarded": true,
+      "hookPresent": true
+    },
+    {
+      "file": "SettingsWorkspace.tsx",
+      "handler": "handleOrgPolicyNumber",
+      "line": 227,
+      "guarded": true,
+      "hookPresent": true
+    },
+    {
+      "file": "SettingsWorkspace.tsx",
+      "handler": "handleOrgPolicyText",
+      "line": 246,
+      "guarded": true,
+      "hookPresent": true
+    },
+    {
+      "file": "SettingsWorkspace.tsx",
+      "handler": "handleTenantName",
+      "line": 270,
+      "guarded": true,
+      "hookPresent": true
+    },
+    {
+      "file": "SettingsWorkspace.tsx",
+      "handler": "handleSaveAutomationRule",
+      "line": 279,
+      "guarded": true,
+      "hookPresent": true
+    },
+    {
+      "file": "SettingsWorkspace.tsx",
+      "handler": "handleToggleAutomationRule",
+      "line": 296,
+      "guarded": true,
+      "hookPresent": true
+    },
+    {
+      "file": "SettingsWorkspace.tsx",
+      "handler": "handleCreateUser",
+      "line": 307,
+      "guarded": true,
+      "hookPresent": true
+    },
+    {
+      "file": "SettingsWorkspace.tsx",
+      "handler": "toggleModule",
+      "line": 328,
+      "guarded": true,
+      "hookPresent": true
+    },
+    {
+      "file": "SettingsWorkspace.tsx",
+      "handler": "toggleKillSwitch",
+      "line": 337,
+      "guarded": true,
+      "hookPresent": true
+    },
+    {
+      "file": "SettingsWorkspace.tsx",
+      "handler": "handleUpdateLocale",
+      "line": 356,
+      "guarded": true,
+      "hookPresent": true
+    },
+    {
+      "file": "SettingsWorkspace.tsx",
+      "handler": "handleToggleAgentActive",
+      "line": 367,
+      "guarded": true,
+      "hookPresent": true
+    },
+    {
+      "file": "SettingsWorkspace.tsx",
+      "handler": "handleToggleAgentHumanApproval",
+      "line": 378,
+      "guarded": true,
+      "hookPresent": true
+    },
+    {
+      "file": "SettingsWorkspace.tsx",
+      "handler": "handleToggleAgentTool",
+      "line": 389,
+      "guarded": true,
+      "hookPresent": true
+    },
+    {
+      "file": "SettingsWorkspace.tsx",
+      "handler": "handleSaveAgentPrompt",
+      "line": 404,
+      "guarded": true,
+      "hookPresent": true
+    },
+    {
+      "file": "SettingsWorkspace.tsx",
+      "handler": "handleToggleChannelActive",
+      "line": 422,
+      "guarded": true,
+      "hookPresent": true
+    },
+    {
+      "file": "SettingsWorkspace.tsx",
+      "handler": "handleSendTestMessage",
+      "line": 446,
+      "guarded": true,
+      "hookPresent": true
+    },
+    {
+      "file": "TasksWorkspace.tsx",
+      "handler": "handleSaveTask",
+      "line": 161,
+      "guarded": true,
+      "hookPresent": true
+    }
+  ],
+  "unguarded": [
+    {
+      "file": "App.tsx",
+      "handler": "handleKeyDown",
+      "line": 65,
+      "guarded": false,
+      "hookPresent": true
+    },
+    {
+      "file": "App.tsx",
+      "handler": "handleNotificationClick",
+      "line": 123,
+      "guarded": false,
+      "hookPresent": true
+    },
+    {
+      "file": "QuoteWizardModal.tsx",
+      "handler": "handleAddLineItem",
+      "line": 86,
+      "guarded": false,
+      "hookPresent": true
+    }
+  ],
+  "preAuthExemptions": [
+    {
+      "file": "LoginWorkspace.tsx",
+      "handler": "submit",
+      "line": 104,
+      "reason": "pre-authentication credential flow"
+    }
+  ]
+}\n

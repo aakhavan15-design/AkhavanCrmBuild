@@ -1,0 +1,442 @@
+{
+  "version": 1,
+  "description": "Single registry shared by the browser sync layer and server/entityStore.mjs. Every AppState collection (array of records with an id) maps to one SQL partition in sync.EntityStore; every other plain key is a singleton document in sync.EntitySingleton. Unknown arrays are auto-discovered and use the default policy, so no data can be left without a SQL home.",
+  "accessProfiles": {
+    "reference": {
+      "read": "authenticated",
+      "write": "settings.manage"
+    },
+    "people": {
+      "read": "authenticated",
+      "write": "users.manage"
+    },
+    "roles": {
+      "read": "authenticated",
+      "write": "roles.manage"
+    },
+    "accounts": {
+      "read": "accounts.view",
+      "write": "accounts.edit"
+    },
+    "leads": {
+      "read": "leads.view",
+      "write": "leads.edit"
+    },
+    "quotes": {
+      "read": "quotes.view",
+      "write": "quotes.create"
+    },
+    "finance": {
+      "read": "finance.view",
+      "write": "finance.manage"
+    },
+    "cases": {
+      "read": "cases.view",
+      "write": "cases.edit"
+    },
+    "internal": {
+      "read": "internal.view",
+      "write": "internal.manage"
+    },
+    "geo": {
+      "read": "geo.view",
+      "write": "geo.manage"
+    },
+    "collab": {
+      "read": "authenticated",
+      "write": "authenticated"
+    },
+    "automation": {
+      "read": "authenticated",
+      "write": "automation.manage"
+    },
+    "agents": {
+      "read": "authenticated",
+      "write": "agents.manage"
+    },
+    "knowledge": {
+      "read": "authenticated",
+      "write": "knowledge.manage"
+    },
+    "marketing": {
+      "read": "authenticated",
+      "write": "marketing.manage"
+    }
+  },
+  "defaultProfile": "internal",
+  "localOnlyKeys": [
+    "currentUserId",
+    "draftQuote",
+    "activeContextAccountId",
+    "activeContextCustomerId",
+    "reminderLog",
+    "schemaVersion",
+    "seedMetadata",
+    "creditNoteSourceStatus"
+  ],
+  "collections": {
+    "users": {
+      "profile": "people"
+    },
+    "roles": {
+      "profile": "roles"
+    },
+    "permissionSets": {
+      "profile": "roles"
+    },
+    "groups": {
+      "profile": "collab",
+      "refs": {
+        "ownerId": "users"
+      }
+    },
+    "customers": {
+      "profile": "accounts"
+    },
+    "accounts": {
+      "profile": "accounts",
+      "refs": {
+        "ownerId": "users"
+      }
+    },
+    "leads": {
+      "profile": "leads",
+      "refs": {
+        "ownerId": "users"
+      }
+    },
+    "opportunities": {
+      "profile": "quotes",
+      "refs": {
+        "accountId": "accounts",
+        "ownerId": "users"
+      }
+    },
+    "quotes": {
+      "profile": "quotes",
+      "refs": {
+        "accountId": "accounts",
+        "customerId": "accounts",
+        "ownerId": "users"
+      }
+    },
+    "externalProducts": {
+      "profile": "reference"
+    },
+    "tasks": {
+      "profile": "collab",
+      "refs": {
+        "accountId": "accounts",
+        "customerId": "accounts",
+        "assigneeId": "users",
+        "ownerId": "users"
+      }
+    },
+    "visits": {
+      "profile": "collab",
+      "refs": {
+        "accountId": "accounts",
+        "customerId": "accounts",
+        "userId": "users"
+      }
+    },
+    "communications": {
+      "profile": "collab",
+      "refs": {
+        "accountId": "accounts",
+        "customerId": "accounts"
+      }
+    },
+    "activities": {
+      "profile": "collab",
+      "refs": {
+        "accountId": "accounts",
+        "customerId": "accounts"
+      }
+    },
+    "notifications": {
+      "profile": "collab",
+      "appendOnly": true,
+      "maxLocal": 200
+    },
+    "businessEvents": {
+      "profile": "collab",
+      "appendOnly": true,
+      "maxLocal": 1000
+    },
+    "timelineEvents": {
+      "profile": "collab",
+      "appendOnly": true,
+      "maxLocal": 1000
+    },
+    "auditLogs": {
+      "profile": "collab",
+      "appendOnly": true,
+      "maxLocal": 1000
+    },
+    "attachments": {
+      "profile": "collab"
+    },
+    "automations": {
+      "profile": "automation"
+    },
+    "invoices": {
+      "profile": "finance",
+      "refs": {
+        "accountId": "accounts",
+        "customerId": "accounts"
+      }
+    },
+    "payments": {
+      "profile": "finance",
+      "refs": {
+        "accountId": "accounts",
+        "customerId": "accounts"
+      }
+    },
+    "cheques": {
+      "profile": "finance",
+      "refs": {
+        "accountId": "accounts",
+        "customerId": "accounts"
+      }
+    },
+    "paymentAllocations": {
+      "profile": "finance",
+      "refs": {
+        "paymentId": "payments",
+        "invoiceId": "invoices"
+      }
+    },
+    "creditNotes": {
+      "profile": "finance",
+      "refs": {
+        "accountId": "accounts",
+        "customerId": "accounts"
+      }
+    },
+    "creditNoteRequests": {
+      "profile": "finance"
+    },
+    "financeRequests": {
+      "profile": "finance"
+    },
+    "expenses": {
+      "profile": "finance"
+    },
+    "coaMirror": {
+      "profile": "finance",
+      "idField": "code"
+    },
+    "reportBuckets": {
+      "profile": "finance"
+    },
+    "accountMapRules": {
+      "profile": "finance"
+    },
+    "bankMaps": {
+      "profile": "finance"
+    },
+    "cashboxMaps": {
+      "profile": "finance"
+    },
+    "outbox": {
+      "profile": "finance"
+    },
+    "suppliers": {
+      "profile": "internal"
+    },
+    "purchaseRequests": {
+      "profile": "internal",
+      "refs": {
+        "supplierId": "suppliers"
+      }
+    },
+    "salesOrders": {
+      "profile": "quotes",
+      "refs": {
+        "customerId": "accounts",
+        "accountId": "accounts"
+      }
+    },
+    "dispatchPlans": {
+      "profile": "internal"
+    },
+    "salesReturns": {
+      "profile": "finance",
+      "refs": {
+        "orderId": "salesOrders",
+        "customerId": "accounts"
+      }
+    },
+    "commercialPolicies": {
+      "profile": "reference"
+    },
+    "reconciliationCases": {
+      "profile": "cases"
+    },
+    "cases": {
+      "profile": "cases",
+      "refs": {
+        "accountId": "accounts"
+      }
+    },
+    "articles": {
+      "profile": "knowledge"
+    },
+    "campaigns": {
+      "profile": "marketing"
+    },
+    "agents": {
+      "profile": "agents"
+    },
+    "agentLogs": {
+      "profile": "agents",
+      "appendOnly": true,
+      "maxLocal": 500
+    },
+    "messagingChannels": {
+      "profile": "agents"
+    },
+    "messagingLogs": {
+      "profile": "agents",
+      "appendOnly": true,
+      "maxLocal": 500
+    },
+    "geoZones": {
+      "profile": "geo"
+    },
+    "zoneGeometryVersions": {
+      "profile": "geo",
+      "refs": {
+        "zoneId": "geoZones"
+      }
+    },
+    "zoneAssignments": {
+      "profile": "geo",
+      "refs": {
+        "zoneId": "geoZones"
+      }
+    },
+    "geoMetricDefinitions": {
+      "profile": "geo"
+    },
+    "zoneMetricSnapshots": {
+      "profile": "geo",
+      "refs": {
+        "zoneId": "geoZones"
+      }
+    },
+    "onboardingApplications": {
+      "profile": "internal"
+    },
+    "personnelFiles": {
+      "profile": "internal"
+    },
+    "salaryProfiles": {
+      "profile": "internal",
+      "refs": {
+        "userId": "users"
+      }
+    },
+    "advanceRequests": {
+      "profile": "internal",
+      "refs": {
+        "userId": "users"
+      }
+    },
+    "payrollRuns": {
+      "profile": "internal"
+    },
+    "payslips": {
+      "profile": "internal",
+      "refs": {
+        "userId": "users"
+      }
+    },
+    "salesTargets": {
+      "profile": "internal"
+    },
+    "commissionPlans": {
+      "profile": "internal"
+    },
+    "commissionTransactions": {
+      "profile": "internal"
+    },
+    "performanceAssessments": {
+      "profile": "internal"
+    },
+    "internalRequests": {
+      "profile": "internal"
+    },
+    "internalMeetings": {
+      "profile": "internal"
+    },
+    "treasuryAccounts": {
+      "profile": "finance"
+    },
+    "treasuryTransactions": {
+      "profile": "finance",
+      "refs": {
+        "accountId": "treasuryAccounts"
+      }
+    },
+    "purchaseOrders": {
+      "profile": "internal",
+      "refs": {
+        "supplierId": "suppliers"
+      }
+    },
+    "goodsReceipts": {
+      "profile": "internal",
+      "refs": {
+        "poId": "purchaseOrders",
+        "supplierId": "suppliers"
+      }
+    },
+    "stockMovements": {
+      "profile": "internal",
+      "refs": {
+        "productId": "externalProducts"
+      }
+    },
+    "supplierPayments": {
+      "profile": "finance",
+      "refs": {
+        "billId": "supplierBills",
+        "supplierId": "suppliers"
+      }
+    },
+    "supplierBills": {
+      "profile": "finance",
+      "refs": {
+        "supplierId": "suppliers",
+        "poId": "purchaseOrders"
+      }
+    },
+    "messages": {
+      "profile": "collab"
+    },
+    "approvalSnapshots": {
+      "profile": "finance"
+    },
+    "paymentNatureMappings": {
+      "profile": "finance"
+    },
+    "accountingExportLogs": {
+      "profile": "finance"
+    },
+    "expenseBudgets": {
+      "profile": "finance"
+    },
+    "personnelLedgerEntries": {
+      "profile": "finance"
+    },
+    "creditLimitRequests": {
+      "profile": "finance"
+    },
+    "leaveEntitlements": {
+      "profile": "internal"
+    }
+  }
+}

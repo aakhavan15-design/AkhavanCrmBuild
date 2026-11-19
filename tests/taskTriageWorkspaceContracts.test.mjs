@@ -1,0 +1,14 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+const source = readFileSync(new URL('../src/components/TasksWorkspace.tsx', import.meta.url), 'utf8');
+assert.match(source, /setSlaFilter\(slaFilter === 'BREACHED' \? 'ALL' : 'BREACHED'\)/, 'overdue triage control toggles');
+assert.match(source, /setSlaFilter\(slaFilter === 'AT_RISK' \? 'ALL' : 'AT_RISK'\)/, 'at-risk triage control toggles');
+assert.match(source, /setSlaFilter\(slaFilter === 'UNSCHEDULED' \? 'ALL' : 'UNSCHEDULED'\)/, 'unscheduled triage control toggles');
+assert.match(source, /rankTasksForAttention\(list\)/, 'task list uses shared attention ranking');
+assert.match(source, /aria-pressed=\{slaFilter === 'BREACHED'\}/, 'active triage filter is accessible');
+assert.match(source, /حذف فیلتر مهلت تعهد/, 'active SLA filter can be cleared');
+assert.match(source, /const visibleTasks = useMemo/, 'all task lists begin from a scoped visible-task collection');
+assert.match(source, /canOn\('tasks', 'VIEW'/, 'task list visibility enforces record-level RBAC');
+assert.match(source, /visibleTasks\.find\(item => item\.id === taskId\)/, 'status actions can only target visible tasks');
+assert.match(source, /Completion\/reopen must pass through the workflow form/, 'checkbox cannot bypass workflow outcome evidence');
+console.log('taskTriageWorkspaceContracts.test.mjs: PASS (10 assertions)');

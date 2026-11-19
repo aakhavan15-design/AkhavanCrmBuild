@@ -1,0 +1,14 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+const migration = fs.readFileSync(new URL('../database/sqlserver/v1/008_sales_dispatch_extension.sql', import.meta.url), 'utf8');
+const preflight = fs.readFileSync(new URL('../database/sqlserver/v1/009_sales_dispatch_preflight.sql', import.meta.url), 'utf8');
+const quote = fs.readFileSync(new URL('../src/components/QuotesWorkspace.tsx', import.meta.url), 'utf8');
+const ops = fs.readFileSync(new URL('../src/components/OperationsControlWorkspace.tsx', import.meta.url), 'utf8');
+const server = fs.readFileSync(new URL('../server/index.mjs', import.meta.url), 'utf8');
+for (const table of ['crm.SalesOrder','crm.SalesOrderLine','crm.NegotiationScenario','crm.DispatchPlan','crm.DispatchPlanLine']) assert.ok(migration.includes(table), `migration missing ${table}`);
+assert.ok(preflight.includes('TenantIsolationPolicy') && preflight.includes('sys.foreign_keys'), 'preflight must verify tenant RLS and FKs');
+assert.ok(quote.includes('صف ارسال سمت سرور'), 'quote handoff must not pretend external delivery is local-only');
+assert.ok(ops.includes('آزمایشی'), 'dispatch demo states must remain explicitly labelled as test-only');
+assert.ok(server.includes('CUSTOMER_CREATE_PROPOSAL'), 'customer create must be a proposal sent for ERP review');
+assert.ok(!/INSERT\\s+INTO\\s+crm\\.Account/i.test(server), 'CRM must not create the ERP-owned customer master');
+console.log('PASS: domain integration traceability and ERP ownership boundaries');

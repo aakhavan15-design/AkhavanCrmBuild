@@ -1,0 +1,131 @@
+// SQL-first state synchronisation. The Zustand store stays the fast read-model the whole UI already uses,
+// but with the SQL provider active EVERY collection and setting is hydrated from, and persisted to, the
+// provider (SQL Server via /api/v1/state/*). Import-light on purpose so it can be unit-tested without a browser.
+import {
+  splitState, diffAgainstIndex, applyToIndex, mergeSnapshot, recordId, type HashIndex, type ChangeSet,
+} from '../lib/stateModel.mjs';
+
+export interface StateSnapshot { collections: Record<string, Array<Record<string, unknown>>>; singletons: Record<string, any>; serverVersion?: number; hiddenCollections?: string[] }
+export interface StateSyncResult { ok: boolean; upserted: number; deleted: number; serverVersion: number; rejected: Array<{ collection: string; id?: string; reason: string }> }
+
+/** The slice of DataProvider the sync engine needs (both providers implement it). */
+export interface StateSyncProvider {
+  name: string;
+  getStateSnapshot(): Promise<StateSnapshot>;
+  syncStateChanges(change: Omit<ChangeSet, 'count'>): Promise<StateSyncResult>;
+  bootstrapState(state: unknown): Promise<{ ok: boolean; upserted: number; rejected: unknown[]; serverVersion: number }>;
+}
+export interface SyncableStore {
+  getState(): { state: unknown };
+  setState(partial: unknown): void;
+  subscribe(listener: (next: { state: unknown }, prev: { state: unknown }) => void): () => void;
+}
+export type SyncPhase = 'stopped' | 'hydrating' | 'idle' | 'pending' | 'syncing' | 'error';
+export interface SyncStatus { phase: SyncPhase; pending: number; lastSyncedAt: string | null; lastError: string | null; serverVersion: number; rejected: number }
+
+export class StateSyncEngine {
+  private index: HashIndex = { collections: {}, singletons: {} };
+  private unsubscribe: (() => void) | null = null;
+  private timer: ReturnType<typeof setTimeout> | null = null;
+  private suppress = false;
+  private running = false;
+  private failures = 0;
+  private listeners = new Set<(s: SyncStatus) => void>();
+  private status: SyncStatus = { phase: 'stopped', pending: 0, lastSyncedAt: null, lastError: null, serverVersion: 0, rejected: 0 };
+
+  private store: SyncableStore;
+  private provider: StateSyncProvider;
+  private registry: unknown;
+  private options: { debounceMs?: number; maxBackoffMs?: number };
+
+  constructor(store: SyncableStore, provider: StateSyncProvider, registry: unknown, options: { debounceMs?: number; maxBackoffMs?: number } = {}) {
+    this.store = store; this.provider = provider; this.registry = registry; this.options = options;
+  }
+
+  getStatus(): SyncStatus { return this.status; }
+  onStatus(fn: (s: SyncStatus) => void): () => void { this.listeners.add(fn); fn(this.status); return () => this.listeners.delete(fn); }
+  private set(patch: Partial<SyncStatus>) { this.status = { ...this.status, ...patch }; this.listeners.forEach(fn => fn(this.status)); }
+
+  /** Pull the server snapshot into the store (server wins unless a local change is pending), then start tracking changes. */
+  async start(): Promise<void> {
+    if (this.unsubscribe) return;
+    this.set({ phase: 'hydrating', lastError: null });
+    try { await this.hydrate(); } catch (error: unknown) { this.set({ phase: 'error', lastError: error?.message || 'خطا در دریافت داده از پایگاه داده' }); }
+    this.unsubscribe = this.store.subscribe((next) => {
+      if (this.suppress) return;
+      this.schedule(this.options.debounceMs ?? 700);
+    });
+    // first diff pushes whatever exists locally but not on the server (e.g. first connection, offline edits)
+    this.schedule(50);
+  }
+
+  stop(): void {
+    this.unsubscribe?.(); this.unsubscribe = null;
+    if (this.timer) clearTimeout(this.timer); this.timer = null;
+    this.set({ phase: 'stopped' });
+  }
+
+  async hydrate(): Promise<void> {
+    const snapshot = await this.provider.getStateSnapshot();
+    const { patch, index } = mergeSnapshot(this.store.getState().state, snapshot, this.index, this.registry);
+    this.index = index;
+    this.suppress = true;
+    try { this.store.setState((prev: unknown) => ({ ...prev, state: { ...prev.state, ...patch } })); } finally { this.suppress = false; }
+    this.set({ phase: 'idle', serverVersion: snapshot.serverVersion ?? 0, lastError: null });
+  }
+
+  private schedule(delay: number) {
+    if (this.timer) clearTimeout(this.timer);
+    this.set({ phase: this.status.phase === 'syncing' ? 'syncing' : 'pending' });
+    this.timer = setTimeout(() => { this.timer = null; void this.flush(); }, delay);
+  }
+
+  /** Push every change made since the last successful sync. Safe to call repeatedly. */
+  async flush(): Promise<void> {
+    if (this.running) { this.schedule(300); return; }
+    this.running = true;
+    try {
+      const change = diffAgainstIndex(this.index, this.store.getState().state, this.registry);
+      this.set({ pending: change.count });
+      if (change.count === 0) { this.set({ phase: 'idle', lastError: null }); this.failures = 0; return; }
+      this.set({ phase: 'syncing' });
+      const { count, ...payload } = change;
+      const result = await this.provider.syncStateChanges(payload);
+      // Fold only what the server accepted into the index; rejected records stay "pending" so the UI can surface them.
+      const rejectedKeys = new Set(result.rejected.map(r => `${r.collection}\u0000${r.id ?? ''}`));
+      const rejectedCollections = new Set(result.rejected.filter(r => !r.id).map(r => r.collection));
+      const accepted: Omit<ChangeSet, 'count'> = { upserts: {}, deletes: {}, singletons: {} };
+      for (const [name, list] of Object.entries(payload.upserts)) {
+        if (rejectedCollections.has(name)) continue;
+        const ok = list.filter((rec: unknown) => !rejectedKeys.has(`${name}\u0000${recordId(rec, name, this.registry) ?? ''}`));
+        if (ok.length) accepted.upserts[name] = ok;
+      }
+      for (const [name, ids] of Object.entries(payload.deletes)) if (!rejectedCollections.has(name)) accepted.deletes[name] = ids;
+      for (const [key, value] of Object.entries(payload.singletons)) if (!rejectedCollections.has(key)) accepted.singletons[key] = value;
+      applyToIndex(this.index, { ...accepted, count: 0 }, this.registry);
+      this.failures = 0;
+      const stillPending = diffAgainstIndex(this.index, this.store.getState().state, this.registry).count;
+      this.set({ phase: stillPending ? 'pending' : 'idle', pending: stillPending, lastSyncedAt: new Date().toISOString(), serverVersion: result.serverVersion, rejected: result.rejected.length, lastError: null });
+      if (stillPending && result.rejected.length === 0) this.schedule(this.options.debounceMs ?? 700);
+    } catch (error: unknown) {
+      this.failures++;
+      const wait = Math.min(this.options.maxBackoffMs ?? 60000, 1000 * 2 ** Math.min(this.failures, 6));
+      this.set({ phase: 'error', lastError: error?.message || 'ارتباط با سرور برقرار نشد' });
+      this.schedule(wait);
+    } finally { this.running = false; }
+  }
+
+  /** Explicit "upload everything I have to SQL" (demo seed / first migration). Merge-only on the server. */
+  async bootstrapFromLocal(): Promise<{ upserted: number; rejected: number }> {
+    const state = this.store.getState().state;
+    const split = splitState(state, this.registry);
+    const result = await this.provider.bootstrapState(state);
+    // mark everything we just uploaded as synced so the diff does not re-send it
+    applyToIndex(this.index, {
+      upserts: Object.fromEntries(Object.entries(split.collections).map(([n, m]) => [n, [...m.values()]])),
+      deletes: {}, singletons: split.singletons, count: 0,
+    }, this.registry);
+    this.set({ lastSyncedAt: new Date().toISOString(), serverVersion: result.serverVersion, rejected: result.rejected.length });
+    return { upserted: result.upserted, rejected: result.rejected.length };
+  }
+}

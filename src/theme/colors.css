@@ -1,0 +1,368 @@
+/**
+ * AKHAVAN CRM — 2026 Design Tokens (Unified Master Prompt Edition)
+ * Palette: Neo-Slate neutrals + Electric Indigo brand (approved identity; names --c-cobalt/--c-copper/--c-burgundy are legacy aliases of brand/warning/danger)
+ * All product surfaces consume semantic tokens; dark mode remaps the same roles.
+ */
+:root {
+  /* Layout metrics — content padding must clear sticky header / bottom nav */
+  --header-h: 56px;
+  --nav-h: 64px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --radius-card: 16px;
+  --text-kpi: 1.75rem;
+
+  color-scheme: light;
+  --c-white: #FFFFFF;
+  --c-mist: #F1F5F9;
+  --c-canvas: #F8FAFC;
+  --c-surface: #FFFFFF;
+  --c-surface-raised: #FFFFFF;
+  --c-surface-glass: rgba(255, 255, 255, 0.78);
+  --c-sunken: #F1F5F9;
+
+  --c-border-light: rgba(15, 23, 42, 0.04);
+  --c-border: #E2E8F0;
+  --c-border-strong: #CBD5E1;
+
+  --c-hover: #F1F5F9;
+  /* WCAG AA improved contrast (Audit F0-14-UX): secondary/muted raised for body text readability */
+  --c-ink-faint: #94A3B8;          /* decorative only / icons inactive */
+  --c-ink-main: #0F172A;
+  --c-ink-secondary: #334155;      /* was #475569 → stronger secondary labels */
+  --c-ink-muted: #475569;          /* was #64748B → ~5.5:1 on canvas for secondary text */
+
+  --c-navy-light: #334155;
+  --c-navy: #0F172A;
+  --c-navy-dark: #020617;
+
+  --c-cobalt-light: #EEF2FF;
+  --c-cobalt: #4F46E5;
+  --c-cobalt-dark: #4338CA;
+
+  --c-forest-light: #D1FAE5;
+  --c-forest: #059669;
+  --c-forest-dark: #047857;
+
+  --c-success-soft: #D1FAE5;
+  --c-success-border: #A7F3D0;
+  --c-success: #059669;
+  --c-copper-soft: #FEF3C7;
+  --c-copper-border: #FDE68A;
+  --c-copper: #D97706;
+  --c-burgundy-soft: #FFE4E6;
+  --c-burgundy-border: #FECDD3;
+  --c-burgundy: #E11D48;
+
+  --c-primary: var(--c-cobalt);
+  --c-primary-hover: var(--c-cobalt-dark);
+  --c-primary-pressed: #3730A3;
+  --c-primary-soft: #EEF2FF;
+  --c-on-primary: #FFFFFF;
+  --c-accent: #0EA5E9;
+  --c-on-accent: #082F49;
+  --c-text-primary: var(--c-ink-main);
+  --c-text-secondary: var(--c-ink-secondary);
+  --c-warning: var(--c-copper);
+  --c-warning-soft: var(--c-copper-soft);
+  --c-warning-border: var(--c-copper-border);
+  --c-danger: var(--c-burgundy);
+  --c-danger-soft: var(--c-burgundy-soft);
+  --c-danger-border: var(--c-burgundy-border);
+  --c-on-danger: #FFFFFF;
+  --c-info: #0EA5E9;
+  --c-info-soft: #E0F2FE;
+
+  --c-chart-1: #4F46E5;
+  --c-chart-2: #10B981;
+  --c-chart-3: #06B6D4;
+  --c-chart-4: #F59E0B;
+  --c-chart-5: #F43F5E;
+  --c-chart-grid: rgba(15, 23, 42, 0.06);
+  --c-chart-tooltip: #0F172A;
+  --c-chart-shadow: rgba(15, 23, 42, 0.15);
+
+  /* 2026 Analytical Chart Palette (Master Prompt Appendix A) */
+  --chart-1: #4F46E5;
+  --chart-2: #10B981;
+  --chart-3: #06B6D4;
+  --chart-4: #F59E0B;
+  --chart-5: #F43F5E;
+  --chart-6: #0EA5E9;
+  --chart-7: #8B5CF6;
+  --chart-other: #94A3B8;
+  --positive: #059669;
+  --negative: #E11D48;
+
+  --c-theme-color: #F8FAFC;
+  --c-bottom-nav-bg: #0F172A;
+  --c-bottom-nav-border: #1E293B;
+  --c-bottom-nav-ink: #94A3B8;
+  --c-bottom-nav-active: #A5B4FC;
+  --c-overlay-bg: #0F172A;
+  --c-overlay-ink: #FFFFFF;
+  --c-avatar-deep: #1E1B4B;
+  --font-family-ui: "Vazirmatn", "Urbanist", system-ui, sans-serif;
+  --font-family-data: "Urbanist", "Vazirmatn", system-ui, sans-serif;
+  --font-size-display: 24px;
+  --font-size-h1: 20px;
+  --font-size-h2: 15px;
+  --font-size-title: 13.5px;
+  --font-size-body: 12.5px;
+  --font-size-nano: 9px;
+  --font-size-tiny: 9.5px;
+  --font-size-micro: 10px;
+  --font-size-mini: 10.5px;
+  --font-size-caption: 11px;
+  --font-size-label: 11.5px;
+  --font-size-small: 12px;
+  --font-size-compact: 13px;
+  --size-touch: 44px;
+  --size-control: 40px;
+  --size-control-sm: 36px;
+
+  /* ── Central layout/motion tokens (theme-independent). Change here, the whole UI follows. ── */
+  --font-size-body-lg: 14px;
+  --font-size-input: 16px;
+  --font-size-kpi-md: 21px;
+  --c-radius-card-xs: 12px;
+  --c-radius-field: 9px;
+  --c-radius-section: 26px;
+  --size-76: 76px;
+  --size-92: 92px;
+  --size-220: 220px;
+  --font-size-pico: 8px;
+  --font-size-atom: 8.5px;
+  --font-size-lead: 18px;
+  --font-size-kpi: 22px;
+  --font-size-kpi-lg: 26px;
+  --c-radius-card-sm: 14px;
+  --c-radius-3xl: 24px;
+  --c-radius-4xl: 32px;
+  --z-raised: 1;
+  --z-table-head: 2;
+  --c-radius-tab: 2px;
+  --c-radius-bar: 3px;
+  --z-sticky: 60;
+  --z-drawer: 70;
+  --z-popover: 80;
+  --z-modal: 100;
+  --z-top: 200;
+  --scale-press-strong: 0.96;
+  --scale-press: 0.97;
+  --scale-press-soft: 0.98;
+  --scale-press-subtle: 0.99;
+  --scale-lift-subtle: 1.01;
+  --scale-lift: 1.02;
+  --brightness-hover: 1.02;
+  --bw-accent: 3px;
+  --blur-scrim: 2px;
+  --vp-drawer: 92dvh;
+  --vp-dialog: 85vh;
+  --vp-sheet: 88vh;
+  --vp-split-lg: 66vh;
+  --vp-split-sm: 48vh;
+  --vp-split-xs: 42vh;
+  --vp-tour-w: 92vw;
+  --pct-bubble: 84%;
+  --pct-overlay: 75%;
+  --pct-meta: 35%;
+  /* layout size ladder: semantic names first, then px-named one-offs */
+  --size-16: 16px;
+  --size-17: 17px;
+  --size-check: 18px;
+  --size-29: 29px;
+  --size-chip: 30px;
+  --size-input: 42px;
+  --size-row: 48px;
+  --size-50: 50px;
+  --size-60: 60px;
+  --size-64: 64px;
+  --size-68: 68px;
+  --size-84: 84px;
+  --size-88: 88px;
+  --size-95: 95px;
+  --size-110: 110px;
+  --size-112: 112px;
+  --size-115: 115px;
+  --size-120: 120px;
+  --size-140: 140px;
+  --size-150: 150px;
+  --size-160: 160px;
+  --size-165: 165px;
+  --size-180: 180px;
+  --size-190: 190px;
+  --size-200: 200px;
+  --size-240: 240px;
+  --size-250: 250px;
+  --size-260: 260px;
+  --size-280: 280px;
+  --size-290: 290px;
+  --size-300: 300px;
+  --size-320: 320px;
+  --size-340: 340px;
+  --size-360: 360px;
+  --size-370: 370px;
+  --size-380: 380px;
+  --size-390: 390px;
+  --size-400: 400px;
+  --size-410: 410px;
+  --size-430: 430px;
+  --size-480: 480px;
+  --size-520: 520px;
+  --size-540: 540px;
+  --size-580: 580px;
+  --size-620: 620px;
+  --size-640: 640px;
+  --size-700: 700px;
+  --size-760: 760px;
+  --size-900: 900px;
+  --line-height-tight: 1.3;
+  --line-height-body: 1.5;
+
+  /* Ultra-Minimal Glass 2026 Scale (Rules U1 & U2: Card radius 16px max, KPI 20-22px) */
+  --bg-canvas: #F8FAFC;
+  --bg-sunken: #F1F5F9;
+  --surface: #FFFFFF;
+  --surface-solid: #FFFFFF;
+  --brand: #4F46E5;
+  --brand-strong: #4338CA;
+  --brand-soft: #EEF2FF;
+  --mint: #C7D2FE;
+  --sand: #CBD5E1;
+  --ink: #0F172A;
+  --text-1: #0F172A;
+  --text-2: #334155;   /* aligned with improved --c-ink-secondary */
+  --text-3: #475569;   /* aligned with improved --c-ink-muted */
+  --line: rgba(15, 23, 42, 0.08);
+  --glass-bg: rgba(255, 255, 255, 0.72);
+  --glass-line: rgba(255, 255, 255, 0.65);
+  
+  --r-card: 16px;
+  --r-hero: 22px;
+  --r-pill: 999px;
+  --gap: 10px;
+  --margin: 16px;
+  --group: 20px;
+
+  --c-radius-xs: 6px;
+  --c-radius-sm: 8px;
+  --c-radius-md: 10px;
+  --c-radius-lg: 16px;
+  --c-radius-xl: 18px;
+  --c-radius-2xl: 20px;
+  
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.035);
+  --shadow-card: 0 1px 3px rgba(15, 23, 42, 0.045), 0 6px 18px -14px rgba(15, 23, 42, 0.1);
+  --shadow-floating: 0 10px 28px -14px rgba(15, 23, 42, 0.2);
+  --shadow-modal: 0 20px 54px -22px rgba(2, 6, 23, 0.28);
+}
+
+[data-theme="dark"], html.dark {
+  color-scheme: dark;
+  --c-mist: #0B1120;
+  --c-canvas: #090D16;
+  --c-surface: #111827;
+  --c-surface-raised: #1E293B;
+  --c-surface-glass: rgba(17, 24, 39, 0.85);
+  --c-sunken: #060A12;
+  --c-border-light: rgba(255, 255, 255, 0.04);
+  --c-border: #1E293B;
+  --c-border-strong: #334155;
+  --c-hover: #1F2937;
+  /* Dark mode contrast aligned with light improvements */
+  --c-ink-faint: #64748B;
+  --c-ink-main: #F8FAFC;
+  --c-ink-secondary: #CBD5E1;      /* brighter secondary for dark */
+  --c-ink-muted: #94A3B8;          /* clearer muted text on dark surfaces */
+  --c-navy-light: #94A3B8;
+  --c-navy: #F8FAFC;
+  --c-navy-dark: #020617;
+  --c-cobalt-light: rgba(99, 102, 241, 0.16);
+  --c-cobalt: #6366F1;
+  --c-cobalt-dark: #818CF8;
+  --c-forest-light: rgba(52, 211, 153, 0.15);
+  --c-forest: #34D399;
+  --c-forest-dark: #10B981;
+  --c-success-soft: rgba(52, 211, 153, 0.15);
+  --c-success-border: rgba(52, 211, 153, 0.3);
+  --c-success: #34D399;
+  --c-copper-soft: rgba(251, 191, 36, 0.15);
+  --c-copper-border: rgba(251, 191, 36, 0.3);
+  --c-copper: #FBBF24;
+  --c-burgundy-soft: rgba(251, 113, 133, 0.15);
+  --c-burgundy-border: rgba(251, 113, 133, 0.3);
+  --c-burgundy: #FB7185;
+  --c-primary: var(--c-cobalt);
+  --c-primary-hover: #818CF8;
+  --c-primary-pressed: #4F46E5;
+  --c-primary-soft: rgba(99, 102, 241, 0.16);
+  --c-on-primary: #FFFFFF;
+  --c-accent: #38BDF8;
+  --c-on-accent: #082F49;
+  --c-text-primary: var(--c-ink-main);
+  --c-text-secondary: var(--c-ink-secondary);
+  --c-warning: #FBBF24;
+  --c-warning-soft: rgba(251, 191, 36, 0.14);
+  --c-warning-border: rgba(251, 191, 36, 0.32);
+  --c-danger: #FB7185;
+  --c-danger-soft: rgba(251, 113, 133, 0.14);
+  --c-danger-border: rgba(251, 113, 133, 0.32);
+  --c-on-danger: #2A0A12;
+  --c-info: #38BDF8;
+  --c-info-soft: rgba(56, 189, 248, 0.14);
+
+  --c-chart-1: #6366F1;
+  --c-chart-2: #34D399;
+  --c-chart-3: #22D3EE;
+  --c-chart-4: #FBBF24;
+  --c-chart-5: #FB7185;
+  --c-chart-grid: rgba(248, 250, 252, 0.08);
+  --c-chart-tooltip: #0B1120;
+
+  --chart-1: #6366F1;
+  --chart-2: #34D399;
+  --chart-3: #22D3EE;
+  --chart-4: #FBBF24;
+  --chart-5: #FB7185;
+  --chart-6: #38BDF8;
+  --chart-7: #A78BFA;
+  --chart-other: #64748B;
+  --positive: #34D399;
+  --negative: #FB7185;
+
+  --c-theme-color: #090D16;
+  --c-bottom-nav-bg: #0B1120;
+  --c-bottom-nav-border: #1E293B;
+  --c-bottom-nav-ink: #94A3B8;
+  --c-bottom-nav-active: #A5B4FC;
+  --c-overlay-bg: #020617;
+  --c-overlay-ink: #F8FAFC;
+  --c-avatar-deep: #312E81;
+
+  --bg-canvas: #090D16;
+  --bg-sunken: #060A12;
+  --surface: #111827;
+  --surface-solid: #1E293B;
+  --brand: #6366F1;
+  --brand-strong: #818CF8;
+  --brand-soft: rgba(99, 102, 241, 0.16);
+  --mint: #312E81;
+  --sand: #475569;
+  --ink: #020617;
+  --text-1: #F8FAFC;
+  --text-2: #CBD5E1;   /* aligned with improved dark secondary */
+  --text-3: #94A3B8;   /* aligned with improved dark muted */
+  --line: rgba(255, 255, 255, 0.08);
+  --glass-bg: rgba(17, 24, 39, 0.65);
+  --glass-line: rgba(255, 255, 255, 0.08);
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.22);
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.18), 0 6px 18px -14px rgba(0, 0, 0, 0.3);
+  --shadow-floating: 0 10px 28px -14px rgba(0, 0, 0, 0.42);
+  --shadow-modal: 0 20px 54px -22px rgba(0, 0, 0, 0.6);
+}
+
+/* Header action accent from the approved Neo-Slate / Electric Indigo direction. */
+:root { --c-header-accent: #4F46E5; }
+[data-theme="dark"], html.dark { --c-header-accent: #6366F1; }

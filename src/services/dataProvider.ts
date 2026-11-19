@@ -1,0 +1,822 @@
+import type { 
+  AppState, 
+  Account, 
+  Quote, 
+  Task, 
+  Invoice, 
+  Payment, 
+  Cheque, 
+  InternalRequest, 
+  Payslip, 
+  PayrollRun,
+  AdvanceRequest,
+  GeoZone,
+  CoaMirror
+} from '../types';
+import { useAppStore } from '../lib/storage';
+import { executePayrollRun as computePayrollRun } from './payrollEngine';
+import { AuthService } from './AuthService';
+import type { StateSnapshot, StateSyncResult } from './stateSync';
+import { splitState } from '../lib/stateModel.mjs';
+import stateRegistry from '../config/stateCollections.json' with { type: 'json' };
+import {
+  buildApprovalContext, buildFinancial360, resolveAccountingMapping, recordApprovalSnapshot, stateFromSnapshot,
+  type ApprovalContext, type ApprovalRef, type ApprovalSnapshot, type ClassificationInput, type ContextOptions, type FinancialContext, type MappingResolution, type SubjectRef
+} from '../lib/financialIntelligence';
+import { withViewer } from '../lib/financialAccess';
+import { queryJournalLines, buildDetailBalancesResult, type JournalLineFilter, type JournalLinePage, type DetailBalancesResult, type LedgerResultStatus } from '../lib/receivableReconciliation';
+import { journalQueryParams } from '../lib/ledgerQueryParams.mjs';
+
+export interface PaginationParams {
+  page?: number;
+  pageSize?: number;
+  sortBy?: string;
+  sortDirection?: 'asc' | 'desc';
+}
+
+export interface PaginatedResult<T> {
+  items: T[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
+
+export interface LedgerPnlDataResult {
+  status: LedgerResultStatus | 'RESTRICTED';
+  source: 'CLIENT_INDEXEDDB' | 'SQLSERVER_BACKEND';
+  journalLines: Array<Record<string, unknown>>;
+  coaMirror: CoaMirror[];
+  reason?: string;
+}
+
+export const CASH_FLOW_SOURCES = ['cheques', 'supplierBills', 'expenses', 'treasuryAccounts', 'treasuryTransactions'] as const;
+export interface CashFlowDataResult {
+  status: 'LIVE' | 'EMPTY' | 'UNAVAILABLE' | 'RESTRICTED' | 'PARTIAL';
+  source: 'CLIENT_INDEXEDDB' | 'SQLSERVER_BACKEND';
+  cheques: Array<Record<string, unknown>>;
+  supplierBills: Array<Record<string, unknown>>;
+  expenses: Array<Record<string, unknown>>;
+  treasuryAccounts: Array<Record<string, unknown>>;
+  treasuryTransactions: Array<Record<string, unknown>>;
+  missingSources: string[];
+  reason?: string;
+}
+
+export interface DataProvider {
+  name: 'CLIENT_INDEXEDDB' | 'SQLSERVER_BACKEND';
+  
+  // Accounts
+  getAccounts(filter?: any, pagination?: PaginationParams): Promise<PaginatedResult<Account>>;
+  getAccountById(id: string): Promise<Account | null>;
+  createAccount(account: Partial<Account>, idempotencyKey?: string): Promise<Account>;
+  updateAccount(id: string, patch: Partial<Account>): Promise<Account>;
+  
+  // Quotes & CPQ
+  getQuotes(filter?: any, pagination?: PaginationParams): Promise<PaginatedResult<Quote>>;
+  getQuoteById(id: string): Promise<Quote | null>;
+  createQuote(quote: Partial<Quote>, idempotencyKey?: string): Promise<Quote>;
+  updateQuote(id: string, patch: Partial<Quote>): Promise<Quote>;
+  
+  // Tasks
+  getTasks(filter?: any, pagination?: PaginationParams): Promise<PaginatedResult<Task>>;
+  getTaskById(id: string): Promise<Task | null>;
+  createTask(task: Partial<Task>, idempotencyKey?: string): Promise<Task>;
+  updateTask(id: string, patch: Partial<Task>): Promise<Task>;
+  
+  // Finance
+  getInvoices(filter?: any, pagination?: PaginationParams): Promise<PaginatedResult<Invoice>>;
+  getPayments(filter?: any, pagination?: PaginationParams): Promise<PaginatedResult<Payment>>;
+  getCheques(filter?: any, pagination?: PaginationParams): Promise<PaginatedResult<Cheque>>;
+  createPayment(payment: Partial<Payment>, idempotencyKey?: string): Promise<Payment>;
+  
+  // Ledger: گردش و مانده تفکیکی تفصیلی × معین (قانون اساسی §C؛ فقط از این مسیر خوانده شود)
+  getJournalLines(filter?: JournalLineFilter, pagination?: PaginationParams): Promise<JournalLinePage>;
+  getDetailSubsidiaryBalances(options?: { detailKey?: string; byPeriod?: boolean }): Promise<DetailBalancesResult>;
+  getLedgerPnlData(filter?: Pick<JournalLineFilter, 'fromDate' | 'toDate' | 'periodCode'>): Promise<LedgerPnlDataResult>;
+  getCashFlowData(): Promise<CashFlowDataResult>;
+
+  // HR & Payroll
+  getPayslips(userId?: string, month?: string): Promise<Payslip[]>;
+  getAdvanceRequests(userId?: string): Promise<AdvanceRequest[]>;
+  createAdvanceRequest(req: Partial<AdvanceRequest>): Promise<AdvanceRequest>;
+  executePayrollRun(month: string, basis: number): Promise<PayrollRun>;
+  
+  // Geo
+  getGeoZones(): Promise<GeoZone[]>;
+  saveGeoZone(zone: Partial<GeoZone>): Promise<GeoZone>;
+  getZoneAssignments(): Promise<Array<Record<string, unknown>>>;
+  getPaymentAllocations(): Promise<Array<Record<string, unknown>>>;
+  
+  // Financial Intelligence & Approval Center (Approval Intelligence / Financial 360 / Smart Accounting Classification)
+  getApprovalContext(ref: ApprovalRef, opts?: ContextOptions): Promise<ApprovalContext | null>;
+  getFinancial360(subject: SubjectRef, opts?: ContextOptions): Promise<FinancialContext>;
+  previewAccountingMapping(input: ClassificationInput): Promise<MappingResolution>;
+  recordApprovalSnapshot(snapshot: ApprovalSnapshot): Promise<{ ok: boolean; duplicate?: boolean }>;
+
+  // Analytics
+  getAnalyticsReport(reportId: number, params?: any): Promise<any>;
+
+  // SQL-first state layer: every AppState collection/setting goes through these (see services/stateSync.ts)
+  getStateSnapshot(): Promise<StateSnapshot>;
+  syncStateChanges(change: { upserts: Record<string, any[]>; deletes: Record<string, string[]>; singletons: Record<string, any> }): Promise<StateSyncResult>;
+  bootstrapState(state: any): Promise<{ ok: boolean; upserted: number; rejected: any[]; serverVersion: number }>;
+  getStateIntegrity(): Promise<{ collections: Record<string, number>; issueCount: number; issues: any[] }>;
+  getStateProfile(): Promise<Record<string, { rows: number; fields: Record<string, { types: string[]; coverage: number }> }>>;
+}
+
+const MAX_PNL_JOURNAL_PAGES = 100;
+
+/**
+ * 1. پیاده‌سازی ارائه‌دهنده داده سمت کلاینت (IndexedDB / Local-first)
+ */
+export class ClientStorageDataProvider implements DataProvider {
+  name = 'CLIENT_INDEXEDDB' as const;
+
+  private getState(): AppState {
+    return useAppStore.getState().state;
+  }
+
+  private updateState(updater: (draft: AppState) => void) {
+    useAppStore.getState().updateState(updater);
+  }
+
+  async getAccounts(filter?: any, pagination?: PaginationParams): Promise<PaginatedResult<Account>> {
+    const list = this.getState().accounts || [];
+    const filtered = filter ? list.filter(a => !filter.name || a.name.includes(filter.name)) : list;
+    const page = pagination?.page || 1;
+    const pageSize = pagination?.pageSize || 25;
+    const start = (page - 1) * pageSize;
+    return {
+      items: filtered.slice(start, start + pageSize),
+      total: filtered.length,
+      page,
+      pageSize,
+      totalPages: Math.ceil(filtered.length / pageSize) || 1
+    };
+  }
+
+  async getJournalLines(filter?: JournalLineFilter, pagination?: PaginationParams): Promise<JournalLinePage> {
+    return queryJournalLines((this.getState() as any).journalLines, filter, pagination);
+  }
+
+  async getDetailSubsidiaryBalances(options?: { detailKey?: string; byPeriod?: boolean }): Promise<DetailBalancesResult> {
+    return buildDetailBalancesResult((this.getState() as any).journalLines, 'CLIENT_INDEXEDDB', options);
+  }
+
+  async getLedgerPnlData(filter?: Pick<JournalLineFilter, 'fromDate' | 'toDate' | 'periodCode'>): Promise<LedgerPnlDataResult> {
+    const st = this.getState() as unknown as Record<string, unknown>;
+    const coaMirror = Array.isArray(st.coaMirror) ? (st.coaMirror as CoaMirror[]) : [];
+    const journalLines: Array<Record<string, unknown>> = [];
+    const pageSize = 200;
+    let page = 1;
+    let totalPages = 1;
+    do {
+      const res = await this.getJournalLines(filter, { page, pageSize });
+      if (Array.isArray(res.items)) journalLines.push(...res.items);
+      totalPages = Math.max(1, Number(res.totalPages) || 1);
+      if (totalPages > MAX_PNL_JOURNAL_PAGES) {
+        return {
+          status: 'UNAVAILABLE',
+          source: this.name,
+          journalLines: [],
+          coaMirror: [],
+          reason: 'حجم سطرهای سند بیش از سقف مجاز دریافت یکجاست؛ گزارش تجمیعی سرور لازم است.'
+        };
+      }
+      page += 1;
+    } while (page <= totalPages);
+
+    return {
+      status: journalLines.length || coaMirror.length ? 'LIVE' : 'EMPTY',
+      source: this.name,
+      journalLines,
+      coaMirror
+    };
+  }
+
+  async getAccountById(id: string): Promise<Account | null> {
+    return (this.getState().accounts || []).find(a => a.id === id) || null;
+  }
+
+  async createAccount(account: Partial<Account>): Promise<Account> {
+    const newAccount = { id: account.id || `acc_${Date.now()}`, ...account } as Account;
+    this.updateState(d => {
+      if (!d.accounts) d.accounts = [];
+      d.accounts.unshift(newAccount);
+    });
+    return newAccount;
+  }
+
+  async updateAccount(id: string, patch: Partial<Account>): Promise<Account> {
+    let updated: Account | null = null;
+    this.updateState(d => {
+      const idx = (d.accounts || []).findIndex(a => a.id === id);
+      if (idx >= 0) {
+        d.accounts[idx] = { ...d.accounts[idx], ...patch };
+        updated = d.accounts[idx];
+      }
+    });
+    return updated!;
+  }
+
+  async getQuotes(filter?: any, pagination?: PaginationParams): Promise<PaginatedResult<Quote>> {
+    const list = this.getState().quotes || [];
+    const page = pagination?.page || 1;
+    const pageSize = pagination?.pageSize || 25;
+    const start = (page - 1) * pageSize;
+    return {
+      items: list.slice(start, start + pageSize),
+      total: list.length,
+      page,
+      pageSize,
+      totalPages: Math.ceil(list.length / pageSize) || 1
+    };
+  }
+
+  async getQuoteById(id: string): Promise<Quote | null> {
+    return (this.getState().quotes || []).find(q => q.id === id) || null;
+  }
+
+  async createQuote(quote: Partial<Quote>): Promise<Quote> {
+    const newQuote = { id: quote.id || `qt_${Date.now()}`, ...quote } as Quote;
+    this.updateState(d => {
+      if (!d.quotes) d.quotes = [];
+      d.quotes.unshift(newQuote);
+    });
+    return newQuote;
+  }
+
+  async updateQuote(id: string, patch: Partial<Quote>): Promise<Quote> {
+    let updated: Quote | null = null;
+    this.updateState(d => {
+      const idx = (d.quotes || []).findIndex(q => q.id === id);
+      if (idx >= 0) {
+        d.quotes[idx] = { ...d.quotes[idx], ...patch };
+        updated = d.quotes[idx];
+      }
+    });
+    return updated!;
+  }
+
+  async getTasks(filter?: any, pagination?: PaginationParams): Promise<PaginatedResult<Task>> {
+    const list = this.getState().tasks || [];
+    const page = pagination?.page || 1;
+    const pageSize = pagination?.pageSize || 25;
+    const start = (page - 1) * pageSize;
+    return {
+      items: list.slice(start, start + pageSize),
+      total: list.length,
+      page,
+      pageSize,
+      totalPages: Math.ceil(list.length / pageSize) || 1
+    };
+  }
+
+  async getTaskById(id: string): Promise<Task | null> {
+    return (this.getState().tasks || []).find(t => t.id === id) || null;
+  }
+
+  async createTask(task: Partial<Task>): Promise<Task> {
+    const newTask = { id: task.id || `tsk_${Date.now()}`, ...task } as Task;
+    this.updateState(d => {
+      if (!d.tasks) d.tasks = [];
+      d.tasks.unshift(newTask);
+    });
+    return newTask;
+  }
+
+  async updateTask(id: string, patch: Partial<Task>): Promise<Task> {
+    let updated: Task | null = null;
+    this.updateState(d => {
+      const idx = (d.tasks || []).findIndex(t => t.id === id);
+      if (idx >= 0) {
+        d.tasks[idx] = { ...d.tasks[idx], ...patch };
+        updated = d.tasks[idx];
+      }
+    });
+    return updated!;
+  }
+
+  async getInvoices(): Promise<PaginatedResult<Invoice>> {
+    const list = this.getState().invoices || [];
+    return { items: list, total: list.length, page: 1, pageSize: list.length, totalPages: 1 };
+  }
+
+  async getPayments(): Promise<PaginatedResult<Payment>> {
+    const list = this.getState().payments || [];
+    return { items: list, total: list.length, page: 1, pageSize: list.length, totalPages: 1 };
+  }
+
+  async getCheques(): Promise<PaginatedResult<Cheque>> {
+    const list = this.getState().cheques || [];
+    return { items: list, total: list.length, page: 1, pageSize: list.length, totalPages: 1 };
+  }
+
+  async createPayment(payment: Partial<Payment>): Promise<Payment> {
+    const newPayment = { id: payment.id || `pay_${Date.now()}`, ...payment } as Payment;
+    this.updateState(d => {
+      if (!d.payments) d.payments = [];
+      d.payments.unshift(newPayment);
+    });
+    return newPayment;
+  }
+
+  async getPayslips(userId?: string, month?: string): Promise<Payslip[]> {
+    let list = this.getState().payslips || [];
+    if (userId) list = list.filter(p => p.userId === userId);
+    if (month) list = list.filter(p => p.month === month);
+    return list;
+  }
+
+  async getAdvanceRequests(userId?: string): Promise<AdvanceRequest[]> {
+    let list = this.getState().advanceRequests || [];
+    if (userId) list = list.filter(a => a.userId === userId);
+    return list;
+  }
+
+  async createAdvanceRequest(req: Partial<AdvanceRequest>): Promise<AdvanceRequest> {
+    const newReq = { id: req.id || `adv_${Date.now()}`, ...req } as AdvanceRequest;
+    this.updateState(d => {
+      if (!d.advanceRequests) d.advanceRequests = [];
+      d.advanceRequests.unshift(newReq);
+    });
+    return newReq;
+  }
+
+  async executePayrollRun(month: string, basis: number): Promise<PayrollRun> {
+    // محاسبهٔ واقعی با موتور حقوق؛ بدون حقوق ثبت‌شده هیچ دوره‌ای ثبت نمی‌شود (نه جمع صفر با وضعیت COMPLETED).
+    const dailyBasis = (basis === 29 || basis === 31 ? basis : 30) as 29 | 30 | 31;
+    const existing = (this.getState().payrollRuns || []).find(r => r.periodMonth === month && r.dailyBasis === dailyBasis);
+    if (existing) return existing; // idempotent: همان ماه/مبنا دوباره ثبت نمی‌شود
+    const executedBy = this.getState().currentUserId || 'admin';
+    const { run, payslips, settledAdvanceIds, skippedUserIds } = computePayrollRun(this.getState(), month, executedBy, dailyBasis);
+    if (payslips.length === 0) {
+      throw new Error(`PAYROLL_NO_ELIGIBLE_EMPLOYEES: هیچ کاربری حقوق ثبت‌شده ندارد (${skippedUserIds.length} نفر کنار ماند)`);
+    }
+    this.updateState(d => {
+      if (!d.payrollRuns) d.payrollRuns = [];
+      d.payrollRuns.unshift(run);
+      if (!d.payslips) d.payslips = [];
+      d.payslips.unshift(...payslips);
+      (d.advanceRequests || []).forEach(a => { if (settledAdvanceIds.includes(a.id)) a.status = 'SETTLED'; });
+    });
+    return run;
+  }
+
+  async getCashFlowData(): Promise<CashFlowDataResult> {
+    const state = this.getState() as unknown as Record<string, unknown>;
+    const col = (key: string) => Array.isArray(state[key]) ? state[key] as Array<Record<string, unknown>> : [];
+    const missingSources = CASH_FLOW_SOURCES.filter(key => !Array.isArray(state[key]));
+    const collections = { cheques: col('cheques'), supplierBills: col('supplierBills'), expenses: col('expenses'), treasuryAccounts: col('treasuryAccounts'), treasuryTransactions: col('treasuryTransactions') };
+    return { ...collections, status: missingSources.length ? 'PARTIAL' : Object.values(collections).every(a => a.length === 0) ? 'EMPTY' : 'LIVE', source: this.name, missingSources };
+  }
+
+  async getGeoZones(): Promise<GeoZone[]> {
+    return this.getState().geoZones || [];
+  }
+
+  async getZoneAssignments(): Promise<Array<Record<string, unknown>>> {
+    return (this.getState() as any).zoneAssignments || [];
+  }
+
+  async getPaymentAllocations(): Promise<Array<Record<string, unknown>>> {
+    return (this.getState() as any).paymentAllocations || [];
+  }
+
+  async saveGeoZone(zone: Partial<GeoZone>): Promise<GeoZone> {
+    const saved = { id: zone.id || `zone_${Date.now()}`, ...zone } as GeoZone;
+    this.updateState(d => {
+      if (!d.geoZones) d.geoZones = [];
+      const idx = d.geoZones.findIndex(z => z.id === saved.id);
+      if (idx >= 0) d.geoZones[idx] = saved;
+      else d.geoZones.push(saved);
+    });
+    return saved;
+  }
+
+  // --- Financial Intelligence (محاسبه روی داده محلی CRM؛ بدون ساخت داده رسمی) ---
+  async getApprovalContext(ref: ApprovalRef, opts?: ContextOptions): Promise<ApprovalContext | null> {
+    const st = this.getState(); return buildApprovalContext(st, ref, withViewer(st, opts));
+  }
+  async getFinancial360(subject: SubjectRef, opts?: ContextOptions): Promise<FinancialContext> {
+    const st = this.getState(); return buildFinancial360(st, subject, withViewer(st, opts));
+  }
+  async previewAccountingMapping(input: ClassificationInput): Promise<MappingResolution> {
+    return resolveAccountingMapping(this.getState(), input);
+  }
+  async recordApprovalSnapshot(snapshot: ApprovalSnapshot): Promise<{ ok: boolean; duplicate?: boolean }> {
+    let added = false;
+    this.updateState(d => { added = recordApprovalSnapshot(d, snapshot); });
+    return { ok: true, duplicate: !added };
+  }
+
+  async getAnalyticsReport(reportId: number): Promise<any> {
+    return { reportId, status: 'READY', source: 'CLIENT_CACHE', asOf: new Date().toISOString() };
+  }
+
+  // --- SQL-first state layer (local provider: the store IS the data, so these are read-only/no-op) ---
+  async getStateSnapshot(): Promise<StateSnapshot> {
+    const split = splitState(this.getState(), stateRegistry);
+    return {
+      collections: Object.fromEntries(Object.entries(split.collections).map(([name, map]) => [name, [...map.values()]])),
+      singletons: split.singletons,
+      serverVersion: 0
+    };
+  }
+  async syncStateChanges(): Promise<StateSyncResult> { return { ok: true, upserted: 0, deleted: 0, serverVersion: 0, rejected: [] }; }
+  async bootstrapState(): Promise<{ ok: boolean; upserted: number; rejected: any[]; serverVersion: number }> { return { ok: true, upserted: 0, rejected: [], serverVersion: 0 }; }
+  async getStateIntegrity() {
+    const { checkIntegrity } = await import('../lib/stateModel.mjs');
+    const split = splitState(this.getState(), stateRegistry);
+    const lists = Object.fromEntries(Object.entries(split.collections).map(([n, m]) => [n, [...m.values()]]));
+    const issues = checkIntegrity(lists, stateRegistry);
+    return { collections: Object.fromEntries(Object.entries(lists).map(([n, l]) => [n, l.length])), issueCount: issues.length, issues: issues.slice(0, 500) };
+  }
+  async getStateProfile() {
+    const { profileCollections } = await import('../lib/stateModel.mjs');
+    const split = splitState(this.getState(), stateRegistry);
+    return profileCollections(Object.fromEntries(Object.entries(split.collections).map(([n, m]) => [n, [...m.values()]])));
+  }
+}
+
+/**
+ * 2. پیاده‌سازی ارائه‌دهنده داده مستقیم به Backend سرور و SQL Server
+ */
+export class HttpBackendDataProvider implements DataProvider {
+  name = 'SQLSERVER_BACKEND' as const;
+
+  private baseUrl = '/api/v1';
+
+  private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+    const token = AuthService.getAccessToken();
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+      'X-Correlation-ID': crypto.randomUUID(),
+      ...(options.headers as Record<string, string> || {})
+    };
+
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const response = await fetch(`${this.baseUrl}${endpoint}`, {
+      ...options,
+      headers
+    });
+
+    if (!response.ok) {
+      const errorJson = await response.json().catch(() => ({}));
+      throw new Error(errorJson?.error?.message || `HTTP error ${response.status}`);
+    }
+
+    return response.json();
+  }
+
+  // گردش و مانده: بدون fallback به داده محلی؛ خطا/نبود Endpoint ⇒ UNAVAILABLE (نه مانده ساختگی)
+  async getJournalLines(filter?: JournalLineFilter, pagination?: PaginationParams): Promise<JournalLinePage> {
+    return this.request<JournalLinePage>(`/ledger/journal-lines?${journalQueryParams(filter, pagination)}`);
+  }
+
+  async getDetailSubsidiaryBalances(options?: { detailKey?: string; byPeriod?: boolean }): Promise<DetailBalancesResult> {
+    try {
+      const q = new URLSearchParams();
+      if (options?.detailKey) q.set('detailKey', options.detailKey);
+      if (options?.byPeriod) q.set('byPeriod', '1');
+      return await this.request<DetailBalancesResult>(`/ledger/balances?${q.toString()}`);
+    } catch (e) {
+      return { status: 'UNAVAILABLE', source: 'SQLSERVER_BACKEND', balances: [], reason: e instanceof Error ? e.message : 'ledger endpoint unavailable' };
+    }
+  }
+
+  async getLedgerPnlData(filter?: Pick<JournalLineFilter, 'fromDate' | 'toDate' | 'periodCode'>): Promise<LedgerPnlDataResult> {
+    try {
+      const snapshot = await this.getStateSnapshot();
+      const hidden = Array.isArray(snapshot.hiddenCollections) ? snapshot.hiddenCollections : [];
+      if (hidden.includes('coaMirror') || hidden.includes('journalLines')) {
+        return {
+          status: 'RESTRICTED',
+          source: this.name,
+          journalLines: [],
+          coaMirror: [],
+          reason: 'دسترسی به کدینگ یا اسناد دفتر کل مجاز نیست.'
+        };
+      }
+      const coaMirror = Array.isArray(snapshot.collections?.coaMirror)
+        ? (snapshot.collections.coaMirror as CoaMirror[])
+        : [];
+      const q = new URLSearchParams();
+      if (filter?.fromDate) q.set('fromDate', filter.fromDate);
+      if (filter?.toDate) q.set('toDate', filter.toDate);
+      const payload = await this.request<{
+        status?: string;
+        journalLines?: Array<Record<string, unknown>>;
+        reason?: string;
+      }>(`/ledger/pnl?${q.toString()}`);
+      const journalLines = Array.isArray(payload?.journalLines) ? payload.journalLines : [];
+      const status = (payload?.status === 'RESTRICTED' || payload?.status === 'UNAVAILABLE')
+        ? payload.status
+        : (journalLines.length || coaMirror.length ? 'LIVE' : 'EMPTY');
+      return {
+        status: status as LedgerPnlDataResult['status'],
+        source: this.name,
+        journalLines,
+        coaMirror,
+        reason: payload?.reason
+      };
+    } catch (e) {
+      return {
+        status: 'UNAVAILABLE',
+        source: this.name,
+        journalLines: [],
+        coaMirror: [],
+        reason: e instanceof Error ? e.message : 'ledger pnl data unavailable'
+      };
+    }
+  }
+
+  /** REST list endpoints answer { items, total, ... }; some callers want a plain array. */
+  private asList<T>(payload: any): T[] { return Array.isArray(payload) ? payload : (payload?.items ?? []); }
+
+  // بدون fallback پنهان به داده محلی: خالی = خالیِ واقعی سرور؛ خطا ⇒ پرتاب می‌شود تا UI وضعیت UNAVAILABLE نشان دهد.
+  async getAccounts(filter?: any, pagination?: PaginationParams): Promise<PaginatedResult<Account>> {
+    const q = new URLSearchParams();
+    if (pagination?.page) q.set('page', String(pagination.page));
+    if (pagination?.pageSize) q.set('pageSize', String(pagination.pageSize));
+    if (filter?.name) q.set('search', filter.name);
+    const res = await this.request<PaginatedResult<Account>>(`/accounts?${q.toString()}`);
+    if (res && Array.isArray(res.items)) return res;
+    return { items: [], total: 0, page: pagination?.page || 1, pageSize: pagination?.pageSize || 25, totalPages: 0 };
+  }
+
+  async getAccountById(id: string): Promise<Account | null> {
+    const res = await this.request<Account>(`/accounts/${id}`);
+    return res || null;
+  }
+
+  async createAccount(account: Partial<Account>, idempotencyKey?: string): Promise<Account> {
+    return this.request<Account>('/accounts', {
+      method: 'POST',
+      headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {},
+      body: JSON.stringify(account)
+    });
+  }
+
+  async updateAccount(id: string, patch: Partial<Account>): Promise<Account> {
+    return this.request<Account>(`/accounts/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(patch)
+    });
+  }
+
+  async getQuotes(filter?: any, pagination?: PaginationParams): Promise<PaginatedResult<Quote>> {
+    return this.request<PaginatedResult<Quote>>(`/quotes?${this.listQuery(filter, pagination)}`);
+  }
+
+  async getQuoteById(id: string): Promise<Quote | null> {
+    return this.request<Quote>(`/quotes/${id}`);
+  }
+
+  async createQuote(quote: Partial<Quote>, idempotencyKey?: string): Promise<Quote> {
+    return this.request<Quote>('/quotes', {
+      method: 'POST',
+      headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {},
+      body: JSON.stringify(quote)
+    });
+  }
+
+  async updateQuote(id: string, patch: Partial<Quote>): Promise<Quote> {
+    return this.request<Quote>(`/quotes/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(patch)
+    });
+  }
+
+  async getTasks(filter?: any, pagination?: PaginationParams): Promise<PaginatedResult<Task>> {
+    return this.request<PaginatedResult<Task>>(`/tasks?${this.listQuery(filter, pagination)}`);
+  }
+
+  async getTaskById(id: string): Promise<Task | null> {
+    return this.request<Task>(`/tasks/${id}`);
+  }
+
+  async createTask(task: Partial<Task>, idempotencyKey?: string): Promise<Task> {
+    return this.request<Task>('/tasks', {
+      method: 'POST',
+      headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {},
+      body: JSON.stringify(task)
+    });
+  }
+
+  async updateTask(id: string, patch: Partial<Task>): Promise<Task> {
+    return this.request<Task>(`/tasks/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(patch)
+    });
+  }
+
+  private listQuery(filter?: any, pagination?: PaginationParams): string {
+    const q = new URLSearchParams();
+    if (pagination?.page) q.set('page', String(pagination.page));
+    q.set('pageSize', String(pagination?.pageSize || 200));
+    if (pagination?.sortBy) q.set('sortBy', pagination.sortBy);
+    if (pagination?.sortDirection) q.set('sortDirection', pagination.sortDirection);
+    for (const [key, value] of Object.entries(filter || {})) if (typeof value === 'string' && value) q.set(key === 'name' ? 'search' : key, value);
+    return q.toString();
+  }
+
+  async getInvoices(filter?: any, pagination?: PaginationParams): Promise<PaginatedResult<Invoice>> {
+    return this.request<PaginatedResult<Invoice>>(`/invoices?${this.listQuery(filter, pagination)}`);
+  }
+
+  async getPayments(filter?: any, pagination?: PaginationParams): Promise<PaginatedResult<Payment>> {
+    return this.request<PaginatedResult<Payment>>(`/payments?${this.listQuery(filter, pagination)}`);
+  }
+
+  async getCheques(filter?: any, pagination?: PaginationParams): Promise<PaginatedResult<Cheque>> {
+    return this.request<PaginatedResult<Cheque>>(`/cheques?${this.listQuery(filter, pagination)}`);
+  }
+
+  async createPayment(payment: Partial<Payment>, idempotencyKey?: string): Promise<Payment> {
+    return this.request<Payment>('/payments', {
+      method: 'POST',
+      headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {},
+      body: JSON.stringify(payment)
+    });
+  }
+
+  async getPayslips(userId?: string, month?: string): Promise<Payslip[]> {
+    const q = new URLSearchParams();
+    if (userId) q.set('userId', userId);
+    if (month) q.set('month', month);
+    return this.asList<Payslip>(await this.request<any>(`/payroll/payslips?${q.toString()}&pageSize=200`));
+  }
+
+  async getAdvanceRequests(userId?: string): Promise<AdvanceRequest[]> {
+    const q = new URLSearchParams();
+    if (userId) q.set('userId', userId);
+    return this.asList<AdvanceRequest>(await this.request<any>(`/payroll/advances?${q.toString()}&pageSize=200`));
+  }
+
+  async createAdvanceRequest(req: Partial<AdvanceRequest>): Promise<AdvanceRequest> {
+    return this.request<AdvanceRequest>('/payroll/advances', {
+      method: 'POST',
+      body: JSON.stringify(req)
+    });
+  }
+
+  async executePayrollRun(month: string, basis: number): Promise<PayrollRun> {
+    return this.request<PayrollRun>('/payroll/runs', {
+      method: 'POST',
+      body: JSON.stringify({ periodMonth: month, dailyBasis: basis })
+    });
+  }
+
+  async getCashFlowData(): Promise<CashFlowDataResult> {
+    const empty = { cheques: [], supplierBills: [], expenses: [], treasuryAccounts: [], treasuryTransactions: [] };
+    try {
+      const snap = await this.getStateSnapshot();
+      const hidden = Array.isArray(snap.hiddenCollections) ? snap.hiddenCollections : [];
+      const missingSources: string[] = [];
+      const collections: Record<string, Array<Record<string, unknown>>> = {};
+      for (const key of CASH_FLOW_SOURCES) {
+        const value = snap.collections?.[key];
+        if (hidden.includes(key) || !Array.isArray(value)) { missingSources.push(key); collections[key] = []; }
+        else collections[key] = value as Array<Record<string, unknown>>;
+      }
+      const status = missingSources.length === CASH_FLOW_SOURCES.length ? 'UNAVAILABLE' : missingSources.length ? 'PARTIAL' : CASH_FLOW_SOURCES.every(k => collections[k].length === 0) ? 'EMPTY' : 'LIVE';
+      return { ...empty, ...collections, status, source: this.name, missingSources, reason: status === 'UNAVAILABLE' ? 'منابع نقدینگی از سرور در دسترس نیستند.' : undefined };
+    } catch (e) {
+      return { ...empty, status: 'UNAVAILABLE', source: this.name, missingSources: [...CASH_FLOW_SOURCES], reason: e instanceof Error ? e.message : 'خطای خواندن منابع نقدینگی' };
+    }
+  }
+
+  async getGeoZones(): Promise<GeoZone[]> {
+    return this.asList<GeoZone>(await this.request<any>('/geo/zones?pageSize=200'));
+  }
+
+  async saveGeoZone(zone: Partial<GeoZone>): Promise<GeoZone> {
+    return this.request<GeoZone>('/geo/zones', {
+      method: 'POST',
+      body: JSON.stringify(zone)
+    });
+  }
+
+  async getZoneAssignments(): Promise<Array<Record<string, unknown>>> {
+    try {
+      const snap = await this.getStateSnapshot();
+      const hidden = Array.isArray(snap.hiddenCollections) ? snap.hiddenCollections : [];
+      if (hidden.includes('zoneAssignments')) return [];
+      const col = snap.collections?.zoneAssignments;
+      return Array.isArray(col) ? (col as Array<Record<string, unknown>>) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  async getPaymentAllocations(): Promise<Array<Record<string, unknown>>> {
+    try {
+      const snap = await this.getStateSnapshot();
+      const hidden = Array.isArray(snap.hiddenCollections) ? snap.hiddenCollections : [];
+      if (hidden.includes('paymentAllocations')) return [];
+      const col = snap.collections?.paymentAllocations;
+      return Array.isArray(col) ? (col as Array<Record<string, unknown>>) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  // --- Financial Intelligence: داده از اسنپ‌شات سرور (مجوز/پروفایل دسترسی سمت سرور اعمال می‌شود) و همان موتور مشترک ---
+  private async scopedState(): Promise<{ state: any; hidden: string[] }> {
+    const snap = await this.getStateSnapshot();
+    return stateFromSnapshot(snap, { currentUserId: useAppStore.getState().state.currentUserId });
+  }
+  async getApprovalContext(ref: ApprovalRef, opts?: ContextOptions): Promise<ApprovalContext | null> {
+    const { state, hidden } = await this.scopedState();
+    return buildApprovalContext(state, ref, withViewer(state, { ...opts, hiddenCollections: [...hidden, ...(opts?.hiddenCollections || [])] }));
+  }
+  async getFinancial360(subject: SubjectRef, opts?: ContextOptions): Promise<FinancialContext> {
+    const { state, hidden } = await this.scopedState();
+    return buildFinancial360(state, subject, withViewer(state, { ...opts, hiddenCollections: [...hidden, ...(opts?.hiddenCollections || [])] }));
+  }
+  async previewAccountingMapping(input: ClassificationInput): Promise<MappingResolution> {
+    const { state } = await this.scopedState();
+    return resolveAccountingMapping(state, input);
+  }
+  async recordApprovalSnapshot(snapshot: ApprovalSnapshot): Promise<{ ok: boolean; duplicate?: boolean }> {
+    const r = await this.syncStateChanges({ upserts: { approvalSnapshots: [snapshot] }, deletes: {}, singletons: {} });
+    return { ok: r.ok && r.rejected.length === 0 };
+  }
+
+  async getAnalyticsReport(reportId: number): Promise<any> {
+    return this.request<any>(`/analytics/reports/${reportId}`);
+  }
+
+  // --- SQL-first state layer ---
+  async getStateSnapshot(): Promise<StateSnapshot> { return this.request<StateSnapshot>('/state/snapshot'); }
+  async syncStateChanges(change: { upserts: Record<string, any[]>; deletes: Record<string, string[]>; singletons: Record<string, any> }): Promise<StateSyncResult> {
+    // Large change-sets (first connection, mass import) are posted in slices of ~150k characters (server cap is 1 MB/request).
+    const slices: Array<typeof change> = [];
+    let current: typeof change = { upserts: {}, deletes: {}, singletons: {} }; let size = 0;
+    const push = () => { if (size > 0) { slices.push(current); current = { upserts: {}, deletes: {}, singletons: {} }; size = 0; } };
+    for (const [name, list] of Object.entries(change.upserts)) for (const rec of list) {
+      const n = JSON.stringify(rec).length;
+      if (size + n > 150_000) push();
+      (current.upserts[name] ||= []).push(rec); size += n;
+    }
+    for (const [name, ids] of Object.entries(change.deletes)) for (const id of ids) { (current.deletes[name] ||= []).push(id); size += id.length + 4; if (size > 150_000) push(); }
+    for (const [key, value] of Object.entries(change.singletons)) {
+      const n = JSON.stringify(value ?? null).length;
+      if (size + n > 150_000) push();
+      current.singletons[key] = value; size += n;
+    }
+    push();
+    const total: StateSyncResult = { ok: true, upserted: 0, deleted: 0, serverVersion: 0, rejected: [] };
+    for (const slice of slices.length ? slices : [change]) {
+      const r = await this.request<StateSyncResult>('/state/sync', { method: 'POST', body: JSON.stringify(slice) });
+      total.upserted += r.upserted; total.deleted += r.deleted; total.serverVersion = r.serverVersion; total.rejected.push(...r.rejected);
+    }
+    return total;
+  }
+  async bootstrapState(state: any): Promise<{ ok: boolean; upserted: number; rejected: any[]; serverVersion: number }> {
+    // send collection-by-collection slices so no request exceeds the server body limit (256 KB per request is enforced server-side)
+    const split = splitState(state, stateRegistry);
+    let upserted = 0; let serverVersion = 0; const rejected: any[] = [];
+    const flush = async (slice: Record<string, any>) => {
+      const r = await this.request<any>('/state/bootstrap', { method: 'POST', body: JSON.stringify({ state: slice }) });
+      upserted += r.upserted || 0; serverVersion = r.serverVersion || serverVersion; rejected.push(...(r.rejected || []));
+    };
+    let slice: Record<string, any> = {}; let size = 0;
+    const entries: Array<[string, any]> = [...Object.entries(split.collections).map(([n, m]) => [n, [...m.values()]] as [string, any]), ...Object.entries(split.singletons)];
+    for (const [name, value] of entries) {
+      const items: any[] = Array.isArray(value) && split.collections[name] ? value : [value];
+      const isCollection = Boolean(split.collections[name]);
+      let part: any[] = []; let partSize = 0;
+      for (const item of items) {
+        const itemSize = JSON.stringify(item).length;
+        if (size + partSize + itemSize > 150_000 && (part.length || Object.keys(slice).length)) {
+          if (part.length) slice[name] = isCollection ? part : part[0];
+          await flush(slice); slice = {}; size = 0; part = []; partSize = 0;
+        }
+        part.push(item); partSize += itemSize;
+      }
+      if (part.length) { slice[name] = isCollection ? part : part[0]; size += partSize; }
+    }
+    if (Object.keys(slice).length) await flush(slice);
+    return { ok: true, upserted, rejected, serverVersion };
+  }
+  async getStateIntegrity() { return this.request<any>('/state/integrity'); }
+  async getStateProfile() { return this.request<any>('/state/profile'); }
+}
+
+/**
+ * متد مرجع انتخاب ارائه‌دهنده داده فعال در سامانه
+ */
+export function getActiveDataProvider(): DataProvider {
+  const providerType = import.meta.env?.VITE_DATA_PROVIDER || (typeof window !== 'undefined' ? localStorage.getItem('akhavan_data_provider') : null);
+  if (providerType === 'client' || providerType === 'CLIENT_INDEXEDDB') {
+    return new ClientStorageDataProvider();
+  }
+  return new HttpBackendDataProvider();
+}

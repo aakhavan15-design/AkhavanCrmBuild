@@ -1,0 +1,12 @@
+import { strict as assert } from 'node:assert';
+import { readFileSync } from 'node:fs';
+import { buildCashFlowProjection, evaluatePayability } from '../src/lib/cashFlowEngine.ts';
+const base={asOf:'2026-11-19',horizonDays:7,cheques:[],supplierBills:[],expenses:[],treasuryAccounts:[],treasuryTransactions:[]};
+const empty=buildCashFlowProjection(base);
+assert.equal(empty.opening.balance,null);
+assert.equal(empty.days.length,7);
+assert.equal(evaluatePayability(empty,'2026-11-20',100,0).feasible,null);
+const source=readFileSync('src/services/dataProvider.ts','utf8');
+assert.equal((source.match(/async getCashFlowData\(\)/g)||[]).length,2);
+assert.ok(readFileSync('src/components/PlannedModulePage.tsx','utf8').includes("item.id === 'fin-liquidity'"));
+console.log('cashFlowRecoveryContracts: PASS');

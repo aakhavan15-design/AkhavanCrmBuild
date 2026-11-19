@@ -1,0 +1,32 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+const read = (p) => fs.readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
+const layout = read('src/components/Layout.tsx');
+const drawer = read('src/components/NavigationDrawer.tsx');
+const nav = read('src/components/BottomNav.tsx');
+const css = read('src/index.css');
+const dashboard = read('src/components/DashboardWorkspace.tsx');
+const quotes = read('src/components/QuotesWorkspace.tsx');
+const customers = read('src/components/CustomersWorkspace.tsx');
+const sales = read('src/components/NegotiationsWorkspace.tsx');
+const tasks = read('src/components/TasksWorkspace.tsx');
+assert.match(layout, /se-floating-header[^'\"`]*\bsticky\b/);
+assert.match(layout, /data-route=/);
+assert.match(drawer, /currentRole\?\.name/);
+assert.match(drawer, /go\('\/tasks\?new=1'\)/);
+assert.match(drawer, /go\('\/groups'\)/);
+assert.doesNotMatch(drawer, /bg-success.*rounded-full/); // no fabricated online presence
+assert.match(nav, /h-\[2px\].*bg-primary/);
+assert.match(css, /Phase 5 — 2026 Smart Island header/);
+for (const source of [dashboard, quotes, customers, sales, tasks]) assert.match(source, /crm-page/);
+assert.match(dashboard, /crm-page-dashboard/);
+assert.match(quotes, /crm-page-quotes/);
+assert.match(customers, /crm-page-customers/);
+assert.match(sales, /crm-page-sales/);
+assert.match(tasks, /crm-page-tasks/);
+console.log('mobileMinimalUiContracts.test.mjs: PASS');
+
+assert.match(dashboard, /crm-period-filter/);
+assert.match(dashboard, /aria-pressed=/);
+assert.match(css, /scroll-snap-type:x mandatory/);
+assert.match(css, /Phase 6 — reference-led minimalist data interface/);
