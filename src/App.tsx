@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useEffect, useState } from 'react';
+import React, { Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useAppStore } from './lib/storage';
 import { playNotificationSound } from './lib/sound';
@@ -15,9 +15,9 @@ import { LoginWorkspace } from './components/LoginWorkspace';
 import { ApplyPage } from './components/onboarding/ApplyPage';
 import { PersonnelFilePage } from './components/onboarding/PersonnelFilePage';
 import { getTenantName } from './lib/orgPolicy';
-import { computeMissing, getOnboardingConfig } from './lib/onboarding';
+import { computeMissing, getOnboardingConfig, type PersonnelFile } from './lib/onboarding';
 import { SideDrawer } from './components/ui/Modal';
-import { NotificationCenter } from './components/shared/NotificationCenter';
+import { NotificationCenter, type AppNotification } from './components/shared/NotificationCenter';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { LiveAnnouncer } from './components/ui/LiveAnnouncer';
 import { RBACService } from './lib/rbac';
@@ -31,6 +31,7 @@ import { track, AnalyticsEvents } from './lib/analytics';
 import { requestDevicePermissions } from './lib/permissions';
 import { AlertTriangle, ShieldCheck } from 'lucide-react';
 import { Button } from './components/ui/Button';
+import type { NavigationTab } from './types';
 
 // Route-level code splitting: heavy workspaces load on first visit (Home/Login/Landing stay eager)
 const CommandCenterWorkspace = lazy(() => import('./components/CommandCenterWorkspace').then(m => ({ default: m.CommandCenterWorkspace })));
@@ -106,19 +107,24 @@ function AppContent() {
     root.dataset.performanceMode = state?.settings?.performanceMode || 'auto';
   }, [state?.settings?.uiScale, state?.settings?.performanceMode]);
 
+  const visibleNotifications = useMemo(() => (state?.notifications || []).filter(n =>
+    !n.recipientId || n.recipientId === state?.currentUserId
+  ), [state?.notifications, state?.currentUserId]);
+
   useEffect(() => {
-    if (!state) return;
-    const currentCount = state.notifications?.length || 0;
-    const prevCount = parseInt(sessionStorage.getItem('notifCount') || '0', 10);
+    if (!state?.currentUserId || !AuthService.isAuthenticated()) return;
+    const storageKey = `notifCount:${state.currentUserId}`;
+    const currentCount = visibleNotifications.length;
+    const prevCount = parseInt(sessionStorage.getItem(storageKey) || '0', 10);
     
     if (prevCount > 0 && currentCount > prevCount) {
       if (state.settings?.privacy?.soundEnabled) playNotificationSound();
       // وقتی تب در پس‌زمینه است، اعلان سیستمی هم نشان بده
-      const newest = [...(state.notifications || [])].sort((a: unknown, b: unknown) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')))[0];
+      const newest = [...visibleNotifications].sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')))[0];
       if (newest) bridgeInAppToSystem(newest);
     }
-    sessionStorage.setItem('notifCount', currentCount.toString());
-  }, [state?.notifications?.length, state?.settings?.privacy?.soundEnabled, state?.notifications]);
+    sessionStorage.setItem(storageKey, currentCount.toString());
+  }, [state?.currentUserId, state?.settings?.privacy?.soundEnabled, visibleNotifications]);
 
   useEffect(() => {
     // همگام‌سازی مجوزهای دستگاه؛ با تایم‌اوت تا در پیش‌نمایش/iframe هرگز روی «در حال بارگذاری» گیر نکند
@@ -126,12 +132,14 @@ function AppContent() {
     const syncPerms = async () => {
       try {
         if (navigator.permissions && navigator.permissions.query) {
-          const geo = await withTimeout(navigator.permissions.query({ name: 'geolocation' as Record<string, unknown> }));
-          const notif = await withTimeout(navigator.permissions.query({ name: 'notifications' as Record<string, unknown> }));
+          const [geo, notif] = await Promise.allSettled([
+            withTimeout(navigator.permissions.query({ name: 'geolocation' })),
+            withTimeout(navigator.permissions.query({ name: 'notifications' }))
+          ]);
           updateState(draft => {
             if (!draft.grantedDevicePermissions) draft.grantedDevicePermissions = { LOCATION: false, CAMERA: false, MICROPHONE: false, NOTIFICATIONS: false };
-            draft.grantedDevicePermissions.LOCATION = geo.state === 'granted';
-            draft.grantedDevicePermissions.NOTIFICATIONS = notif.state === 'granted';
+            if (geo.status === 'fulfilled') draft.grantedDevicePermissions.LOCATION = geo.value.state === 'granted';
+            if (notif.status === 'fulfilled') draft.grantedDevicePermissions.NOTIFICATIONS = notif.value.state === 'granted';
           });
         }
       } catch (e) {
@@ -143,9 +151,10 @@ function AppContent() {
     syncPerms();
   }, [updateState]);
 
-  const handleNotificationClick = (n: Record<string, unknown>) => {
+  const handleNotificationClick = (n: AppNotification) => {
+    if (n.recipientId && n.recipientId !== state?.currentUserId) return;
     updateState(draft => {
-      const notif = draft.notifications?.find((x: Record<string, unknown>) => x.id === n.id);
+      const notif = draft.notifications?.find(x => x.id === n.id && (!x.recipientId || x.recipientId === draft.currentUserId));
       if (notif) notif.read = true;
     });
     setIsNotificationsOpen(false);
@@ -168,9 +177,13 @@ function AppContent() {
   if (!state || !permissionsSynced) return <div className="p-8 text-center text-text-secondary h-screen flex justify-center items-center bg-canvas" dir="rtl">در حال بارگذاری...</div>;
   // صفحه ورود قابل دسترسی است؛ تا اتصال ارائه‌دهنده واقعی، ورود موفق یا عبور امنیتی شبیه‌سازی نمی‌شود.
   // بعد از ورود موفق: پرونده ناقص → فرم تکمیل؛ کامل → داشبورد (ورود واقعی فقط با سرویس احراز هویت فعال می‌شود)
-  const afterLogin = (u: { id: string }) => { const f = (state.personnelFiles || []).find((x: Record<string, unknown>) => x.userId === u.id); navigate(computeMissing(f, getOnboardingConfig(state)).length && getOnboardingConfig(state).enabled && (!f || f.status !== 'APPROVED') ? '/personnel-file' : '/'); };
+  const onboardingConfig = getOnboardingConfig(state);
+  const afterLogin = (u: { id: string }) => {
+    const file = (state.personnelFiles as PersonnelFile[] | undefined)?.find(item => item.userId === u.id);
+    navigate(onboardingConfig.enabled && file?.status !== 'APPROVED' && computeMissing(file, onboardingConfig).length ? '/personnel-file' : '/');
+  };
   if (location.pathname !== '/login' && location.pathname !== '/apply' && !AuthService.isAuthenticated()) return <Navigate to="/login" replace state={{ from: location.pathname }} />;
-  if (location.pathname === '/login') return <div className="crm-workspace" data-ui-density="compact"><LoginWorkspace state={state} tenantName={getTenantName(state)} logoUrl={(state.settings as Record<string, unknown>)?.orgConfig?.logoUrl} applyEnabled={getOnboardingConfig(state).enabled} onAuthenticated={afterLogin} /></div>;
+  if (location.pathname === '/login') return <div className="crm-workspace" data-ui-density="compact"><LoginWorkspace state={state} tenantName={getTenantName(state)} logoUrl={state.settings?.orgConfig?.logoUrl} applyEnabled={onboardingConfig.enabled} onAuthenticated={afterLogin} /></div>;
   if (location.pathname === '/apply') return <div className="crm-workspace" data-ui-density="compact"><ApplyPage state={state} updateState={updateState} /></div>;
 
   const currentUser = state.users?.find(u => u.id === state.currentUserId);
@@ -201,7 +214,7 @@ function AppContent() {
             </div>
           </div>
           <div className="space-y-2.5 w-full">
-            <Button variant="primary" className="w-full" onClick={async () => { const res = await requestDevicePermissions(missingPerms as Record<string, unknown>); updateState(draft => { if (!draft.grantedDevicePermissions) { draft.grantedDevicePermissions = { LOCATION: false, CAMERA: false, MICROPHONE: false, NOTIFICATIONS: false }; } missingPerms.forEach(p => { draft.grantedDevicePermissions![p] = res[p] === true; }); }); }} >
+            <Button variant="primary" className="w-full" onClick={async () => { const res = await requestDevicePermissions(missingPerms); updateState(draft => { if (!draft.grantedDevicePermissions) { draft.grantedDevicePermissions = { LOCATION: false, CAMERA: false, MICROPHONE: false, NOTIFICATIONS: false }; } missingPerms.forEach(p => { draft.grantedDevicePermissions![p] = res[p] === true; }); }); }} >
               <ShieldCheck size={20} /> بررسی و تایید دسترسی‌ها
             </Button>
             <p className="text-xs leading-6 text-text-secondary" role="status">
@@ -213,10 +226,9 @@ function AppContent() {
     );
   }
 
-  const visibleNotifications = (state.notifications || []).filter(n => !n.recipientId || n.recipientId === state.currentUserId);
   const unreadNotificationsCount = visibleNotifications.filter(n => !n.read).length;
   const rbac = new RBACService(state);
-  const guard = (tab: unknown, element: React.ReactNode) => rbac.canAccessWorkspace(tab) ? element : <Navigate to="/" replace />;
+  const guard = (tab: NavigationTab, element: React.ReactNode) => rbac.canAccessWorkspace(tab) ? element : <Navigate to="/" replace />;
   const guardAny = (allowed: boolean, element: React.ReactNode) => allowed ? element : <Navigate to="/" replace />;
 
   return (
@@ -241,7 +253,7 @@ function AppContent() {
           <Route path="/dashboard" element={guard('dashboard', <DashboardWorkspace state={state} />)} />
           <Route path="/leads" element={guard('leads', <LeadsWorkspace state={state} updateState={updateState} setActiveTab={(t: string) => navigate(`/${t}`)} />)} />
           <Route path="/accounts/*" element={guard('accounts', <CustomersWorkspace state={state} updateState={updateState} />)} />
-          <Route path="/opportunities" element={guard('leads', <NegotiationsWorkspace state={state} updateState={updateState} setActiveTab={(t: string) => navigate(`/${t}`)} />)} />
+          <Route path="/opportunities" element={guard('leads', <NegotiationsWorkspace state={state} updateState={updateState} />)} />
           <Route path="/quotes" element={guard('quotes', <QuotesWorkspace state={state} updateState={updateState} setActiveTab={(t: string) => navigate(`/${t}`)} />)} />
           <Route path="/activities" element={guard('activities', <ActivitiesWorkspace state={state} updateState={updateState} setActiveTab={(t: string) => navigate(`/${t}`)} />)} />
           <Route path="/tasks" element={guard('tasks', <TasksWorkspace state={state} updateState={updateState} />)} />
@@ -252,12 +264,12 @@ function AppContent() {
           <Route path="/marketing" element={guard('marketing', <CampaignsWorkspace state={state} updateState={updateState} setActiveTab={(t: string) => navigate(`/${t}`)} />)} />
           <Route path="/knowledge" element={guard('knowledge', <KnowledgeWorkspace state={state} updateState={updateState} setActiveTab={(t: string) => navigate(`/${t}`)} />)} />
           <Route path="/internal_automation" element={guard('internal_automation', <InternalAutomationWorkspace state={state} updateState={updateState} setActiveTab={(t: string) => navigate(`/${t}`)} />)} />
-          <Route path="/groups" element={guardAny(rbac.hasPermission('accounts.view') || rbac.hasPermission('internal.view') || rbac.hasPermission('internal.manage'), <GroupsWorkspace state={state} updateState={updateState} setActiveTab={(t: string) => navigate(`/${t}`)} />)} />
+          <Route path="/groups" element={guardAny(rbac.hasPermission('accounts.view') || rbac.hasPermission('internal.view') || rbac.hasPermission('internal.manage'), <GroupsWorkspace state={state} updateState={updateState} />)} />
           <Route path="/calendar" element={guard('calendar', <CalendarWorkspace state={state} updateState={updateState} />)} />
           <Route path="/reports" element={guard('reports', <ReportsWorkspace state={state} updateState={updateState} setActiveTab={(t: string) => navigate(`/${t}`)} />)} />
           <Route path="/settings" element={guard('settings', <SettingsWorkspace state={state} updateState={updateState} />)} />
           <Route path="/sync-center" element={guard('settings', <SyncCenterWorkspace state={state} />)} />
-          <Route path="/audit" element={guardAny(['accounts', 'finance', 'operations_control', 'reports', 'settings', 'tasks', 'dashboard', 'leads'].some(tab => rbac.canAccessWorkspace(tab as any)), <AuditWorkspace state={state} />)} />
+          <Route path="/audit" element={guardAny((['accounts', 'finance', 'operations_control', 'reports', 'settings', 'tasks', 'dashboard', 'leads'] as const).some(tab => rbac.canAccessWorkspace(tab)), <AuditWorkspace state={state} />)} />
           <Route path="/onboarding" element={guard('onboarding', <OnboardingAdminWorkspace state={state} updateState={updateState} />)} />
           <Route path="/personnel-file" element={<PersonnelFilePage state={state} updateState={updateState} />} />
           <Route path="/profile" element={<ProfileWorkspace state={state} updateState={updateState} setActiveTab={(t: string) => navigate(`/${t}`)} />} />
@@ -272,7 +284,7 @@ function AppContent() {
         <NotificationCenter
           notifications={visibleNotifications}
           onOpen={handleNotificationClick}
-          onMarkRead={(id) => updateState(draft => { const x = draft.notifications?.find((k: { id: string }) => k.id === id); if (x) x.read = true; })}
+          onMarkRead={(id) => updateState(draft => { const x = draft.notifications?.find(k => k.id === id && (!k.recipientId || k.recipientId === draft.currentUserId)); if (x) x.read = true; })}
           onMarkAllRead={() => updateState(draft => { (draft.notifications || []).forEach((x: { read?: boolean; recipientId?: string }) => { if (!x.recipientId || x.recipientId === draft.currentUserId) x.read = true; }); })}
         />
       </SideDrawer>

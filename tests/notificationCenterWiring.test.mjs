@@ -6,11 +6,14 @@ const app = await rd('src/App.tsx');
 const auto = await rd('src/components/InternalAutomationWorkspace.tsx');
 
 // ۱) کشوی اعلان‌ها از NotificationCenter استفاده می‌کند (نه لیست درون‌خطی موازی)
-assert.match(app, /import \{ NotificationCenter \} from '\.\/components\/shared\/NotificationCenter'/);
+assert.match(app, /import \{ NotificationCenter(?:, type \w+)? \} from '\.\/components\/shared\/NotificationCenter'/);
 assert.match(app, /<NotificationCenter[\s\S]*?notifications=\{visibleNotifications\}[\s\S]*?onMarkAllRead=/);
 assert.ok(!/visibleNotifications\.slice\(-20\)\.reverse\(\)\.map/.test(app), 'لیست درون‌خطی قدیمی باید حذف شده باشد');
 // «همه خوانده شد» فقط اعلان‌های قابل‌مشاهدهٔ کاربر جاری را می‌خواند
 assert.match(app, /!x\.recipientId \|\| x\.recipientId === draft\.currentUserId/);
+assert.match(app, /const currentCount = visibleNotifications\.length/);
+assert.match(app, /\[\.\.\.visibleNotifications\]\.sort/);
+assert.match(app, /n\.recipientId && n\.recipientId !== state\?\.currentUserId/);
 
 // ۲) اتوماسیون اداری از pushNotification استفاده می‌کند و فقط یک ثبت دستی (پیشرفت گردش برای سازنده) می‌ماند
 assert.match(auto, /import \{ pushNotification \} from '\.\.\/lib\/notifyAndPush'/);

@@ -1,7 +1,7 @@
 /**
  * Create in-app notification + attempt system push (2026)
  */
-import type { AppState } from '../types';
+import type { AppState, Notification } from '../types';
 import { generateId } from './utils';
 import { bridgeInAppToSystem, isPushEnabledLocally } from './webPush';
 
@@ -10,14 +10,14 @@ export function pushNotification(
   input: {
     title: string;
     message: string;
-    type?: string;
+    type?: Notification['type'];
     linkTab?: string;
     entityId?: string;
     recipientId?: string;
   }
 ) {
   if (!draft.notifications) draft.notifications = [];
-  const n = {
+  const n: Notification = {
     id: generateId(),
     title: input.title,
     message: input.message,
@@ -28,11 +28,11 @@ export function pushNotification(
     entityId: input.entityId,
     recipientId: input.recipientId,
   };
-  draft.notifications.push(n as Record<string, unknown>);
+  draft.notifications.push(n);
 
   // Fire-and-forget system notification / server push
   if (typeof window !== 'undefined' && isPushEnabledLocally()) {
-    bridgeInAppToSystem(n);
+    if (!n.recipientId || n.recipientId === draft.currentUserId) bridgeInAppToSystem(n);
     const userId = input.recipientId || draft.currentUserId;
     void fetch('/api/v1/push/send', {
       method: 'POST',
