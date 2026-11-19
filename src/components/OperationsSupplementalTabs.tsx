@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { generateSecureId } from '../lib/secureId';
-import { Boxes, ShoppingCart, ShieldCheck, Gauge } from 'lucide-react';
+import { ShoppingCart, ShieldCheck, Gauge } from 'lucide-react';
 import { Card } from './ui/Card';
 import { Button } from './ui/Button';
 import { Badge, StatusBadge } from './ui/Badge';
@@ -13,18 +13,44 @@ import { resolveCustomerBalanceView } from '../lib/receivableReconciliation';
 import { buildLedgerAgingInputs, estimateLedgerAging } from '../services/agingBuckets';
 import { useDataSyncStatus } from '../services/dataSyncController';
 import type { AppState } from '../types';
+import type { RecordScope } from '../lib/rbac';
 
-const money = formatRialOrUnknown;
-const newId = (p: string) => generateSecureId(p);
-const log = (d: unknown, action: string, type: string, id: string, details: string) => { d.auditLogs = [...(d.auditLogs || []), { id: newId('audit'), action, entityType: type, entityId: id, details, actor: d.currentUserId || 'unknown', createdAt: new Date().toISOString() }].slice(-1000); };
-
-export function InventoryTab({ state }: { state: unknown }) {
-  const products: Array<Record<string, unknown>> = state.externalProducts || [];
-  return <Card><div className="mb-4 flex flex-wrap items-center justify-between gap-2"><h2 className="font-black text-text-main">کاتالوگ و وضعیت موجودی</h2><Badge variant="warning">مقادیر آزمایشی؛ موجودی مرجع هنوز وصل نیست</Badge></div><div className="overflow-x-auto"><table className="w-full min-w-(--size-620) text-right text-xs"><thead><tr className="border-b border-border text-text-secondary"><th className="p-3">کالا</th><th className="p-3">کد</th><th className="p-3">قیمت آزمایشی</th><th className="p-3">مالیات (ERP)</th><th className="p-3">موجودی</th><th className="p-3">ارزش موجودی (FIFO، دیتابیس)</th><th className="p-3">نقطه سفارش</th><th className="p-3">وضعیت</th></tr></thead><tbody>{products.map(p=>{const known=p.stock!==undefined&&p.stock!==null&&Number.isFinite(Number(p.stock));const low=known&&Number(p.stock)<=Number(p.minStock||0);return <tr key={p.id} className="border-b border-border last:border-0"><td className="p-3 font-bold text-text-main">{p.name}</td><td className="p-3 text-text-secondary">{p.sku||p.code||'—'}</td><td className="p-3">{money(Number(p.unitPrice??p.basePrice??0))}</td><td className="p-3" data-testid="product-tax-rate">{p.taxRatePercent==null||!Number.isFinite(Number(p.taxRatePercent))?<Badge variant="neutral">نامشخص</Badge>:Number(p.taxRatePercent)===0?<Badge variant="success">معاف (۰٪)</Badge>:`${Number(p.taxRatePercent).toLocaleString('fa-IR')}٪`}</td><td className="p-3">{known?Number(p.stock).toLocaleString('fa-IR'):'نامشخص'}</td><td className="p-3" data-testid="product-fifo-value">{p.inventoryValueFifo==null||!Number.isFinite(Number(p.inventoryValueFifo))?'نامشخص':money(Number(p.inventoryValueFifo))}</td><td className="p-3">{p.minStock==null?'تعریف نشده':Number(p.minStock).toLocaleString('fa-IR')}</td><td className="p-3">{low?<Badge variant="warning">زیر نقطه سفارش</Badge>:known?<Badge variant="success">در محدوده</Badge>:<Badge variant="neutral">بدون داده معتبر</Badge>}</td></tr>})}</tbody></table></div><p className="mt-3 text-caption leading-6 text-text-secondary">محصولات خارجی فقط‌خواندنی هستند. این صفحه فقط تصویر لحظه‌ای موجود در داده آزمایشی را نمایش می‌دهد و موجودی را تغییر نمی‌دهد.</p></Card>;
+interface PurchaseRequestView {
+  id: string;
+  requestNumber: string;
+  supplierId: string;
+  productId: string;
+  quantity: number;
+  reason: string;
+  status: string;
 }
 
-export function PurchasingTab({ state, updateState }: { state: unknown; updateState: (u: (d: Record<string, unknown>) => void) => void }) {
-  const suppliers: Array<Record<string, unknown>> = state.suppliers || [], products: Array<Record<string, unknown>> = state.externalProducts || [], requests: Array<Record<string, unknown>> = state.purchaseRequests || [];
+type ScopedOperation = Record<string, unknown> & RecordScope & { id: string; createdBy?: string };
+type StateUpdater = (updater: (draft: AppState) => AppState | void) => void;
+
+const money = formatRialOrUnknown;
+const readKnownAmount = (value: unknown): number | null => {
+  if (typeof value !== 'number' && (typeof value !== 'string' || !value.trim())) return null;
+  const amount = Number(value);
+  return Number.isFinite(amount) ? amount : null;
+};
+const newId = (p: string) => generateSecureId(p);
+const log = (draft: AppState, action: string, type: string, id: string, details: string) => {
+  draft.auditLogs = [...(draft.auditLogs || []), {
+    id: newId('audit'), action, entityType: type, entityId: id, details,
+    actor: draft.currentUserId || 'unknown', createdAt: new Date().toISOString(),
+  }].slice(-1000);
+};
+
+export function InventoryTab({ state }: { state: AppState }) {
+  const products = state.externalProducts || [];
+  return <Card><div className="mb-4 flex flex-wrap items-center justify-between gap-2"><h2 className="font-black text-text-main">کاتالوگ و وضعیت موجودی</h2><Badge variant="warning">مقادیر آزمایشی؛ موجودی مرجع هنوز وصل نیست</Badge></div><div className="overflow-x-auto"><table className="w-full min-w-(--size-620) text-right text-xs"><thead><tr className="border-b border-border text-text-secondary"><th className="p-3">کالا</th><th className="p-3">کد</th><th className="p-3">قیمت آزمایشی</th><th className="p-3">مالیات (ERP)</th><th className="p-3">موجودی</th><th className="p-3">ارزش موجودی (FIFO، دیتابیس)</th><th className="p-3">نقطه سفارش</th><th className="p-3">وضعیت</th></tr></thead><tbody>{products.map(p=>{const stock=readKnownAmount(p.stock);const minimum=readKnownAmount(p.minStock);const low=stock!==null&&minimum!==null&&stock<=minimum;return <tr key={p.id} className="border-b border-border last:border-0"><td className="p-3 font-bold text-text-main">{p.name}</td><td className="p-3 text-text-secondary">{p.sku||p.code||'—'}</td><td className="p-3">{money(readKnownAmount(p.unitPrice ?? p.basePrice))}</td><td className="p-3" data-testid="product-tax-rate">{p.taxRatePercent==null||!Number.isFinite(Number(p.taxRatePercent))?<Badge variant="neutral">نامشخص</Badge>:Number(p.taxRatePercent)===0?<Badge variant="success">معاف (۰٪)</Badge>:`${Number(p.taxRatePercent).toLocaleString('fa-IR')}٪`}</td><td className="p-3">{stock!==null?stock.toLocaleString('fa-IR'):'نامشخص'}</td><td className="p-3" data-testid="product-fifo-value">{p.inventoryValueFifo==null||!Number.isFinite(Number(p.inventoryValueFifo))?'نامشخص':money(Number(p.inventoryValueFifo))}</td><td className="p-3">{minimum===null?'تعریف نشده':minimum.toLocaleString('fa-IR')}</td><td className="p-3">{low?<Badge variant="warning">زیر نقطه سفارش</Badge>:stock===null?<Badge variant="neutral">بدون داده معتبر</Badge>:minimum===null?<Badge variant="neutral">آستانه تعریف نشده</Badge>:<Badge variant="success">در محدوده</Badge>}</td></tr>})}</tbody></table></div><p className="mt-3 text-caption leading-6 text-text-secondary">محصولات خارجی فقط‌خواندنی هستند. این صفحه فقط تصویر لحظه‌ای موجود در داده آزمایشی را نمایش می‌دهد و موجودی را تغییر نمی‌دهد.</p></Card>;
+}
+
+export function PurchasingTab({ state, updateState }: { state: AppState; updateState: StateUpdater }) {
+  const suppliers: { id: string; name: string }[] = state.suppliers || [];
+  const products = state.externalProducts || [];
+  const requests: PurchaseRequestView[] = state.purchaseRequests || [];
   const [supplierId,setSupplierId] = useState(''); const [productId,setProductId] = useState(''); const [quantity,setQuantity] = useState(''); const [reason,setReason] = useState('');
   const submit = (e: React.FormEvent) => { e.preventDefault(); if(!guard(state,updateState,'internal','EDIT','ثبت درخواست خرید آزمایشی')||!requireActiveUser(state,updateState,'ثبت درخواست خرید')) return; const qty=Number(quantity); const supplier=suppliers.find(s=>s.id===supplierId); const product=products.find(p=>p.id===productId); if(!supplier||!product||!Number.isFinite(qty)||qty<=0||!reason.trim()) return; const item={id:newId('pr'),requestNumber:`PR-TEST-${requests.length+1}`,supplierId,productId,quantity:qty,status:'OPEN',reason:reason.trim(),source:'LOCAL_TEST',createdBy:state.currentUserId,createdAt:new Date().toISOString()}; updateState(d=>{d.purchaseRequests=[...(d.purchaseRequests||[]),item];log(d,'CREATED','PurchaseRequest',item.id,'درخواست خرید آزمایشی ایجاد شد؛ سفارش خرید رسمی یا تغییر موجودی انجام نشده است');});setSupplierId('');setProductId('');setQuantity('');setReason(''); };
   return <div className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(300px,1fr)]"><Card><h2 className="mb-4 font-black text-text-main">درخواست‌های خرید</h2><div className="space-y-2">{requests.map(r=><div key={r.id} className="rounded-2xl border border-border p-3"><div className="flex flex-wrap justify-between gap-2"><b className="text-xs text-text-main">{r.requestNumber}</b><StatusBadge status={r.status}/></div><div className="mt-2 text-xs text-text-secondary">تأمین‌کننده: {suppliers.find(s=>s.id===r.supplierId)?.name||'نامشخص'} · کالا: {products.find(p=>p.id===r.productId)?.name||'نامشخص'}</div><div className="mt-1 text-xs text-text-main">تعداد: {Number(r.quantity).toLocaleString('fa-IR')} · {r.reason}</div><div className="mt-2 text-micro text-warning">درخواست داخلی آزمایشی؛ سفارش خرید رسمی ثبت نشده است.</div></div>)}{!requests.length&&<p className="py-8 text-center text-sm text-text-secondary">درخواست خریدی ثبت نشده است.</p>}</div></Card><Card><h2 className="mb-4 font-black text-text-main">ثبت درخواست خرید آزمایشی</h2><form className="space-y-3" onSubmit={submit}><div><label className="mb-1 block text-xs font-bold text-text-main">تأمین‌کننده</label><Select aria-label="تأمین‌کننده" required value={supplierId} onChange={e=>setSupplierId(e.target.value)} ><option value="">انتخاب تأمین‌کننده</option>{suppliers.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</Select></div><div><label className="mb-1 block text-xs font-bold text-text-main">کالا</label><Select aria-label="کالا" required value={productId} onChange={e=>setProductId(e.target.value)} ><option value="">انتخاب کالا</option>{products.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</Select></div><Input label="تعداد درخواستی" type="number" min="0.001" step="any" required value={quantity} onChange={e=>setQuantity(e.target.value)}/><Input label="دلیل درخواست" required value={reason} onChange={e=>setReason(e.target.value)} placeholder="کمبود موجودی، سفارش مشتری..."/><Button className="w-full" type="submit" icon={<ShoppingCart size={15}/>} disabled={!supplierId||!productId||Number(quantity)<=0||!reason.trim()}>ثبت درخواست داخلی</Button></form></Card></div>;
@@ -177,17 +203,38 @@ export function CreditTab({ state }: { state: AppState }) {
   );
 }
 
-export function OperationsReportsTab({ state }: { state: unknown }) {
+export function OperationsReportsTab({ state }: { state: AppState }) {
   const { canOn, can } = useCan(state);
-  const customers: Array<Record<string, unknown>> = state.accounts || state.customers || [];
-  const orders=(state.salesOrders||[]).filter((o: Record<string, unknown>)=>{const rec={ownerId:o.ownerId,branchId:o.branchId,territoryId:o.territoryId,teamId:o.teamId,tenantId:o.tenantId};return can('quotes','VIEW')?canOn('quotes','VIEW',rec):canOn('finance','VIEW',rec)});
-  const invoicesAll=state.invoices||[]; const invoices=invoicesAll.filter((i: Record<string, unknown>)=>{const c=customers.find(x=>x.id===i.customerId);if(!c)return false;const rec={ownerId:c.ownerId,branchId:c.branchId,territoryId:c.territoryId,teamId:c.teamId,tenantId:c.tenantId};return can('finance','VIEW')?canOn('finance','VIEW',rec):canOn('accounts','VIEW',rec)});
-  const returns=(state.salesReturns||[]).filter((r: Record<string, unknown>)=>can('finance','VIEW')||orders.some((o: Record<string, unknown>)=>o.id===r.orderId)); const plans=(state.dispatchPlans||[]).filter((p: Record<string, unknown>)=>{const rec={ownerId:p.createdBy,branchId:p.branchId,territoryId:p.territoryId,teamId:p.teamId,tenantId:p.tenantId};return can('internal','VIEW')?canOn('internal','VIEW',rec):canOn('finance','VIEW',rec)}); const payments=can('finance','VIEW')?(state.payments||[]):[]; const cases=can('finance','VIEW')?(state.reconciliationCases||[]):(state.reconciliationCases||[]).filter((c: Record<string, unknown>)=>c.assignedTo===state.currentUserId);
+  const canViewFinance = can('finance', 'VIEW');
+  const customers = new Map((state.accounts || state.customers || []).map(customer => [customer.id, customer]));
+  const orders: ScopedOperation[] = ((state.salesOrders || []) as ScopedOperation[]).filter(order =>
+    can('quotes', 'VIEW') ? canOn('quotes', 'VIEW', order) : canOn('finance', 'VIEW', order)
+  );
+  const orderIds = new Set(orders.map(order => order.id));
+  const invoices = (state.invoices || []).filter(invoice => {
+    const customer = customers.get(invoice.accountId || invoice.customerId);
+    return customer && (canViewFinance ? canOn('finance', 'VIEW', customer) : canOn('accounts', 'VIEW', customer));
+  }).map(invoice => ({ ...invoice }));
+  const returns: ScopedOperation[] = ((state.salesReturns || []) as ScopedOperation[]).filter(row =>
+    (typeof row.orderId === 'string' && orderIds.has(row.orderId)) || canOn('finance', 'VIEW', row)
+  );
+  const plans: ScopedOperation[] = ((state.dispatchPlans || []) as ScopedOperation[]).filter(plan => {
+    const scope = { ...plan, ownerId: plan.createdBy };
+    return can('internal', 'VIEW') ? canOn('internal', 'VIEW', scope) : canOn('finance', 'VIEW', scope);
+  });
+  const payments = (state.payments || []).filter(payment => {
+    const customer = customers.get(payment.accountId || payment.customerId);
+    return canViewFinance && customer && canOn('payments', 'VIEW', customer);
+  }).map(payment => ({ ...payment }));
+  const cases: ScopedOperation[] = ((state.reconciliationCases || []) as ScopedOperation[]).filter(row =>
+    canOn('finance', 'VIEW', row) || (Boolean(state.currentUserId) && row.assignedTo === state.currentUserId)
+  );
+  const expenses: ScopedOperation[] = ((state.expenses || []) as ScopedOperation[]).filter(row => canOn('finance', 'VIEW', row));
   const metrics=buildOperationsMetrics({orders,invoices,returns,dispatchPlans:plans,payments});
-  const profitability=calculateProfitability({invoices,returns,payments,orders,dispatchPlans:plans,expenses:state.expenses||[]});
-  const costCoverage=orders.length?orders.filter((o: Record<string, unknown>)=>o.costKnown===true).length/orders.length*100:null;
+  const profitability=calculateProfitability({invoices,returns,payments,orders,dispatchPlans:plans,expenses});
+  const costCoverage=canViewFinance && orders.length?orders.filter(o=>o.costKnown===true).length/orders.length*100:null;
   const returnCauses=analyzeReturns(returns);
   const left=[{label:'کل سفارش‌ها',value:metrics.orderCount},{label:'تأیید یا آزادشده',value:metrics.approvedOrders},{label:'لغوشده',value:metrics.cancelledOrders},{label:'سفارش دارای پیوند مستقیم به فاکتور',value:metrics.invoicedOrderCount},{label:'برگشتی‌های ثبت‌شده',value:metrics.returnCount},{label:'برگشتی منتظر سند مالی',value:returns.filter((r: Record<string, unknown>)=>r.financialDocumentConfirmed!==true).length}];
-  const right=[{label:'پوشش بهای تمام‌شده',value:costCoverage===null?'نامشخص':`${costCoverage.toLocaleString('fa-IR',{maximumFractionDigits:1})}٪`},{label:'تازگی اطلاعات مالی',value:'به‌روزرسانی زنده در دسترس نیست'},{label:'پوشش وزن و ظرفیت پخش',value:metrics.dispatchCapacityCoverage===null?'نامشخص':`${metrics.dispatchCapacityCoverage.toLocaleString('fa-IR',{maximumFractionDigits:1})}٪`},{label:'مغایرت‌های باز',value:cases.filter((c: Record<string, unknown>)=>c.status!=='RESOLVED').length},{label:'وجه تسویه‌شده قابل مشاهده در داده آزمایشی',value:money(profitability.clearedPayments)},{label:'سود عملیاتی پخش',value:profitability.operationalProfit===null?'غیرقابل محاسبه':money(profitability.operationalProfit)}];
+  const right=[{label:'پوشش بهای تمام‌شده',value:costCoverage===null?'نامشخص':`${costCoverage.toLocaleString('fa-IR',{maximumFractionDigits:1})}٪`},{label:'تازگی اطلاعات مالی',value:'به‌روزرسانی زنده در دسترس نیست'},{label:'پوشش وزن و ظرفیت پخش',value:metrics.dispatchCapacityCoverage===null?'نامشخص':`${metrics.dispatchCapacityCoverage.toLocaleString('fa-IR',{maximumFractionDigits:1})}٪`},{label:'مغایرت‌های باز',value:cases.filter(c=>c.status!=='RESOLVED').length},{label:'وجه تسویه‌شده قابل مشاهده',value:canViewFinance && payments.length ? money(profitability.clearedPayments) : 'نامشخص'},{label:'سود عملیاتی پخش',value:!canViewFinance || profitability.operationalProfit===null?'غیرقابل محاسبه':money(profitability.operationalProfit)}];
   return <div className="grid gap-4 xl:grid-cols-2"><Card><div className="mb-4 flex items-center gap-2"><Gauge size={17} className="text-primary"/><h2 className="font-black text-text-main">گزارش کیفیت چرخه سفارش</h2></div><div className="space-y-3">{left.map(x=><div key={x.label} className="flex items-center justify-between gap-3 border-b border-border pb-2 last:border-0"><span className="text-xs text-text-secondary">{x.label}</span><b className="text-sm text-text-main">{Number(x.value).toLocaleString('fa-IR')}</b></div>)}</div></Card><Card><div className="mb-4 flex items-center gap-2"><ShieldCheck size={17} className="text-primary"/><h2 className="font-black text-text-main">گزارش پوشش داده و کیفیت</h2></div><div className="space-y-3">{right.map(x=><div key={x.label} className="flex items-center justify-between gap-3 border-b border-border pb-2 last:border-0"><span className="text-xs text-text-secondary">{x.label}</span><b className="text-xs text-text-main">{x.value}</b></div>)}</div><div className="mt-4 border-t border-border pt-3"><h3 className="mb-2 text-xs font-black text-text-main">تحلیل علت برگشت (بر اساس دسته‌بندی ثبت‌شده)</h3>{returnCauses.length?returnCauses.map(c=><div key={c.reasonCode} className="flex items-center justify-between gap-3 border-b border-border py-2 last:border-0"><div><div className="text-xs font-bold text-text-main">{c.reasonCode}</div><div className="mt-1 text-micro text-text-secondary">{c.count.toLocaleString('fa-IR')} مورد · تأیید سند: {c.confirmedCount.toLocaleString('fa-IR')}</div></div><div className="text-left text-xs font-bold text-text-main">{money(c.amount)}<div className="mt-1 text-micro font-normal text-warning">بدون سند: {money(c.unconfirmedAmount)}</div></div></div>):<p className="text-xs text-text-secondary">داده برگشت کافی نیست.</p>}</div><p className="mt-3 text-caption leading-6 text-text-secondary">گزارش‌ها در این فاز محلی و هم‌زمان هستند. صف گزارش سنگین، خروجی پس‌زمینه و تجمیع افزایشی در فاز دیتابیس/بک‌اند اجرا خواهد شد.</p></Card></div>;
 }

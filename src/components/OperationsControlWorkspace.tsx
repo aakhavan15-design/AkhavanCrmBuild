@@ -21,8 +21,9 @@ import { VerdictStrip } from './shared/VerdictStrip';
 import { DonutChart } from './charts/DonutChart';
 import { LineChart } from './charts/LineChart';
 import { useNavigate } from 'react-router-dom';
+import type { AppState } from '../types';
 
-interface Props { state: any; updateState: (updater: (draft: Record<string, unknown>) => void | Partial<any>) => void }
+interface Props { state: AppState; updateState: (updater: (draft: AppState) => void | Partial<AppState>) => void }
 type Tab = 'overview' | 'orders' | 'dispatch' | 'returns' | 'policies' | 'inventory' | 'purchasing' | 'credit' | 'profitability' | 'reports' | 'reconciliation';
 const TABS: Array<{id: Tab; label: string; icon: React.ElementType}> = [
   { id: 'overview', label: 'نمای کلی', icon: Gauge }, { id: 'orders', label: 'سفارش‌ها', icon: Package },

@@ -28,4 +28,6 @@ test('F7-04: no client-side last-purchase-as-FIFO; labels DB source', () => {
   assert.equal(/lastPurchase|آخرین خرید/i.test(fifoSection), false);
   assert.match(fifoSection, /FIFO، دیتابیس/);
   assert.match(fifoSection, /inventoryValueFifo/);
+  assert.match(fifoSection, /money\(readKnownAmount\(p\.unitPrice \?\? p\.basePrice\)\)/);
+  assert.match(fifoSection, /stock!==null&&minimum!==null&&stock<=minimum/);
 });

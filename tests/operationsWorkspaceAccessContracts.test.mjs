@@ -13,4 +13,8 @@ assert.match(credit, /invoiceIds\.has\(row\.invoiceId\) && paymentIds\.has\(row\
 assert.match(credit, /estimateLedgerAging\(buildLedgerAgingInputs\(/);
 assert.match(credit, /!ledgerBalance\.incomplete \? ledgerBalance\.total : null/);
 assert.doesNotMatch(credit, /state\.paymentAllocations|customer\.balance|\.status === 'OVERDUE'/);
+const reports = source.slice(source.indexOf('export function OperationsReportsTab'));
+assert.match(reports, /canOn\('payments', 'VIEW', customer\)/);
+assert.match(reports, /const expenses:[^\n]+canOn\('finance', 'VIEW', row\)/);
+assert.match(reports, /!canViewFinance \|\| profitability\.operationalProfit===null/);
 console.log('operationsWorkspaceAccessContracts: PASS');
