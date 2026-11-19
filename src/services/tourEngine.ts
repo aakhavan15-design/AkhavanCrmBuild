@@ -680,6 +680,15 @@ export const WHATS_NEW_ITEMS: WhatsNewItem[] = [
     route: '/accounts',
   },
   {
+    id: 'wn-churn-engine',
+    version: '0.12.63',
+    title: 'ویرایش آستانه‌های ریزش در تنظیمات سازمان',
+    description: 'آستانهٔ ریزش با رقم فارسی ثبت می‌شود. برای بازگشت به پیش‌فرض، مقدار سفارشی را پاک کنید.',
+    tag: 'IMPROVED',
+    module: 'settings',
+    route: '/settings?tab=org',
+  },
+  {
     id: 'wn-paya-banking',
     version: '0.12.48',
     title: 'محاسبه حقوق و خروجی فایل بانکی پایا',

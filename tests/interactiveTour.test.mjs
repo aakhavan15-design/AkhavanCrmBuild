@@ -29,11 +29,13 @@ test('Tour Engine: role-based step filtering returns appropriate steps for admin
   assert.ok(salesAccountSteps.some(s => s.id === 'acc-churn-prediction'), 'Sales user should see Churn Prediction step');
 });
 
-test('Tour Engine: WHATS_NEW_ITEMS contains b56 new features', () => {
+test('Tour Engine: release notes link to the restored churn settings', () => {
   assert.ok(WHATS_NEW_ITEMS.length >= 2);
   const churnItem = WHATS_NEW_ITEMS.find(i => i.id === 'wn-churn-engine');
   assert.ok(churnItem, 'What\'s new must highlight Churn Prediction engine');
-  assert.equal(churnItem.tag, 'NEW');
+  assert.equal(churnItem.tag, 'IMPROVED');
+  assert.equal(churnItem.module, 'settings');
+  assert.equal(churnItem.route, '/settings?tab=org');
   assert.ok(churnItem.description.includes('ریزش'));
 });
 

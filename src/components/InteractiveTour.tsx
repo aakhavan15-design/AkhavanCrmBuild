@@ -24,6 +24,8 @@ import {
   routeForModule
 } from '../services/tourEngine';
 import { cn } from '../lib/utils';
+import { makeCanAccess, pathMatches } from '../lib/navigation';
+import { RBACService } from '../lib/rbac';
 
 interface InteractiveTourProps {
   state: AppState;
@@ -71,11 +73,21 @@ export function InteractiveTour({ state, updateState }: InteractiveTourProps) {
 
   const currentUser = state?.users?.find(u => u.id === state?.currentUserId);
   const currentRole = state?.roles?.find(r => r.id === currentUser?.roleId);
+  const canUseTour = useMemo(() => {
+    const rbac = new RBACService(state);
+    const canAccess = makeCanAccess(rbac);
+    const permissions: Record<string, string> = {
+      global: 'home', workspace: 'module:home', opportunities: 'leads',
+      operations: 'operations_control', 'geo-intelligence': 'geo_intelligence',
+      'sync-center': 'settings', 'personnel-file': 'profile',
+    };
+    return (module: string) => Boolean(rbac.getCurrentUser()) && canAccess(permissions[module] || module);
+  }, [state]);
 
   const activeSteps = useMemo(() => {
-    if (!tourState.activeModule) return [];
+    if (!tourState.activeModule || !canUseTour(tourState.activeModule)) return [];
     return getStepsForModuleAndRole(tourState.activeModule, currentRole?.name);
-  }, [tourState.activeModule, currentRole?.name]);
+  }, [tourState.activeModule, currentRole?.name, canUseTour]);
 
   const currentStep: TourStep | undefined = activeSteps[tourState.currentStepIndex];
 
@@ -170,7 +182,8 @@ export function InteractiveTour({ state, updateState }: InteractiveTourProps) {
 
   const startTour = (module: string) => {
     const route = routeForModule(module);
-    if (route && module !== 'global' && !(route === '/' ? location.pathname === '/' : location.pathname.startsWith(route))) {
+    if (!route || !canUseTour(module) || !getStepsForModuleAndRole(module, currentRole?.name).length) return;
+    if (module !== 'global' && moduleForPath(location.pathname) !== module && !pathMatches(location.pathname, route)) {
       navigate(route);
     }
     setTargetRect(null);
@@ -249,8 +262,9 @@ export function InteractiveTour({ state, updateState }: InteractiveTourProps) {
   };
 
   useEffect(() => {
-    const onOpenTour = (e: Record<string, unknown>) => {
-      const mod = e.detail?.module || 'global';
+    const onOpenTour = (event: Event) => {
+      const module = event instanceof CustomEvent ? event.detail?.module : undefined;
+      const mod = typeof module === 'string' ? module : 'global';
       startTour(mod);
     };
     const onOpenMenu = () => setShowSelectorModal(true);
@@ -264,7 +278,7 @@ export function InteractiveTour({ state, updateState }: InteractiveTourProps) {
       window.removeEventListener('open-akhavan-tour-menu', onOpenMenu);
       window.removeEventListener('open-akhavan-whats-new', onOpenWhatsNew);
     };
-  }, [tourState, location.pathname]);
+  }, [tourState, location.pathname, canUseTour, currentRole?.name]);
 
   const isTourActive = !!currentStep && !tourState.isPaused;
 
@@ -422,16 +436,17 @@ export function InteractiveTour({ state, updateState }: InteractiveTourProps) {
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-h-80 overflow-y-auto no-scrollbar pt-1">
-              {[...getAvailableModules()].sort((a, b) => Number(b.id === moduleForPath(location.pathname)) - Number(a.id === moduleForPath(location.pathname))).map(mod => {
+              {getAvailableModules().filter(mod => canUseTour(mod.id)).sort((a, b) => Number(b.id === moduleForPath(location.pathname)) - Number(a.id === moduleForPath(location.pathname))).map(mod => {
                 const isCompleted = tourState.completedModules[mod.id];
                 const stepsCount = getStepsForModuleAndRole(mod.id, currentRole?.name).length;
                 if (stepsCount === 0) return null;
 
                 return (
-                  <div
+                  <button
                     key={mod.id}
+                    type="button"
                     onClick={() => startTour(mod.id)}
-                    className="p-3.5 rounded-2xl border border-border/80 bg-canvas/70 hover:bg-surface hover:border-primary/40 hover:shadow-xs transition-all cursor-pointer flex items-center justify-between gap-2"
+                    className="p-3.5 rounded-2xl border border-border/80 bg-canvas/70 hover:bg-surface hover:border-primary/40 hover:shadow-xs transition-all cursor-pointer flex items-center justify-between gap-2 text-start"
                   >
                     <div className="space-y-0.5 min-w-0">
                       <strong className="text-xs font-bold text-ink block truncate">{mod.label}{mod.id === moduleForPath(location.pathname) && <span className="ms-1.5 rounded-full bg-primary/10 px-1.5 py-0.5 text-nano font-black text-primary">این صفحه</span>}</strong>
@@ -450,7 +465,7 @@ export function InteractiveTour({ state, updateState }: InteractiveTourProps) {
                         <Play size={12} />
                       </div>
                     </div>
-                  </div>
+                  </button>
                 );
               })}
             </div>
@@ -490,7 +505,7 @@ export function InteractiveTour({ state, updateState }: InteractiveTourProps) {
                   <Sparkles size={20} />
                 </div>
                 <div>
-                  <h3 className="text-base font-extrabold text-ink">قابلیت‌های جدید سامانه (نگارش ۰.۱۲.۴۸)</h3>
+                  <h3 className="text-base font-extrabold text-ink">قابلیت‌های جدید سامانه</h3>
                   <p className="text-xs text-ink-soft">آخرین امکانات و ارتقای استانداردهای عملیاتی سامانه اخوان</p>
                 </div>
               </div>
@@ -505,7 +520,7 @@ export function InteractiveTour({ state, updateState }: InteractiveTourProps) {
             </div>
 
             <div className="space-y-3 max-h-80 overflow-y-auto no-scrollbar pt-1">
-              {WHATS_NEW_ITEMS.map(item => (
+              {WHATS_NEW_ITEMS.filter(item => canUseTour(item.module)).map(item => (
                 <div
                   key={item.id}
                   className="p-3.5 rounded-2xl border border-border/80 bg-canvas/60 space-y-1.5"

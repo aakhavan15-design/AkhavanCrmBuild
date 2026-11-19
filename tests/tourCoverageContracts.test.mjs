@@ -44,6 +44,17 @@ test('tour is mounted in App, has a header help button, and ThemeToggle is gone'
   assert.equal(fs.existsSync(new URL('../src/components/ThemeToggle.tsx', import.meta.url)), false);
 });
 
+test('available tours and desktop submenus follow navigation permissions', () => {
+  const tour = read('src/components/InteractiveTour.tsx');
+  const sidebar = read('src/components/DesktopSidebar.tsx');
+  assert.match(tour, /makeCanAccess\(rbac\)/);
+  assert.match(tour, /!canUseTour\(module\)/);
+  assert.match(tour, /getAvailableModules\(\)\.filter\(mod => canUseTour\(mod\.id\)\)/);
+  assert.match(tour, /<button\s+key=\{mod\.id\}\s+type="button"/);
+  assert.match(sidebar, /visibleChildren = \(item\.children \|\| \[\]\)\.filter\(child => canAccess\(child\.perm\)\)/);
+  assert.match(sidebar, /aria-controls=\{submenuId\}/);
+});
+
 
 test('reports tour uses an actual mounted reports workspace, not an unmounted legacy panel', () => {
   const reports = read('src/components/ReportsWorkspace.tsx');

@@ -62,10 +62,12 @@ export function DesktopSidebar({ user, roleName, collapsed, canAccess }: Desktop
               <div className="space-y-0.5">
                 {items.map((item) => {
                   const active = isNavActive(item, location.pathname, location.search);
-                  const childActive = (item.children || []).some((child) =>
+                  const visibleChildren = (item.children || []).filter(child => canAccess(child.perm));
+                  const childActive = visibleChildren.some((child) =>
                     isNavActive(child, location.pathname, location.search)
                   );
-                  const expanded = !!expandedItems[item.id] || childActive;
+                  const expanded = expandedItems[item.id] ?? childActive;
+                  const submenuId = `desktop-nav-${item.id}`;
                   const Icon = item.icon;
 
                   return (
@@ -100,17 +102,18 @@ export function DesktopSidebar({ user, roleName, collapsed, canAccess }: Desktop
                           )}
                         </button>
 
-                        {!collapsed && !!item.children?.length && (
+                        {!collapsed && visibleChildren.length > 0 && (
                           <button
                             type="button"
                             onClick={() =>
                               setExpandedItems((prev) => ({
                                 ...prev,
-                                [item.id]: !prev[item.id],
+                                [item.id]: !(prev[item.id] ?? childActive),
                               }))
                             }
                             aria-label={`زیرمنوی ${item.label}`}
                             aria-expanded={expanded}
+                            aria-controls={submenuId}
                             className="grid h-8 w-7 shrink-0 place-items-center rounded-lg text-text-secondary hover:bg-canvas hover:text-text-main transition-colors cursor-pointer"
                           >
                             <ChevronDown
@@ -122,11 +125,9 @@ export function DesktopSidebar({ user, roleName, collapsed, canAccess }: Desktop
                       </div>
 
                       {/* Nested Sub-menu */}
-                      {!collapsed && !!item.children?.length && expanded && (
-                        <div className="ms-6 mt-1 mb-1.5 border-s border-border/80 ps-2.5 space-y-1">
-                          {item.children
-                            .filter((child) => canAccess(child.perm))
-                            .map((child) => {
+                      {!collapsed && visibleChildren.length > 0 && (
+                        <div id={submenuId} hidden={!expanded} className="ms-6 mt-1 mb-1.5 border-s border-border/80 ps-2.5 space-y-1">
+                          {visibleChildren.map((child) => {
                               const ChildIcon = child.icon;
                               const childIsActive = isNavActive(
                                 child,

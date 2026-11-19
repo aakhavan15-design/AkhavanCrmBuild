@@ -170,6 +170,8 @@ const ALWAYS_ALLOWED = new Set(['home', 'profile']);
 const EXTENDED_PERMS: Record<string, (r: RBACService) => boolean> = {
   'command': r => r.hasPermission('accounts.view') || r.hasPermission('internal.view'),
   'groups': r => r.hasPermission('accounts.view') || r.hasPermission('internal.view') || r.hasPermission('internal.manage'),
+  'audit': r => (['accounts', 'finance', 'operations_control', 'reports', 'settings', 'tasks', 'dashboard', 'leads'] as const)
+    .some(tab => r.canAccessWorkspace(tab)),
   'users': r => r.hasPermission('users.manage') || r.hasPermission('roles.manage') || r.hasPermission('settings.manage'),
   'ops.orders': r => r.can('quotes', 'VIEW') || r.can('finance', 'VIEW'),
   'ops.inventory': r => r.can('quotes', 'VIEW') || r.can('finance', 'VIEW'),

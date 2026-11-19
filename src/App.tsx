@@ -21,6 +21,7 @@ import { NotificationCenter, type AppNotification } from './components/shared/No
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { LiveAnnouncer } from './components/ui/LiveAnnouncer';
 import { RBACService } from './lib/rbac';
+import { makeCanAccess } from './lib/navigation';
 import { AuthService } from './services/AuthService';
 import { stopStateSync } from './services/stateSyncRuntime';
 import { dataSyncController } from './services/dataSyncController';
@@ -269,7 +270,7 @@ function AppContent() {
           <Route path="/reports" element={guard('reports', <ReportsWorkspace state={state} updateState={updateState} setActiveTab={(t: string) => navigate(`/${t}`)} />)} />
           <Route path="/settings" element={guard('settings', <SettingsWorkspace state={state} updateState={updateState} />)} />
           <Route path="/sync-center" element={guard('settings', <SyncCenterWorkspace state={state} />)} />
-          <Route path="/audit" element={guardAny((['accounts', 'finance', 'operations_control', 'reports', 'settings', 'tasks', 'dashboard', 'leads'] as const).some(tab => rbac.canAccessWorkspace(tab)), <AuditWorkspace state={state} />)} />
+          <Route path="/audit" element={guardAny(makeCanAccess(rbac)('audit'), <AuditWorkspace state={state} />)} />
           <Route path="/onboarding" element={guard('onboarding', <OnboardingAdminWorkspace state={state} updateState={updateState} />)} />
           <Route path="/personnel-file" element={<PersonnelFilePage state={state} updateState={updateState} />} />
           <Route path="/profile" element={<ProfileWorkspace state={state} updateState={updateState} setActiveTab={(t: string) => navigate(`/${t}`)} />} />
