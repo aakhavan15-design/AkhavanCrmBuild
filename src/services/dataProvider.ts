@@ -5,6 +5,7 @@ import type {
   Task, 
   Invoice, 
   Payment, 
+  PaymentAllocation,
   Cheque, 
   InternalRequest, 
   Payslip, 
@@ -106,7 +107,7 @@ export interface DataProvider {
   getGeoZones(): Promise<GeoZone[]>;
   saveGeoZone(zone: Partial<GeoZone>): Promise<GeoZone>;
   getZoneAssignments(): Promise<Array<Record<string, unknown>>>;
-  getPaymentAllocations(): Promise<Array<Record<string, unknown>>>;
+  getPaymentAllocations(): Promise<PaymentAllocation[]>;
   
   // Financial Intelligence & Approval Center (Approval Intelligence / Financial 360 / Smart Accounting Classification)
   getApprovalContext(ref: ApprovalRef, opts?: ContextOptions): Promise<ApprovalContext | null>;
@@ -380,8 +381,8 @@ export class ClientStorageDataProvider implements DataProvider {
     return (this.getState() as any).zoneAssignments || [];
   }
 
-  async getPaymentAllocations(): Promise<Array<Record<string, unknown>>> {
-    return (this.getState() as any).paymentAllocations || [];
+  async getPaymentAllocations(): Promise<PaymentAllocation[]> {
+    return this.getState().paymentAllocations || [];
   }
 
   async saveGeoZone(zone: Partial<GeoZone>): Promise<GeoZone> {
@@ -715,16 +716,16 @@ export class HttpBackendDataProvider implements DataProvider {
     }
   }
 
-  async getPaymentAllocations(): Promise<Array<Record<string, unknown>>> {
-    try {
-      const snap = await this.getStateSnapshot();
-      const hidden = Array.isArray(snap.hiddenCollections) ? snap.hiddenCollections : [];
-      if (hidden.includes('paymentAllocations')) return [];
-      const col = snap.collections?.paymentAllocations;
-      return Array.isArray(col) ? (col as Array<Record<string, unknown>>) : [];
-    } catch {
-      return [];
+  async getPaymentAllocations(): Promise<PaymentAllocation[]> {
+    const snapshot = await this.request<StateSnapshot>('/state/snapshot?includeEmpty=paymentAllocations');
+    if (snapshot.hiddenCollections?.includes('paymentAllocations')) {
+      throw new Error('مجوز مشاهدهٔ تخصیص دریافت‌ها وجود ندارد.');
     }
+    const allocations = snapshot.collections?.paymentAllocations;
+    if (!Array.isArray(allocations)) {
+      throw new Error('منبع تخصیص دریافت‌ها در پاسخ سرور موجود نیست.');
+    }
+    return allocations as unknown as PaymentAllocation[];
   }
 
   // --- Financial Intelligence: داده از اسنپ‌شات سرور (مجوز/پروفایل دسترسی سمت سرور اعمال می‌شود) و همان موتور مشترک ---

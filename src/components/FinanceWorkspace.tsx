@@ -6,8 +6,8 @@ import { useTabParam } from '../hooks/useTabParam';
 import { buildAgingBuckets, normalizeAgingBounds, estimateLedgerAging, buildLedgerAgingInputs, estimateInvoiceRemaining } from '../services/agingBuckets';
 import { getAgingBucketDays } from '../lib/metricConfig';
 import { FINANCE_AREAS, areaOf } from '../lib/workspaceHierarchy';
-import { AppState, Cheque, Payment, Invoice, CreditNote, CreditNoteRequest } from '../types';
-import { reconcileReceivables, summarizeCustomerLedgerReceivables } from '../lib/receivableReconciliation';
+import { AppState, Cheque, Payment, Invoice, CreditNoteRequest } from '../types';
+import { summarizeCustomerLedgerReceivables } from '../lib/receivableReconciliation';
 import { useDataQuery } from '../hooks/useDataProvider';
 import { getPersianStatusLabel } from '../lib/labels';
 import { Card } from './ui/Card';
@@ -121,18 +121,7 @@ export function FinanceWorkspace({ state, updateState }: FinanceWorkspaceProps) 
 
   const invoices = (state.invoices || []).filter(invoice => canOn('finance', 'VIEW', getFinanceRecordScope(invoice)));
   const payments = (state.payments || []).filter(payment => canOn('payments', 'VIEW', getFinanceRecordScope(payment)));
-  const mirroredCreditNotes: CreditNote[] = (state.creditNotes || []).filter(note => !note.isVoided && canOn('finance', 'VIEW', getFinanceRecordScope(note)));
   const creditNotes: CreditNoteRequest[] = (state.creditNoteRequests || []).filter(note => canOn('finance', 'VIEW', getFinanceRecordScope(note)));
-  const visibleInvoiceIds = new Set(invoices.map(item => item.id));
-  const visiblePaymentIds = new Set(payments.map(item => item.id));
-  const scopedAllocations = (state.paymentAllocations || []).filter(item => visibleInvoiceIds.has(item.invoiceId) && visiblePaymentIds.has(item.paymentId));
-  const receivableReconciliation = reconcileReceivables(
-    invoices,
-    payments,
-    scopedAllocations,
-    state.creditNoteSourceStatus === 'CONNECTED' ? mirroredCreditNotes : undefined,
-    new Date()
-  );
 
   const cheques: Cheque[] = (state.cheques || []).filter(cheque => canOn('finance', 'VIEW', getFinanceRecordScope(cheque)));
   const expenses: ExpenseRecord[] = (((state as unknown as { expenses?: ExpenseRecord[] }).expenses) || []).filter((expense) => !expense.deletedAt && canOn('finance', 'VIEW', getFinanceRecordScope(expense)));

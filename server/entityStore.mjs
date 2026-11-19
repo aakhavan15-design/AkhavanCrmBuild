@@ -135,12 +135,16 @@ export function createEntityService({ driver, registry, hasPermission }) {
     };
   };
 
-  async function snapshot(auth) {
+  async function snapshot(auth, { includeEmptyPaymentAllocations = false } = {}) {
     const full = await driver.load(auth.tenantId, auth.userId);
     const canRead = await readableCache(auth);
     const collections = {};
     const hidden = [];
-    for (const [name, list] of Object.entries(full.collections)) {
+    // Preserve the distinction between a permitted empty collection and a hidden source.
+    const storedCollections = includeEmptyPaymentAllocations
+      ? { paymentAllocations: [], ...full.collections }
+      : full.collections;
+    for (const [name, list] of Object.entries(storedCollections)) {
       if (await canRead(name)) collections[name] = list; else hidden.push(name);
     }
     return { collections, singletons: full.singletons, serverVersion: full.version, hiddenCollections: hidden, generatedAt: now() };

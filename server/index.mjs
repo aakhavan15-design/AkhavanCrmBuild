@@ -585,7 +585,11 @@ app.get('/api/v1/ledger/journal-lines', authenticate, requirePermission('finance
     totalPages: Math.max(1, Math.ceil(total / pageSize)) });
 }));
 
-app.get('/api/v1/state/snapshot', authenticate, guardEntityDriver, wrap(async (req, res) => res.json(await entities.snapshot(req.auth))));
+app.get('/api/v1/state/snapshot', authenticate, guardEntityDriver, wrap(async (req, res) => {
+  res.json(await entities.snapshot(req.auth, {
+    includeEmptyPaymentAllocations: req.query.includeEmpty === 'paymentAllocations',
+  }));
+}));
 app.get('/api/v1/state/counts', authenticate, guardEntityDriver, wrap(async (req, res) => res.json(await entities.counts(req.auth))));
 app.get('/api/v1/state/integrity', authenticate, guardEntityDriver, wrap(async (req, res) => res.json(await entities.integrity(req.auth))));
 app.get('/api/v1/state/profile', authenticate, guardEntityDriver, wrap(async (req, res) => res.json(await entities.profile(req.auth))));

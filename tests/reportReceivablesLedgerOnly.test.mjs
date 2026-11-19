@@ -35,9 +35,14 @@ assert.ok(!p.includes('receivables.totalOutstanding') && !p.includes('receivable
 assert.ok(!/outstanding:\s*Number\(inv\.balance/.test(p), 'Drill-down مانده هر فاکتور را از inv.balance نمی‌سازد');
 assert.ok(p.includes('تخمینی') && p.includes('نامشخص'), 'برچسب تخمینی/نامشخص');
 assert.ok(p.includes('reconcileReceivables') && p.includes('buildAgingBuckets'), 'موتورها حذف نشدند (قرارداد crossModule)');
+assert.match(p, /canReviewAllocations \? provider\.getPaymentAllocations\(\)/);
+assert.match(p, /invoiceIds\.has\(row\.invoiceId\) && paymentIds\.has\(row\.paymentId\)/);
+assert.match(p, /!canReviewAllocations \|\| allocationsLoading \|\| allocationError \|\| !paymentAllocations/);
+assert.doesNotMatch(p, /state\.paymentAllocations|تطبیق کامل ۱۰۰٪/);
 
 const f = readFileSync('src/components/FinanceWorkspace.tsx', 'utf8');
 assert.ok(f.includes('buildLedgerAgingInputs'), 'FinanceWorkspace از همان تابع مشترک');
+assert.doesNotMatch(f, /state\.paymentAllocations/);
 const o = readFileSync('src/components/shared/OrderDetailsDrawer.tsx', 'utf8');
 assert.ok(!o.includes('remainingBalance'), 'OrderDetailsDrawer مانده از پیش‌فاکتور/فاکتور نمی‌سازد');
 assert.ok(o.includes('order-remaining-unknown'), 'مانده = نامشخص');

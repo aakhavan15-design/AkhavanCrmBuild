@@ -109,6 +109,23 @@ test('tenant isolation: one tenant never sees another tenant rows', async () => 
   assert.equal(Object.keys((await svc.snapshot({ tenantId: 'B', userId: 'u' })).collections).length, 0);
 });
 
+test('allocation snapshots distinguish permitted empty, populated and restricted collections', async () => {
+  const driver = new MemoryEntityDriver();
+  const allowedService = createEntityService({ driver, registry, hasPermission: allow });
+  const deniedService = createEntityService({ driver, registry, hasPermission: async () => false });
+  const options = { includeEmptyPaymentAllocations: true };
+  const allocation = { id: 'al1', paymentId: 'p1', invoiceId: 'i1', amount: 100 };
+
+  assert.deepEqual((await allowedService.snapshot(auth, options)).collections.paymentAllocations, []);
+  await allowedService.sync(auth, { upserts: { paymentAllocations: [allocation] } });
+  assert.deepEqual((await allowedService.snapshot(auth, options)).collections.paymentAllocations, [allocation]);
+  assert.deepEqual((await allowedService.snapshot({ ...auth, tenantId: 'other' }, options)).collections.paymentAllocations, []);
+
+  const restricted = await deniedService.snapshot(auth, options);
+  assert.equal(restricted.collections.paymentAllocations, undefined);
+  assert.ok(restricted.hiddenCollections.includes('paymentAllocations'));
+});
+
 test('file driver persists across restarts', async () => {
   const file = new URL('../.tmp-entity-test.json', import.meta.url).pathname;
   fs.rmSync(file, { force: true });

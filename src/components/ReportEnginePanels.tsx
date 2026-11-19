@@ -20,6 +20,7 @@ import { reconcileReceivables, summarizeCustomerLedgerReceivables } from '../lib
 import { buildAgingBuckets, estimateLedgerAging, buildLedgerAgingInputs, estimateInvoiceRemaining } from '../services/agingBuckets';
 import { useCan } from '../hooks/useCan';
 import { useDataQuery } from '../hooks/useDataProvider';
+import { useDataSyncStatus } from '../services/dataSyncController';
 import { getActiveDataProvider } from '../services/dataProvider';
 import { computeLedgerPnl, buildLedgerPnlInputs } from '../lib/ledgerPnl';
 import { DEFAULT_REPORT_BUCKETS } from '../lib/accountingMapping';
@@ -32,7 +33,7 @@ import { DrilldownSheet, DrilldownRow } from './shared/DrilldownSheet';
 import { DocumentDetailModal, DocumentDetailData } from './shared/DocumentDetailModal';
 import { ArrowUpRight, Download, Filter, Layers, CheckSquare, ShieldCheck, ShieldAlert } from 'lucide-react';
 import { resolveDataSourceStatus, sourceStatusNote, DATA_SOURCE_STATUS_LABELS } from '../lib/dataTrust';
-import type { AppState, Invoice, Payment, Cheque, Account, Quote, ExternalProduct, Task, PaymentAllocation } from '../types';
+import type { AppState, Invoice, Payment, Cheque, Account, Quote, ExternalProduct, Task } from '../types';
 import { MiniHaloSparkline } from './charts/Sparkline';
 import { InputControl } from './ui/Input';
 import { Button } from './ui/Button';
@@ -528,8 +529,19 @@ export function ReportEnginePanels({ state, visibleInvoices, visiblePayments, vi
     };
   }, [state.salesReturns, invoices, cutoff, asOf]);
 
-  const receivableAllocations = useMemo(() => (state.paymentAllocations || []).filter((a: PaymentAllocation) => reportInvoices.some(i => i.id === a.invoiceId) && reportPayments.some(p => p.id === a.paymentId)), [state.paymentAllocations, reportInvoices, reportPayments]);
-  const receivables = useMemo(() => reconcileReceivables(reportInvoices, reportPayments, receivableAllocations, undefined, new Date()), [reportInvoices, reportPayments, receivableAllocations]);
+  const canReviewAllocations = selected === 7 && canSeeLedger && canReport('payments', 'VIEW');
+  const { serverVersion } = useDataSyncStatus();
+  const { data: paymentAllocations, error: allocationError, loading: allocationsLoading, refetch: refreshAllocations } = useDataQuery(
+    provider => canReviewAllocations ? provider.getPaymentAllocations() : Promise.resolve(null),
+    [canReviewAllocations, state.currentUserId, serverVersion]
+  );
+  const receivables = useMemo(() => {
+    if (!canReviewAllocations || allocationsLoading || allocationError || !paymentAllocations) return null;
+    const invoiceIds = new Set(reportInvoices.map(invoice => invoice.id));
+    const paymentIds = new Set(reportPayments.map(payment => payment.id));
+    const allocations = paymentAllocations.filter(row => invoiceIds.has(row.invoiceId) && paymentIds.has(row.paymentId));
+    return reconcileReceivables(reportInvoices, reportPayments, allocations, undefined, new Date());
+  }, [canReviewAllocations, allocationsLoading, allocationError, paymentAllocations, reportInvoices, reportPayments]);
 
   const { data: ledgerBalances, error: ledgerBalancesError, refetch: refreshLedgerBalances } = useDataQuery(
     async provider => (canSeeLedger ? provider.getDetailSubsidiaryBalances() : null),
@@ -1302,8 +1314,22 @@ export function ReportEnginePanels({ state, visibleInvoices, visiblePayments, vi
               <Metric label="کل مطالبات (مانده دفتری)" value={ledgerReceivables.kind === 'OK' ? `${formatCurrency(ledgerReceivables.debtorTotal)} ریال` : ledgerReceivables.kind === 'LOADING' ? '…' : 'نامشخص'} note="Σبدهکار − Σبستانکار تفصیلی×معین؛ بستانکارها جدا" />
               <Metric label="مطالبات سررسیدگذشته (تخمینی)" value={hasAgingEstimate ? `${formatCurrency(agingEstimate.items.filter(r => r.days > 0).reduce((sum, r) => sum + r.amount, 0))} ریال` : 'نامشخص'} note="از آخرین فاکتور به عقب؛ بدون تخصیص CRM" isPositive={false} />
               <Metric label="مشتریان بدهکار" value={ledgerReceivables.kind === 'OK' ? nf(ledgerReceivables.debtorCount) : 'نامشخص'} note="بر پایهٔ مانده دفتری" />
-              <Metric label="وضعیت انطباق مالی" value={receivables.authoritative ? 'تطبیق کامل ۱۰۰٪' : 'نیازمند بررسی'} note="بدون مغایرت دفتری" trend="up" />
+              <Metric
+                label="بررسی تخصیص دریافت‌ها"
+                value={receivables
+                  ? (receivables.issues.length ? `${nf(receivables.issues.length)} مورد قابل‌بررسی` : 'نیازمند بررسی')
+                  : canReviewAllocations && allocationsLoading ? '…' : 'نامشخص'}
+                note={receivables?.blockedReason || 'تخصیص CRM مبنای ماندهٔ دفتری نیست.'}
+              />
             </div>
+            {canReviewAllocations && allocationError && (
+              <div role="alert" className="flex flex-wrap items-center justify-between gap-2 text-xs text-danger">
+                <span>دریافت دادهٔ تخصیص ناموفق بود. {allocationError.message}</span>
+                <button type="button" onClick={() => void refreshAllocations()} className="underline font-bold cursor-pointer">
+                  تلاش مجدد
+                </button>
+              </div>
+            )}
 
             <div className="p-3.5 bg-surface rounded-xl border border-border space-y-2">
               <h5 className="text-xs font-bold text-text-main">توزیع سنی مطالبات تجاری <span className="text-micro text-text-secondary font-normal">{hasAgingEstimate ? '(تخمینی)' : '(نامشخص: مانده یا فاکتور موجود نیست)'}</span></h5>
