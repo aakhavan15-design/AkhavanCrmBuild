@@ -1,8 +1,6 @@
-import fs from 'node:fs';
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
-execFileSync(process.execPath, ['scripts/audit-source-surface.mjs'], { encoding: 'utf8' });
-const report = JSON.parse(fs.readFileSync('SOURCE_SURFACE_AUDIT.json', 'utf8'));
+import { auditSourceSurface } from '../scripts/audit-source-surface.mjs';
+const report = auditSourceSurface();
 assert.ok(report.sourceFiles > 0, 'source files are discovered');
 assert.ok(report.reachableFiles > 0, 'main entry reaches application code');
 assert.equal(report.sourceFiles, report.reachableFiles + report.unreachableCandidates, 'graph accounting reconciles');

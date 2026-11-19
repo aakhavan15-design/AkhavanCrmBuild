@@ -754,6 +754,10 @@
     ]
   },
   {
+    "file": "tests/reportPrimitivesContracts.test.mjs",
+    "flags": []
+  },
+  {
     "file": "tests/geoAssignmentSyncContracts.test.mjs",
     "flags": []
   },

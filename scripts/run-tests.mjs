@@ -11,7 +11,13 @@ for (const item of manifest) {
   if (only && !item.file.includes(only)) continue;
   const result = spawnSync('node', [...item.flags, item.file], { encoding: 'utf8', timeout: 120000 });
   if (result.status === 0) { passed++; console.log(`PASS  ${item.file}`); }
-  else { failed.push(item.file); console.log(`FAIL  ${item.file}\n${(result.stdout + result.stderr).split('\n').slice(-12).join('\n')}`); }
+  else {
+    failed.push(item.file);
+    const output = [result.stdout, result.stderr].filter(Boolean).join('\n').trimEnd();
+    const diagnostic = result.error?.message ?? (result.signal ? `Terminated by ${result.signal}` : `Exit code ${result.status}`);
+    const lines = output.split('\n').filter(line => line.trim()).slice(-14);
+    console.log(`FAIL  ${item.file} (${diagnostic})\n${lines.map(line => line.slice(0, 500)).join('\n')}`);
+  }
 }
 console.log(`\n=== ${passed} passed, ${failed.length} failed, ${orphans.length} not in manifest ===`);
 if (failed.length) console.log('Failed:\n  ' + failed.join('\n  '));
