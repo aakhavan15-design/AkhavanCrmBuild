@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { getMetricThresholds } from '../src/lib/metricConfig.ts';
+import { getChurnThresholdOverrides, getMetricThresholds, isChurnThresholdsDefault } from '../src/lib/metricConfig.ts';
 import { predictAccountChurn, evaluatePortfolioChurn } from '../src/services/churnPredictionService.ts';
 
 const refDate = new Date('2026-06-15T12:00:00Z');
@@ -83,3 +83,10 @@ assert.equal(invalid.churnThresholds.daysCritical, defaults.churnThresholds.days
 assert.equal(invalid.churnThresholds.daysHigh, defaults.churnThresholds.daysHigh);
 assert.equal(invalid.quoteMarginFloorPercent, defaults.quoteMarginFloorPercent);
 assert.deepEqual(invalid.agingBucketDays, defaults.agingBucketDays);
+const invalidOverrides = { orgConfig: { churnThresholds: { daysCritical: false, daysHigh: '  ', daysWatch: [], unknown: 99 } } };
+assert.deepEqual(getChurnThresholdOverrides(invalidOverrides), {});
+assert.equal(isChurnThresholdsDefault(invalidOverrides), true);
+const actualOverrides = { orgConfig: { churnThresholds: { daysCritical: 0, daysHigh: '65' } } };
+assert.deepEqual(getChurnThresholdOverrides(actualOverrides), { daysCritical: 0, daysHigh: 65 });
+assert.equal(isChurnThresholdsDefault(actualOverrides), false);
+assert.equal(getMetricThresholds(actualOverrides).churnThresholds.daysCritical, 0);

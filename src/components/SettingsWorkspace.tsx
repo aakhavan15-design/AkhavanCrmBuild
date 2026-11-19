@@ -5,6 +5,8 @@ import { useTabParam } from '../hooks/useTabParam';
 import { SETTINGS_TABS, SETTINGS_USER_SUBS } from '../lib/workspaceHierarchy';
 import { useCan } from '../hooks/useCan';
 import { getTenantName } from '../lib/orgPolicy';
+import { toLatinDigits } from '../lib/digits';
+import { DEFAULT_CHURN_THRESHOLDS, getChurnThresholdOverrides, getChurnThresholdsMeta, type ChurnThresholds } from '../lib/metricConfig';
 import React, { useState } from 'react';
 import { subscribeWebPush, unsubscribeWebPush, isPushSupported, isPushEnabledLocally } from '../lib/webPush';
 import { 
@@ -39,7 +41,7 @@ interface SettingsWorkspaceProps {
 }
 
 export function SettingsWorkspace({ state, updateState }: SettingsWorkspaceProps) {
-  const { can, denied } = useCan(state, updateState);
+  const { can, denied, rbac } = useCan(state, updateState);
   // بخش فعال و زیربخش کاربران از آدرس (?tab=…&sub=…) خوانده می‌شود تا منوی سلسله‌مراتبی مستقیم به آن‌ها پیوند دهد.
   const [tabParam, setTabParam] = useTabParam(SETTINGS_TABS, 'org');
   type SettingsTab = 'ORG' | 'USERS' | 'GROUPS' | 'LOCALE' | 'INTEGRATIONS' | 'AGENTS' | 'RULES';
@@ -223,6 +225,44 @@ export function SettingsWorkspace({ state, updateState }: SettingsWorkspaceProps
       if (!draft.settings) draft.settings = {} as Record<string, unknown>;
       if (!(draft.settings as Record<string, unknown>).orgConfig) (draft.settings as Record<string, unknown>).orgConfig = {};
       (draft.settings as Record<string, unknown>).orgConfig[key] = n > 0 ? n : undefined;
+    });
+  };
+
+  const churnOverrides = getChurnThresholdOverrides(state.settings);
+  const churnMeta = getChurnThresholdsMeta(state.settings);
+  const saveChurnThreshold = (key: keyof ChurnThresholds, input: HTMLInputElement) => {
+    const actor = rbac.getCurrentUser();
+    if (!actor || !can('settings', 'EDIT')) {
+      input.value = String(churnOverrides[key] ?? '');
+      return;
+    }
+    const raw = toLatinDigits(input.value).trim();
+    const next = raw === '' ? undefined : Number(raw);
+    if (next !== undefined && (!/^\d+$/.test(raw) || !Number.isSafeInteger(next))) {
+      input.value = String(churnOverrides[key] ?? '');
+      toast.error('آستانه باید عدد صحیح صفر یا بیشتر باشد.');
+      return;
+    }
+
+    updateState(draft => {
+      const previous = getChurnThresholdOverrides(draft.settings)[key];
+      if (previous === next) return;
+      const org = ((draft.settings ??= {}).orgConfig ??= {});
+      const thresholds = { ...org.churnThresholds };
+      if (next === undefined) delete thresholds[key];
+      else thresholds[key] = next;
+      org.churnThresholds = thresholds;
+      const recordedAt = new Date().toISOString();
+      org.churnThresholdsMeta = { effectiveFrom: recordedAt.slice(0, 10), recordedBy: actor.id, recordedAt };
+      (draft.auditLogs ??= []).push({
+        id: generateId(),
+        action: 'ORG_CHURN_THRESHOLD_UPDATED',
+        entityType: 'ORG_CONFIG',
+        entityId: key,
+        details: `آستانهٔ ریزش از ${previous ?? 'پیش‌فرض'} به ${next ?? 'پیش‌فرض'} تغییر کرد.`,
+        actor: actor.id,
+        createdAt: recordedAt,
+      });
     });
   };
 
@@ -1171,26 +1211,18 @@ export function SettingsWorkspace({ state, updateState }: SettingsWorkspaceProps
             <div className="mb-4 rounded-xl border border-border bg-canvas p-4 space-y-3">
               <div className="flex items-center justify-between gap-2">
                 <h4 className="text-xs font-bold text-text-main">آستانه‌های ریزش مشتری (نسخه‌دار)</h4>
-                {isChurnThresholdsDefault(state.settings as Record<string, unknown>) ? (
+                {Object.keys(churnOverrides).length === 0 ? (
                   <span className="text-caption text-text-secondary">پیش‌فرض سیستم</span>
                 ) : (
                   <span className="text-caption text-primary">سفارشی سازمان</span>
                 )}
               </div>
-              {(() => {
-                const meta = getChurnThresholdsMeta(state.settings as Record<string, unknown>);
-                const t = getMetricThresholds(state.settings as Record<string, unknown>).churnThresholds;
-                if (meta?.effectiveFrom || meta?.recordedBy) {
-                  return (
-                    <p className="text-caption text-text-secondary">
-                      اعمال از {meta.effectiveFrom || '—'}
-                      {meta.recordedBy ? ` · ثبت‌کننده: ${meta.recordedBy}` : ''}
-                      {meta.recordedAt ? ` · ${String(meta.recordedAt).slice(0, 16)}` : ''}
-                    </p>
-                  );
-                }
-                return null;
-              })()}
+              {(churnMeta?.effectiveFrom || churnMeta?.recordedBy) && (
+                <p className="text-caption text-text-secondary">
+                  اعمال از {churnMeta.effectiveFrom || '—'}
+                  {churnMeta.recordedBy ? ` · ثبت‌کننده: ${state.users.find(user => user.id === churnMeta.recordedBy)?.name || churnMeta.recordedBy}` : ''}
+                </p>
+              )}
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                 {([
                   ['daysCritical', 'روز بحرانی'],
@@ -1200,39 +1232,23 @@ export function SettingsWorkspace({ state, updateState }: SettingsWorkspaceProps
                   ['overdueCriticalDays', 'سررسید بحرانی'],
                   ['scoreCritical', 'امتیاز بحرانی'],
                 ] as const).map(([key, label]) => {
-                  const t = getMetricThresholds(state.settings as Record<string, unknown>).churnThresholds;
-                  const val = t[key];
                   return (
                     <div key={key}>
                       <label className="mb-1 block text-caption font-bold text-text-main" htmlFor={`churn-th-${key}`}>{label}</label>
                       <InputControl
                         id={`churn-th-${key}`}
-                        type="number"
-                        min={0}
-                        value={val}
-                        onChange={e => {
-                          if (!can('settings', 'EDIT')) return;
-                          const n = Number(e.target.value);
-                          if (!Number.isFinite(n) || n < 0) return;
-                          updateState(draft => {
-                            if (!draft.settings) draft.settings = {} as any;
-                            const org = ((draft.settings as any).orgConfig ||= {});
-                            const cur = { ...(org.churnThresholds || {}) };
-                            cur[key] = Math.floor(n);
-                            org.churnThresholds = cur;
-                            org.churnThresholdsMeta = {
-                              effectiveFrom: new Date().toISOString().slice(0, 10),
-                              recordedBy: draft.currentUserId || 'unknown',
-                              recordedAt: new Date().toISOString()
-                            };
-                          });
-                        }}
+                        key={`${key}-${churnOverrides[key] ?? 'default'}`}
+                        inputMode="numeric"
+                        defaultValue={churnOverrides[key] ?? ''}
+                        placeholder={DEFAULT_CHURN_THRESHOLDS[key].toLocaleString('fa-IR')}
+                        readOnly={!can('settings', 'EDIT')}
+                        onBlur={e => saveChurnThreshold(key, e.currentTarget)}
                       />
                     </div>
                   );
                 })}
               </div>
-              <p className="text-caption text-text-secondary">مقدار خالی/حذف‌شده به معنی بازگشت به پیش‌فرض سیستم است. تغییر با تاریخ اعمال و کاربر ثبت‌کننده ذخیره می‌شود.</p>
+              <p className="text-caption text-text-secondary">با خروج از فیلد، تغییر ثبت می‌شود. فیلد خالی از پیش‌فرض سامانه استفاده می‌کند.</p>
             </div>
 
             <div className="mb-4 grid grid-cols-1 gap-3 rounded-xl border border-border bg-canvas p-4 sm:grid-cols-2">

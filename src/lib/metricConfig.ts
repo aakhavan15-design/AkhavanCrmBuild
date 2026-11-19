@@ -76,38 +76,45 @@ const DEFAULTS: MetricThresholds = {
   collectionRiskThresholds: DEFAULT_COLLECTION_RISK_THRESHOLDS,
 };
 
-function mergeNumericRecord<T extends object>(defaults: T, raw: unknown): T {
+function nonNegativeNumber(value: unknown): number | undefined {
+  if (typeof value !== 'number' && (typeof value !== 'string' || !value.trim())) return undefined;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
+}
+
+function numericOverrides<T extends object>(defaults: T, raw: unknown): Partial<T> {
   const input = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
-  const out = { ...defaults } as Record<string, number>;
+  const out: Record<string, number> = {};
   for (const key of Object.keys(defaults)) {
-    const val = input[key] === null || input[key] === undefined || input[key] === '' ? NaN : Number(input[key]);
-    if (Number.isFinite(val) && val >= 0) {
-      out[key] = val;
-    }
+    const value = nonNegativeNumber(input[key]);
+    if (value !== undefined) out[key] = value;
   }
-  return out as T;
+  return out as Partial<T>;
+}
+
+export function getChurnThresholdOverrides(settings?: Record<string, unknown> | null): Partial<ChurnThresholds> {
+  const org = settings?.orgConfig as { churnThresholds?: unknown } | undefined;
+  return numericOverrides(DEFAULT_CHURN_THRESHOLDS, org?.churnThresholds);
 }
 
 export function getMetricThresholds(settings?: Record<string, unknown> | null): MetricThresholds {
   const org = ((settings?.orgConfig && typeof settings.orgConfig === 'object' ? settings.orgConfig : {}) as Record<string, unknown>);
-  const margin = org.quoteMarginFloorPercent == null || org.quoteMarginFloorPercent === '' ? NaN : Number(org.quoteMarginFloorPercent);
-  const slaHours = org.slaAtRiskHours == null || org.slaAtRiskHours === '' ? NaN : Number(org.slaAtRiskHours);
+  const margin = nonNegativeNumber(org.quoteMarginFloorPercent);
+  const slaHours = nonNegativeNumber(org.slaAtRiskHours);
   return {
-    quoteMarginFloorPercent: Number.isFinite(margin) && margin >= 0 ? margin : DEFAULTS.quoteMarginFloorPercent,
-    slaAtRiskHours: Number.isFinite(slaHours) && slaHours >= 0 ? slaHours : DEFAULTS.slaAtRiskHours,
+    quoteMarginFloorPercent: margin ?? DEFAULTS.quoteMarginFloorPercent,
+    slaAtRiskHours: slaHours ?? DEFAULTS.slaAtRiskHours,
     agingBucketDays: Array.isArray(org.agingBucketDays) && org.agingBucketDays.length > 0 && org.agingBucketDays.every(v => typeof v === 'number' && Number.isInteger(v) && v >= 0)
       ? [...new Set(org.agingBucketDays as number[])].sort((a, b) => a - b)
       : [...DEFAULTS.agingBucketDays],
-    churnThresholds: mergeNumericRecord(DEFAULT_CHURN_THRESHOLDS, org.churnThresholds),
-    collectionRiskThresholds: mergeNumericRecord(DEFAULT_COLLECTION_RISK_THRESHOLDS, org.collectionRiskThresholds),
+    churnThresholds: { ...DEFAULT_CHURN_THRESHOLDS, ...getChurnThresholdOverrides(settings) },
+    collectionRiskThresholds: { ...DEFAULT_COLLECTION_RISK_THRESHOLDS, ...numericOverrides(DEFAULT_COLLECTION_RISK_THRESHOLDS, org.collectionRiskThresholds) },
   };
 }
 
 /** true when no org-level churnThresholds recorded — UI must show «پیش‌فرض سیستم». */
 export function isChurnThresholdsDefault(settings?: Record<string, unknown> | null): boolean {
-  const org = ((settings?.orgConfig && typeof settings.orgConfig === 'object' ? settings.orgConfig : {}) as Record<string, unknown>);
-  const raw = org.churnThresholds;
-  return !(raw && typeof raw === 'object' && Object.keys(raw as object).length > 0);
+  return Object.keys(getChurnThresholdOverrides(settings)).length === 0;
 }
 
 export function getChurnThresholdsMeta(settings?: Record<string, unknown> | null): { effectiveFrom?: string; recordedBy?: string; recordedAt?: string } | null {
