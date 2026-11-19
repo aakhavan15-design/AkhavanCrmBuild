@@ -20,6 +20,11 @@ assert.equal(resolveCustomerBalanceView(res, { id: 'C9', code: 'zzz' }).kind, 'N
 // کلید ERP (کد تفصیلی) بر id برتری دارد
 assert.deepEqual(customerDetailKeys({ id: 'a', code: 'c', detailAccountId: 'd' }), ['d', 'c', 'a']);
 assert.equal(resolveCustomerBalanceView(res, { id: 'zzz', detailAccountId: 'C1' }).kind, 'OK');
+const aliases = buildDetailBalancesResult([
+  L('a', '1101', 900, 0), L('c', '1101', 300, 0), L('d', '1101', 100, 0),
+], 'SQLSERVER_BACKEND');
+assert.equal(resolveCustomerBalanceView(aliases, { id: 'a', code: 'c', detailAccountId: 'd' }).total, 100);
+assert.equal(resolveCustomerBalanceView(aliases, { id: 'a', code: 'c', detailAccountId: 'missing' }).total, 300);
 // EMPTY ⇒ NO_LEDGER
 assert.equal(resolveCustomerBalanceView(buildDetailBalancesResult([], 'CLIENT_INDEXEDDB'), { id: 'C1' }).kind, 'NO_LEDGER');
 console.log('customerBalanceView: PASS');

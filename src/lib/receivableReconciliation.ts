@@ -161,7 +161,11 @@ export function resolveCustomerBalanceView(result: DetailBalancesResult | null |
   if (!result) return { kind: 'LOADING' };
   if (result.status === 'UNAVAILABLE') return { kind: 'UNAVAILABLE', reason: result.reason };
   const keys = customerDetailKeys(account);
-  const found = result.balances.find(b => keys.includes(b.detailKey));
+  let found: DetailBalance | undefined;
+  for (const key of keys) {
+    found = result.balances.find(balance => balance.detailKey === key);
+    if (found) break;
+  }
   if (!found) return { kind: 'NO_LEDGER' };
   const unmappedCount = found.subsidiaries.filter(x => x.subsidiaryCode === null).length;
   return { kind: 'OK', detailKey: found.detailKey, total: found.total.balance, nature: found.total.nature, subsidiaryCount: found.subsidiaries.filter(x => x.subsidiaryCode !== null).length, unmappedCount, incomplete: found.status === 'HAS_UNMAPPED', subsidiaries: found.subsidiaries };

@@ -1,9 +1,10 @@
 import React, { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   TrendingUp, Users, Package, MapPin, Wallet, ShoppingCart, Activity,
   FileText, Target, Truck, RotateCcw, ClipboardList, Banknote, ArrowRight, Flame
 } from 'lucide-react';
-import { AppState, NavigationTab } from '../types';
+import type { Account, AppState, Invoice, NavigationTab, Payment } from '../types';
 import { cn } from '../lib/utils';
 import { formatMoneyCompact, formatCount, formatPercent } from '../lib/format';
 import { ExportMenuButton } from './ui/ExportMenuButton';
@@ -17,16 +18,26 @@ import { NeoDonutChart } from './charts/NeoDonutChart';
 import { NeoGaugeChart } from './charts/NeoGaugeChart';
 import { NeoHeatmapChart } from './charts/NeoHeatmapChart';
 import { useTabParam } from '../hooks/useTabParam';
-import { Select } from './ui';
+import { Button, Select } from './ui';
 import { isReceivableInvoice } from '../services/agingBuckets';
+import { useDataQuery } from '../hooks/useDataProvider';
+import { useDataSyncStatus } from '../services/dataSyncController';
+import { isDemoContext } from '../lib/dataTrust';
+import { reconcileReceivables, resolveCustomerBalanceView } from '../lib/receivableReconciliation';
+import { ReceivablesLifoPanel } from './reports/ReceivablesLifoPanel';
 
 interface ReportsHubProps {
   state: AppState;
   updateState: (updater: (draft: AppState) => AppState | void) => void;
   setActiveTab: (tab: NavigationTab) => void;
+  canViewReceivables: boolean;
+  canViewPayments: boolean;
+  receivableAccounts: Account[];
 }
 
 type DomainId = 'sales' | 'distribution' | 'team' | 'inventory' | 'finance' | 'receivables';
+type ReportInvoice = Invoice & { createdAt?: string; ownerId?: string; createdBy?: string };
+type ReportPayment = Payment & { createdAt?: string; isDeleted?: boolean };
 
 const REPORT_DEFS: {
   id: string;
@@ -67,7 +78,7 @@ const PERIOD_OPTIONS = [
   { value: 'all', label: 'کل سوابق', days: null },
 ];
 
-export function ReportsHub({ state }: ReportsHubProps) {
+export function ReportsHub({ state, canViewReceivables, canViewPayments, receivableAccounts }: ReportsHubProps) {
   const [domain, setDomain] = useTabParam(
     ['sales', 'distribution', 'team', 'inventory', 'finance', 'receivables'] as const,
     'sales',
@@ -94,8 +105,8 @@ export function ReportsHub({ state }: ReportsHubProps) {
   );
 
   const metrics = useMemo(() => {
-    const rawInvoices = (state.invoices || []).filter(inv => isReceivableInvoice(inv));
-    const rawPayments = (state.payments || []).filter(p => !p.deletedAt && !(p as Record<string, unknown>).isDeleted);
+    const rawInvoices: ReportInvoice[] = (state.invoices || []).filter(inv => isReceivableInvoice(inv));
+    const rawPayments = ((state.payments || []) as ReportPayment[]).filter(p => !p.deletedAt && !p.isDeleted);
     const rawQuotes = (state.quotes || []).filter(q => !q.deletedAt && !(q as Record<string, unknown>).isDeleted);
     const users = (state.users || []).filter(u => !u.deletedAt && !(u as Record<string, unknown>).isDeleted && (u.isActive ?? u.active) !== false);
     const rawTasks = (state.tasks || []).filter(t => !t.deletedAt && !(t as Record<string, unknown>).isDeleted);
@@ -107,8 +118,8 @@ export function ReportsHub({ state }: ReportsHubProps) {
       return !cutoffIso || day >= cutoffIso;
     };
 
-    const invoices = rawInvoices.filter(i => matchDate(i.date || (i as Record<string, unknown>).createdAt as string));
-    const payments = rawPayments.filter(p => matchDate(p.date || (p as Record<string, unknown>).createdAt as string));
+    const invoices = rawInvoices.filter(i => matchDate(i.date || i.createdAt));
+    const payments = rawPayments.filter(p => matchDate(p.date || p.createdAt));
     const quotes = rawQuotes.filter(q => matchDate(q.createdAt));
     const tasks = rawTasks.filter(t => matchDate(String(t.createdAt || t.dueDate || '')));
     const activities = rawActivities.filter(a => matchDate(a.dateTime));
@@ -146,7 +157,7 @@ export function ReportsHub({ state }: ReportsHubProps) {
 
     const byOwner = new Map<string, number>();
     invoices.forEach(inv => {
-      const oid = String((inv as Record<string, unknown>).ownerId || (inv as Record<string, unknown>).createdBy || 'UNASSIGNED');
+      const oid = String(inv.ownerId || inv.createdBy || 'UNASSIGNED');
       byOwner.set(oid, (byOwner.get(oid) || 0) + (Number(inv.totalAmount) || 0));
     });
     const leaderboard = Array.from(byOwner.entries())
@@ -163,12 +174,12 @@ export function ReportsHub({ state }: ReportsHubProps) {
     const heatCells: [number, number, number][] = [];
     if (topSellers.length > 0) {
       invoices.forEach(inv => {
-        const d = inv.date || (inv as Record<string, unknown>).createdAt as string;
+        const d = inv.date || inv.createdAt;
         if (!d) return;
         const dt = new Date(d);
         if (Number.isNaN(dt.getTime())) return;
         const dayIdx = (dt.getDay() + 1) % 7;
-        const oid = String((inv as Record<string, unknown>).ownerId || (inv as Record<string, unknown>).createdBy || 'UNASSIGNED');
+        const oid = String(inv.ownerId || inv.createdBy || 'UNASSIGNED');
         const yi = topSellers.findIndex(t => t.id === oid);
         if (yi < 0) return;
         const amt = Number(inv.totalAmount) || 0;
@@ -236,7 +247,7 @@ export function ReportsHub({ state }: ReportsHubProps) {
 
   return (
     <div className="flex flex-col gap-3.5 pb-24 px-2 pt-2 max-w-5xl mx-auto w-full" dir="rtl">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
+      {domain !== 'receivables' && <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-2">
           <Select
             value={period}
@@ -254,10 +265,10 @@ export function ReportsHub({ state }: ReportsHubProps) {
           onExportExcel={() => exportCurrentReport('excel')}
           onExportCsv={() => exportCurrentReport('csv')}
         />
-      </div>
+      </div>}
 
       <div id="reports-domain-selector" data-tour-actions className="flex flex-wrap gap-1.5">
-        {DOMAINS.map((d) => (
+        {DOMAINS.filter(item => item.id !== 'receivables' || canViewReceivables).map((d) => (
           <button
             key={d.id}
             type="button"
@@ -275,7 +286,13 @@ export function ReportsHub({ state }: ReportsHubProps) {
         ))}
       </div>
 
-      {!activeReport && (
+      {domain === 'receivables' && (
+        canViewReceivables
+          ? <LedgerReceivablesReport state={state} accounts={receivableAccounts} canViewPayments={canViewPayments} />
+          : <p role="status" className="text-xs text-text-secondary">مجوز مشاهدهٔ گزارش مطالبات وجود ندارد.</p>
+      )}
+
+      {domain !== 'receivables' && !activeReport && (
         <>
           <div className="rounded-2xl border border-border bg-surface p-4">
             <div className="mb-3"><SectionHeader title={`گزارشات ${domainMeta.label}`} action={domainMeta.icon} /></div>
@@ -332,7 +349,7 @@ export function ReportsHub({ state }: ReportsHubProps) {
         </>
       )}
 
-      {activeReport && activeDef && (
+      {domain !== 'receivables' && activeReport && activeDef && (
         <div className="flex flex-col gap-3">
           <button
             type="button"
@@ -499,6 +516,89 @@ export function ReportsHub({ state }: ReportsHubProps) {
         </div>
       )}
     </div>
+  );
+}
+
+function LedgerReceivablesReport({ state, accounts, canViewPayments }: {
+  state: AppState;
+  accounts: Account[];
+  canViewPayments: boolean;
+}) {
+  const navigate = useNavigate();
+  const { serverVersion } = useDataSyncStatus();
+  const ledger = useDataQuery(provider => provider.getDetailSubsidiaryBalances(), [state.currentUserId, serverVersion]);
+  const allocations = useDataQuery(
+    provider => canViewPayments ? provider.getPaymentAllocations() : Promise.resolve(null),
+    [canViewPayments, state.currentUserId, serverVersion]
+  );
+  const result = ledger.data;
+  const authorizedIds = new Set(accounts.map(account => account.id));
+  const invoices = (state.invoices || [])
+    .map(row => ({ ...row, customerId: row.accountId || row.customerId }))
+    .filter(row => authorizedIds.has(row.customerId));
+  const payments = canViewPayments ? (state.payments || [])
+    .map(row => ({ ...row, customerId: row.accountId || row.customerId }))
+    .filter(row => authorizedIds.has(row.customerId)) : [];
+  const invoiceIds = new Set(invoices.map(row => row.id));
+  const paymentIds = new Set(payments.map(row => row.id));
+  const allocationReview = canViewPayments && !allocations.loading && !allocations.error && allocations.data
+    ? reconcileReceivables(invoices, payments, allocations.data.filter(row =>
+        invoiceIds.has(row.invoiceId) && paymentIds.has(row.paymentId)))
+    : null;
+  const completeAccounts = accounts.filter(account => {
+    const view = resolveCustomerBalanceView(result, account);
+    return view.kind === 'OK' && !view.incomplete;
+  });
+
+  return (
+    <section className="space-y-3" aria-label="گزارش مطالبات دفتری">
+      <SectionHeader title="مطالبات دفتری" />
+      {ledger.loading && <p role="status" className="text-xs text-text-secondary">در حال دریافت ماندهٔ دفتری…</p>}
+      {!ledger.loading && (ledger.error || result?.status === 'UNAVAILABLE') && (
+        <div role="alert" className="flex flex-wrap items-center gap-2 text-xs text-danger">
+          <span>ماندهٔ دفتری در دسترس نیست. {ledger.error?.message || result?.reason}</span>
+          <Button type="button" variant="ghost" onClick={() => void ledger.refetch()}>تلاش مجدد</Button>
+        </div>
+      )}
+      {!ledger.loading && !ledger.error && result?.status !== 'UNAVAILABLE' && (
+        completeAccounts.length ? (
+          <>
+            <p className="text-xs text-text-secondary">
+              {isDemoContext(state) ? 'منبع آزمایشی' : result?.source === 'SQLSERVER_BACKEND' ? 'منبع دفتر کل سرور' : 'منبع دفتر کل محلی'}
+              {' · '}برآورد بر اساس کل سوابق قابل مشاهده
+            </p>
+            {completeAccounts.length < accounts.length && (
+              <p role="status" className="text-xs text-text-secondary">برخی مشتریان ماندهٔ قابل‌محاسبه ندارند و در برآورد لحاظ نشده‌اند.</p>
+            )}
+            <ReceivablesLifoPanel
+              ledgerBalances={result}
+              accounts={completeAccounts}
+              invoices={invoices}
+              allowedDays={state.settings?.orgConfig?.allowedCreditDays}
+              agingBounds={state.settings?.agingBucketBounds}
+              sellerName={key => state.users.find(user => user.id === key)?.name || ''}
+              onOpenCustomer={id => navigate(`/accounts/${encodeURIComponent(id)}`)}
+            />
+          </>
+        ) : <p role="status" className="text-xs text-text-secondary">ماندهٔ دفتری قابل‌محاسبه‌ای برای مشتریان قابل مشاهده وجود ندارد.</p>
+      )}
+      {canViewPayments && (
+        <div className="rounded-xl border border-border bg-surface p-3 text-xs text-text-secondary">
+          <h3 className="mb-1 font-bold text-text-main">بررسی تخصیص دریافت‌ها</h3>
+          {allocations.error ? (
+            <div role="alert" className="flex flex-wrap items-center gap-2">
+              <span>دریافت تخصیص‌ها ناموفق بود. {allocations.error.message}</span>
+              <Button type="button" variant="ghost" onClick={() => void allocations.refetch()}>تلاش مجدد</Button>
+            </div>
+          ) : allocations.loading ? <p role="status">در حال دریافت تخصیص‌ها…</p> : (
+            <p>{allocationReview && allocationReview.issues.length
+              ? `${formatCount(allocationReview.issues.length)} مورد نیازمند بررسی`
+              : 'نتیجهٔ تطبیق قطعی در دسترس نیست.'}</p>
+          )}
+          <p className="mt-1">تخصیص‌های CRM فقط برای بررسی به کار می‌روند. برآورد مطالبات از دفتر کل محاسبه می‌شود.</p>
+        </div>
+      )}
+    </section>
   );
 }
 

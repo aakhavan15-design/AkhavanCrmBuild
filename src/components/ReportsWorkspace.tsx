@@ -62,6 +62,7 @@ export function ReportsWorkspace({ state, updateState, setActiveTab }: ReportsWo
   };
 
   const visibleAccounts = useMemo(() => portAccounts.filter(row => canOn('accounts', 'VIEW', scopeOf(row))), [portAccounts, portUsers, canOn]);
+  const receivableAccounts = visibleAccounts.filter(row => canOn('finance', 'VIEW', scopeOf(row)));
   const visibleQuotes = useMemo(() => portQuotes.filter(row => canOn('quotes', 'VIEW', scopeOf(row))), [portQuotes, portAccounts, portUsers, canOn]);
   const visibleInvoices = useMemo(() => portInvoices.filter(row => canOn('finance', 'VIEW', scopeOf(row))), [portInvoices, portAccounts, portUsers, canOn]);
   const visiblePayments = useMemo(() => portPayments.filter(row => canOn('payments', 'VIEW', scopeOf(row))), [portPayments, portAccounts, portUsers, canOn]);
@@ -118,7 +119,14 @@ export function ReportsWorkspace({ state, updateState, setActiveTab }: ReportsWo
         <span className="font-semibold text-text-main">وضعیت منبع: {DATA_SOURCE_STATUS_LABELS[sourceStatus]}</span>
         <span className="ms-2">{sourceStatusNote(sourceStatus)}</span>
       </div>
-      <ReportsHub state={reportHubState} updateState={updateState} setActiveTab={setActiveTab} />
+      <ReportsHub
+        state={reportHubState}
+        updateState={updateState}
+        setActiveTab={setActiveTab}
+        canViewReceivables={can('finance', 'VIEW')}
+        canViewPayments={can('payments', 'VIEW')}
+        receivableAccounts={receivableAccounts}
+      />
     </main>
   );
 }

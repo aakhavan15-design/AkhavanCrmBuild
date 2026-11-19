@@ -43,6 +43,15 @@ assert.doesNotMatch(p, /state\.paymentAllocations|تطبیق کامل ۱۰۰٪/)
 const f = readFileSync('src/components/FinanceWorkspace.tsx', 'utf8');
 assert.ok(f.includes('buildLedgerAgingInputs'), 'FinanceWorkspace از همان تابع مشترک');
 assert.doesNotMatch(f, /state\.paymentAllocations/);
+const workspace = readFileSync('src/components/ReportsWorkspace.tsx', 'utf8');
+assert.match(workspace, /visibleAccounts\.filter\(row => canOn\('finance', 'VIEW', scopeOf\(row\)\)\)/);
+assert.match(workspace, /<ReportsHub[\s\S]+?receivableAccounts=\{receivableAccounts\}/);
+const hub = readFileSync('src/components/ReportsHub.tsx', 'utf8');
+assert.match(hub, /domain === 'receivables'[\s\S]+?canViewReceivables[\s\S]+?<LedgerReceivablesReport/);
+assert.match(hub, /provider\.getDetailSubsidiaryBalances\(\)/);
+assert.match(hub, /canViewPayments \? provider\.getPaymentAllocations\(\)/);
+assert.match(hub, /view\.kind === 'OK' && !view\.incomplete/);
+assert.match(hub, /<ReceivablesLifoPanel[\s\S]+?accounts=\{completeAccounts\}/);
 const o = readFileSync('src/components/shared/OrderDetailsDrawer.tsx', 'utf8');
 assert.ok(!o.includes('remainingBalance'), 'OrderDetailsDrawer مانده از پیش‌فاکتور/فاکتور نمی‌سازد');
 assert.ok(o.includes('order-remaining-unknown'), 'مانده = نامشخص');
