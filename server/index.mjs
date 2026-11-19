@@ -46,6 +46,22 @@ app.use((req, res, next) => {
 
 const requiredEnv = ['SQLSERVER_HOST', 'SQLSERVER_DATABASE', 'SQLSERVER_USER', 'SQLSERVER_PASSWORD', 'AUTH_TOKEN_SECRET'];
 const missingEnv = requiredEnv.filter((key) => !process.env[key]);
+const isProduction = process.env.NODE_ENV === 'production';
+const allowDemoAuth = !isProduction && missingEnv.length > 0 && process.env.DEMO_AUTH !== 'false';
+const authTokenSecret = process.env.AUTH_TOKEN_SECRET || (allowDemoAuth ? crypto.randomBytes(32) : null);
+const configuredEntityDriver = process.env.ENTITY_STORE_DRIVER || (allowDemoAuth ? 'file' : 'mssql');
+const invalidProductionDriver = isProduction && configuredEntityDriver !== 'mssql';
+
+app.use('/api/v1', (req, res, next) => {
+  if ((!allowDemoAuth && missingEnv.length) || invalidProductionDriver) {
+    return res.status(503).json({
+      error: { code: 'SERVICE_NOT_READY', message: 'پیکربندی سرویس عملیاتی کامل نیست.' },
+      correlationId: req.correlationId
+    });
+  }
+  next();
+});
+
 let poolPromise;
 const pool = () => {
   if (missingEnv.length) throw Object.assign(new Error('Backend configuration is incomplete'), { code: 'CONFIG_MISSING' });
@@ -65,18 +81,17 @@ const pool = () => {
 
 const b64url = (value) => Buffer.from(value).toString('base64url');
 function issueToken(claims) {
+  if (!authTokenSecret) throw Object.assign(new Error('Authentication configuration is incomplete'), { code: 'CONFIG_MISSING' });
   const now = Math.floor(Date.now() / 1000);
   const payload = b64url(JSON.stringify({ ...claims, iat: now, exp: now + 3600, iss: 'akhavan-crm-api', aud: 'akhavan-crm' }));
-  const secret = process.env.AUTH_TOKEN_SECRET || 'akhavan-crm-dev-token-secret-key-32bytes-min';
-  const signature = crypto.createHmac('sha256', secret).update(payload).digest('base64url');
+  const signature = crypto.createHmac('sha256', authTokenSecret).update(payload).digest('base64url');
   return `${payload}.${signature}`;
 }
 function verifyToken(token) {
-  if (!token || token.length > 4096) return null;
+  if (!authTokenSecret || !token || token.length > 4096) return null;
   const [payload, signature, extra] = token.split('.');
   if (!payload || !signature || extra) return null;
-  const secret = process.env.AUTH_TOKEN_SECRET || 'akhavan-crm-dev-token-secret-key-32bytes-min';
-  const expected = crypto.createHmac('sha256', secret).update(payload).digest();
+  const expected = crypto.createHmac('sha256', authTokenSecret).update(payload).digest();
   let actual;
   try { actual = Buffer.from(signature, 'base64url'); } catch { return null; }
   if (actual.length !== expected.length || !crypto.timingSafeEqual(actual, expected)) return null;
@@ -121,7 +136,7 @@ function authenticate(req, res, next) {
   const match = /^Bearer ([^ ]+)$/i.exec(header);
   const claims = match ? verifyToken(match[1]) : null;
   if (!claims) {
-    if (process.env.DEMO_AUTH === 'true' || missingEnv.length || process.env.NODE_ENV !== 'production') {
+    if (allowDemoAuth && !header) {
       req.auth = { userId: 'usr_admin', tenantId: '00000000-0000-0000-0000-000000000001', role: 'ADMIN' };
       return next();
     }
@@ -155,6 +170,7 @@ function requirePermission(permission) {
 app.get('/health/live', (_req, res) => res.json({ status: 'ok', service: 'akhavan-crm-api' }));
 app.get('/health/ready', async (_req, res) => {
   if (missingEnv.length) return res.status(503).json({ status: 'not_ready', reason: 'configuration_missing', missing: missingEnv });
+  if (invalidProductionDriver) return res.status(503).json({ status: 'not_ready', reason: 'sql_driver_required' });
   try { await (await pool()).request().query('SELECT 1 AS ready'); return res.json({ status: 'ready', database: 'connected' }); }
   catch { return res.status(503).json({ status: 'not_ready', database: 'unavailable' }); }
 });
@@ -175,10 +191,10 @@ app.post('/api/v1/auth/login', async (req, res, next) => {
       'r.kamali': { id: 'user-finance-1', displayName: 'رضا کمالی', email: 'kamali@akhavan.ir', phone: '09123333333', roleId: 'role-finance', roleCode: 'FINANCE', roleName: 'مدیر مالی', visibilityScope: 'BRANCH' }
     };
     const normalizedUser = String(userName).trim().toLowerCase();
-    const matched = process.env.DEMO_AUTH === 'false' ? undefined : demoUsers[normalizedUser];   // DEMO_AUTH=false disables demo sign-in once a real backend exists
+    const matched = demoUsers[normalizedUser];
     const validPasswords = ['123456', 'akhavan123', 'admin123', '123', 'password'];
 
-    if (missingEnv.length) {
+    if (allowDemoAuth) {
       if (!matched || !validPasswords.includes(password)) {
         return res.status(401).json({ error: { code: 'INVALID_CREDENTIALS', message: 'نام کاربری یا گذرواژه صحیح نیست.' }, correlationId: req.correlationId });
       }
@@ -432,7 +448,7 @@ app.get('/api/v1/accounts', typedAccountsOnly, authenticate, requirePermission('
 // All UI collections persist through sync.EntityStore (migration 023). Dev without SQL Server: file driver (.data/).
 const stateRegistry = JSON.parse(fs.readFileSync(new URL('../src/config/stateCollections.json', import.meta.url), 'utf8'));
 async function userHasPermission(claims, permission) {
-  if (missingEnv.length) return process.env.NODE_ENV !== 'production';   // demo mode only: every demo user holds all permissions
+  if (allowDemoAuth) return true;
   return withTenantContext(claims, async (transaction) => {
     const result = await new sql.Request(transaction)
       .input('tenantId', sql.UniqueIdentifier, claims.tenantId)
@@ -447,7 +463,7 @@ async function userHasPermission(claims, permission) {
     return result.recordset.length > 0;
   });
 }
-const entityDriverKind = process.env.ENTITY_STORE_DRIVER || (missingEnv.length ? 'file' : 'mssql');
+const entityDriverKind = invalidProductionDriver ? 'mssql' : configuredEntityDriver;
 const entityDriver = entityDriverKind === 'mssql'
   ? new MssqlEntityDriver({ sql, run: withTenantContext })
   : entityDriverKind === 'memory'
@@ -456,7 +472,7 @@ const entityDriver = entityDriverKind === 'mssql'
 const entities = createEntityService({ driver: entityDriver, registry: stateRegistry, hasPermission: userHasPermission });
 
 async function autoSeedEntitiesIfEmpty() {
-  if (process.env.NODE_ENV === 'test') return;
+  if (process.env.NODE_ENV === 'test' || !allowDemoAuth || entityDriverKind === 'mssql') return;
   try {
     const auth1 = { userId: 'usr_admin', tenantId: '00000000-0000-0000-0000-000000000001', role: 'ADMIN' };
     const auth2 = { userId: 'user-admin-1', tenantId: 'tenant-akhavan-primary', role: 'ADMIN' };
@@ -475,7 +491,7 @@ async function autoSeedEntitiesIfEmpty() {
 autoSeedEntitiesIfEmpty();
 
 const guardEntityDriver = (_req, res, next) => {
-  // If SQL Server is not connected, fallback file/memory entity driver is utilized gracefully.
+  // Production storage configuration has already been checked before route dispatch.
   next();
 };
 const wrap = (handler) => async (req, res, next) => { try { await handler(req, res); } catch (error) { next(error); } };

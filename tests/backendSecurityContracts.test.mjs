@@ -12,6 +12,11 @@ const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'))
 assert.ok(server.includes("app.get('/health/live'"), 'liveness endpoint exists');
 assert.ok(server.includes("app.get('/health/ready'"), 'readiness endpoint exists');
 assert.ok(server.includes("app.post('/api/v1/auth/login'"), 'login endpoint exists');
+assert.match(server, /allowDemoAuth = !isProduction && missingEnv\.length > 0 && process\.env\.DEMO_AUTH !== 'false'/);
+assert.match(server, /app\.use\('\/api\/v1',[\s\S]*?invalidProductionDriver[\s\S]*?SERVICE_NOT_READY/);
+assert.match(server, /AUTH_TOKEN_SECRET \|\| \(allowDemoAuth \? crypto\.randomBytes\(32\) : null\)/);
+assert.match(server, /if \(allowDemoAuth && !header\)/);
+assert.match(server, /autoSeedEntitiesIfEmpty\(\)[\s\S]*?!allowDemoAuth \|\| entityDriverKind === 'mssql'/);
 assert.ok(server.includes('crypto.timingSafeEqual'), 'constant-time comparisons are used');
 assert.ok(server.includes('crypto.scryptSync'), 'password verifier uses scrypt');
 assert.ok(server.includes('function requirePermission'), 'server-side permission gate exists');
