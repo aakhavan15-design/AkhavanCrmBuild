@@ -28,6 +28,7 @@ import {
 import { withViewer } from '../lib/financialAccess';
 import { queryJournalLines, buildDetailBalancesResult, type JournalLineFilter, type JournalLinePage, type DetailBalancesResult, type LedgerResultStatus } from '../lib/receivableReconciliation';
 import { journalQueryParams } from '../lib/ledgerQueryParams.mjs';
+import { readCustomerProposalReceipt, type CustomerProposalReceipt } from '../lib/customerProposal';
 
 export interface PaginationParams {
   page?: number;
@@ -72,6 +73,7 @@ export interface DataProvider {
   getAccounts(filter?: any, pagination?: PaginationParams): Promise<PaginatedResult<Account>>;
   getAccountById(id: string): Promise<Account | null>;
   createAccount(account: Partial<Account>, idempotencyKey?: string): Promise<Account>;
+  submitCustomerProposal(draftAccountId: string): Promise<CustomerProposalReceipt>;
   updateAccount(id: string, patch: Partial<Account>): Promise<Account>;
   
   // Quotes & CPQ
@@ -208,6 +210,10 @@ export class ClientStorageDataProvider implements DataProvider {
       d.accounts.unshift(newAccount);
     });
     return newAccount;
+  }
+
+  async submitCustomerProposal(): Promise<CustomerProposalReceipt> {
+    throw new Error('ثبت پیشنهاد مشتری به اتصال سرور نیاز دارد.');
   }
 
   async updateAccount(id: string, patch: Partial<Account>): Promise<Account> {
@@ -563,6 +569,16 @@ export class HttpBackendDataProvider implements DataProvider {
       headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {},
       body: JSON.stringify(account)
     });
+  }
+
+  async submitCustomerProposal(draftAccountId: string): Promise<CustomerProposalReceipt> {
+    const response = await this.request<Parameters<typeof readCustomerProposalReceipt>[0]>('/accounts/proposals', {
+      method: 'POST',
+      body: JSON.stringify({ draftAccountId })
+    });
+    const receipt = readCustomerProposalReceipt(response);
+    if (!receipt) throw new Error('سرور رسید معتبر ثبت پیشنهاد را برنگرداند.');
+    return receipt;
   }
 
   async updateAccount(id: string, patch: Partial<Account>): Promise<Account> {

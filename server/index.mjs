@@ -321,15 +321,16 @@ const sha256 = (value) => crypto.createHash('sha256').update(value).digest('hex'
 
 const accountsSource = process.env.ACCOUNTS_SOURCE === 'typed' ? 'typed' : 'entity';   // entity = single source of truth shared with /state/*
 const typedAccountsOnly = (_req, _res, next) => (accountsSource === 'typed' ? next() : next('route'));
-app.post('/api/v1/accounts', typedAccountsOnly, authenticate, requirePermission('accounts.CREATE'), async (req, res, next) => {
+async function submitCustomerProposal(req, res, next) {
   try {
-    const body = req.body || {};
+    const draft = req.customerProposalDraft;
+    const body = draft?.account || req.body || {};
     const name = typeof body.name === 'string' ? body.name.trim() : '';
     const accountCode = typeof body.accountCode === 'string' ? body.accountCode.trim() : null;
     const phone = typeof body.phone === 'string' ? body.phone.trim() : null;
     const email = typeof body.email === 'string' ? body.email.trim() : null;
-    const ownerUserId = body.ownerUserId == null || body.ownerUserId === '' ? null : body.ownerUserId;
-    const idempotencyKey = req.get('idempotency-key') || '';
+    const ownerUserId = draft ? req.auth.userId : (body.ownerUserId || null);
+    const idempotencyKey = draft ? `customer-proposal:${sha256(draft.id)}` : (req.get('idempotency-key') || '');
     if (!name || name.length > 250 || (accountCode && accountCode.length > 80) ||
         (phone && phone.length > 40) || (email && (email.length > 320 || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email))) ||
         (ownerUserId && !isUuid(ownerUserId))) {
@@ -338,7 +339,7 @@ app.post('/api/v1/accounts', typedAccountsOnly, authenticate, requirePermission(
     if (!/^[A-Za-z0-9._:-]{8,128}$/.test(idempotencyKey)) {
       return res.status(400).json({ error: { code: 'IDEMPOTENCY_KEY_REQUIRED', message: 'برای ثبت امن درخواست، کلید تکرارناپذیر معتبر ارسال کنید.' }, correlationId: req.correlationId });
     }
-    const normalized = { name, accountCode: accountCode || null, phone: phone || null, email: email || null, ownerUserId: ownerUserId || null };
+    const normalized = { name, accountCode: draft ? null : (accountCode || null), phone: phone || null, email: email || null, ownerUserId: ownerUserId || null };
     const requestHash = sha256(JSON.stringify(normalized));
     const result = await withTenantContext(req.auth, async (transaction) => {
       const request = new sql.Request(transaction);
@@ -364,6 +365,7 @@ app.post('/api/v1/accounts', typedAccountsOnly, authenticate, requirePermission(
         eventId,
         tenantId: req.auth.tenantId,
         proposalId,
+        ...(draft ? { draftAccountId: draft.id } : {}),
         proposedCustomer: normalized,
         operation: 'CUSTOMER_CREATE_PROPOSAL',
         approvalRequired: true,
@@ -410,6 +412,33 @@ app.post('/api/v1/accounts', typedAccountsOnly, authenticate, requirePermission(
     }
     next(error);
   }
+}
+app.post('/api/v1/accounts', typedAccountsOnly, authenticate, requirePermission('accounts.CREATE'), submitCustomerProposal);
+app.post('/api/v1/accounts/proposals', authenticate, requirePermission('accounts.CREATE'), async (req, res, next) => {
+  try {
+    const draftId = req.body?.draftAccountId;
+    if (typeof draftId !== 'string' || !draftId.trim() || draftId.length > 200) {
+      return res.status(400).json({ error: { code: 'INVALID_DRAFT_ID', message: 'شناسهٔ پیش‌نویس معتبر نیست.' }, correlationId: req.correlationId });
+    }
+    const draft = await withTenantContext(req.auth, async transaction => {
+      const result = await new sql.Request(transaction)
+        .input('tenantId', sql.UniqueIdentifier, req.auth.tenantId)
+        .input('draftId', sql.NVarChar(200), draftId)
+        .input('ownerId', sql.UniqueIdentifier, req.auth.userId)
+        .query(`SELECT JsonDoc FROM sync.EntityStore
+          WHERE TenantId=@tenantId AND CollectionName=N'accounts' AND EntityId=@draftId
+            AND IsDeleted=0 AND IsDemo=0
+            AND TRY_CONVERT(uniqueidentifier, JSON_VALUE(JsonDoc, '$.ownerId'))=@ownerId
+            AND JSON_VALUE(JsonDoc, '$.origin')=N'CRM_LOCAL'
+            AND JSON_VALUE(JsonDoc, '$.erpProposalStatus') IN (N'LOCAL_DRAFT', N'PENDING_ERP_REVIEW')`);
+      return result.recordset[0] ? JSON.parse(result.recordset[0].JsonDoc) : null;
+    });
+    if (!draft) {
+      return res.status(409).json({ error: { code: 'PROPOSAL_DRAFT_NOT_READY', message: 'پیش‌نویس قابل ارسال نیست. وضعیت مالکیت و همگام‌سازی را بررسی کنید.' }, correlationId: req.correlationId });
+    }
+    req.customerProposalDraft = { id: draftId, account: draft };
+    return submitCustomerProposal(req, res, next);
+  } catch (error) { next(error); }
 });
 
 app.get('/api/v1/accounts', typedAccountsOnly, authenticate, requirePermission('accounts.VIEW'), async (req, res, next) => {

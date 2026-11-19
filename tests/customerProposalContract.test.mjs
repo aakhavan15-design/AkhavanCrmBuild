@@ -2,7 +2,7 @@
 import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
 import { matchExistingCustomers } from '../src/lib/enterprise.ts';
-import { proposalStatusOf, buildCustomerProposalRequest, customerProposalIdempotencyKey, CUSTOMER_PROPOSAL_STATUS_LABEL } from '../src/lib/customerProposal.ts';
+import { proposalStatusOf, buildCustomerProposalRequest, customerProposalIdempotencyKey, readCustomerProposalReceipt, CUSTOMER_PROPOSAL_STATUS_LABEL } from '../src/lib/customerProposal.ts';
 
 const accounts = [
   { id: 'a1', name: 'شرکت كاشی ایران', nationalCode: '۱۲۳۴۵۶۷۸۹۰', phone: '09121234567', code: 'C-100', origin: 'ERP' },
@@ -27,10 +27,15 @@ assert.equal(proposalStatusOf({ id: 'n', origin: 'CRM_LOCAL', isLocalDraft: true
 assert.equal(proposalStatusOf({ id: 'n', origin: 'CRM_LOCAL', isLocalDraft: true, erpProposalStatus: 'PENDING_ERP_REVIEW' }), 'PENDING_ERP_REVIEW');
 assert.equal(proposalStatusOf({ id: 'e', code: 'C-1', origin: 'ERP' }), 'ERP_CONFIRMED');
 assert.equal(proposalStatusOf({ id: 'u' }), null);
+assert.equal(proposalStatusOf({ id: 'u', code: 'LOCAL-CODE' }), null);
 assert.ok(CUSTOMER_PROPOSAL_STATUS_LABEL.LOCAL_DRAFT.includes('ERP'));
 
 // بدنهٔ پیشنهاد مطابق قرارداد سرور
 const uuid = '3f2504e0-4f89-41d3-9a0c-0305e82c3301';
+const receipt = { data: { proposalId: uuid }, operation: { eventId: uuid, status: 'WAITING_FOR_ERP_REVIEW', canonicalRecordCreated: false } };
+assert.deepEqual(readCustomerProposalReceipt(receipt), { proposalId: uuid, eventId: uuid });
+assert.equal(readCustomerProposalReceipt({ ...receipt, operation: { ...receipt.operation, canonicalRecordCreated: true } }), null);
+assert.equal(readCustomerProposalReceipt({ ...receipt, operation: { ...receipt.operation, eventId: 'pending' } }), null);
 const r = buildCustomerProposalRequest({ id: 'abc123xyz', name: ' مشتری ', phone: '0912', email: 'bad', ownerId: uuid });
 assert.deepEqual(r.body, { name: 'مشتری', accountCode: null, phone: '0912', email: null, ownerUserId: uuid });
 assert.equal(buildCustomerProposalRequest({ id: 'x', name: '  ' }), null);
@@ -47,4 +52,9 @@ assert.ok(!/با موفقیت در سامانه ایجاد شد/.test(ui), 'اد
 assert.ok(/proposalStatusOf\(a\)/.test(ui), 'نشان پیش‌نویس در فهرست');
 const server = readFileSync('server/index.mjs', 'utf8');
 assert.ok(server.includes("'/api/v1/accounts'") && server.includes('canonicalRecordCreated: false') && /\{8,128\}/.test(server), 'قرارداد سرور');
+assert.match(server, /app\.post\('\/api\/v1\/accounts\/proposals', authenticate, requirePermission\('accounts\.CREATE'\)/);
+assert.match(server, /TenantId=@tenantId AND CollectionName=N'accounts' AND EntityId=@draftId[\s\S]+?JSON_VALUE\(JsonDoc, '\$\.ownerId'\)/);
+const record = readFileSync('src/components/Customer360.tsx', 'utf8');
+assert.match(record, /submitCustomerProposal\(customer\.id\)[\s\S]+?erpProposalStatus = 'PENDING_ERP_REVIEW'/);
+assert.match(record, /proposalStatus === 'LOCAL_DRAFT' && customer\.ownerId === state\.currentUserId/);
 console.log('customerProposalContract: PASS');

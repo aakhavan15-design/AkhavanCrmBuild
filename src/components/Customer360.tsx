@@ -24,6 +24,9 @@ import { calculateCustomerRiskScore, calculateDaysOverdue } from '../services/co
 import { DynamicFormRenderer } from './shared/DynamicFormRenderer';
 import { RecordTaskAction } from './shared/RecordTaskAction';
 import { getPersianStatusLabel } from '../lib/labels';
+import { CUSTOMER_PROPOSAL_STATUS_LABEL, proposalStatusOf } from '../lib/customerProposal';
+import { getActiveDataProvider } from '../services/dataProvider';
+import { isDemoContext } from '../lib/dataTrust';
 import {
   ACTIVITY_FORM_SCHEMA,
   NOTE_FORM_SCHEMA,
@@ -65,6 +68,8 @@ export function Customer360({ customer, state, onBack, updateState, setActiveTab
   const [contactModal, setContactModal] = useState<null | { initial?: Record<string, unknown> }>(null);
   const [isActivityModalOpen, setIsActivityModalOpen] = useState(false);
   const [isNoteModalOpen, setIsNoteModalOpen] = useState(false);
+  const [isSubmittingProposal, setIsSubmittingProposal] = useState(false);
+  const [proposalError, setProposalError] = useState<string | null>(null);
 
   const rbac = useMemo(() => new RBACService(state), [state]);
   const customerScope = {
@@ -85,6 +90,29 @@ export function Customer360({ customer, state, onBack, updateState, setActiveTab
 
   const canEditAccount = rbac.canActOnRecord('accounts', 'EDIT', customerScope);
   const canViewFinance = rbac.canActOnRecord('finance', 'VIEW', customerScope);
+  const proposalStatus = proposalStatusOf(customer);
+  const canSubmitProposal = proposalStatus === 'LOCAL_DRAFT' && customer.ownerId === state.currentUserId
+    && !isDemoContext(state) && rbac.canActOnRecord('accounts', 'CREATE', customerScope);
+
+  const submitProposal = async () => {
+    if (!canSubmitProposal || isSubmittingProposal) return;
+    setIsSubmittingProposal(true);
+    setProposalError(null);
+    try {
+      const receipt = await getActiveDataProvider().submitCustomerProposal(customer.id);
+      updateState(draft => {
+        const account = draft.accounts?.find(row => row.id === customer.id);
+        if (!account || proposalStatusOf(account) !== 'LOCAL_DRAFT') return;
+        account.erpProposalStatus = 'PENDING_ERP_REVIEW';
+        account.erpProposalId = receipt.proposalId;
+        account.erpProposalEventId = receipt.eventId;
+      });
+    } catch (error) {
+      setProposalError(error instanceof Error ? error.message : 'ثبت پیشنهاد امکان‌پذیر نبود.');
+    } finally {
+      setIsSubmittingProposal(false);
+    }
+  };
   const canCreateActivity = rbac.canActOnRecord('activities', 'CREATE', customerScope);
   const canCreateTask = rbac.canActOnRecord('tasks', 'CREATE', customerScope);
   const canCreateQuote = rbac.canActOnRecord('quotes', 'CREATE', customerScope);
@@ -391,6 +419,17 @@ export function Customer360({ customer, state, onBack, updateState, setActiveTab
               </div>
             </div>
           </div>
+          {proposalStatus && proposalStatus !== 'ERP_CONFIRMED' && (
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3 text-xs text-text-secondary">
+              <span role="status">{CUSTOMER_PROPOSAL_STATUS_LABEL[proposalStatus]}</span>
+              {canSubmitProposal && (
+                <Button type="button" size="sm" variant="outline" disabled={isSubmittingProposal} onClick={() => void submitProposal()}>
+                  {isSubmittingProposal ? 'در حال ثبت پیشنهاد…' : 'ثبت پیشنهاد در صف ERP'}
+                </Button>
+              )}
+              {proposalError && <p className="w-full text-danger" role="alert">{proposalError}</p>}
+            </div>
+          )}
           {customer.tags?.length ? (
             <div className="mt-3 flex flex-wrap gap-1.5 border-t border-border/60 pt-2.5">
               {customer.tags.slice(0, 4).map(tag => (

@@ -5,10 +5,11 @@
  * کد رسمی/تفصیلی فقط پس از تأیید ERP می‌آید؛ CRM کد اختراع نمی‌کند.
  */
 export type CustomerProposalStatus = 'LOCAL_DRAFT' | 'PENDING_ERP_REVIEW' | 'ERP_CONFIRMED';
+export interface CustomerProposalReceipt { proposalId: string; eventId: string }
 
 export const CUSTOMER_PROPOSAL_STATUS_LABEL: Record<CustomerProposalStatus, string> = {
   LOCAL_DRAFT: 'پیش‌نویس محلی — هنوز به ERP ارسال نشده',
-  PENDING_ERP_REVIEW: 'در انتظار بررسی ERP',
+  PENDING_ERP_REVIEW: 'در صف ارسال برای بررسی ERP',
   ERP_CONFIRMED: 'تأییدشده در ERP',
 };
 
@@ -25,8 +26,20 @@ export function proposalStatusOf(account: ProposalSource): CustomerProposalStatu
     if (account.erpProposalStatus === 'PENDING_ERP_REVIEW') return 'PENDING_ERP_REVIEW';
     return 'LOCAL_DRAFT';
   }
-  if (account.code && account.origin !== 'CRM_LOCAL') return 'ERP_CONFIRMED';
+  if (account.code && account.origin === 'ERP') return 'ERP_CONFIRMED';
   return null;
+}
+
+export function readCustomerProposalReceipt(response: {
+  data?: { proposalId?: unknown };
+  operation?: { eventId?: unknown; status?: unknown; canonicalRecordCreated?: unknown };
+} | null): CustomerProposalReceipt | null {
+  const proposalId = response?.data?.proposalId;
+  const operation = response?.operation;
+  if (typeof proposalId !== 'string' || !UUID.test(proposalId) ||
+      typeof operation?.eventId !== 'string' || !UUID.test(operation.eventId) ||
+      operation.status !== 'WAITING_FOR_ERP_REVIEW' || operation.canonicalRecordCreated !== false) return null;
+  return { proposalId, eventId: operation.eventId };
 }
 
 /** کلید تکرارناپذیر قطعی (همان رکورد = همان کلید) مطابق الگوی سرور: ^[A-Za-z0-9._:-]{8,128}$ */
