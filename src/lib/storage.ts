@@ -8,7 +8,9 @@ import { createAppStorePort, type DataPort } from './dataPorts';
 import { getOfflineQueue, retryFailedOfflineOperations } from './offline';
 
 const STORAGE_VERSION = 19;
-const INCLUDE_DEMO_SEED = import.meta.env?.VITE_ENABLE_DEMO_DATA !== 'false';
+const demoSeedPreference = import.meta.env?.VITE_ENABLE_DEMO_DATA;
+const INCLUDE_DEMO_SEED = demoSeedPreference === 'true'
+  || (demoSeedPreference !== 'false' && import.meta.env?.DEV === true);
 const STORAGE_NAME = 'akhavan_app_state';
 const SYNC_CHANNEL_NAME = 'akhavan_state_sync_channel';
 

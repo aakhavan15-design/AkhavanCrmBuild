@@ -1,13 +1,12 @@
 @import "tailwindcss";
 @import "./theme/colors.css";
 
-/* Fonts: Vazirmatn (Persian) & Urbanist (Latin / numbers).
-   Urbanist falls back silently if the file is absent. */
+/* Vazirmatn is bundled. Use Urbanist for Latin/numerals when available locally. */
 @font-face { font-family: "Vazirmatn"; src: url("/fonts/webfonts/Vazirmatn-UI-Regular.woff2") format("woff2"); font-weight: 400; font-style: normal; font-display: swap; }
 @font-face { font-family: "Vazirmatn"; src: url("/fonts/webfonts/Vazirmatn-UI-Medium.woff2") format("woff2"); font-weight: 500; font-style: normal; font-display: swap; }
 @font-face { font-family: "Vazirmatn"; src: url("/fonts/webfonts/Vazirmatn-UI-SemiBold.woff2") format("woff2"); font-weight: 600; font-style: normal; font-display: swap; }
 @font-face { font-family: "Vazirmatn"; src: url("/fonts/webfonts/Vazirmatn-UI-Bold.woff2") format("woff2"); font-weight: 700; font-style: normal; font-display: swap; }
-@font-face { font-family: "Urbanist"; src: local("Urbanist"), url("/fonts/webfonts/Urbanist-Variable.woff2") format("woff2"); font-weight: 100 900; font-style: normal; font-display: swap; }
+@font-face { font-family: "Urbanist"; src: local("Urbanist"); font-weight: 100 900; font-style: normal; font-display: swap; }
 
 /* dark: variant follows the app's theme switch (data-theme or .dark) */
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *, .dark, .dark *));
