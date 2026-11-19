@@ -21,7 +21,8 @@ function readStore() {
   ensureDir();
   if (!fs.existsSync(STORE_PATH)) return { subscriptions: [] };
   try {
-    return JSON.parse(fs.readFileSync(STORE_PATH, 'utf8'));
+    const parsed = JSON.parse(fs.readFileSync(STORE_PATH, 'utf8'));
+    return Array.isArray(parsed?.subscriptions) ? parsed : { subscriptions: [] };
   } catch {
     return { subscriptions: [] };
   }
@@ -29,7 +30,9 @@ function readStore() {
 
 function writeStore(store) {
   ensureDir();
-  fs.writeFileSync(STORE_PATH, JSON.stringify(store, null, 2), 'utf8');
+  const tempPath = `${STORE_PATH}.${crypto.randomUUID()}.tmp`;
+  fs.writeFileSync(tempPath, JSON.stringify(store, null, 2), { encoding: 'utf8', mode: 0o600 });
+  fs.renameSync(tempPath, STORE_PATH);
 }
 
 let vapid = {
@@ -38,16 +41,8 @@ let vapid = {
   subject: process.env.VAPID_SUBJECT || 'mailto:crm-admin@localhost',
 };
 
-/** Generate VAPID-like key pair for dev if none configured (not for production identity stability) */
-function ensureVapid() {
-  if (vapid.publicKey && vapid.privateKey) return vapid;
-  // Prefer web-push generate if available at runtime
-  return vapid;
-}
-
 export function getVapidPublicKey() {
-  ensureVapid();
-  return vapid.publicKey || null;
+  return vapid.publicKey && vapid.privateKey ? vapid.publicKey : null;
 }
 
 export function setVapidKeys(publicKey, privateKey, subject) {
@@ -58,15 +53,36 @@ export function setVapidKeys(publicKey, privateKey, subject) {
   };
 }
 
-export function saveSubscription(subscription, userId) {
-  if (!subscription?.endpoint) return false;
+function browserPushEndpoint(raw) {
+  if (typeof raw !== 'string' || raw.length > 2048) return null;
+  let endpoint;
+  try { endpoint = new URL(raw); } catch { return null; }
+  const host = endpoint.hostname;
+  const supported = host === 'fcm.googleapis.com' || host === 'updates.push.services.mozilla.com'
+    || host === 'web.push.apple.com' || host.endsWith('.web.push.apple.com')
+    || host.endsWith('.notify.windows.com');
+  return supported && endpoint.protocol === 'https:' && !endpoint.port && !endpoint.username && !endpoint.password && !endpoint.hash
+    ? endpoint.href : null;
+}
+
+const sameSubscriber = (row, identity) => row.userId === identity?.userId && row.tenantId === identity?.tenantId;
+
+export function saveSubscription(subscription, identity) {
+  const endpoint = browserPushEndpoint(subscription?.endpoint);
+  const { auth, p256dh } = subscription?.keys || {};
+  if (!endpoint || !identity?.userId || !identity?.tenantId
+      || typeof auth !== 'string' || !/^[A-Za-z0-9_-]{20,32}$/.test(auth)
+      || typeof p256dh !== 'string' || !/^[A-Za-z0-9_-]{84,100}$/.test(p256dh)) return false;
   const store = readStore();
-  const idx = store.subscriptions.findIndex((s) => s.endpoint === subscription.endpoint);
+  const idx = store.subscriptions.findIndex(s => s.endpoint === endpoint);
+  const previous = store.subscriptions[idx];
+  if (previous && !sameSubscriber(previous, identity) && (previous.keys?.auth !== auth || previous.keys?.p256dh !== p256dh)) return false;
   const row = {
-    endpoint: subscription.endpoint,
-    keys: subscription.keys || {},
+    endpoint,
+    keys: { auth, p256dh },
     expirationTime: subscription.expirationTime ?? null,
-    userId: userId || null,
+    userId: identity.userId,
+    tenantId: identity.tenantId,
     updatedAt: new Date().toISOString(),
   };
   if (idx >= 0) store.subscriptions[idx] = row;
@@ -75,25 +91,31 @@ export function saveSubscription(subscription, userId) {
   return true;
 }
 
-export function removeSubscription(endpoint) {
+export function removeSubscription(rawEndpoint, identity) {
+  const endpoint = browserPushEndpoint(rawEndpoint);
+  if (!endpoint || !identity?.userId || !identity?.tenantId) return false;
   const store = readStore();
-  store.subscriptions = store.subscriptions.filter((s) => s.endpoint !== endpoint);
+  const index = store.subscriptions.findIndex(s => s.endpoint === endpoint && sameSubscriber(s, identity));
+  if (index < 0) return false;
+  store.subscriptions.splice(index, 1);
   writeStore(store);
   return true;
 }
 
-export function listSubscriptions(userId) {
-  const store = readStore();
-  if (!userId) return store.subscriptions;
-  return store.subscriptions.filter((s) => !s.userId || s.userId === userId);
+export function listSubscriptions(identity) {
+  if (!identity?.userId || !identity?.tenantId) return [];
+  return readStore().subscriptions.filter(s => sameSubscriber(s, identity) && browserPushEndpoint(s.endpoint));
 }
 
 /**
  * Send push to all matching subscriptions.
  * Uses `web-push` package when installed; otherwise returns { sent: 0, reason: 'no-web-push' }.
  */
-export async function sendPushToUser(userId, payload) {
-  const subs = listSubscriptions(userId);
+export async function sendPushToUser(identity, payload) {
+  return deliverPush(listSubscriptions(identity), payload);
+}
+
+async function deliverPush(subs, payload) {
   if (!subs.length) return { sent: 0, reason: 'no-subscribers' };
 
   let webpush;
@@ -104,6 +126,7 @@ export async function sendPushToUser(userId, payload) {
   }
 
   if (!vapid.publicKey || !vapid.privateKey) {
+    if (process.env.NODE_ENV === 'production') return { sent: 0, reason: 'no-vapid' };
     try {
       const keys = webpush.generateVAPIDKeys();
       vapid.publicKey = keys.publicKey;
@@ -132,15 +155,16 @@ export async function sendPushToUser(userId, payload) {
     } catch (e) {
       errors.push(String(e?.message || e));
       if (e?.statusCode === 404 || e?.statusCode === 410) {
-        removeSubscription(sub.endpoint);
+        removeSubscription(sub.endpoint, sub);
       }
     }
   }
   return { sent, errors, subscribers: subs.length };
 }
 
-export async function sendPushBroadcast(payload) {
-  return sendPushToUser(null, payload);
+export async function sendPushBroadcast(payload, tenantId) {
+  const subscribers = tenantId ? readStore().subscriptions.filter(s => s.tenantId === tenantId && s.userId && browserPushEndpoint(s.endpoint)) : [];
+  return deliverPush(subscribers, payload);
 }
 
 /** Init: try load web-push and ensure keys */
@@ -148,6 +172,7 @@ export async function initPushModule() {
   try {
     const webpush = (await import('web-push')).default;
     if (!vapid.publicKey || !vapid.privateKey) {
+      if (process.env.NODE_ENV === 'production') return { ok: false, reason: 'no-vapid' };
       const keys = webpush.generateVAPIDKeys();
       vapid.publicKey = process.env.VAPID_PUBLIC_KEY || keys.publicKey;
       vapid.privateKey = process.env.VAPID_PRIVATE_KEY || keys.privateKey;

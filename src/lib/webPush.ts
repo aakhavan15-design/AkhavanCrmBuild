@@ -2,6 +2,8 @@
  * webPush — client subscription + local/system notification bridge (2026)
  * Full Web Push when VAPID + server available; local SW showNotification as fallback.
  */
+import { AuthService } from '../services/AuthService';
+
 const STORAGE_KEY = 'akhavan-push-subscription-json';
 const ENABLED_KEY = 'akhavan-push-enabled';
 
@@ -50,7 +52,7 @@ async function fetchVapidPublicKey(): Promise<string | null> {
   }
 }
 
-export async function subscribeWebPush(userId?: string): Promise<{ ok: boolean; reason?: string; subscription?: PushSubscription }> {
+export async function subscribeWebPush(): Promise<{ ok: boolean; reason?: string; subscription?: PushSubscription }> {
   if (!isPushSupported()) return { ok: false, reason: 'unsupported' };
   const permission = await Notification.requestPermission();
   if (permission !== 'granted') return { ok: false, reason: 'denied' };
@@ -91,15 +93,18 @@ export async function subscribeWebPush(userId?: string): Promise<{ ok: boolean; 
     /* ignore */
   }
 
+  const token = AuthService.getAccessToken();
+  if (!token) return { ok: true, reason: 'local-only', subscription: sub };
   try {
-    await fetch('/api/v1/push/subscribe', {
+    const response = await fetch('/api/v1/push/subscribe', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       credentials: 'same-origin',
-      body: JSON.stringify({ subscription: sub.toJSON(), userId: userId || null }),
+      body: JSON.stringify({ subscription: sub.toJSON() }),
     });
+    if (!response.ok) return { ok: true, reason: 'local-only', subscription: sub };
   } catch {
-    /* server may be offline — subscription still valid locally for next sync */
+    return { ok: true, reason: 'local-only', subscription: sub };
   }
 
   return { ok: true, subscription: sub };
@@ -110,15 +115,18 @@ export async function unsubscribeWebPush(): Promise<void> {
     const reg = await navigator.serviceWorker.getRegistration();
     const sub = await reg?.pushManager.getSubscription();
     if (sub) {
-      try {
-        await fetch('/api/v1/push/unsubscribe', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'same-origin',
-          body: JSON.stringify({ endpoint: sub.endpoint }),
-        });
-      } catch {
-        /* ignore */
+      const token = AuthService.getAccessToken();
+      if (token) {
+        try {
+          await fetch('/api/v1/push/unsubscribe', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            credentials: 'same-origin',
+            body: JSON.stringify({ endpoint: sub.endpoint }),
+          });
+        } catch {
+          /* The browser can still remove its local subscription. */
+        }
       }
       await sub.unsubscribe();
     }
@@ -187,8 +195,8 @@ export function bridgeInAppToSystem(n: {
     return;
   }
   void showSystemNotification({
-    title: n.title || 'اخوان سامانه',
-    body: n.message || n.body || '',
+    title: 'اعلان جدید اخوان',
+    body: 'برای مشاهده وارد سامانه شوید.',
     url: n.linkTab ? `/?tab=${n.linkTab}` : '/',
     tag: n.id,
     id: n.id,

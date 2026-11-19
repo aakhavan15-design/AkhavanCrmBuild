@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 import fs from 'node:fs';
 import { createEntityService, FileEntityDriver, MssqlEntityDriver, MemoryEntityDriver } from './entityStore.mjs';
 import { buildReportStatus } from './reportStatus.mjs';
-import { getVapidPublicKey, saveSubscription, removeSubscription, sendPushToUser, sendPushBroadcast, initPushModule } from './pushStore.mjs';
+import { getVapidPublicKey, saveSubscription, removeSubscription, sendPushToUser, initPushModule } from './pushStore.mjs';
 import { recordId } from '../src/lib/stateModel.mjs';
 import { projectLedgerBalances } from './ledgerBalances.mjs';
 import { parseJournalQuery } from './ledgerJournalQuery.mjs';
@@ -727,40 +727,41 @@ app.get('/api/v1/push/vapid-public-key', (_req, res) => {
   res.json({ publicKey, vapidPublicKey: publicKey });
 });
 
-app.post('/api/v1/push/subscribe', (req, res) => {
+app.post('/api/v1/push/subscribe', authenticate, (req, res) => {
   const subscription = req.body?.subscription || req.body;
-  const userId = req.body?.userId || req.auth?.userId || null;
-  if (!subscription?.endpoint) {
+  if (!saveSubscription(subscription, req.auth)) {
     return res.status(400).json({ error: 'invalid_subscription' });
   }
-  saveSubscription(subscription, userId);
   res.json({ ok: true });
 });
 
-app.post('/api/v1/push/unsubscribe', (req, res) => {
+app.post('/api/v1/push/unsubscribe', authenticate, (req, res) => {
   const endpoint = req.body?.endpoint;
-  if (!endpoint) return res.status(400).json({ error: 'endpoint_required' });
-  removeSubscription(endpoint);
+  if (typeof endpoint !== 'string' || !endpoint) return res.status(400).json({ error: 'endpoint_required' });
+  removeSubscription(endpoint, req.auth);
   res.json({ ok: true });
 });
 
-/** Internal/admin: send push to a user (or broadcast if userId omitted) */
-app.post('/api/v1/push/send', async (req, res) => {
+// Browser-generated pushes target the signed-in account. Server workflows can dispatch separately.
+app.post('/api/v1/push/send', authenticate, async (req, res) => {
   const { userId, title, body, url, tag, id, linkTab, requireInteraction } = req.body || {};
+  if (userId != null && userId !== req.auth.userId) {
+    return res.status(403).json({ error: 'push_recipient_forbidden' });
+  }
   const payload = {
-    title: title || 'اخوان CRM',
-    body: body || '',
-    url: url || '/',
-    tag: tag || id || 'akhavan',
-    id,
-    linkTab,
+    title: typeof title === 'string' && title ? title.slice(0, 120) : 'اخوان CRM',
+    body: typeof body === 'string' ? body.slice(0, 500) : '',
+    url: typeof url === 'string' && /^\/(?![\/\\])/.test(url) ? url.slice(0, 350) : '/',
+    tag: typeof tag === 'string' ? tag.slice(0, 128) : typeof id === 'string' ? id.slice(0, 128) : 'akhavan',
+    id: typeof id === 'string' ? id.slice(0, 128) : undefined,
+    linkTab: typeof linkTab === 'string' && /^[a-z_]{1,50}$/.test(linkTab) ? linkTab : undefined,
     requireInteraction: !!requireInteraction,
   };
   try {
-    const result = userId ? await sendPushToUser(userId, payload) : await sendPushBroadcast(payload);
-    res.json({ ok: true, ...result });
-  } catch (e) {
-    res.status(500).json({ error: 'push_failed', message: String(e?.message || e) });
+    const result = await sendPushToUser(req.auth, payload);
+    res.json({ ok: true, sent: result.sent, reason: result.reason });
+  } catch {
+    res.status(500).json({ error: 'push_failed' });
   }
 });
 

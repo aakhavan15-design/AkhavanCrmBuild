@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import os from 'node:os';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const server = fs.readFileSync(path.join(root, 'server/index.mjs'), 'utf8');
@@ -17,6 +18,10 @@ assert.match(server, /app\.use\('\/api\/v1',[\s\S]*?invalidProductionDriver[\s\S
 assert.match(server, /AUTH_TOKEN_SECRET \|\| \(allowDemoAuth \? crypto\.randomBytes\(32\) : null\)/);
 assert.match(server, /if \(allowDemoAuth && !header\)/);
 assert.match(server, /autoSeedEntitiesIfEmpty\(\)[\s\S]*?!allowDemoAuth \|\| entityDriverKind === 'mssql'/);
+for (const operation of ['subscribe', 'unsubscribe', 'send']) {
+  assert.ok(server.includes(`app.post('/api/v1/push/${operation}', authenticate,`), `push ${operation} uses server identity`);
+}
+assert.match(server, /sendPushToUser\(req\.auth, payload\)/);
 assert.ok(server.includes('crypto.timingSafeEqual'), 'constant-time comparisons are used');
 assert.ok(server.includes('crypto.scryptSync'), 'password verifier uses scrypt');
 assert.ok(server.includes('function requirePermission'), 'server-side permission gate exists');
@@ -42,4 +47,26 @@ assert.ok(server.includes("execute('security.RecordLoginFailure')"), 'login fail
 assert.ok(server.includes("execute('security.RecordLoginSuccess')"), 'successful login resets failure counter');
 assert.ok(lockoutMigration.includes('DATEADD(minute, 15'), 'persistent lockout window exists');
 assert.equal(pkg.scripts['start:api'], 'node server/index.mjs');
+
+const fixtureDir = fs.mkdtempSync(path.join(os.tmpdir(), 'akhavan-push-store-test-'));
+try {
+  const fixtureModule = path.join(fixtureDir, 'server', 'pushStore.mjs');
+  fs.mkdirSync(path.dirname(fixtureModule));
+  fs.copyFileSync(path.join(root, 'server', 'pushStore.mjs'), fixtureModule);
+  const pushStore = await import(pathToFileURL(fixtureModule).href);
+  const owner = { tenantId: 'tenant-a', userId: 'user-a' };
+  const other = { tenantId: 'tenant-b', userId: 'user-a' };
+  const subscription = {
+    endpoint: 'https://fcm.googleapis.com/fcm/send/test-fixture',
+    keys: { auth: Buffer.alloc(16, 1).toString('base64url'), p256dh: Buffer.alloc(65, 2).toString('base64url') }
+  };
+  assert.equal(pushStore.saveSubscription(subscription, owner), true);
+  assert.equal(pushStore.listSubscriptions(owner).length, 1);
+  assert.deepEqual(pushStore.listSubscriptions(other), []);
+  assert.equal(pushStore.removeSubscription(subscription.endpoint, other), false);
+  assert.equal(pushStore.removeSubscription(subscription.endpoint, owner), true);
+  assert.deepEqual(pushStore.listSubscriptions(owner), []);
+} finally {
+  fs.rmSync(fixtureDir, { recursive: true, force: true });
+}
 console.log('backend security contracts: PASS');

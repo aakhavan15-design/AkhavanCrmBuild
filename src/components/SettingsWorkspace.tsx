@@ -1122,7 +1122,7 @@ export function SettingsWorkspace({ state, updateState }: SettingsWorkspaceProps
               <p className="text-caption leading-5 text-text-secondary">با فعال‌سازی، وقتی برنامه بسته یا در پس‌زمینه است، اعلان‌های مهم روی قفل صفحه / سینی سیستم نمایش داده می‌شوند (نیاز به مجوز مرورگر و در حالت کامل، کلید VAPID سرور).</p>
               <div className="flex flex-wrap gap-2">
                 <Button variant="primary" type="button" onClick={async () => {
-                  const r = await subscribeWebPush(state.currentUserId);
+                  const r = await subscribeWebPush();
                   if (r.ok) toast.success(r.reason === 'local-only' ? 'مجوز داده شد (حالت محلی). برای اعلان کامل، سرویس اعلان را روی سرور تنظیم کنید.' : 'اعلان سیستمی فعال شد.');
                   else toast.error('فعال‌سازی ناموفق: ' + (r.reason || ''));
                 }}>فعال‌سازی اعلان سیستمی</Button>

@@ -4,6 +4,7 @@
 import type { AppState, Notification } from '../types';
 import { generateId } from './utils';
 import { bridgeInAppToSystem, isPushEnabledLocally } from './webPush';
+import { AuthService } from '../services/AuthService';
 
 export function pushNotification(
   draft: AppState,
@@ -31,17 +32,17 @@ export function pushNotification(
   draft.notifications.push(n);
 
   // Fire-and-forget system notification / server push
-  if (typeof window !== 'undefined' && isPushEnabledLocally()) {
-    if (!n.recipientId || n.recipientId === draft.currentUserId) bridgeInAppToSystem(n);
-    const userId = input.recipientId || draft.currentUserId;
+  if (typeof window !== 'undefined' && isPushEnabledLocally() && (!n.recipientId || n.recipientId === draft.currentUserId)) {
+    bridgeInAppToSystem(n);
+    const token = AuthService.getAccessToken();
+    if (!token) return n;
     void fetch('/api/v1/push/send', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       credentials: 'same-origin',
       body: JSON.stringify({
-        userId,
-        title: n.title,
-        body: n.message,
+        title: 'اعلان جدید اخوان',
+        body: 'برای مشاهده وارد سامانه شوید.',
         url: n.linkTab ? `/?tab=${n.linkTab}` : '/',
         id: n.id,
         linkTab: n.linkTab,
