@@ -2,7 +2,7 @@ import { toast } from './ui/Toast';
 import { guard } from '../hooks/useCan';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { AppState, UserGroup, GroupMessage, Mention, ID, CustomerTask } from '../types';
+import { AppState, UserGroup, GroupMessage, Mention, ID, CustomerTask, UserAccount, Attachment } from '../types';
 import { generateId } from '../lib/utils';
 import { processMessageMentions, processTaskCollaborationEvents } from '../lib/collaboration';
 import {
@@ -25,6 +25,16 @@ import { OPERATIONS_CONFIG } from '../config/operations';
 interface Props { state: AppState; updateState: (updater: (draft: AppState) => AppState | void) => void; setActiveTab?: (tab: Record<string, unknown>) => void }
 type Filter = 'ALL' | 'UNREAD' | 'MENTIONS' | 'GROUPS' | 'DIRECT' | 'ARCHIVED';
 type EntityType = 'ACCOUNT' | 'TASK' | 'QUOTE' | 'OPPORTUNITY' | 'CASE' | 'REQUEST';
+type MessageFile = Pick<Attachment, 'id' | 'fileName' | 'fileType' | 'fileSize' | 'base64Data'>;
+type MessageReference = ReturnType<typeof createMentionReference>;
+type Reaction = { emoji: string; userIds: string[] };
+type ConversationMessage = GroupMessage & {
+  attachments?: MessageFile[];
+  entityMentions?: MessageReference[];
+  reactions?: Reaction[];
+};
+type ReferenceRecord = { id?: string; code?: string; erpId?: string; status?: string; dueDate?: string; accountName?: string; subtitle?: string };
+type LinkableRecord = { id: ID; name?: string; title?: string; subject?: string; number?: string; quoteNumber?: string };
 
 const MAX_FILE = 1.5 * 1024 * 1024;
 const fa = (n: number) => n.toLocaleString('fa-IR');
@@ -42,22 +52,23 @@ export function GroupsWorkspace({ state, updateState }: Props) {
   const { denied } = useCan(state, updateState);
   const canCreateGroup = rbac.can('groups', 'CREATE');
   const users = state.users || [];
-  const userOf = (id: string) => users.find(u => u.id === id);
+  const userOf = (id?: string) => users.find(u => u.id === id);
 
   const [filter, setFilter] = useState<Filter>('ALL');
   const [query, setQuery] = useState('');
   const [text, setText] = useState('');
-  const [replyTo, setReplyTo] = useState<any | null>(null);
-  const [editing, setEditing] = useState<any | null>(null);
+  const [replyTo, setReplyTo] = useState<ConversationMessage | null>(null);
+  const [editing, setEditing] = useState<ConversationMessage | null>(null);
+  const draftMessage = editing ?? replyTo;
   const [selectedMsg, setSelectedMsg] = useState<string | null>(null);
-  const [files, setFiles] = useState<Array<Record<string, unknown>>>([]);
+  const [files, setFiles] = useState<MessageFile[]>([]);
   const [fileError, setFileError] = useState('');
   const [attachedEntity, setAttachedEntity] = useState<{ type: EntityType; id: ID; display: string } | undefined>();
   const [pendingMentions, setPendingMentions] = useState<Mention[]>([]);
-  const [pendingEntityMentions, setPendingEntityMentions] = useState<ReturnType<typeof createMentionReference>[]>([]);
+  const [pendingEntityMentions, setPendingEntityMentions] = useState<MessageReference[]>([]);
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [modal, setModal] = useState<null | 'group' | 'dm' | 'members' | 'record' | 'task'>(null);
-  const [taskFrom, setTaskFrom] = useState<any | null>(null);
+  const [taskFrom, setTaskFrom] = useState<ConversationMessage | null>(null);
   const [taskAssignee, setTaskAssignee] = useState(me);
   const [taskDue, setTaskDue] = useState(new Date(Date.now() + 2 * 86400000).toISOString().split('T')[0]);
   const [taskPriority, setTaskPriority] = useState('NORMAL');
@@ -75,12 +86,12 @@ export function GroupsWorkspace({ state, updateState }: Props) {
   const openConv = (id: string | null) => { const n = new URLSearchParams(params); if (id) n.set('c', id); else n.delete('c'); setParams(n, { replace: false }); setSelectedMsg(null); setReplyTo(null); setEditing(null); setText(''); };
 
   // ---- مجموعه گفتگوهایی که کاربر اجازه دیدن دارد (پیام مستقیم فقط برای طرفین) ----
-  const allGroups = (state.groups || []) as Record<string, unknown>[];
+  const allGroups = state.groups || [];
   // Conversation confidentiality is membership-based. Admin privileges manage groups; they do not grant implicit access to every private conversation.
   const convs = useMemo(() => allGroups.filter(g => Array.isArray(g.memberIds) && g.memberIds.includes(me) && g.active !== false), [allGroups, me]);
-  const msgsOf = (gid: string) => ((state.messages || []) as Record<string, unknown>[]).filter(m => m.groupId === gid).sort((a, b) => +new Date(a.createdAt) - +new Date(b.createdAt));
-  const nameOf = (g: Record<string, unknown>) => (g.kind === 'DIRECT' ? userOf(g.memberIds.find((i: string) => i !== me) || me)?.name || 'کاربر' : g.name);
-  const previewOf = (m: Record<string, unknown>) => (!m ? 'هنوز پیامی نیست' : m.deleted ? 'پیام حذف شد' : (m.senderId === me ? 'شما: ' : '') + (m.content || (m.attachments?.length ? '📎 فایل پیوست' : m.relatedEntity ? '🔗 رکورد سامانه' : '')));
+  const msgsOf = (gid: string): ConversationMessage[] => (state.messages || []).filter(m => m.groupId === gid).sort((a, b) => +new Date(a.createdAt) - +new Date(b.createdAt));
+  const nameOf = (g: UserGroup) => (g.kind === 'DIRECT' ? userOf(g.memberIds.find((i: string) => i !== me) || me)?.name || 'کاربر' : g.name);
+  const previewOf = (m: ConversationMessage | null | undefined) => (!m ? 'هنوز پیامی نیست' : m.deleted ? 'پیام حذف شد' : (m.senderId === me ? 'شما: ' : '') + (m.content || (m.attachments?.length ? '📎 فایل پیوست' : m.relatedEntity ? '🔗 رکورد سامانه' : '')));
   const rows = useMemo(() => convs.map(g => {
     const ms = msgsOf(g.id); const last = ms[ms.length - 1];
     const unread = ms.filter(m => !m.deleted && m.senderId !== me && !m.readBy?.includes(me));
@@ -102,22 +113,22 @@ export function GroupsWorkspace({ state, updateState }: Props) {
   }).sort((a, b) => (+b.pinned - +a.pinned) || (+new Date(b.last?.createdAt || 0) - +new Date(a.last?.createdAt || 0)));
 
   const active = rows.find(r => r.g.id === activeId);
-  const activeGroup: unknown = active?.g;
+  const activeGroup = active?.g;
   const messages = active?.ms || [];
-  const members: Array<Record<string, unknown>> = activeGroup ? activeGroup.memberIds.map((id: string) => userOf(id)).filter(Boolean) : [];
+  const members = activeGroup?.memberIds.map(userOf).filter((user): user is UserAccount => Boolean(user)) || [];
 
   // ---- نقطه «پیام‌های جدید» قبل از علامت‌گذاری خوانده‌شده ----
   if (activeId && unreadAnchor.current?.id !== activeId) {
-    const firstUnread = messages.find((m: Record<string, unknown>) => !m.deleted && m.senderId !== me && !m.readBy?.includes(me));
+    const firstUnread = messages.find(m => !m.deleted && m.senderId !== me && !m.readBy?.includes(me));
     unreadAnchor.current = { id: activeId, msgId: firstUnread?.id || null };
   }
   useEffect(() => { if (!activeId) unreadAnchor.current = null; }, [activeId]);
 
   useEffect(() => {
     if (!activeId || !me) return;
-    const has = messages.some((m: Record<string, unknown>) => m.senderId !== me && !m.readBy?.includes(me));
+    const has = messages.some(m => m.senderId !== me && !m.readBy?.includes(me));
     if (!has) return;
-    updateState((d: AppState) => { (d.messages || []).forEach((m: Record<string, unknown>) => { if (m.groupId === activeId && !m.readBy?.includes(me)) { if (!m.readBy) m.readBy = []; m.readBy.push(me); } }); });
+    updateState((d: AppState) => { (d.messages || []).forEach(m => { if (m.groupId === activeId && !m.readBy?.includes(me)) { if (!m.readBy) m.readBy = []; m.readBy.push(me); } }); });
   }, [activeId, messages.length, me]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (typeof window === 'undefined' || !window.visualViewport) return;
@@ -156,7 +167,7 @@ export function GroupsWorkspace({ state, updateState }: Props) {
     if (at < 0) return; const before = text.slice(0, at); const after = text.slice(caret); const token = `@${entity.displayText}`;
     setText(`${before}${token} ${after}`); setPendingEntityMentions(previous => previous.some(x => x.entityType === entity.entityType && x.entityId === entity.entityId) ? previous : [...previous, createMentionReference(entity)]); setMentionQuery(null); setTimeout(() => el?.focus(), 0);
   };
-  const pickMention = (u: Record<string, unknown>) => {
+  const pickMention = (u: UserAccount) => {
     const el = inputRef.current; const caret = el?.selectionStart ?? text.length;
     const before = text.slice(0, caret).replace(/@([^\s@]*)$/, ''); const after = text.slice(caret);
     const token = `@${u.name}`; setText(`${before}${token} ${after}`); setMentionQuery(null);
@@ -182,19 +193,19 @@ export function GroupsWorkspace({ state, updateState }: Props) {
     if (editing) {
       if (!content) return;
       if (!rbac.canActOnRecord('messages', 'EDIT', scopeOf(editing.senderId))) return denied('ویرایش این پیام');
-      updateState(d => { const m: unknown = (d.messages || []).find((x: Record<string, unknown>) => x.id === editing.id && x.groupId === activeGroup.id); if (m && m.senderId === me && !m.deleted) { m.content = content; m.editedAt = new Date().toISOString(); } });
+      updateState(d => { const m = (d.messages || []).find(x => x.id === editing.id && x.groupId === activeGroup.id); if (m && m.senderId === me && !m.deleted) { m.content = content; m.editedAt = new Date().toISOString(); } });
       setEditing(null); setText(''); haptics.light(); return;
     }
     if (!content && !attachedEntity && files.length === 0) return;
     const mentions = pendingMentions.filter(p => content.includes(p.display) && activeGroup.memberIds.includes(p.id) && (userOf(p.id)?.isActive ?? userOf(p.id)?.active) !== false);
-    const msg: unknown = {
+    const msg: ConversationMessage = {
       id: generateId(), groupId: activeGroup.id, senderId: me, content, mentions, entityMentions: pendingEntityMentions.filter(ref => content.includes(`@${ref.displayText}`)), relatedEntity: attachedEntity,
       attachments: files.length ? files : undefined, replyToId: replyTo?.id, createdAt: new Date().toISOString(), readBy: [me],
     };
     updateState(d => {
       if (!d.messages) d.messages = [];
       d.messages.push(msg);
-      processMessageMentions(msg as GroupMessage, nameOf(activeGroup), state, d);
+      processMessageMentions(msg, nameOf(activeGroup), state, d);
       if (activeGroup.kind === 'DIRECT') {
         const other = activeGroup.memberIds.find((i: string) => i !== me);
         if (other) { if (!d.notifications) d.notifications = []; d.notifications.push({ id: generateId(), title: 'پیام جدید', message: `${userOf(me)?.name || 'همکار'}: ${(content || 'پیوست').slice(0, 60)}`, type: 'INFO', read: false, createdAt: new Date().toISOString(), linkTab: 'groups', recipientId: other }); }
@@ -202,23 +213,23 @@ export function GroupsWorkspace({ state, updateState }: Props) {
     });
     setText(''); setAttachedEntity(undefined); setFiles([]); setReplyTo(null); setPendingMentions([]); setPendingEntityMentions([]); setMentionQuery(null); haptics.selection();
   };
-  const removeMsg = (m: Record<string, unknown>) => { if (!rbac.canActOnRecord('messages', 'SOFT_DELETE', scopeOf(m.senderId))) return denied('حذف این پیام'); updateState(d => { const x: unknown = (d.messages || []).find((y: Record<string, unknown>) => y.id === m.id && y.groupId === activeGroup?.id); if (x && !x.deleted) { x.deletedBy = me; x.deleted = true; x.deletedAt = new Date().toISOString(); x.content = ''; x.attachments = undefined; x.relatedEntity = undefined; x.mentions = []; } }); setSelectedMsg(null); };
+  const removeMsg = (m: ConversationMessage) => { if (!rbac.canActOnRecord('messages', 'SOFT_DELETE', scopeOf(m.senderId))) return denied('حذف این پیام'); updateState(d => { const x = (d.messages || []).find(y => y.id === m.id && y.groupId === activeGroup?.id); if (x && !x.deleted) { x.deletedBy = me; x.deleted = true; x.deletedAt = new Date().toISOString(); x.content = ''; x.attachments = undefined; x.relatedEntity = undefined; x.mentions = []; } }); setSelectedMsg(null); };
 
   // ---- ایجاد وظیفه از پیام (جلوگیری از تکرار با taskId روی پیام) ----
-  const openTaskFrom = (m: Record<string, unknown>) => { setTaskFrom(m); setTaskAssignee(me); setModal('task'); };
+  const openTaskFrom = (m: ConversationMessage) => { setTaskFrom(m); setTaskAssignee(me); setModal('task'); };
   const createTask = () => {
     if (!taskFrom || taskFrom.taskId) return;
     if (!rbac.can('tasks', 'CREATE')) return denied('ایجاد وظیفه');
     if (taskAssignee !== me && !rbac.can('tasks', 'ASSIGN')) return denied('ارجاع وظیفه به دیگران');
     if (!activeGroup?.memberIds.includes(taskAssignee)) return;
-    const mentionedCustomer = (taskFrom.entityMentions || []).find((ref: Record<string, unknown>) => ref.entityType === 'CUSTOMER');
+    const mentionedCustomer = (taskFrom.entityMentions || []).find(ref => ref.entityType === 'CUSTOMER');
     const acc = taskFrom.relatedEntity?.type === 'ACCOUNT' ? taskFrom.relatedEntity.id : mentionedCustomer?.entityId;
-    const task: unknown = assignSla({
+    const task = assignSla({
       id: generateId(), accountId: acc, customerId: acc, title: String(taskFrom.content || 'پیگیری از گفتگو').slice(0, 80), description: `ایجادشده از پیام گروه «${nameOf(activeGroup)}»`,
       dueDate: taskDue, targetDate: taskDue, status: 'OPEN', priority: taskPriority, slaStatus: 'ON_TRACK', assigneeType: 'USER', assigneeId: taskAssignee,
       mentions: Array.isArray(taskFrom.entityMentions) ? taskFrom.entityMentions : [], sourceMessageId: taskFrom.id, createdAt: new Date().toISOString(),
-    });
-    const settings = (state.settings as Record<string, unknown>)?.taskWorkloadLimits?.[taskAssignee] || {};
+    }) as CustomerTask;
+    const settings = state.settings?.taskWorkloadLimits?.[taskAssignee] || {};
     const capacityProposal = proposeOverflow(state.tasks || [], taskAssignee, taskDue, [task], {
       maxDailyTasks: settings.maxDailyTasks ?? OPERATIONS_CONFIG.defaultDailyTaskCapacity,
       maxDailyScore: settings.maxDailyScore ?? OPERATIONS_CONFIG.defaultDailyScoreCapacity,
@@ -230,10 +241,10 @@ export function GroupsWorkspace({ state, updateState }: Props) {
     }
     updateState(d => {
       // Idempotent: اگر پیام قبلاً وظیفه ساخته (دوبار کلیک/ارسال مجدد)، رکورد دوم ساخته نمی‌شود
-      const m: unknown = (d.messages || []).find((x: Record<string, unknown>) => x.id === taskFrom.id);
+      const m = (d.messages || []).find(x => x.id === taskFrom.id);
       if (!m || m.taskId || m.deleted) return;
       m.taskId = task.id;
-      if (!d.tasks) d.tasks = []; d.tasks.unshift(task as CustomerTask);
+      if (!d.tasks) d.tasks = []; d.tasks.unshift(task);
       processTaskCollaborationEvents(task, state, d, true);
       if (!d.auditLogs) d.auditLogs = [];
       d.auditLogs.push({ id: generateId(), action: 'TASK_CREATED', entityType: 'TASK', entityId: task.id, details: `وظیفه «${task.title}» از پیام گروهی ساخته شد`, actor: userOf(me)?.name || 'System', createdAt: new Date().toISOString() });
@@ -245,7 +256,7 @@ export function GroupsWorkspace({ state, updateState }: Props) {
   const createGroup = () => {
     if (!guard(state, updateState, 'groups', 'CREATE', 'ایجاد گروه')) return;
     if (!newGroupName.trim()) return;
-    const g: unknown = { id: generateId(), name: newGroupName.trim(), description: newGroupDesc.trim(), managerId: me, memberIds: [...new Set([...selectedMembers, me])], active: true };
+    const g: UserGroup = { id: generateId(), name: newGroupName.trim(), description: newGroupDesc.trim(), managerId: me, memberIds: [...new Set([...selectedMembers, me])], active: true };
     updateState(d => { if (!d.groups) d.groups = []; d.groups.push(g); });
     setNewGroupName(''); setNewGroupDesc(''); setSelectedMembers([]); setModal(null); openConv(g.id);
   };
@@ -253,16 +264,16 @@ export function GroupsWorkspace({ state, updateState }: Props) {
     const ex = allGroups.find(g => g.kind === 'DIRECT' && g.memberIds.length === 2 && g.memberIds.includes(me) && g.memberIds.includes(uid));
     setModal(null); setPickQuery('');
     if (ex) { openConv(ex.id); return; }
-    const g: unknown = { id: generateId(), name: '', kind: 'DIRECT', memberIds: [me, uid], active: true, managerId: me };
+    const g: UserGroup = { id: generateId(), name: '', kind: 'DIRECT', memberIds: [me, uid], active: true, managerId: me };
     updateState(d => { if (!d.groups) d.groups = []; d.groups.push(g); });
     openConv(g.id);
   };
-  const togglePin = (g: Record<string, unknown>) => updateState(d => { const x: unknown = (d.groups || []).find((y: Record<string, unknown>) => y.id === g.id); if (!x) return; const s = new Set<string>(x.pinnedBy || []); s.has(me) ? s.delete(me) : s.add(me); x.pinnedBy = [...s]; });
-  const toggleGroupFlag = (g: unknown, field: 'archivedBy' | 'mutedBy') => updateState(d => { const x: unknown = (d.groups || []).find((y: Record<string, unknown>) => y.id === g.id); if (!x) return; const s = new Set<string>(x[field] || []); s.has(me) ? s.delete(me) : s.add(me); x[field] = [...s]; });
-  const toggleReaction = (message: unknown, emoji: string) => updateState(d => { const x: unknown = (d.messages || []).find((y: Record<string, unknown>) => y.id === message.id && y.groupId === activeGroup?.id); if (!x || x.deleted) return; const reactions = Array.isArray(x.reactions) ? [...x.reactions] : []; const index = reactions.findIndex((r: Record<string, unknown>) => r.emoji === emoji); if (index < 0) reactions.push({ emoji, userIds: [me] }); else { const ids = new Set<string>(reactions[index].userIds || []); ids.has(me) ? ids.delete(me) : ids.add(me); reactions[index] = { ...reactions[index], userIds: [...ids] }; if (!ids.size) reactions.splice(index, 1); } x.reactions = reactions; });
+  const togglePin = (g: UserGroup) => updateState(d => { const x = (d.groups || []).find(y => y.id === g.id); if (!x) return; const s = new Set<string>(x.pinnedBy || []); s.has(me) ? s.delete(me) : s.add(me); x.pinnedBy = [...s]; });
+  const toggleGroupFlag = (g: UserGroup, field: 'archivedBy' | 'mutedBy') => updateState(d => { const x = (d.groups || []).find(y => y.id === g.id); if (!x) return; const s = new Set<string>(x[field] || []); s.has(me) ? s.delete(me) : s.add(me); x[field] = [...s]; });
+  const toggleReaction = (message: ConversationMessage, emoji: string) => updateState(d => { const x = (d.messages || []).find(y => y.id === message.id && y.groupId === activeGroup?.id); if (!x || x.deleted) return; const reactions: Reaction[] = Array.isArray(x.reactions) ? [...x.reactions] : []; const index = reactions.findIndex(r => r.emoji === emoji); if (index < 0) reactions.push({ emoji, userIds: [me] }); else { const ids = new Set<string>(reactions[index].userIds || []); ids.has(me) ? ids.delete(me) : ids.add(me); reactions[index] = { ...reactions[index], userIds: [...ids] }; if (!ids.size) reactions.splice(index, 1); } x.reactions = reactions; });
   const toggleMember = (uid: string) => {
     if (!activeGroup || activeGroup.kind === 'DIRECT') return;
-    updateState(d => { const g: unknown = (d.groups || []).find((x: Record<string, unknown>) => x.id === activeGroup.id); if (!g) return; if (g.memberIds.includes(uid)) { if (g.memberIds.length > 1) g.memberIds = g.memberIds.filter((i: string) => i !== uid); } else g.memberIds.push(uid); });
+    updateState(d => { const g = (d.groups || []).find(x => x.id === activeGroup.id); if (!g) return; if (g.memberIds.includes(uid)) { if (g.memberIds.length > 1) g.memberIds = g.memberIds.filter((i: string) => i !== uid); } else g.memberIds.push(uid); });
   };
   const canManage = !!activeGroup && activeGroup.kind !== 'DIRECT' && rbac.canActOnRecord('groups', 'EDIT', { memberIds: activeGroup.memberIds, managerId: activeGroup.managerId });
   const scopeOf = (ownerId?: string) => ({ memberIds: activeGroup?.memberIds || [], managerId: activeGroup?.managerId, ownerId });
@@ -274,19 +285,19 @@ export function GroupsWorkspace({ state, updateState }: Props) {
   };
 
   const recordOptions = useMemo(() => {
-    const s: unknown = state; const ql = pickQuery.trim().toLowerCase();
+    const s = state; const ql = pickQuery.trim().toLowerCase();
     const all: { type: EntityType; id: ID; display: string }[] = [
-      ...(s.accounts || []).map((x: Record<string, unknown>) => ({ type: 'ACCOUNT' as const, id: x.id, display: `مشتری: ${x.name}` })),
-      ...(s.tasks || []).map((x: Record<string, unknown>) => ({ type: 'TASK' as const, id: x.id, display: `وظیفه: ${x.title}` })),
-      ...(s.opportunities || []).map((x: Record<string, unknown>) => ({ type: 'OPPORTUNITY' as const, id: x.id, display: `فرصت: ${x.title}` })),
-      ...(s.quotes || []).map((x: Record<string, unknown>) => ({ type: 'QUOTE' as const, id: x.id, display: `پیش‌فاکتور: ${x.number || x.quoteNumber || x.id}` })),
-      ...(s.cases || []).map((x: Record<string, unknown>) => ({ type: 'CASE' as const, id: x.id, display: `پرونده: ${x.title || x.subject || x.id}` })),
+      ...(s.accounts || []).map((x: LinkableRecord) => ({ type: 'ACCOUNT' as const, id: x.id, display: `مشتری: ${x.name}` })),
+      ...(s.tasks || []).map((x: LinkableRecord) => ({ type: 'TASK' as const, id: x.id, display: `وظیفه: ${x.title}` })),
+      ...(s.opportunities || []).map((x: LinkableRecord) => ({ type: 'OPPORTUNITY' as const, id: x.id, display: `فرصت: ${x.title}` })),
+      ...(s.quotes || []).map((x: LinkableRecord) => ({ type: 'QUOTE' as const, id: x.id, display: `پیش‌فاکتور: ${x.number || x.quoteNumber || x.id}` })),
+      ...(s.cases || []).map((x: LinkableRecord) => ({ type: 'CASE' as const, id: x.id, display: `پرونده: ${x.title || x.subject || x.id}` })),
     ];
     return all.filter(o => !ql || o.display.toLowerCase().includes(ql)).slice(0, 30);
   }, [state, pickQuery]);
 
   // ---- نمایش متن پیام با هایلایت منشن ----
-  const renderContent = (m: unknown, mine: boolean) => {
+  const renderContent = (m: ConversationMessage, mine: boolean) => {
     let parts: React.ReactNode[] = [m.content]; const mentions: Mention[] = m.mentions || [];
     mentions.forEach(mn => { parts = parts.flatMap((p, i) => (typeof p === 'string' && p.includes(mn.display) ? p.split(mn.display).flatMap((seg, k, arr) => (k < arr.length - 1 ? [seg, <mark key={`${mn.id}-${i}-${k}`} className={cn('rounded px-1 font-bold', mine ? 'bg-white/25 text-white' : 'bg-primary/10 text-primary')}>{mn.display}</mark>] : [seg])) : [p])); });
     return <>{parts}</>;
@@ -326,7 +337,7 @@ export function GroupsWorkspace({ state, updateState }: Props) {
             const on = r.g.id === activeId; const isDm = r.g.kind === 'DIRECT'; const other = isDm ? userOf(r.g.memberIds.find((x: string) => x !== me)) : null;
             return (
               <li key={r.g.id}>
-                <button onClick={() => openConv(r.g.id)} aria-current={on ? 'true' : undefined} style={{ ['--i' as Record<string, unknown>]: Math.min(i, 8) }}
+                <button onClick={() => openConv(r.g.id)} aria-current={on ? 'true' : undefined} style={{ '--i': Math.min(i, 8) } as React.CSSProperties}
                   className={cn('se-interactive anim-rise flex min-h-(--size-64) w-full cursor-pointer items-center gap-3 rounded-2xl border p-2.5 text-start', on ? 'border-primary/25 bg-primary/[.07]' : 'border-transparent hover:bg-canvas')}>
                   {isDm ? <Avatar name={r.name} src={other?.avatar} size="sm" /> : <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-primary/10 text-primary"><Users size={16} /></span>}
                   <span className="min-w-0 flex-1">
@@ -376,12 +387,12 @@ export function GroupsWorkspace({ state, updateState }: Props) {
               {messages.length === 0 && (
                 <div className="flex h-full flex-col items-center justify-center gap-2 py-10 text-center text-xs text-text-secondary"><MessageCircle size={38} className="opacity-25" /><p className="font-semibold">هنوز پیامی ثبت نشده است.</p><p className="text-caption">اولین پیام را بنویسید؛ با @ همکاران را منشن کنید.</p></div>
               )}
-              {messages.map((m: unknown, i: number) => {
+              {messages.map((m, i) => {
                 const mine = m.senderId === me; const sender = userOf(m.senderId); const prev = messages[i - 1];
                 const newDay = !prev || !sameDay(prev.createdAt, m.createdAt);
                 const grouped = prev && !newDay && prev.senderId === m.senderId && !prev.deleted;
                 const next = messages[i + 1]; const groupedNext = !!next && sameDay(next.createdAt, m.createdAt) && next.senderId === m.senderId && !next.deleted && !m.deleted;
-                const reply = m.replyToId ? messages.find((x: Record<string, unknown>) => x.id === m.replyToId) : null;
+                const reply = m.replyToId ? messages.find(x => x.id === m.replyToId) : null;
                 const others = activeGroup.memberIds.filter((id: string) => id !== m.senderId);
                 const seen = others.filter((id: string) => m.readBy?.includes(id)).length;
                 const sel = selectedMsg === m.id;
@@ -401,11 +412,15 @@ export function GroupsWorkspace({ state, updateState }: Props) {
                               {m.content && <p className="whitespace-pre-wrap break-words">{renderContent(m, mine)}</p>}
                               {Array.isArray(m.entityMentions) && m.entityMentions.length > 0 && (
                                 <div className="mt-2 grid w-full gap-1.5" aria-label="رکوردهای ارجاع‌شده">
-                                  {m.entityMentions.map((ref: Record<string, unknown>) => {
+                                  {m.entityMentions.map(ref => {
                                     const entityType = String(ref.entityType || 'UNKNOWN');
                                     const Icon = ENTITY_ICON[entityType] || FileText;
-                                    const pools: Record<string, Array<Record<string, unknown>>> = { CUSTOMER: (state as Record<string, unknown>).accounts || [], STAFF: state.users || [], CHECK: (state as Record<string, unknown>).cheques || [], INVOICE: (state as Record<string, unknown>).invoices || [], PRODUCT: (state as Record<string, unknown>).externalProducts || [], TASK: state.tasks || [], QUOTE: state.quotes || [] };
-                                    const record = (pools[entityType] || []).find((x: Record<string, unknown>) => String(x.id ?? x.code ?? x.erpId ?? '') === String(ref.entityId));
+                                    const pools: Record<string, ReferenceRecord[]> = {
+                                      CUSTOMER: state.accounts || [], STAFF: state.users || [], CHECK: state.cheques || [],
+                                      INVOICE: state.invoices || [], PRODUCT: state.externalProducts || [],
+                                      TASK: state.tasks || [], QUOTE: state.quotes || [],
+                                    };
+                                    const record = (pools[entityType] || []).find(x => String(x.id ?? x.code ?? x.erpId ?? '') === String(ref.entityId));
                                     const subtitle = record ? String(record.status || record.dueDate || record.accountName || record.subtitle || ref.source || 'رکورد محلی') : String(ref.source || 'مرجع ذخیره‌شده');
                                     return <button key={`${entityType}:${ref.entityId}`} type="button" onClick={e => { e.stopPropagation(); goEntity({ type: entityType, id: ref.entityId }); }} className={cn('flex min-h-touch w-full items-center gap-2 rounded-xl border p-2 text-start', mine ? 'border-white/30 bg-white/10 text-white hover:bg-white/15' : 'border-border bg-canvas text-text-main hover:bg-sand')} aria-label={`بازکردن ${ref.displayText || entityType}`}>
                                       <Icon size={15} className="shrink-0" />
@@ -415,7 +430,7 @@ export function GroupsWorkspace({ state, updateState }: Props) {
                                   })}
                                 </div>
                               )}
-                              {(m.attachments || []).map((a: Record<string, unknown>) => a.fileType?.startsWith('image/') ? (
+                              {(m.attachments || []).map(a => a.fileType?.startsWith('image/') ? (
                                 <img key={a.id} src={a.base64Data} alt={a.fileName} className="mt-1.5 max-h-52 rounded-xl object-cover" />
                               ) : (
                                 <a key={a.id} href={a.base64Data} download={a.fileName} onClick={e => e.stopPropagation()} className={cn('mt-1.5 flex min-h-control items-center gap-2 rounded-xl border px-2.5 py-1.5 text-caption font-bold', mine ? 'border-white/30 bg-white/10 text-white' : 'border-border bg-canvas text-text-main')}><Download size={14} /><span className="truncate" dir="ltr">{a.fileName}</span></a>
@@ -426,7 +441,7 @@ export function GroupsWorkspace({ state, updateState }: Props) {
                             </>
                           )}
                         </div>
-                        {Array.isArray(m.reactions) && m.reactions.some((r: Record<string, unknown>) => (r.userIds || []).length) && <div className="mt-1 flex flex-wrap gap-1" aria-label="واکنش‌ها">{m.reactions.filter((r: Record<string, unknown>) => (r.userIds || []).length).map((r: Record<string, unknown>) => <button key={r.emoji} onClick={e => { e.stopPropagation(); toggleReaction(m, r.emoji); }} aria-pressed={(r.userIds || []).includes(me)} className={cn('rounded-full border px-2 py-0.5 text-caption', (r.userIds || []).includes(me) ? 'border-primary/40 bg-primary/10' : 'border-border bg-surface')}>{r.emoji} {fa(r.userIds.length)}</button>)}</div>}
+                        {Array.isArray(m.reactions) && m.reactions.some(r => (r.userIds || []).length) && <div className="mt-1 flex flex-wrap gap-1" aria-label="واکنش‌ها">{m.reactions.filter(r => (r.userIds || []).length).map(r => <button key={r.emoji} onClick={e => { e.stopPropagation(); toggleReaction(m, r.emoji); }} aria-pressed={(r.userIds || []).includes(me)} className={cn('rounded-full border px-2 py-0.5 text-caption', (r.userIds || []).includes(me) ? 'border-primary/40 bg-primary/10' : 'border-border bg-surface')}>{r.emoji} {fa(r.userIds.length)}</button>)}</div>}
                         <div className="mt-0.5 flex items-center gap-1.5 px-1 text-micro text-text-secondary">
                           <span>{timeOf(m.createdAt)}</span>{m.editedAt && <span>· ویرایش‌شده</span>}
                           {mine && !m.deleted && (seen >= others.length && others.length > 0 ? <CheckCheck size={13} className="text-success" aria-label="دیده شد" /> : seen > 0 ? <span className="flex items-center gap-0.5"><CheckCheck size={13} aria-hidden />{fa(seen)}/{fa(others.length)}</span> : <Check size={13} aria-label="ارسال شد" />)}
@@ -460,9 +475,9 @@ export function GroupsWorkspace({ state, updateState }: Props) {
                   {mentionOptions.map(u => <li key={u.id}><button role="option" aria-selected={false} onMouseDown={e => e.preventDefault()} onClick={() => pickMention(u)} className="flex min-h-touch w-full cursor-pointer items-center gap-2 px-3 text-start text-xs hover:bg-canvas"><Avatar name={u.name} src={u.avatar} size="sm" /><b className="text-text-main">{u.name}</b><span className="text-text-secondary" dir="ltr">@{u.username}</span></button></li>)}
                 </ul>
               )}
-              {(replyTo || editing) && (
+              {draftMessage && (
                 <div className="flex items-center justify-between rounded-xl border-s-2 border-primary bg-primary/[.06] px-3 py-1.5 text-caption">
-                  <span className="min-w-0 truncate"><b className="text-primary">{editing ? 'ویرایش پیام' : `پاسخ به ${userOf(replyTo.senderId)?.name}`}</b> · {(editing || replyTo).content || 'پیوست'}</span>
+                  <span className="min-w-0 truncate"><b className="text-primary">{editing ? 'ویرایش پیام' : `پاسخ به ${userOf(draftMessage.senderId)?.name || 'کاربر'}`}</b> · {draftMessage.content || 'پیوست'}</span>
                   <button aria-label="لغو" onClick={() => { setReplyTo(null); setEditing(null); setText(''); }} className="grid h-8 w-8 shrink-0 cursor-pointer place-items-center rounded-full hover:bg-ink/10"><X size={14} /></button>
                 </div>
               )}
@@ -530,7 +545,7 @@ export function GroupsWorkspace({ state, updateState }: Props) {
         <Modal isOpen onClose={() => setModal(null)} title="ساخت وظیفه از پیام" footer={<><Button variant="ghost" size="sm" onClick={() => setModal(null)}>انصراف</Button><Button variant="primary" size="sm" onClick={createTask}>ثبت وظیفه</Button></>}>
           <div className="space-y-3 text-xs">
             <p className="rounded-xl bg-canvas p-3 text-text-main">{taskFrom.content}</p>
-            <label className="block font-bold text-text-main">مسئول انجام<Select value={taskAssignee} onChange={e => setTaskAssignee(e.target.value)} className="mt-1">{(members.length ? members : users).map((u: Record<string, unknown>) => <option key={u.id} value={u.id}>{u.name}</option>)}</Select></label>
+            <label className="block font-bold text-text-main">مسئول انجام<Select value={taskAssignee} onChange={e => setTaskAssignee(e.target.value)} className="mt-1">{(members.length ? members : users).map(u => <option key={u.id} value={u.id}>{u.name}</option>)}</Select></label>
             <div className="grid grid-cols-2 gap-3">
               <label className="block font-bold text-text-main">مهلت<InputControl type="date" value={taskDue} onChange={e => setTaskDue(e.target.value)} className="mt-1" /></label>
               <label className="block font-bold text-text-main">اولویت<Select value={taskPriority} onChange={e => setTaskPriority(e.target.value)} className="mt-1"><option value="LOW">کم</option><option value="NORMAL">معمولی</option><option value="HIGH">بالا</option><option value="URGENT">فوری</option></Select></label>

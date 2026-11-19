@@ -150,7 +150,7 @@ export function DashboardWorkspace({ state }: { state: AppState }) {
   const userGroups = (state.groups || []).filter(group => group.memberIds?.includes(userId || ''));
   const groupIds = new Set(userGroups.map(group => group.id));
   const visibleMessages = userId
-    ? ((state.messages || []) as Array<Record<string, unknown>>).filter(message => groupIds.has(String(message.groupId)) && !!message.senderId)
+    ? (state.messages || []).filter(message => groupIds.has(String(message.groupId)) && !!message.senderId)
     : [];
   const discussionsCount = visibleMessages.length;
 
@@ -202,7 +202,7 @@ export function DashboardWorkspace({ state }: { state: AppState }) {
   const taskSeries = useMemo(() => buildSixMonthCounts(myTasks, now, monthFormatter), [myTasks, now, monthFormatter]);
   const oppSeries = useMemo(() => buildSixMonthCounts(visibleOpportunities, now, monthFormatter), [visibleOpportunities, now, monthFormatter]);
   const msgSeries = useMemo(
-    () => buildSixMonthCounts(visibleMessages as Array<{ createdAt?: string }>, now, monthFormatter),
+    () => buildSixMonthCounts(visibleMessages, now, monthFormatter),
     [visibleMessages, now, monthFormatter]
   );
   const accSeries = useMemo(() => buildSixMonthCounts(visibleAccounts, now, monthFormatter), [visibleAccounts, now, monthFormatter]);

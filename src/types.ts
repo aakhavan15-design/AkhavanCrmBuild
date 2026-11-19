@@ -920,6 +920,7 @@ export interface AppState {
   roles?: Role[];
   permissionSets?: PermissionSet[];
   groups?: Group[];
+  messages?: GroupMessage[];
   customers?: Customer[];
   accounts: Account[];
   invoices?: Invoice[];

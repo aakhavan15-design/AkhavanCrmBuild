@@ -1,3 +1,9 @@
+## ثبت اجرای ۲۰۲۶-۱۱-۱۹ — قرارداد نوع پیام و گفتگو
+
+- **F0-02 [~]** — پیام‌ها، پیوست‌ها، واکنش‌ها و ارجاع‌ها از انواع موجود CRM در صفحهٔ گفتگو و داشبورد استفاده می‌کنند. رفتار خواندن و ارسال پیام در مسیر واقعی حفظ شد.
+- **PASS** — `universalMentionsChat`، `chatEntityPreviewContracts`، `chatPersonalizationContracts`، Build و Chromium ۳۹۰ برای بازکردن گفتگو، مشاهدهٔ پیام و ارسال با API آزمایشی. بررسی TypeScript به ۵۲۰ خطای کل رسید و در `GroupsWorkspace.tsx` خطایی باقی نماند.
+- **باز** — اعمال سیاست عضویت و مجوز رکوردهای ارجاعی در API/SQL، و ادامهٔ رفع خطاهای TypeScript و آزمون جامع.
+
 ## ثبت اجرای ۲۰۲۶-۱۱-۱۹ — رفع خطای اجرای اسکن مالی و مدارک پرسنلی
 
 - **F0-02 / F8 [~]** — دکمهٔ اسکن مالی بدون خطای زمان اجرا باز می‌شود. پروندهٔ پرسنلی فقط مدرک مربوط به کاربر جاری را نمایش می‌دهد. برداشتن پیوند مدرک، فایل را حفظ و رویداد ممیزی ثبت می‌کند. پروندهٔ در حال بررسی فقط‌خواندنی است.
@@ -186,7 +192,7 @@
 ## وضعیت جاری
 - نسخه سورس مبنا: `v0.12.90`؛ ممیزی فنی تاریخی نسخه `v0.12.62` است و هنوز برای نسخه جدید تکرار نشده.
 - ثبت نوبت ۱۴۰۵/۰۸/۲۶ — الحاقیهٔ اجرایی A9: سه قانون عدم تخریب/تکمیل Vertical Slice، منبع عملیاتی SQL Server بدون fallback محلی، و قفل UI با Landing آیکون‌محور و + زمینه‌ای در INSTRUCTIONS/CONSTITUTION/MASTER_SPEC درج شد؛ F1-04 و F3-06 دقیق شدند. این نوبت مستندسازی است؛ هیچ ردیف پیاده‌سازی تیک نخورد. تست‌های documentationSetContracts و analyticsConstitutionContracts (۴/۴) PASS؛ Build/TS/SQL/ERP/تست بصری اجرا نشدند و NOT VERIFIED باقی‌اند.
-- فاز فعلی: ۰ (حقیقت پایه) با ادامهٔ ۲/۳؛ شمار ردیف‌های شناسه‌دار: [x]=9، [~]=37، [ ]=167، [B]=1.
+- فاز فعلی: ۰ (حقیقت پایه). در این نسخه ۲۳۲ ردیف شناسه‌دار ثبت شده‌اند: [x]=9، [~]=45، [ ]=177، [B]=1.
 - نوبت جاری (۱۴۰۵/۰۸/۲۶، ادامه): F0-15 [~] — Migration ۰۲۷ (دوره مالی، نگاشت وضعیت سند، ابعاد ردیف، View مانده تفصیلی×معین×دوره)؛ تست ایستا PASS؛ SQL Server NOT VERIFIED. پیش‌تر: F0-16 [~] — مانده هر فاکتور واقعاً LIFO از مانده دفتری (`estimateInvoiceRemaining`)؛ Drill-down، مانده قابل پرداخت سفارش، `collectionEngine`، Geo، گزارش‌های سنی/میانگین/خارج از مهلت/به‌تفکیک فروشنده (`receivableReports.ts` + `ReceivablesLifoPanel`) و مالیات به‌تفکیک کالا (`taxRate.ts`) انجام شد. ETL ورود `taxRatePercent` کالا (موجودیت `PRODUCT`) انجام شد. مانده: ستون مالیات در صفحهٔ «تعاریف پایه» (F2-02)، شکستن بقیهٔ بخش‌های `ReportEnginePanels` به فایل‌های ریز.
 - نوبت قبل: F0-11 بسته شد (وصل `NotificationCenter` و `notifyAndPush`؛ تعیین تکلیف ۱۶ فایل).
 - تست‌های اجراشده: fiscalPeriodBalanceViewSql (جدید)، chartOfAccountsDetailGroupsSql، sqlSchemaContracts = PASS؛ قبلی: productTaxEtl، erpImportService، etlPipelineContracts، invoiceLifoRemaining = PASS؛ قبلی: reportReceivablesLedgerOnly، ledgerReceivablesSummary، crossModuleConsistencyContracts، reportEngineUiContracts = PASS.
@@ -270,7 +276,7 @@
 - [~] F4-04 (۲.۴) وظیفه/Smart Task: موتورها موجود (taskWorkflow, taskIntelligence, taskActivity, taskAccessEngine)؛ باقی: Escalation، کنترل تکراری/هم‌زمان، ساخت از پیام/رویداد، آزمون پذیرش.
 - [ ] F4-05 (۲.۵) یادآوری: تکرار/سررسید/تغییر وضعیت، تقویم تعطیلات، لغو پس از تکمیل؛ سناریو ۷ روز/۲ روز/سررسید.
 - [ ] F4-06 (۲.۶) ارجاع هوشمند: قلمرو/تخصص/ظرفیت/Override/ثبت علت.
-- [ ] F4-07 (۲.۷) اعلان: وصل `notifyAndPush`+`NotificationCenter`؛ خوانده‌شدن، ضد‌تکرار، صف/Retry.
+- [~] F4-07 (۲.۷) اعلان: `notifyAndPush` و `NotificationCenter`، خوانده‌شدن و ثبت اشتراک برای گیرندهٔ مجاز وصل و آزموده شدند؛ ضد‌تکرار، صف/Retry، کنترل مجوز اعلان‌های گردش سمت سرور و ارسال Push واقعی بازند.
 - [ ] F4-08 (۲.۸) Audit و تاریخچه مشترک سراسری (کامپوننت یگانه؛ ثبت سمت سرور؛ نمایش `accountAuditLogs` در Customer360؛ `ActivitiesWorkspace` همه `auditLogs`).
 - [ ] F4-09 (۲.۹) موتور جریمه مشترک (سیاست‌محور، بازتولیدپذیر، ضد اعمال مجدد).
 - [ ] F4-10 (۲.۱۰) Job Registry + Outbox + Retry/Backoff + Idempotency + پایش صف.
