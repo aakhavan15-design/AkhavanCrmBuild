@@ -1,10 +1,10 @@
 import React, { useMemo, useState } from 'react';
-import { AppState, AdvanceRequest } from '../../types';
+import type { AppState, AdvanceRequest, Attachment } from '../../types';
 import { Textarea } from '../ui';
 import { DynamicFormRenderer } from '../shared/DynamicFormRenderer';
 import { DocumentField, DocFile } from '../shared/DocumentField';
 import { PERSONNEL_IDENTITY_SCHEMA, PERSONNEL_BANK_SCHEMA, PERSONNEL_ADDRESS_SCHEMA } from '../../services/dynamicFormEngine';
-import { computeMissing, ensurePersonnelFile, FILE_STATUS_LABEL, getOnboardingConfig, savePersonnelStep, setPersonnelDocument, submitPersonnelFile } from '../../lib/onboarding';
+import { computeMissing, ensurePersonnelFile, FILE_STATUS_LABEL, getOnboardingConfig, savePersonnelStep, setPersonnelDocument, submitPersonnelFile, type PersonnelFile } from '../../lib/onboarding';
 import { generateId, formatCurrency } from '../../lib/utils';
 import { Button } from '../ui/Button';
 import { CheckCircle2, CircleAlert, Wallet, FileText, ArrowUpRight, Plus, HelpCircle } from 'lucide-react';
@@ -28,8 +28,11 @@ export function PersonnelFilePage({ state, updateState }: { state: AppState; upd
   const [advanceReason, setAdvanceReason] = useState('');
   const [showAdvanceModal, setShowAdvanceModal] = useState(false);
 
-  const file: unknown = (state.personnelFiles || []).find((f: Record<string, unknown>) => f.userId === me);
-  const eff = file || { identity: { fullName: state.users?.find(u => u.id === me)?.name || '' }, bank: {}, address: {}, documents: {}, status: 'INCOMPLETE' };
+  const file = (state.personnelFiles as PersonnelFile[] | undefined)?.find(item => item.userId === me);
+  const eff: Pick<PersonnelFile, 'identity' | 'bank' | 'address' | 'documents' | 'status' | 'reviewNote'> = file ?? {
+    identity: { fullName: state.users?.find(user => user.id === me)?.name || '' },
+    bank: {}, address: {}, documents: {}, status: 'INCOMPLETE',
+  };
   const missing = useMemo(() => computeMissing(eff, cfg), [eff, cfg]);
   const locked = eff.status === 'SUBMITTED_FOR_REVIEW';
 
@@ -42,24 +45,29 @@ export function PersonnelFilePage({ state, updateState }: { state: AppState; upd
   const saveStep = (s: 'identity' | 'bank' | 'address') => (v: Record<string, unknown>) => {
     let r: { ok: boolean; reason?: string } = { ok: false }; 
     updateState(d => { r = savePersonnelStep(d, me, s, v, new Date()); }); 
-    flash((r as Record<string, unknown>).ok ? 'ذخیره موقت انجام شد.' : (r as Record<string, unknown>).reason || 'ذخیره نشد.');
+    flash(r.ok ? 'ذخیره موقت انجام شد.' : r.reason || 'ذخیره نشد.');
   };
 
-  const putDoc = (kind: string, f: DocFile | null) => {
-    if (!f) return; 
-    const attId = generateId(); 
+  const putDoc = (kind: string, document: DocFile | null) => {
+    if (!me || locked) return;
+    const attId = document ? generateId() : null;
     let r: { ok: boolean; reason?: string } = { ok: false };
     updateState(d => { 
       r = setPersonnelDocument(d, me, kind, attId, new Date()); 
-      if ((r as Record<string, unknown>).ok) { 
-        if (!d.attachments) d.attachments = []; 
-        d.attachments.push({ id: attId, entityId: me, entityType: 'PERSONNEL_FILE', fileName: f.fileName, fileType: f.fileType, fileSize: f.fileSize, base64Data: f.base64Data, uploadedAt: new Date().toISOString(), uploadedBy: me, docKind: kind } as Record<string, unknown>); 
-      } 
+      if (r.ok && attId && document) {
+        (d.attachments ??= []).push({
+          ...document, id: attId, entityId: me, entityType: 'PERSONNEL_FILE',
+          uploadedAt: new Date().toISOString(), uploadedBy: me, docKind: kind,
+        });
+      }
     });
-    if (!(r as Record<string, unknown>).ok) flash((r as Record<string, unknown>).reason || 'بارگذاری نشد.');
+    if (!r.ok) flash(r.reason || 'مدرک تغییر نکرد.');
   };
 
-  const attOf = (id?: string) => (state.attachments || []).find((a: Record<string, unknown>) => a.id === id) as Record<string, unknown>;
+  const attachments: Attachment[] = state.attachments || [];
+  const attOf = (id?: string) => id ? attachments.find(attachment =>
+    attachment.id === id && attachment.entityId === me && attachment.entityType === 'PERSONNEL_FILE'
+  ) : undefined;
 
   const submit = () => { 
     let r: { ok: boolean; missing: { label: string }[] } = { ok: false, missing: [] }; 
@@ -67,7 +75,7 @@ export function PersonnelFilePage({ state, updateState }: { state: AppState; upd
       ensurePersonnelFile(d, me, new Date()); 
       r = submitPersonnelFile(d, me, new Date()); 
     }); 
-    flash((r as Record<string, unknown>).ok ? 'پرونده برای بررسی مدیر ارسال شد.' : `موارد ناقص: ${(r as Record<string, unknown>).missing.map((m: Record<string, unknown>) => m.label).join('، ')}`); 
+    flash(r.ok ? 'پرونده برای بررسی مدیر ارسال شد.' : `موارد ناقص: ${r.missing.map(item => item.label).join('، ')}`);
   };
 
   const handleRequestAdvance = (e: React.FormEvent) => {
@@ -106,7 +114,7 @@ export function PersonnelFilePage({ state, updateState }: { state: AppState; upd
       <header className="space-y-0.5">
         <h1 data-tour-heading className="text-base font-bold text-text-main">پرونده پرسنلی و امور رفاهی من</h1>
         <p className="text-xs text-text-secondary">
-          وضعیت مدارک: <b className="text-primary">{FILE_STATUS_LABEL[eff.status as keyof typeof FILE_STATUS_LABEL]}</b>
+          وضعیت مدارک: <b className="text-primary">{FILE_STATUS_LABEL[eff.status]}</b>
           {missing.length > 0 && ` · ${missing.length.toLocaleString('fa-IR')} مورد نیازمند تکمیل`}
         </p>
       </header>
@@ -161,14 +169,15 @@ export function PersonnelFilePage({ state, updateState }: { state: AppState; upd
         {step === 'documents' && (
           <div className="space-y-2.5">
             {cfg.requiredDocs.map(d => { 
-              const a = att(eff.documents[d.key]); 
+              const a = attOf(eff.documents?.[d.key]);
               return (
                 <DocumentField 
                   key={d.key} 
                   label={d.label} 
                   required={d.required} 
                   value={a ? { fileName: a.fileName, fileType: a.fileType, fileSize: a.fileSize, base64Data: a.base64Data } : null} 
-                  onChange={f => { if (f && !locked) putDoc(d.key, f); }} 
+                  onChange={file => putDoc(d.key, file)}
+                  readOnly={locked}
                   hint={a ? 'بارگذاری شده' : undefined} 
                 />
               ); 

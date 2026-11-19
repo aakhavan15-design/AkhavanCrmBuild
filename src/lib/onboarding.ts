@@ -194,10 +194,19 @@ export function savePersonnelStep(draft: AppState, userId: string, step: 'identi
   if (f.status === 'SUBMITTED_FOR_REVIEW') return { ok: false, reason: 'پرونده در حال بررسی است؛ تا تعیین نتیجه قابل ویرایش نیست.' };
   f[step] = { ...f[step], ...data }; if (f.status === 'APPROVED') f.status = 'INCOMPLETE'; f.updatedAt = now.toISOString(); return { ok: true };
 }
-export function setPersonnelDocument(draft: AppState, userId: string, kind: string, attachmentId: string, now: Date): { ok: boolean; reason?: string } {
+export function setPersonnelDocument(draft: AppState, userId: string, kind: string, attachmentId: string | null, now: Date): { ok: boolean; reason?: string } {
   const f = ensurePersonnelFile(draft, userId, now); if (!f) return { ok: false, reason: 'کاربر یافت نشد.' };
   if (f.status === 'SUBMITTED_FOR_REVIEW') return { ok: false, reason: 'پرونده در حال بررسی است.' };
-  f.documents[kind] = attachmentId; if (f.status === 'APPROVED') f.status = 'INCOMPLETE'; f.updatedAt = now.toISOString(); return { ok: true };
+  if (attachmentId === null) {
+    if (!f.documents[kind]) return { ok: true };
+    delete f.documents[kind];
+    log(draft, 'PERSONNEL_DOCUMENT_UNLINKED', 'PERSONNEL_FILE', userId, `پیوند مدرک ${kind} از پرونده برداشته شد.`, userId, now);
+  } else {
+    f.documents[kind] = attachmentId;
+  }
+  if (f.status === 'APPROVED') f.status = 'INCOMPLETE';
+  f.updatedAt = now.toISOString();
+  return { ok: true };
 }
 export function submitPersonnelFile(draft: AppState, userId: string, now: Date): { ok: boolean; missing: { key: string; label: string }[] } {
   const f = ensurePersonnelFile(draft, userId, now); if (!f) return { ok: false, missing: [{ key: 'user', label: 'کاربر' }] };

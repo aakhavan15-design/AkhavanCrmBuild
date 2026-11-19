@@ -6,7 +6,9 @@ export interface DocFile { fileName: string; fileType: string; fileSize: number;
 const MAX = 3 * 1024 * 1024;
 
 /** انتخاب مدرک با دوربین یا گالری + پیش‌نمایش (تصویر یا PDF، حداکثر ۳ مگابایت). */
-export function DocumentField({ label, required, value, onChange, hint }: { label: string; required?: boolean; value: DocFile | null; onChange: (f: DocFile | null) => void; hint?: string }) {
+export function DocumentField({ label, required, value, onChange, hint, readOnly = false }: {
+  label: string; required?: boolean; value: DocFile | null; onChange: (f: DocFile | null) => void; hint?: string; readOnly?: boolean;
+}) {
   const cam = useRef<HTMLInputElement>(null); const gal = useRef<HTMLInputElement>(null); const [err, setErr] = useState('');
   const pick = (f?: File) => {
     if (!f) return; setErr('');
@@ -23,8 +25,10 @@ export function DocumentField({ label, required, value, onChange, hint }: { labe
         <div className="flex items-center gap-3">
           {value.fileType.startsWith('image/') ? <img src={value.base64Data} alt={label} className="h-16 w-16 rounded-xl object-cover" /> : <span className="grid h-16 w-16 place-items-center rounded-xl bg-canvas"><FileText /></span>}
           <span className="min-w-0 flex-1 truncate text-caption text-text-secondary" dir="ltr">{value.fileName}</span>
-          <button type="button" aria-label="حذف و بارگذاری مجدد" onClick={() => onChange(null)} className="grid h-10 w-10 cursor-pointer place-items-center rounded-full hover:bg-ink/10"><X size={16} /></button>
+          {!readOnly && <button type="button" aria-label="حذف و بارگذاری مجدد" onClick={() => onChange(null)} className="grid h-10 w-10 cursor-pointer place-items-center rounded-full hover:bg-ink/10"><X size={16} /></button>}
         </div>
+      ) : readOnly ? (
+        <p className="text-caption text-text-secondary">مدرکی بارگذاری نشده است.</p>
       ) : (
         <div className="flex gap-2">
           <Button variant="outline" className="flex-1" type="button" onClick={() => cam.current?.click()} ><Camera size={15} />دوربین</Button>

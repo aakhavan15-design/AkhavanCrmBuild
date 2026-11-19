@@ -30,7 +30,7 @@ import { AttachmentManager } from './ui/AttachmentManager';
 import { 
   Wallet, TrendingUp, AlertCircle, FileText, CheckCircle, Clock, 
   Plus, CheckCircle2, DollarSign, CreditCard, ShieldAlert, PhoneCall,
-  CalendarCheck, AlertTriangle, ArrowUpRight, ShieldCheck, Check
+  CalendarCheck, AlertTriangle, ArrowUpRight, ShieldCheck, Check, Sparkles
 } from 'lucide-react';
 import { generateId, formatAppDate, nextSequenceNumber, toLocalDateISO, formatCurrency } from '../lib/utils';
 import { enqueueOptimisticMutation } from '../lib/optimisticMutation';

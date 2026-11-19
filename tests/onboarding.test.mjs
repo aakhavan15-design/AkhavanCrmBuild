@@ -35,9 +35,16 @@ const cfg = O.getOnboardingConfig(p); ok(O.computeMissing(f1, cfg).length >= 8, 
 O.savePersonnelStep(p, 'u1', 'identity', { fullName: 'کارمند قدیمی', mobile: '09121234567', nationalId: '0499370899' }, T); O.savePersonnelStep(p, 'u1', 'bank', { bankName: 'بانک', iban: 'IR062960000000100324200001', accountHolder: 'کارمند' }, T); O.savePersonnelStep(p, 'u1', 'address', { province: 'تهران', city: 'تهران', full: 'خیابان ...' }, T);
 ['photo', 'birthCertificate', 'nationalCard'].forEach((k, i) => O.setPersonnelDocument(p, 'u1', k, `d${i}`, T)); eq(O.computeMissing(p.personnelFiles[0], cfg), [], 'کامل');
 eq(O.submitPersonnelFile(p, 'u1', T).ok, true, 'ارسال برای بررسی'); eq(O.savePersonnelStep(p, 'u1', 'bank', { iban: 'x' }, T).ok, false, 'حین بررسی قابل ویرایش نیست');
+eq(O.setPersonnelDocument(p, 'u1', 'photo', null, T).ok, false, 'پیوند مدرک در حین بررسی تغییر نمی‌کند');
+eq(p.personnelFiles[0].documents.photo, 'd0', 'مدرک قفل‌شده حفظ شد');
 eq(O.reviewPersonnelFile(p, 'u1', 'APPROVE', '', 'u1', T).ok, false, 'بررسی پرونده خود ممنوع'); eq(O.reviewPersonnelFile(p, 'u1', 'NEEDS_CORRECTION', '', 'boss', T).ok, false, 'اصلاح بدون یادداشت');
 const before = JSON.stringify(p.users[0]); eq(O.reviewPersonnelFile(p, 'u1', 'APPROVE', '', 'boss', T).ok, true, 'تأیید'); eq(JSON.stringify(p.users[0]), before, 'تأیید مدارک نقش/مجوز/فعال‌بودن را تغییر نمی‌دهد');
 eq(O.reviewPersonnelFile(p, 'u1', 'APPROVE', '', 'boss', T).ok, false, 'تأیید مجدد'); O.savePersonnelStep(p, 'u1', 'address', { city: 'کرج' }, T); eq(p.personnelFiles[0].status, 'INCOMPLETE', 'تغییر پس از تأیید → ناقص');
+p.attachments = [{ id: 'd0', entityId: 'u1', entityType: 'PERSONNEL_FILE' }];
+eq(O.setPersonnelDocument(p, 'u1', 'photo', null, T).ok, true, 'امکان برداشتن پیوند مدرک');
+eq(p.personnelFiles[0].documents.photo, undefined, 'پیوند برداشته شد');
+eq(p.attachments.length, 1, 'فایل بر اثر برداشتن پیوند حذف نشد');
+ok(p.auditLogs.some(entry => entry.action === 'PERSONNEL_DOCUMENT_UNLINKED'), 'تغییر در ممیزی ثبت شد');
 // پیکربندی: بدون نام شرکت هاردکد
 eq(O.getOnboardingConfig({ settings: { orgConfig: { onboarding: { requiredDocs: [{ key: 'x', label: 'مدرک X', required: true }] } } } }).requiredDocs[0].key, 'x', 'مدارک قابل‌پیکربندی');
 console.log(`PASS: ${n} assertions (onboarding)`);
