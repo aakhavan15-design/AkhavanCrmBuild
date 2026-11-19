@@ -8,6 +8,11 @@ import { Input, Select } from './ui/Input';
 import { guard, requireActiveUser, useCan } from '../hooks/useCan';
 import { calculateProfitability, buildOperationsMetrics, calculateCreditMetrics, analyzeReturns } from '../lib/operationsEngine';
 import { formatRialOrUnknown } from '../lib/utils';
+import { useDataQuery } from '../hooks/useDataProvider';
+import { resolveCustomerBalanceView } from '../lib/receivableReconciliation';
+import { buildLedgerAgingInputs, estimateLedgerAging } from '../services/agingBuckets';
+import { useDataSyncStatus } from '../services/dataSyncController';
+import type { AppState } from '../types';
 
 const money = formatRialOrUnknown;
 const newId = (p: string) => generateSecureId(p);
@@ -25,15 +30,151 @@ export function PurchasingTab({ state, updateState }: { state: unknown; updateSt
   return <div className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(300px,1fr)]"><Card><h2 className="mb-4 font-black text-text-main">درخواست‌های خرید</h2><div className="space-y-2">{requests.map(r=><div key={r.id} className="rounded-2xl border border-border p-3"><div className="flex flex-wrap justify-between gap-2"><b className="text-xs text-text-main">{r.requestNumber}</b><StatusBadge status={r.status}/></div><div className="mt-2 text-xs text-text-secondary">تأمین‌کننده: {suppliers.find(s=>s.id===r.supplierId)?.name||'نامشخص'} · کالا: {products.find(p=>p.id===r.productId)?.name||'نامشخص'}</div><div className="mt-1 text-xs text-text-main">تعداد: {Number(r.quantity).toLocaleString('fa-IR')} · {r.reason}</div><div className="mt-2 text-micro text-warning">درخواست داخلی آزمایشی؛ سفارش خرید رسمی ثبت نشده است.</div></div>)}{!requests.length&&<p className="py-8 text-center text-sm text-text-secondary">درخواست خریدی ثبت نشده است.</p>}</div></Card><Card><h2 className="mb-4 font-black text-text-main">ثبت درخواست خرید آزمایشی</h2><form className="space-y-3" onSubmit={submit}><div><label className="mb-1 block text-xs font-bold text-text-main">تأمین‌کننده</label><Select aria-label="تأمین‌کننده" required value={supplierId} onChange={e=>setSupplierId(e.target.value)} ><option value="">انتخاب تأمین‌کننده</option>{suppliers.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</Select></div><div><label className="mb-1 block text-xs font-bold text-text-main">کالا</label><Select aria-label="کالا" required value={productId} onChange={e=>setProductId(e.target.value)} ><option value="">انتخاب کالا</option>{products.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</Select></div><Input label="تعداد درخواستی" type="number" min="0.001" step="any" required value={quantity} onChange={e=>setQuantity(e.target.value)}/><Input label="دلیل درخواست" required value={reason} onChange={e=>setReason(e.target.value)} placeholder="کمبود موجودی، سفارش مشتری..."/><Button className="w-full" type="submit" icon={<ShoppingCart size={15}/>} disabled={!supplierId||!productId||Number(quantity)<=0||!reason.trim()}>ثبت درخواست داخلی</Button></form></Card></div>;
 }
 
-export function CreditTab({ state }: { state: unknown }) {
+export function CreditTab({ state }: { state: AppState }) {
   const { canOn, can } = useCan(state);
-  const allCustomers: Array<Record<string, unknown>> = state.accounts || state.customers || [];
-  const customers: Array<Record<string, unknown>> = allCustomers.filter((c: Record<string, unknown>)=>{const rec={ownerId:c.ownerId,branchId:c.branchId,territoryId:c.territoryId,teamId:c.teamId,tenantId:c.tenantId};return can('accounts','VIEW')?canOn('accounts','VIEW',rec):canOn('finance','VIEW',rec)});
-  const invoices: Array<Record<string, unknown>> = (state.invoices || []).filter((i: Record<string, unknown>)=>{const c=allCustomers.find(x=>x.id===i.customerId);return !!c&&canOn('finance','VIEW',{ownerId:c.ownerId,branchId:c.branchId,territoryId:c.territoryId,teamId:c.teamId,tenantId:c.tenantId});});
-  const visibleInvoiceIds = new Set(invoices.map(i=>i.id));
-  const visiblePayments = (state.payments || []).filter((p: Record<string, unknown>)=>customers.some(c=>c.id===p.customerId));
-  const creditMetrics = calculateCreditMetrics({ invoices, payments: visiblePayments, allocations: (state.paymentAllocations || []).filter((a: Record<string, unknown>)=>visibleInvoiceIds.has(a.invoiceId)), cheques: (state.cheques || []).filter((ch: Record<string, unknown>)=>customers.some(c=>c.id===ch.customerId)) });
-  return <Card className="p-3 sm:p-5 border-border/80 shadow-xs"><div className="mb-3 flex flex-wrap items-center justify-between gap-2"><h2 className="font-bold text-sm sm:text-base text-text-main">میز اعتبار و ریسک مشتری</h2><Badge variant="warning">نیازمند تطبیق با حسابداری</Badge></div><div className="mb-4 grid grid-cols-2 gap-2 sm:gap-3 xl:grid-cols-4">{[{label:'میانگین روزهای تسویه (نمونه‌های معتبر)',value:creditMetrics.averageSettlementDays===null?'نامشخص':creditMetrics.averageSettlementDays.toLocaleString('fa-IR',{maximumFractionDigits:1})},{label:'میانه روزهای تسویه',value:creditMetrics.medianSettlementDays===null?'نامشخص':creditMetrics.medianSettlementDays.toLocaleString('fa-IR',{maximumFractionDigits:1})},{label:'چک برگشتی',value:creditMetrics.bouncedChequeCount.toLocaleString('fa-IR')},{label:'چک تعیین‌تکلیف‌نشده',value:creditMetrics.unresolvedChequeCount.toLocaleString('fa-IR')}].map(k=><div key={k.label} className="rounded-xl border border-border/70 bg-surface p-3 flex flex-col justify-between shadow-2xs"><div className="text-micro font-medium leading-relaxed text-text-secondary">{k.label}</div><div className="mt-1.5 text-base sm:text-lg font-bold tabular-nums text-text-main">{k.value}</div></div>)}</div><div className="overflow-x-auto rounded-xl border border-border/60"><table className="w-full min-w-(--size-700) text-right text-xs divide-y divide-border/60"><thead><tr className="bg-canvas/60 text-text-secondary text-caption"><th className="p-2.5 whitespace-nowrap font-bold">مشتری</th><th className="p-2.5 whitespace-nowrap font-bold">مانده فعلی</th><th className="p-2.5 whitespace-nowrap font-bold">سقف اعتبار</th><th className="p-2.5 whitespace-nowrap font-bold">اعتبار باقی‌مانده تقریبی</th><th className="p-2.5 whitespace-nowrap font-bold">اسناد سررسیدگذشته</th><th className="p-2.5 whitespace-nowrap font-bold">ارزیابی</th></tr></thead><tbody className="divide-y divide-border/40 bg-surface">{customers.map(c=>{const balance=Number(c.balance);const limit=Number(c.creditLimit);const known=Number.isFinite(balance)&&Number.isFinite(limit)&&limit>0;const overdue=invoices.filter(i=>i.customerId===c.id&&i.status==='OVERDUE').length;const remaining=known?limit-balance:null;return <tr key={c.id} className="hover:bg-canvas/50 transition-colors"><td className="p-2.5 font-bold text-text-main whitespace-nowrap">{c.name}</td><td className="p-2.5 tabular-nums font-mono">{Number.isFinite(balance)?money(balance):'نامشخص'}</td><td className="p-2.5 tabular-nums font-mono">{known?money(limit):'نامشخص'}</td><td className="p-2.5 tabular-nums font-mono">{remaining===null?'نامشخص':money(remaining)}</td><td className="p-2.5 tabular-nums">{overdue.toLocaleString('fa-IR')}</td><td className="p-2.5">{!known?<Badge variant="neutral">داده ناکافی</Badge>:remaining!<0||overdue>0?<Badge variant="danger">نیازمند بررسی</Badge>:<Badge variant="success">بدون هشدار محاسباتی</Badge>}</td></tr>})}</tbody></table></div><p className="mt-3 text-caption leading-6 text-text-secondary">میانگین/میانه روزهای تسویه، تاریخچه چک برگشتی و اعتبار مصرف‌شده تا وقتی رویدادهای مالی کامل و قابل ردیابی موجود نباشند، به‌عنوان شاخص قطعی محاسبه نمی‌شوند.</p></Card>;
+  const canViewFinance = can('finance', 'VIEW');
+  const canViewPayments = canViewFinance && can('payments', 'VIEW');
+  const { serverVersion } = useDataSyncStatus();
+  const customers = (state.accounts || state.customers || []).filter(customer =>
+    can('accounts', 'VIEW') ? canOn('accounts', 'VIEW', customer) : canOn('finance', 'VIEW', customer)
+  );
+  const financeCustomers = new Map(customers
+    .filter(customer => canOn('finance', 'VIEW', customer))
+    .map(customer => [customer.id, customer]));
+  const invoices = (state.invoices || []).filter(invoice =>
+    financeCustomers.has(invoice.customerId || invoice.accountId || '')
+  );
+  const payments = canViewPayments ? (state.payments || []).filter(payment => {
+    const customer = financeCustomers.get(payment.customerId || payment.accountId);
+    return customer && canOn('payments', 'VIEW', customer);
+  }) : [];
+  const cheques = state.cheques?.filter(cheque => financeCustomers.has(cheque.customerId));
+
+  const ledger = useDataQuery(
+    provider => canViewFinance ? provider.getDetailSubsidiaryBalances() : Promise.resolve(null),
+    [canViewFinance, state.currentUserId, serverVersion]
+  );
+  const allocations = useDataQuery(
+    provider => canViewPayments ? provider.getPaymentAllocations() : Promise.resolve(null),
+    [canViewPayments, state.currentUserId, serverVersion]
+  );
+
+  const ledgerResult = canViewFinance && !ledger.loading && !ledger.error ? ledger.data : null;
+  const balances = new Map([...financeCustomers.values()].map(customer => [
+    customer.id, resolveCustomerBalanceView(ledgerResult, customer)
+  ]));
+  const completeCustomers = [...financeCustomers.values()].filter(customer => {
+    const balance = balances.get(customer.id);
+    return balance?.kind === 'OK' && !balance.incomplete;
+  });
+  const aging = estimateLedgerAging(buildLedgerAgingInputs(ledgerResult, completeCustomers, invoices));
+  const overdueByCustomer = new Map(aging.customers.map(customer => [
+    customer.id,
+    customer.unattributed > 0 || customer.covered.some(invoice => invoice.days === null)
+      ? null
+      : customer.covered.filter(invoice => invoice.days !== null && invoice.days > 0).length
+  ]));
+
+  const invoiceIds = new Set(invoices.map(invoice => invoice.id));
+  const paymentIds = new Set(payments.map(payment => payment.id));
+  const reviewableAllocations = canViewPayments && !allocations.loading && !allocations.error
+    ? allocations.data?.filter(row => invoiceIds.has(row.invoiceId) && paymentIds.has(row.paymentId))
+    : undefined;
+  const creditMetrics = calculateCreditMetrics({
+    invoices: invoices.map(invoice => ({ ...invoice })),
+    payments: payments.map(payment => ({ ...payment })),
+    allocations: reviewableAllocations?.map(allocation => ({ ...allocation })),
+    cheques,
+  });
+  const number = (value: number | null) => value === null
+    ? 'نامشخص'
+    : value.toLocaleString('fa-IR', { maximumFractionDigits: 1 });
+  const metrics = [
+    { label: 'میانگین روزهای تسویه (نمونه‌های تخصیص)', value: creditMetrics.averageSettlementDays },
+    { label: 'میانه روزهای تسویه (نمونه‌های تخصیص)', value: creditMetrics.medianSettlementDays },
+    { label: 'چک برگشتی', value: canViewFinance && cheques ? creditMetrics.bouncedChequeCount : null },
+    { label: 'چک تعیین‌تکلیف‌نشده', value: canViewFinance && cheques ? creditMetrics.unresolvedChequeCount : null },
+  ];
+  const ledgerError = canViewFinance && (ledger.error?.message
+    || (ledger.data?.status === 'UNAVAILABLE' && (ledger.data.reason || 'اتصال برقرار نیست.')));
+
+  return (
+    <Card className="p-3 sm:p-5 border-border/80 shadow-xs">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <h2 className="font-bold text-sm sm:text-base text-text-main">میز اعتبار و ریسک مشتری</h2>
+        <Badge variant="warning">نیازمند تطبیق با حسابداری</Badge>
+      </div>
+      {ledgerError && (
+        <div role="alert" className="mb-3 flex flex-wrap items-center gap-2 text-xs text-danger">
+          <span>دریافت ماندهٔ دفتری ناموفق بود. {ledgerError}</span>
+          <Button type="button" variant="ghost" onClick={() => void ledger.refetch()}>تلاش مجدد</Button>
+        </div>
+      )}
+      {canViewPayments && allocations.error && (
+        <div role="alert" className="mb-3 flex flex-wrap items-center gap-2 text-xs text-danger">
+          <span>دریافت تخصیص‌ها ناموفق بود. {allocations.error.message}</span>
+          <Button type="button" variant="ghost" onClick={() => void allocations.refetch()}>تلاش مجدد</Button>
+        </div>
+      )}
+      <div className="mb-4 grid grid-cols-2 gap-2 sm:gap-3 xl:grid-cols-4">
+        {metrics.map(metric => (
+          <div key={metric.label} className="rounded-xl border border-border/70 bg-surface p-3">
+            <div className="text-micro font-medium text-text-secondary">{metric.label}</div>
+            <div className="mt-1.5 text-base font-bold tabular-nums text-text-main">{number(metric.value)}</div>
+          </div>
+        ))}
+      </div>
+      <div className="overflow-x-auto rounded-xl border border-border/60">
+        <table className="w-full min-w-(--size-700) text-right text-xs divide-y divide-border/60">
+          <thead>
+            <tr className="bg-canvas/60 text-text-secondary text-caption">
+              {['مشتری', 'ماندهٔ دفتری', 'سقف اعتبار', 'اعتبار باقی‌مانده تقریبی', 'اسناد سررسیدگذشته (تخمینی)', 'ارزیابی'].map(label => (
+                <th key={label} scope="col" className="p-2.5 whitespace-nowrap font-bold">{label}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border/40 bg-surface">
+            {customers.map(customer => {
+              const ledgerBalance = balances.get(customer.id);
+              const balance = ledgerBalance?.kind === 'OK' && !ledgerBalance.incomplete ? ledgerBalance.total : null;
+              const limit = financeCustomers.has(customer.id) && Number.isFinite(customer.creditLimit) && Number(customer.creditLimit) > 0
+                ? Number(customer.creditLimit) : null;
+              const overdue = overdueByCustomer.get(customer.id) ?? null;
+              const remaining = balance !== null && limit !== null ? limit - balance : null;
+              return (
+                <tr key={customer.id} className="hover:bg-canvas/50">
+                  <th scope="row" className="p-2.5 font-bold text-text-main">{customer.name}</th>
+                  <td className="p-2.5 tabular-nums">
+                    {canViewFinance && ledger.loading && financeCustomers.has(customer.id) ? '…' : money(balance)}
+                    {ledgerBalance?.kind === 'OK' && (
+                      <ul className="mt-1 space-y-1 text-text-secondary">
+                        {ledgerBalance.subsidiaries.map(line => (
+                          <li key={JSON.stringify([line.subsidiaryCode, line.periodCode])}>
+                            {line.subsidiaryCode || 'فاقد نگاشت'} · {money(line.balance)}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </td>
+                  <td className="p-2.5 tabular-nums">{money(limit)}</td>
+                  <td className="p-2.5 tabular-nums">{money(remaining)}</td>
+                  <td className="p-2.5 tabular-nums">{number(overdue)}</td>
+                  <td className="p-2.5">
+                    {remaining === null ? <Badge variant="neutral">داده ناکافی</Badge>
+                      : remaining < 0 || (overdue !== null && overdue > 0) ? <Badge variant="danger">نیازمند بررسی</Badge>
+                      : overdue === null ? <Badge variant="neutral">سررسید نامشخص</Badge>
+                      : <Badge variant="success">بدون هشدار محاسباتی</Badge>}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+        {!customers.length && <p className="p-3 text-xs text-text-secondary">مشتری قابل مشاهده‌ای وجود ندارد.</p>}
+      </div>
+      <p className="mt-3 text-caption text-text-secondary">سررسید از ماندهٔ دفتری و فاکتورهای معتبر تخمین زده می‌شود. تخصیص‌های CRM فقط برای بررسی نمونه‌های دریافت استفاده می‌شوند.</p>
+    </Card>
+  );
 }
 
 export function OperationsReportsTab({ state }: { state: unknown }) {

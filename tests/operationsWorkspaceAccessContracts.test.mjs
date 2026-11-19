@@ -6,4 +6,11 @@ assert.match(source, /canOn\('finance',\s*'VIEW'/, 'scoped canOn finance checks'
 assert.match(source, /salesReturns/, 'returns collection present');
 assert.match(source, /state\.invoices/, 'invoices collection present');
 assert.match(source, /expenses/, 'expenses referenced');
+const credit = source.slice(source.indexOf('export function CreditTab'), source.indexOf('export function OperationsReportsTab'));
+assert.match(credit, /canViewFinance \? provider\.getDetailSubsidiaryBalances\(\)/);
+assert.match(credit, /canViewPayments \? provider\.getPaymentAllocations\(\)/);
+assert.match(credit, /invoiceIds\.has\(row\.invoiceId\) && paymentIds\.has\(row\.paymentId\)/);
+assert.match(credit, /estimateLedgerAging\(buildLedgerAgingInputs\(/);
+assert.match(credit, /!ledgerBalance\.incomplete \? ledgerBalance\.total : null/);
+assert.doesNotMatch(credit, /state\.paymentAllocations|customer\.balance|\.status === 'OVERDUE'/);
 console.log('operationsWorkspaceAccessContracts: PASS');
