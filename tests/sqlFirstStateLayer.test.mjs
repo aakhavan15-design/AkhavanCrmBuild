@@ -113,17 +113,23 @@ test('allocation snapshots distinguish permitted empty, populated and restricted
   const driver = new MemoryEntityDriver();
   const allowedService = createEntityService({ driver, registry, hasPermission: allow });
   const deniedService = createEntityService({ driver, registry, hasPermission: async () => false });
-  const options = { includeEmptyPaymentAllocations: true };
+  const options = { includeEmptyCollections: ['paymentAllocations', 'zoneAssignments'] };
   const allocation = { id: 'al1', paymentId: 'p1', invoiceId: 'i1', amount: 100 };
+  const zoneAssignment = { id: 'za1', zoneId: 'z1', entityType: 'CUSTOMER', entityId: 'a1' };
 
   assert.deepEqual((await allowedService.snapshot(auth, options)).collections.paymentAllocations, []);
-  await allowedService.sync(auth, { upserts: { paymentAllocations: [allocation] } });
-  assert.deepEqual((await allowedService.snapshot(auth, options)).collections.paymentAllocations, [allocation]);
+  assert.deepEqual((await allowedService.snapshot(auth, options)).collections.zoneAssignments, []);
+  await allowedService.sync(auth, { upserts: { paymentAllocations: [allocation], zoneAssignments: [zoneAssignment] } });
+  const populated = await allowedService.snapshot(auth, options);
+  assert.deepEqual(populated.collections.paymentAllocations, [allocation]);
+  assert.deepEqual(populated.collections.zoneAssignments, [zoneAssignment]);
   assert.deepEqual((await allowedService.snapshot({ ...auth, tenantId: 'other' }, options)).collections.paymentAllocations, []);
 
   const restricted = await deniedService.snapshot(auth, options);
   assert.equal(restricted.collections.paymentAllocations, undefined);
   assert.ok(restricted.hiddenCollections.includes('paymentAllocations'));
+  assert.equal(restricted.collections.zoneAssignments, undefined);
+  assert.ok(restricted.hiddenCollections.includes('zoneAssignments'));
 });
 
 test('file driver persists across restarts', async () => {

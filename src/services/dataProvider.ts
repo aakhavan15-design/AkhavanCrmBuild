@@ -12,6 +12,7 @@ import type {
   PayrollRun,
   AdvanceRequest,
   GeoZone,
+  ZoneAssignment,
   CoaMirror
 } from '../types';
 import { useAppStore } from '../lib/storage';
@@ -106,7 +107,7 @@ export interface DataProvider {
   // Geo
   getGeoZones(): Promise<GeoZone[]>;
   saveGeoZone(zone: Partial<GeoZone>): Promise<GeoZone>;
-  getZoneAssignments(): Promise<Array<Record<string, unknown>>>;
+  getZoneAssignments(): Promise<ZoneAssignment[]>;
   getPaymentAllocations(): Promise<PaymentAllocation[]>;
   
   // Financial Intelligence & Approval Center (Approval Intelligence / Financial 360 / Smart Accounting Classification)
@@ -377,8 +378,8 @@ export class ClientStorageDataProvider implements DataProvider {
     return this.getState().geoZones || [];
   }
 
-  async getZoneAssignments(): Promise<Array<Record<string, unknown>>> {
-    return (this.getState() as any).zoneAssignments || [];
+  async getZoneAssignments(): Promise<ZoneAssignment[]> {
+    return this.getState().zoneAssignments || [];
   }
 
   async getPaymentAllocations(): Promise<PaymentAllocation[]> {
@@ -704,28 +705,24 @@ export class HttpBackendDataProvider implements DataProvider {
     });
   }
 
-  async getZoneAssignments(): Promise<Array<Record<string, unknown>>> {
-    try {
-      const snap = await this.getStateSnapshot();
-      const hidden = Array.isArray(snap.hiddenCollections) ? snap.hiddenCollections : [];
-      if (hidden.includes('zoneAssignments')) return [];
-      const col = snap.collections?.zoneAssignments;
-      return Array.isArray(col) ? (col as Array<Record<string, unknown>>) : [];
-    } catch {
-      return [];
-    }
+  async getZoneAssignments(): Promise<ZoneAssignment[]> {
+    return this.readSnapshotCollection<ZoneAssignment>('zoneAssignments', 'انتساب زون‌ها');
   }
 
   async getPaymentAllocations(): Promise<PaymentAllocation[]> {
-    const snapshot = await this.request<StateSnapshot>('/state/snapshot?includeEmpty=paymentAllocations');
-    if (snapshot.hiddenCollections?.includes('paymentAllocations')) {
-      throw new Error('مجوز مشاهدهٔ تخصیص دریافت‌ها وجود ندارد.');
+    return this.readSnapshotCollection<PaymentAllocation>('paymentAllocations', 'تخصیص دریافت‌ها');
+  }
+
+  private async readSnapshotCollection<T>(name: 'zoneAssignments' | 'paymentAllocations', label: string): Promise<T[]> {
+    const snapshot = await this.request<StateSnapshot>(`/state/snapshot?includeEmpty=${name}`);
+    if (snapshot.hiddenCollections?.includes(name)) {
+      throw new Error(`مجوز مشاهدهٔ ${label} وجود ندارد.`);
     }
-    const allocations = snapshot.collections?.paymentAllocations;
-    if (!Array.isArray(allocations)) {
-      throw new Error('منبع تخصیص دریافت‌ها در پاسخ سرور موجود نیست.');
+    const records = snapshot.collections?.[name];
+    if (!Array.isArray(records)) {
+      throw new Error(`منبع ${label} در پاسخ سرور موجود نیست.`);
     }
-    return allocations as unknown as PaymentAllocation[];
+    return records as unknown as T[];
   }
 
   // --- Financial Intelligence: داده از اسنپ‌شات سرور (مجوز/پروفایل دسترسی سمت سرور اعمال می‌شود) و همان موتور مشترک ---

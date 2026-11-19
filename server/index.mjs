@@ -586,9 +586,9 @@ app.get('/api/v1/ledger/journal-lines', authenticate, requirePermission('finance
 }));
 
 app.get('/api/v1/state/snapshot', authenticate, guardEntityDriver, wrap(async (req, res) => {
-  res.json(await entities.snapshot(req.auth, {
-    includeEmptyPaymentAllocations: req.query.includeEmpty === 'paymentAllocations',
-  }));
+  const requested = typeof req.query.includeEmpty === 'string' ? req.query.includeEmpty.split(',') : [];
+  const includeEmptyCollections = requested.filter(name => name === 'paymentAllocations' || name === 'zoneAssignments');
+  res.json(await entities.snapshot(req.auth, { includeEmptyCollections }));
 }));
 app.get('/api/v1/state/counts', authenticate, guardEntityDriver, wrap(async (req, res) => res.json(await entities.counts(req.auth))));
 app.get('/api/v1/state/integrity', authenticate, guardEntityDriver, wrap(async (req, res) => res.json(await entities.integrity(req.auth))));
