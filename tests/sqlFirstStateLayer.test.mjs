@@ -109,6 +109,20 @@ test('tenant isolation: one tenant never sees another tenant rows', async () => 
   assert.equal(Object.keys((await svc.snapshot({ tenantId: 'B', userId: 'u' })).collections).length, 0);
 });
 
+test('collection counts distinguish granted empty, populated and denied partitions', async () => {
+  const driver = new MemoryEntityDriver();
+  const admin = createEntityService({ driver, registry, hasPermission: allow });
+  await admin.sync(auth, { upserts: { accounts: [{ id: 'a1' }], invoices: [{ id: 'i1' }] } });
+  const viewer = createEntityService({ driver, registry, hasPermission: async (_auth, code) => code === 'accounts.view' });
+  const result = await viewer.counts(auth, { includeEmptyCollections: ['accounts', 'invoices', 'externalProducts', 'payments'] });
+  assert.equal(result.collections.accounts, 1);
+  assert.equal(result.collections.externalProducts, 0);
+  assert.equal(result.collections.invoices, undefined);
+  assert.equal(result.collections.payments, undefined);
+  assert.deepEqual(new Set(result.hiddenCollections), new Set(['invoices', 'payments']));
+  assert.equal((await viewer.counts(auth)).collections.externalProducts, undefined);
+});
+
 test('allocation snapshots distinguish permitted empty, populated and restricted collections', async () => {
   const driver = new MemoryEntityDriver();
   const allowedService = createEntityService({ driver, registry, hasPermission: allow });

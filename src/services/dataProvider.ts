@@ -19,7 +19,8 @@ import { useAppStore } from '../lib/storage';
 import { executePayrollRun as computePayrollRun } from './payrollEngine';
 import { AuthService } from './AuthService';
 import type { StateSnapshot, StateSyncResult } from './stateSync';
-import { splitState } from '../lib/stateModel.mjs';
+import { RBACService } from '../lib/rbac';
+import { policyOf, splitState } from '../lib/stateModel.mjs';
 import stateRegistry from '../config/stateCollections.json' with { type: 'json' };
 import {
   buildApprovalContext, buildFinancial360, resolveAccountingMapping, recordApprovalSnapshot, stateFromSnapshot,
@@ -29,6 +30,11 @@ import { withViewer } from '../lib/financialAccess';
 import { queryJournalLines, buildDetailBalancesResult, type JournalLineFilter, type JournalLinePage, type DetailBalancesResult, type LedgerResultStatus } from '../lib/receivableReconciliation';
 import { journalQueryParams } from '../lib/ledgerQueryParams.mjs';
 import { readCustomerProposalReceipt, type CustomerProposalReceipt } from '../lib/customerProposal';
+
+export interface StateCollectionCounts {
+  collections: Record<string, number>;
+  hiddenCollections: string[];
+}
 
 export interface PaginationParams {
   page?: number;
@@ -123,6 +129,7 @@ export interface DataProvider {
 
   // SQL-first state layer: every AppState collection/setting goes through these (see services/stateSync.ts)
   getStateSnapshot(): Promise<StateSnapshot>;
+  getStateCounts(collections: readonly string[]): Promise<StateCollectionCounts>;
   syncStateChanges(change: { upserts: Record<string, any[]>; deletes: Record<string, string[]>; singletons: Record<string, any> }): Promise<StateSyncResult>;
   bootstrapState(state: any): Promise<{ ok: boolean; upserted: number; rejected: any[]; serverVersion: number }>;
   getStateIntegrity(): Promise<{ collections: Record<string, number>; issueCount: number; issues: any[] }>;
@@ -431,6 +438,22 @@ export class ClientStorageDataProvider implements DataProvider {
       singletons: split.singletons,
       serverVersion: 0
     };
+  }
+  async getStateCounts(collections: readonly string[]): Promise<StateCollectionCounts> {
+    const state = this.getState();
+    const rbac = new RBACService(state);
+    const split = splitState(state, stateRegistry);
+    const counts: StateCollectionCounts = { collections: {}, hiddenCollections: [] };
+    for (const name of collections) {
+      if (!Object.hasOwn(stateRegistry.collections, name)) continue;
+      const permission = policyOf(name, stateRegistry).read;
+      if (!rbac.getCurrentUser() || (permission !== 'authenticated' && !rbac.hasPermission(permission))) {
+        counts.hiddenCollections.push(name);
+      } else if (!Object.hasOwn(split.singletons, name)) {
+        counts.collections[name] = split.collections[name]?.size ?? 0;
+      }
+    }
+    return counts;
   }
   async syncStateChanges(): Promise<StateSyncResult> { return { ok: true, upserted: 0, deleted: 0, serverVersion: 0, rejected: [] }; }
   async bootstrapState(): Promise<{ ok: boolean; upserted: number; rejected: any[]; serverVersion: number }> { return { ok: true, upserted: 0, rejected: [], serverVersion: 0 }; }
@@ -819,6 +842,14 @@ export class HttpBackendDataProvider implements DataProvider {
     }
     if (Object.keys(slice).length) await flush(slice);
     return { ok: true, upserted, rejected, serverVersion };
+  }
+  async getStateCounts(collections: readonly string[]): Promise<StateCollectionCounts> {
+    const params = new URLSearchParams({ includeEmpty: collections.join(',') });
+    const result = await this.request<StateCollectionCounts>(`/state/counts?${params}`);
+    if (!result?.collections || !Array.isArray(result.hiddenCollections)) {
+      throw new Error('قالب پاسخ شمارش مجموعه‌ها معتبر نیست.');
+    }
+    return result;
   }
   async getStateIntegrity() { return this.request<any>('/state/integrity'); }
   async getStateProfile() { return this.request<any>('/state/profile'); }

@@ -635,7 +635,11 @@ app.get('/api/v1/state/snapshot', authenticate, guardEntityDriver, wrap(async (r
   const includeEmptyCollections = requested.filter(name => name === 'paymentAllocations' || name === 'zoneAssignments');
   res.json(await entities.snapshot(req.auth, { includeEmptyCollections }));
 }));
-app.get('/api/v1/state/counts', authenticate, guardEntityDriver, wrap(async (req, res) => res.json(await entities.counts(req.auth))));
+app.get('/api/v1/state/counts', authenticate, guardEntityDriver, wrap(async (req, res) => {
+  const requested = typeof req.query.includeEmpty === 'string' ? req.query.includeEmpty.split(',') : [];
+  const includeEmptyCollections = [...new Set(requested)].filter(name => Object.hasOwn(stateRegistry.collections, name));
+  res.json(await entities.counts(req.auth, { includeEmptyCollections }));
+}));
 app.get('/api/v1/state/integrity', authenticate, guardEntityDriver, wrap(async (req, res) => res.json(await entities.integrity(req.auth))));
 app.get('/api/v1/state/profile', authenticate, guardEntityDriver, wrap(async (req, res) => res.json(await entities.profile(req.auth))));
 app.post('/api/v1/state/sync', authenticate, guardEntityDriver, wrap(async (req, res) => {

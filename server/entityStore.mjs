@@ -218,8 +218,8 @@ export function createEntityService({ driver, registry, hasPermission }) {
     return { collections: Object.fromEntries(Object.entries(snap.collections).map(([k, v]) => [k, v.length])), issueCount: issues.length, issues: issues.slice(0, 500) };
   }
   async function profile(auth) { return profileCollections((await snapshot(auth)).collections); }
-  async function counts(auth) {
-    const snap = await snapshot(auth);
+  async function counts(auth, options) {
+    const snap = await snapshot(auth, options);
     return { driver: driver.kind, serverVersion: snap.serverVersion, collections: Object.fromEntries(Object.entries(snap.collections).map(([k, v]) => [k, v.length])), singletons: Object.keys(snap.singletons), hiddenCollections: snap.hiddenCollections };
   }
   return { snapshot, sync, bootstrap, integrity, profile, counts, classify: (k, v) => classify(k, v, registry) };
