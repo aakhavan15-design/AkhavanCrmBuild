@@ -75,6 +75,9 @@ const pool = () => {
     pool: { min: 0, max: 10, idleTimeoutMillis: 30000 },
     connectionTimeout: 8000,
     requestTimeout: 15000,
+  }).catch(error => {
+    poolPromise = undefined;
+    throw error;
   });
   return poolPromise;
 };
@@ -148,19 +151,7 @@ function authenticate(req, res, next) {
 function requirePermission(permission) {
   return async (req, res, next) => {
     try {
-      const allowed = await withTenantContext(req.auth, async (transaction) => {
-        const result = await new sql.Request(transaction)
-          .input('tenantId', sql.UniqueIdentifier, req.auth.tenantId)
-          .input('userId', sql.UniqueIdentifier, req.auth.userId)
-          .input('permission', sql.NVarChar(120), String(permission).trim().toLowerCase())
-          .query(`SELECT TOP (1) 1 AS Allowed
-            FROM core.UserRole ur
-            JOIN core.RolePermission rp ON rp.TenantId=ur.TenantId AND rp.RoleId=ur.RoleId
-            WHERE ur.TenantId=@tenantId AND ur.UserId=@userId
-              AND ur.ValidFromUtc<=SYSUTCDATETIME() AND (ur.ValidToUtc IS NULL OR ur.ValidToUtc>SYSUTCDATETIME())
-              AND rp.PermissionCode=@permission AND rp.FieldAccess='DO'`);
-        return result.recordset.length > 0;
-      });
+      const allowed = await hasSqlPermission(req.auth, permission);
       if (!allowed) return res.status(403).json({ error: { code: 'FORBIDDEN', message: 'مجوز انجام این عملیات را ندارید.' }, correlationId: req.correlationId });
       next();
     } catch (error) { next(error); }
@@ -224,56 +215,26 @@ app.post('/api/v1/auth/login', async (req, res, next) => {
       });
     }
 
-    try {
-      const db = await pool();
-      const result = await db.request()
-        .input('tenantCode', sql.NVarChar(50), tenantCode.trim())
-        .input('userName', sql.NVarChar(100), userName.trim())
-        .execute('security.GetLoginCredential');
-      const user = result.recordset[0];
-      const credentialOk = user
-        ? passwordMatches(password, user.PasswordSaltHex, user.PasswordHashHex)
-        : (passwordMatches(password, DUMMY_SALT_HEX, DUMMY_HASH_HEX), false);
-      if (!credentialOk) {
-        await db.request()
-          .input('tenantCode', sql.NVarChar(50), tenantCode.trim())
-          .input('userName', sql.NVarChar(100), userName.trim())
-          .execute('security.RecordLoginFailure');
-        return res.status(401).json({ error: { code: 'INVALID_CREDENTIALS', message: 'نام کاربری یا گذرواژه صحیح نیست.' }, correlationId: req.correlationId });
-      }
+    const db = await pool();
+    const result = await db.request()
+      .input('tenantCode', sql.NVarChar(50), tenantCode.trim())
+      .input('userName', sql.NVarChar(100), userName.trim())
+      .execute('security.GetLoginCredential');
+    const user = result.recordset[0];
+    const credentialOk = user
+      ? passwordMatches(password, user.PasswordSaltHex, user.PasswordHashHex)
+      : (passwordMatches(password, DUMMY_SALT_HEX, DUMMY_HASH_HEX), false);
+    if (!credentialOk) {
       await db.request()
         .input('tenantCode', sql.NVarChar(50), tenantCode.trim())
         .input('userName', sql.NVarChar(100), userName.trim())
-        .execute('security.RecordLoginSuccess');
-    } catch (sqlErr) {
-      if (matched && validPasswords.includes(password)) {
-        const allPermissions = [
-          'accounts.view','accounts.edit','accounts.delete','leads.view','leads.edit','quotes.view','quotes.create','quotes.approve',
-          'finance.view','finance.manage','settings.manage','cases.view','cases.edit','marketing.manage','knowledge.manage',
-          'agents.manage','automation.manage','users.manage','roles.manage','internal.view','internal.manage','geo.view','geo.manage'
-        ];
-        const token = issueToken({ tenantId: 'tenant-akhavan-primary', userId: matched.id, userName: normalizedUser });
-        return res.json({
-          accessToken: token,
-          tokenType: 'Bearer',
-          expiresIn: 3600,
-          user: {
-            id: matched.id,
-            tenantId: 'tenant-akhavan-primary',
-            displayName: matched.displayName,
-            userName: normalizedUser,
-            email: matched.email,
-            phone: matched.phone,
-            branchId: 'branch-tehran',
-            territoryId: 'territory-north',
-            teamId: 'team-enterprise',
-            role: { id: matched.roleId, code: matched.roleCode, name: matched.roleName, visibilityScope: matched.visibilityScope },
-            permissionSet: { id: matched.roleId, name: matched.roleName, permissions: allPermissions, fieldPermissions: {} }
-          }
-        });
-      }
-      throw sqlErr;
+        .execute('security.RecordLoginFailure');
+      return res.status(401).json({ error: { code: 'INVALID_CREDENTIALS', message: 'نام کاربری یا گذرواژه صحیح نیست.' }, correlationId: req.correlationId });
     }
+    await db.request()
+      .input('tenantCode', sql.NVarChar(50), tenantCode.trim())
+      .input('userName', sql.NVarChar(100), userName.trim())
+      .execute('security.RecordLoginSuccess');
     // Resolve the authoritative profile and one active role inside tenant context.
     const profile = await withTenantContext({ tenantId: user.TenantId, userId: user.UserId }, async (transaction) => {
       const result = await new sql.Request(transaction)
@@ -477,7 +438,10 @@ app.get('/api/v1/accounts', typedAccountsOnly, authenticate, requirePermission('
 // All UI collections persist through sync.EntityStore (migration 023). Dev without SQL Server: file driver (.data/).
 const stateRegistry = JSON.parse(fs.readFileSync(new URL('../src/config/stateCollections.json', import.meta.url), 'utf8'));
 async function userHasPermission(claims, permission) {
-  if (allowDemoAuth) return true;
+  return allowDemoAuth || hasSqlPermission(claims, permission);
+}
+
+async function hasSqlPermission(claims, permission) {
   return withTenantContext(claims, async (transaction) => {
     const result = await new sql.Request(transaction)
       .input('tenantId', sql.UniqueIdentifier, claims.tenantId)
@@ -485,10 +449,12 @@ async function userHasPermission(claims, permission) {
       .input('permission', sql.NVarChar(120), String(permission).trim().toLowerCase())
       .query(`SELECT TOP (1) 1 AS Allowed
         FROM core.UserRole ur
+        JOIN core.AppUser u ON u.TenantId=ur.TenantId AND u.UserId=ur.UserId AND u.IsActive=1
+        JOIN core.Tenant t ON t.TenantId=ur.TenantId AND t.IsActive=1
         JOIN core.RolePermission rp ON rp.TenantId=ur.TenantId AND rp.RoleId=ur.RoleId
         WHERE ur.TenantId=@tenantId AND ur.UserId=@userId
           AND ur.ValidFromUtc<=SYSUTCDATETIME() AND (ur.ValidToUtc IS NULL OR ur.ValidToUtc>SYSUTCDATETIME())
-          AND rp.PermissionCode=@permission AND rp.FieldAccess='DO'`);
+          AND rp.PermissionCode=@permission AND rp.FieldCode=N'' AND rp.FieldAccess='DO'`);
     return result.recordset.length > 0;
   });
 }
@@ -1056,8 +1022,8 @@ if (fs.existsSync(path.join(clientBuildDirectory, 'index.html'))) {
 
 app.use((req, res) => res.status(404).json({ error: { code: 'NOT_FOUND', message: 'مسیر درخواست‌شده پیدا نشد.' }, correlationId: req.correlationId }));
 app.use((error, req, res, _next) => {
-  const status = error.code === 'CONFIG_MISSING' ? 503 : 500;
-  console.error('[SERVER ERROR]', error);
+  const status = ['CONFIG_MISSING', 'ESOCKET', 'ETIMEOUT', 'ECONNCLOSED', 'ENOTOPEN'].includes(error.code) ? 503 : 500;
+  console.error('[SERVER ERROR]', { status, code: typeof error.code === 'string' && /^[A-Z_]{1,40}$/.test(error.code) ? error.code : 'INTERNAL_ERROR', correlationId: req.correlationId });
   res.status(status).json({ error: { code: status === 503 ? 'SERVICE_UNAVAILABLE' : 'INTERNAL_ERROR', message: status === 503 ? 'سرویس هنوز آماده نیست.' : 'خطای داخلی رخ داد.' }, correlationId: req.correlationId });
 });
 
