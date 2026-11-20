@@ -35,6 +35,22 @@ import { applyTaskWorkflow, type TaskWorkflowInput } from './taskWorkflow';
 export type TaskWorkflowCommand = Omit<TaskWorkflowInput, 'actorId' | 'at'> & { version: string };
 export interface TaskWorkflowRecord { task: Task; version: string }
 
+export interface CreditNoteEvidenceRow {
+  id: string;
+  externalId: string;
+  sourceSystemCode: string;
+  issuedOn: string;
+  status: 'POSTED' | 'APPROVED';
+  evidence: 'LINKED' | 'INVOICE_MISSING' | 'ACCOUNT_MISSING' | 'ACCOUNT_MISMATCH' | 'SOURCE_MISMATCH' | 'INVOICE_VOID';
+  invoiceNumber: string | null;
+}
+
+export interface CreditNoteEvidence {
+  status: 'AVAILABLE' | 'EMPTY' | 'UNAVAILABLE' | 'RESTRICTED';
+  items: CreditNoteEvidenceRow[];
+  hasMore: boolean;
+}
+
 export interface ErpSyncConnectorOverview {
   id: string;
   displayName: string;
@@ -144,6 +160,7 @@ export interface DataProvider {
   saveGeoZone(zone: Partial<GeoZone>): Promise<GeoZone>;
   getZoneAssignments(): Promise<ZoneAssignment[]>;
   getPaymentAllocations(): Promise<PaymentAllocation[]>;
+  getCreditNoteEvidence(): Promise<CreditNoteEvidence>;
   
   // Financial Intelligence & Approval Center (Approval Intelligence / Financial 360 / Smart Accounting Classification)
   getApprovalContext(ref: ApprovalRef, opts?: ContextOptions): Promise<ApprovalContext | null>;
@@ -170,6 +187,9 @@ const MAX_PNL_JOURNAL_PAGES = 100;
  * 1. پیاده‌سازی ارائه‌دهنده داده سمت کلاینت (IndexedDB / Local-first)
  */
 export class ClientStorageDataProvider implements DataProvider {
+  async getCreditNoteEvidence(): Promise<CreditNoteEvidence> {
+    return { status: 'UNAVAILABLE', items: [], hasMore: false };
+  }
   name = 'CLIENT_INDEXEDDB' as const;
 
   private getState(): AppState {
@@ -526,6 +546,15 @@ export class ClientStorageDataProvider implements DataProvider {
  * 2. پیاده‌سازی ارائه‌دهنده داده مستقیم به Backend سرور و SQL Server
  */
 export class HttpBackendDataProvider implements DataProvider {
+  async getCreditNoteEvidence(): Promise<CreditNoteEvidence> {
+    try {
+      const data = await this.request<CreditNoteEvidence>('/ledger/credit-notes');
+      if ((data?.status === 'AVAILABLE' || data?.status === 'EMPTY') && Array.isArray(data.items) && typeof data.hasMore === 'boolean') return data;
+    } catch (error) {
+      if (error instanceof Error && 'status' in error && error.status === 403) return { status: 'RESTRICTED', items: [], hasMore: false };
+    }
+    return { status: 'UNAVAILABLE', items: [], hasMore: false };
+  }
   name = 'SQLSERVER_BACKEND' as const;
 
   private baseUrl = '/api/v1';

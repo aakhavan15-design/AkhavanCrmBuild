@@ -5,7 +5,7 @@ import {
   FileText, Target, Truck, RotateCcw, ClipboardList, Banknote, ArrowRight, Flame
 } from 'lucide-react';
 import type { Account, AppState, Invoice, NavigationTab, Payment } from '../types';
-import { cn } from '../lib/utils';
+import { cn, formatAppDate } from '../lib/utils';
 import { formatMoneyCompact, formatCount, formatPercent } from '../lib/format';
 import { ExportMenuButton } from './ui/ExportMenuButton';
 import { KpiCard } from './charts/KpiCard';
@@ -27,6 +27,7 @@ import { reconcileReceivables, resolveCustomerBalanceView } from '../lib/receiva
 import { ReceivablesLifoPanel } from './reports/ReceivablesLifoPanel';
 import { ProfitLossWidget } from './finance/ProfitLossWidget';
 import { CashFlowPanel } from './finance/CashFlowPanel';
+import type { CreditNoteEvidenceRow } from '../services/dataProvider';
 
 interface ReportsHubProps {
   state: AppState;
@@ -539,6 +540,7 @@ function LedgerReceivablesReport({ state, accounts, canViewPayments }: {
   const navigate = useNavigate();
   const { serverVersion } = useDataSyncStatus();
   const ledger = useDataQuery(provider => provider.getDetailSubsidiaryBalances(), [state.currentUserId, serverVersion]);
+  const creditNotes = useDataQuery(provider => provider.getCreditNoteEvidence(), [state.currentUserId, serverVersion]);
   const allocations = useDataQuery(
     provider => canViewPayments ? provider.getPaymentAllocations() : Promise.resolve(null),
     [canViewPayments, state.currentUserId, serverVersion]
@@ -610,8 +612,48 @@ function LedgerReceivablesReport({ state, accounts, canViewPayments }: {
           <p className="mt-1">تخصیص‌های CRM فقط برای بررسی به کار می‌روند. برآورد مطالبات از دفتر کل محاسبه می‌شود.</p>
         </div>
       )}
+      <section className="rounded-xl border border-border bg-surface p-3 text-xs text-text-secondary" aria-label="شواهد اعلامیهٔ بستانکاری">
+        <h3 className="mb-2 font-bold text-text-main">شواهد اعلامیهٔ بستانکاری</h3>
+        {creditNotes.loading ? <p role="status">در حال دریافت اعلامیه‌ها…</p>
+          : creditNotes.error || !creditNotes.data || creditNotes.data.status === 'UNAVAILABLE' ? (
+            <div role="alert" className="flex flex-wrap items-center gap-2">
+              <span>منبع اعلامیهٔ بستانکاری در دسترس نیست.</span>
+              <Button type="button" variant="ghost" onClick={() => void creditNotes.refetch()}>بازخوانی اعلامیه‌ها</Button>
+            </div>
+          ) : creditNotes.data.status === 'RESTRICTED' ? <p role="status">مجوز مشاهدهٔ اعلامیه‌ها را ندارید.</p>
+            : creditNotes.data.status === 'EMPTY' ? <p role="status">اعلامیهٔ ثبت‌شده‌ای در محدودهٔ دسترسی شما یافت نشد.</p>
+              : (
+                <>
+                  <ul className="divide-y divide-border">
+                    {creditNotes.data.items.map(note => (
+                      <li key={note.id} className="flex flex-wrap justify-between gap-x-4 gap-y-1 py-2">
+                        <div className="min-w-0 break-all">
+                          <bdi className="font-bold text-text-main">{note.externalId}</bdi>
+                          {' · '}<bdi>{note.sourceSystemCode}</bdi>
+                          {' · '}{formatAppDate(note.issuedOn, state.settings?.locale)}
+                        </div>
+                        <span className={note.evidence === 'LINKED' ? 'text-text-secondary' : 'text-warning'}>
+                          {CREDIT_NOTE_EVIDENCE_LABELS[note.evidence] ?? 'رابطه نامشخص'}
+                          {note.invoiceNumber && <> · <bdi>{note.invoiceNumber}</bdi></>}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                  {creditNotes.data.hasMore && <p className="mt-2">آخرین {formatCount(creditNotes.data.items.length)} اعلامیه نمایش داده شده است.</p>}
+                </>
+              )}
+      </section>
     </section>
   );
 }
+
+const CREDIT_NOTE_EVIDENCE_LABELS: Record<CreditNoteEvidenceRow['evidence'], string> = {
+  LINKED: 'فاکتور مرتبط',
+  INVOICE_MISSING: 'فاکتور مرتبط یافت نشد',
+  ACCOUNT_MISSING: 'طرف‌حساب نامشخص',
+  ACCOUNT_MISMATCH: 'مغایرت طرف‌حساب',
+  SOURCE_MISMATCH: 'مغایرت سامانهٔ مبدأ',
+  INVOICE_VOID: 'فاکتور باطل‌شده',
+};
 
 export default ReportsHub;

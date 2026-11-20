@@ -16,6 +16,7 @@ import { projectLedgerBalances } from './ledgerBalances.mjs';
 import { parseJournalQuery } from './ledgerJournalQuery.mjs';
 import { buildLedgerPnlSql, bindPnlRequest } from './ledgerPnlQuery.mjs';
 import { createTaskWorkflowStore, parseTaskWorkflowInput, TaskWorkflowError } from './taskWorkflowStore.mjs';
+import { creditNoteEvidenceSql, projectCreditNoteEvidence, CREDIT_NOTE_EVIDENCE_LIMIT } from './creditNoteEvidence.mjs';
 
 const app = express();
 app.disable('x-powered-by');
@@ -502,6 +503,15 @@ const guardEntityDriver = (_req, res, next) => {
 };
 const wrap = (handler) => async (req, res, next) => { try { await handler(req, res); } catch (error) { next(error); } };
 const bad = (req, res, status, code, message, extra = {}) => res.status(status).json({ error: { code, message, ...extra }, correlationId: req.correlationId });
+
+app.get('/api/v1/ledger/credit-notes', authenticate, requirePermission('finance.view'), wrap(async (req, res) => {
+  if (entityDriverKind !== 'mssql') return bad(req, res, 503, 'CREDIT_NOTE_SOURCE_UNAVAILABLE', 'منبع اعلامیهٔ بستانکاری در دسترس نیست.');
+  const result = await withTenantContext(req.auth, transaction => new sql.Request(transaction)
+    .input('tenantId', sql.UniqueIdentifier, req.auth.tenantId)
+    .input('take', sql.Int, CREDIT_NOTE_EVIDENCE_LIMIT + 1)
+    .query(creditNoteEvidenceSql));
+  res.json(projectCreditNoteEvidence(result.recordset));
+}));
 
 // F0-14: tenant-scoped, permission-protected SQL ledger projection; no local fallback.
 app.get('/api/v1/ledger/balances', authenticate, requirePermission('finance.VIEW'), wrap(async (req, res) => {
