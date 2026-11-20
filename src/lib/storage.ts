@@ -125,7 +125,7 @@ const ensureStateIntegrity = (state: AppState): AppState => {
     payrollRuns: Array.isArray(state?.payrollRuns) ? state.payrollRuns : [],
     payslips: Array.isArray(state?.payslips) ? state.payslips : [],
     internalRequests: Array.isArray(state?.internalRequests) && state.internalRequests.length > 0 ? state.internalRequests : (base as Record<string, unknown>).internalRequests || [],
-    internalMeetings: Array.isArray(state?.internalMeetings) && state.internalMeetings.length > 0 ? state.internalMeetings : (base as Record<string, unknown>).internalMeetings || [],
+    internalMeetings: Array.isArray(state?.internalMeetings) ? state.internalMeetings : base.internalMeetings ?? [],
     attachments: Array.isArray(state?.attachments) ? state.attachments : [],
     agents: Array.isArray(state?.agents) && state.agents.length > 0 ? state.agents : base.agents,
     agentLogs: safeAgentLogs,
