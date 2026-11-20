@@ -10,6 +10,10 @@ import {
 
 const NAME_RE = /^[A-Za-z][A-Za-z0-9_]{0,79}$/;
 export const LIMITS = Object.freeze({ maxRecordBytes: 1_000_000, maxChangeRecords: 5000, maxBootstrapRecords: 50000 });
+const PARTY_COLLECTIONS = ['accounts', 'customers'];
+const FINANCIAL_PARTY_COLLECTIONS = ['invoices', 'payments', 'cheques', 'paymentallocations', 'creditnotes'];
+const sqlCollectionList = names => names.map(name => `N'${name}'`).join(',');
+const scopedCollections = new Set([...PARTY_COLLECTIONS, ...FINANCIAL_PARTY_COLLECTIONS]);
 const now = () => new Date().toISOString();
 const bytes = (value) => Buffer.byteLength(JSON.stringify(value ?? null), 'utf8');
 
@@ -90,9 +94,14 @@ export class MssqlEntityDriver {
       const rows = (await new sql.Request(tx).input('tenantId', sql.UniqueIdentifier, tenantId)
         .query(`SELECT CollectionName, EntityId, JsonDoc FROM sync.EntityStore AS record
           WHERE record.TenantId=@tenantId AND record.IsDeleted=0
-            AND (LOWER(record.CollectionName) NOT IN (N'accounts',N'customers') OR EXISTS (
+            AND (LOWER(record.CollectionName) NOT IN (${sqlCollectionList(PARTY_COLLECTIONS)}) OR EXISTS (
               SELECT 1 FROM security.fn_EntityAccountScope(
                 record.TenantId,N'accounts.view',record.EntityId,record.JsonDoc,record.UpdatedByUserId
+              )
+            ))
+            AND (LOWER(record.CollectionName) NOT IN (${sqlCollectionList(FINANCIAL_PARTY_COLLECTIONS)}) OR EXISTS (
+              SELECT 1 FROM security.fn_EntityFinancialDocumentScope(
+                record.TenantId,LOWER(record.CollectionName),N'finance.view',record.JsonDoc
               )
             ))
           ORDER BY CreatedAtUtc, EntityId`)).recordset;
@@ -116,44 +125,70 @@ export class MssqlEntityDriver {
     return this.run({ tenantId, userId }, async (tx) => {
       let upserted = 0, deleted = 0;
       const rejected = [];
-      for (let at = 0; at < rows.length; at += 400) {
-        let chunk = rows.slice(at, at + 400);
-        const accounts = chunk.flatMap((row, index) =>
-          ['accounts', 'customers'].includes(row.c.toLowerCase()) ? [{ ...row, index }] : []
-        );
-        if (accounts.length) {
-          const permissions = await new sql.Request(tx)
-            .input('tenantId', sql.UniqueIdentifier, tenantId)
-            .input('userId', sql.UniqueIdentifier, userId)
-            .input('accounts', sql.NVarChar(sql.MAX), JSON.stringify(accounts))
-            .query(`SELECT incoming.RowIndex
-              FROM OPENJSON(@accounts) WITH (
-                RowIndex int '$.index', CollectionName nvarchar(80) '$.c',
-                EntityId nvarchar(200) '$.i', JsonDoc nvarchar(max) '$.j', IsDelete bit '$.d'
-              ) AS incoming
-              LEFT JOIN sync.EntityStore AS previous WITH (UPDLOCK,HOLDLOCK)
-                ON previous.TenantId=@tenantId AND previous.CollectionName=incoming.CollectionName AND previous.EntityId=incoming.EntityId
-              WHERE ((previous.EntityId IS NULL AND incoming.IsDelete=0) OR EXISTS (
-                SELECT 1 FROM security.fn_EntityAccountScope(
-                  @tenantId,N'accounts.edit',previous.EntityId,previous.JsonDoc,previous.UpdatedByUserId
+      // Link changes run after their source rows are saved and before source rows are removed.
+      const isAllocation = row => row.c.toLowerCase() === 'paymentallocations';
+      const partitions = [
+        rows.filter(row => isAllocation(row) && row.d),
+        rows.filter(row => !isAllocation(row)),
+        rows.filter(row => isAllocation(row) && !row.d),
+      ];
+      for (const partition of partitions) {
+        for (let at = 0; at < partition.length; at += 400) {
+          let chunk = partition.slice(at, at + 400);
+          const scoped = chunk.flatMap((row, index) =>
+            scopedCollections.has(row.c.toLowerCase()) ? [{ ...row, index }] : []
+          );
+          if (scoped.length) {
+            const permissions = await new sql.Request(tx)
+              .input('tenantId', sql.UniqueIdentifier, tenantId)
+              .input('userId', sql.UniqueIdentifier, userId)
+              .input('scoped', sql.NVarChar(sql.MAX), JSON.stringify(scoped))
+              .query(`SELECT incoming.RowIndex
+                FROM OPENJSON(@scoped) WITH (
+                  RowIndex int '$.index', CollectionName nvarchar(80) '$.c',
+                  EntityId nvarchar(200) '$.i', JsonDoc nvarchar(max) '$.j', IsDelete bit '$.d'
+                ) AS incoming
+                LEFT JOIN sync.EntityStore AS previous WITH (UPDLOCK,HOLDLOCK)
+                  ON previous.TenantId=@tenantId AND previous.CollectionName=incoming.CollectionName AND previous.EntityId=incoming.EntityId
+                CROSS APPLY (VALUES (LOWER(incoming.CollectionName))) AS collection(Name)
+                WHERE (
+                  (previous.EntityId IS NULL AND incoming.IsDelete=0)
+                  OR (collection.Name IN (${sqlCollectionList(PARTY_COLLECTIONS)}) AND EXISTS (
+                    SELECT 1 FROM security.fn_EntityAccountScope(
+                      @tenantId,N'accounts.edit',previous.EntityId,previous.JsonDoc,previous.UpdatedByUserId
+                    )
+                  ))
+                  OR (collection.Name IN (${sqlCollectionList(FINANCIAL_PARTY_COLLECTIONS)}) AND EXISTS (
+                    SELECT 1 FROM security.fn_EntityFinancialDocumentScope(
+                      @tenantId,collection.Name,N'finance.manage',previous.JsonDoc
+                    )
+                  ))
                 )
-              ))
-              AND (incoming.IsDelete=1 OR EXISTS (
-                SELECT 1 FROM security.fn_EntityAccountScope(
-                  @tenantId,N'accounts.edit',incoming.EntityId,incoming.JsonDoc,@userId
-                )
-              ))`);
-          const allowed = new Set(permissions.recordset.map(row => row.RowIndex));
-          const blocked = new Set(accounts.filter(row => !allowed.has(row.index)).map(row => row.index));
-          for (const index of blocked) rejected.push({ collection: chunk[index].c, id: chunk[index].i, reason: 'FORBIDDEN_SCOPE' });
-          chunk = chunk.filter((_, index) => !blocked.has(index));
+                AND (
+                  incoming.IsDelete=1
+                  OR (collection.Name IN (${sqlCollectionList(PARTY_COLLECTIONS)}) AND EXISTS (
+                    SELECT 1 FROM security.fn_EntityAccountScope(
+                      @tenantId,N'accounts.edit',incoming.EntityId,incoming.JsonDoc,@userId
+                    )
+                  ))
+                  OR (collection.Name IN (${sqlCollectionList(FINANCIAL_PARTY_COLLECTIONS)}) AND EXISTS (
+                    SELECT 1 FROM security.fn_EntityFinancialDocumentScope(
+                      @tenantId,collection.Name,N'finance.manage',incoming.JsonDoc
+                    )
+                  ))
+                )`);
+            const allowed = new Set(permissions.recordset.map(row => row.RowIndex));
+            const blocked = new Set(scoped.filter(row => !allowed.has(row.index)).map(row => row.index));
+            for (const index of blocked) rejected.push({ collection: chunk[index].c, id: chunk[index].i, reason: 'FORBIDDEN_SCOPE' });
+            chunk = chunk.filter((_, index) => !blocked.has(index));
+          }
+          if (!chunk.length) continue;
+          await new sql.Request(tx)
+            .input('tenantId', sql.UniqueIdentifier, tenantId).input('userId', sql.UniqueIdentifier, userId)
+            .input('rows', sql.NVarChar(sql.MAX), JSON.stringify(chunk))
+            .execute('sync.usp_ApplyEntityChanges');
+          for (const r of chunk) r.d ? deleted++ : upserted++;
         }
-        if (!chunk.length) continue;
-        await new sql.Request(tx)
-          .input('tenantId', sql.UniqueIdentifier, tenantId).input('userId', sql.UniqueIdentifier, userId)
-          .input('rows', sql.NVarChar(sql.MAX), JSON.stringify(chunk))
-          .execute('sync.usp_ApplyEntityChanges');
-        for (const r of chunk) r.d ? deleted++ : upserted++;
       }
       const version = (await new sql.Request(tx).input('tenantId', sql.UniqueIdentifier, tenantId)
         .query('SELECT ISNULL(MAX(Version),0) AS V FROM sync.EntityStore WHERE TenantId=@tenantId')).recordset[0]?.V || 0;

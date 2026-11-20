@@ -153,14 +153,17 @@ test('SQL driver filters account reads and authorizes existing and incoming reco
     input(name, _type, value) { this.params[name] = value; return this; }
     async query(text) {
       if (text.includes('fn_EntityAccountScope')) {
-        if (!this.params.accounts) {
+        if (!this.params.scoped) {
           assert.match(text, /record.TenantId,@?N'accounts.view'/);
+          assert.match(text, /fn_EntityFinancialDocumentScope/);
           return { recordset: [] };
         }
         assert.match(text, /WITH \(UPDLOCK,HOLDLOCK\)/);
         assert.match(text, /previous.EntityId,previous.JsonDoc,previous.UpdatedByUserId/);
         assert.match(text, /incoming.EntityId,incoming.JsonDoc,@userId/);
-        return { recordset: [{ RowIndex: JSON.parse(this.params.accounts).find(row => row.i === 'own-draft').index }] };
+        assert.match(text, /collection.Name,N'finance.manage',previous.JsonDoc/);
+        assert.match(text, /collection.Name,N'finance.manage',incoming.JsonDoc/);
+        return { recordset: [{ RowIndex: JSON.parse(this.params.scoped).find(row => row.i === 'own-draft').index }] };
       }
       assert.match(text, /MAX\(Version\)/);
       return { recordset: [{ V: 3 }] };
@@ -177,16 +180,26 @@ test('SQL driver filters account reads and authorizes existing and incoming reco
   const svc = createEntityService({ driver, registry, hasPermission: allow });
   assert.equal((await svc.snapshot(auth)).serverVersion, 3);
   const result = await svc.sync(auth, {
-    upserts: { accounts: [{ id: 'own-draft' }, { id: 'different-branch' }], tasks: [{ id: 'task1' }] },
+    upserts: { accounts: [{ id: 'own-draft' }, { id: 'different-branch' }], tasks: [{ id: 'task1' }], invoices: [{ id: 'different-branch-invoice' }] },
     deletes: { customers: ['hidden'] },
   });
   assert.equal(result.upserted, 2);
   assert.equal(result.deleted, 0);
   assert.deepEqual(result.rejected, [
     { collection: 'accounts', id: 'different-branch', reason: 'FORBIDDEN_SCOPE' },
+    { collection: 'invoices', id: 'different-branch-invoice', reason: 'FORBIDDEN_SCOPE' },
     { collection: 'customers', id: 'hidden', reason: 'FORBIDDEN_SCOPE' },
   ]);
   assert.deepEqual(applied.map(row => row.i), ['own-draft', 'task1']);
+});
+
+test('financial scope checks both persisted references and rejects contradictory account links', () => {
+  const migration = fs.readFileSync(new URL('../database/sqlserver/v1/031_scoped_financial_entity_reads.sql', import.meta.url), 'utf8');
+  assert.match(migration, /ref.AccountId IS NULL OR ref.CustomerId IS NULL OR ref.AccountId=ref.CustomerId/);
+  assert.match(migration, /fn_EntityFinancialPartyScope\(payment.TenantId,@PermissionCode,payment.JsonDoc\)/);
+  assert.match(migration, /fn_EntityFinancialPartyScope\(invoice.TenantId,@PermissionCode,invoice.JsonDoc\)/);
+  assert.match(migration, /payment.IsDeleted=0/);
+  assert.match(migration, /invoice.IsDeleted=0/);
 });
 
 test('file driver persists across restarts', async () => {
