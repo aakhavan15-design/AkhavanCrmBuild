@@ -7,7 +7,7 @@ import {
   classify, splitState, buildHashIndex, diffAgainstIndex, applyToIndex, mergeSnapshot, checkIntegrity, profileCollections,
 } from '../src/lib/stateModel.mjs';
 import { StateSyncEngine } from '../src/services/stateSync.ts';
-import { createEntityService, MemoryEntityDriver, FileEntityDriver } from '../server/entityStore.mjs';
+import { createEntityService, MemoryEntityDriver, FileEntityDriver, MssqlEntityDriver } from '../server/entityStore.mjs';
 
 const registry = JSON.parse(fs.readFileSync(new URL('../src/config/stateCollections.json', import.meta.url), 'utf8'));
 const allow = async () => true;
@@ -144,6 +144,49 @@ test('allocation snapshots distinguish permitted empty, populated and restricted
   assert.ok(restricted.hiddenCollections.includes('paymentAllocations'));
   assert.equal(restricted.collections.zoneAssignments, undefined);
   assert.ok(restricted.hiddenCollections.includes('zoneAssignments'));
+});
+
+test('SQL driver filters account reads and authorizes existing and incoming records before applying a batch', async () => {
+  const applied = [];
+  class Request {
+    constructor(transaction) { assert.equal(transaction, 'tenant-transaction'); this.params = {}; }
+    input(name, _type, value) { this.params[name] = value; return this; }
+    async query(text) {
+      if (text.includes('fn_EntityAccountScope')) {
+        if (!this.params.accounts) {
+          assert.match(text, /record.TenantId,@?N'accounts.view'/);
+          return { recordset: [] };
+        }
+        assert.match(text, /WITH \(UPDLOCK,HOLDLOCK\)/);
+        assert.match(text, /previous.EntityId,previous.JsonDoc,previous.UpdatedByUserId/);
+        assert.match(text, /incoming.EntityId,incoming.JsonDoc,@userId/);
+        return { recordset: [{ RowIndex: JSON.parse(this.params.accounts).find(row => row.i === 'own-draft').index }] };
+      }
+      assert.match(text, /MAX\(Version\)/);
+      return { recordset: [{ V: 3 }] };
+    }
+    async execute(proc) {
+      assert.equal(proc, 'sync.usp_ApplyEntityChanges');
+      applied.push(...JSON.parse(this.params.rows));
+    }
+  }
+  const driver = new MssqlEntityDriver({
+    sql: { Request, UniqueIdentifier: 'uuid', NVarChar: () => 'string' },
+    run: async (claims, work) => { assert.deepEqual(claims, auth); return work('tenant-transaction'); },
+  });
+  const svc = createEntityService({ driver, registry, hasPermission: allow });
+  assert.equal((await svc.snapshot(auth)).serverVersion, 3);
+  const result = await svc.sync(auth, {
+    upserts: { accounts: [{ id: 'own-draft' }, { id: 'different-branch' }], tasks: [{ id: 'task1' }] },
+    deletes: { customers: ['hidden'] },
+  });
+  assert.equal(result.upserted, 2);
+  assert.equal(result.deleted, 0);
+  assert.deepEqual(result.rejected, [
+    { collection: 'accounts', id: 'different-branch', reason: 'FORBIDDEN_SCOPE' },
+    { collection: 'customers', id: 'hidden', reason: 'FORBIDDEN_SCOPE' },
+  ]);
+  assert.deepEqual(applied.map(row => row.i), ['own-draft', 'task1']);
 });
 
 test('file driver persists across restarts', async () => {

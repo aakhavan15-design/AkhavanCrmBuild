@@ -88,7 +88,14 @@ export class MssqlEntityDriver {
     const { sql } = this;
     return this.run({ tenantId, userId }, async (tx) => {
       const rows = (await new sql.Request(tx).input('tenantId', sql.UniqueIdentifier, tenantId)
-        .query('SELECT CollectionName, EntityId, JsonDoc FROM sync.EntityStore WHERE TenantId=@tenantId AND IsDeleted=0 ORDER BY CreatedAtUtc, EntityId')).recordset;
+        .query(`SELECT CollectionName, EntityId, JsonDoc FROM sync.EntityStore AS record
+          WHERE record.TenantId=@tenantId AND record.IsDeleted=0
+            AND (LOWER(record.CollectionName) NOT IN (N'accounts',N'customers') OR EXISTS (
+              SELECT 1 FROM security.fn_EntityAccountScope(
+                record.TenantId,N'accounts.view',record.EntityId,record.JsonDoc,record.UpdatedByUserId
+              )
+            ))
+          ORDER BY CreatedAtUtc, EntityId`)).recordset;
       const version = (await new sql.Request(tx).input('tenantId', sql.UniqueIdentifier, tenantId)
         .query('SELECT ISNULL(MAX(Version),0) AS V FROM sync.EntityStore WHERE TenantId=@tenantId')).recordset[0]?.V || 0;
       const collections = {}, singletons = {};
@@ -108,8 +115,40 @@ export class MssqlEntityDriver {
     for (const [name, ids] of Object.entries(change.deletes || {})) for (const id of ids) rows.push({ c: name, i: id, j: null, d: 1 });
     return this.run({ tenantId, userId }, async (tx) => {
       let upserted = 0, deleted = 0;
+      const rejected = [];
       for (let at = 0; at < rows.length; at += 400) {
-        const chunk = rows.slice(at, at + 400);
+        let chunk = rows.slice(at, at + 400);
+        const accounts = chunk.flatMap((row, index) =>
+          ['accounts', 'customers'].includes(row.c.toLowerCase()) ? [{ ...row, index }] : []
+        );
+        if (accounts.length) {
+          const permissions = await new sql.Request(tx)
+            .input('tenantId', sql.UniqueIdentifier, tenantId)
+            .input('userId', sql.UniqueIdentifier, userId)
+            .input('accounts', sql.NVarChar(sql.MAX), JSON.stringify(accounts))
+            .query(`SELECT incoming.RowIndex
+              FROM OPENJSON(@accounts) WITH (
+                RowIndex int '$.index', CollectionName nvarchar(80) '$.c',
+                EntityId nvarchar(200) '$.i', JsonDoc nvarchar(max) '$.j', IsDelete bit '$.d'
+              ) AS incoming
+              LEFT JOIN sync.EntityStore AS previous WITH (UPDLOCK,HOLDLOCK)
+                ON previous.TenantId=@tenantId AND previous.CollectionName=incoming.CollectionName AND previous.EntityId=incoming.EntityId
+              WHERE ((previous.EntityId IS NULL AND incoming.IsDelete=0) OR EXISTS (
+                SELECT 1 FROM security.fn_EntityAccountScope(
+                  @tenantId,N'accounts.edit',previous.EntityId,previous.JsonDoc,previous.UpdatedByUserId
+                )
+              ))
+              AND (incoming.IsDelete=1 OR EXISTS (
+                SELECT 1 FROM security.fn_EntityAccountScope(
+                  @tenantId,N'accounts.edit',incoming.EntityId,incoming.JsonDoc,@userId
+                )
+              ))`);
+          const allowed = new Set(permissions.recordset.map(row => row.RowIndex));
+          const blocked = new Set(accounts.filter(row => !allowed.has(row.index)).map(row => row.index));
+          for (const index of blocked) rejected.push({ collection: chunk[index].c, id: chunk[index].i, reason: 'FORBIDDEN_SCOPE' });
+          chunk = chunk.filter((_, index) => !blocked.has(index));
+        }
+        if (!chunk.length) continue;
         await new sql.Request(tx)
           .input('tenantId', sql.UniqueIdentifier, tenantId).input('userId', sql.UniqueIdentifier, userId)
           .input('rows', sql.NVarChar(sql.MAX), JSON.stringify(chunk))
@@ -118,7 +157,7 @@ export class MssqlEntityDriver {
       }
       const version = (await new sql.Request(tx).input('tenantId', sql.UniqueIdentifier, tenantId)
         .query('SELECT ISNULL(MAX(Version),0) AS V FROM sync.EntityStore WHERE TenantId=@tenantId')).recordset[0]?.V || 0;
-      return { upserted, deleted, serverVersion: Number(version) };
+      return { upserted, deleted, serverVersion: Number(version), rejected };
     });
   }
 }
@@ -186,7 +225,7 @@ export function createEntityService({ driver, registry, hasPermission }) {
     }
     if (total > LIMITS.maxChangeRecords) return { ok: false, error: 'CHANGE_TOO_LARGE', limit: LIMITS.maxChangeRecords };
     const result = total ? await driver.apply(auth.tenantId, auth.userId, { upserts, deletes, singletons }) : { upserted: 0, deleted: 0, serverVersion: (await driver.load(auth.tenantId, auth.userId)).version };
-    return { ok: true, ...result, rejected };
+    return { ok: true, ...result, rejected: [...rejected, ...(result.rejected || [])] };
   }
 
   /** Upload a full client state (incl. demo seed): merge-only, never deletes server rows. Sent in batches by the client. */

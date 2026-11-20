@@ -389,8 +389,10 @@ app.post('/api/v1/accounts/proposals', authenticate, requirePermission('accounts
         .query(`SELECT JsonDoc FROM sync.EntityStore
           WHERE TenantId=@tenantId AND CollectionName=N'accounts' AND EntityId=@draftId
             AND IsDeleted=0 AND IsDemo=0
+            AND UpdatedByUserId=@ownerId
             AND TRY_CONVERT(uniqueidentifier, JSON_VALUE(JsonDoc, '$.ownerId'))=@ownerId
             AND JSON_VALUE(JsonDoc, '$.origin')=N'CRM_LOCAL'
+            AND JSON_VALUE(JsonDoc, '$.isLocalDraft')=N'true'
             AND JSON_VALUE(JsonDoc, '$.erpProposalStatus') IN (N'LOCAL_DRAFT', N'PENDING_ERP_REVIEW')`);
       return result.recordset[0] ? JSON.parse(result.recordset[0].JsonDoc) : null;
     });
@@ -662,7 +664,7 @@ function mountCollectionRoutes(route, collection) {
     const field = policy?.idField || 'id';
     if (!body[field]) body[field] = `${collection.slice(0, 3)}_${crypto.randomUUID()}`;
     const result = await entities.sync(req.auth, { upserts: { [collection]: [body] } });
-    if (!result.ok || result.rejected.length) return bad(req, res, result.rejected?.[0]?.reason === 'FORBIDDEN' ? 403 : 400, result.rejected?.[0]?.reason || result.error || 'REJECTED', 'ثبت رکورد انجام نشد.');
+    if (!result.ok || result.rejected.length) return bad(req, res, result.rejected?.[0]?.reason?.startsWith('FORBIDDEN') ? 403 : 400, result.rejected?.[0]?.reason || result.error || 'REJECTED', 'ثبت رکورد انجام نشد.');
     res.status(201).json(body);
   }));
   app.put(`/api/v1/${route}/:id`, authenticate, guardEntityDriver, wrap(async (req, res) => {
@@ -670,7 +672,7 @@ function mountCollectionRoutes(route, collection) {
     if (!current) return bad(req, res, 404, 'NOT_FOUND', 'رکورد پیدا نشد.');
     const merged = { ...current, ...(req.body || {}), [policy?.idField || 'id']: req.params.id };
     const result = await entities.sync(req.auth, { upserts: { [collection]: [merged] } });
-    if (!result.ok || result.rejected.length) return bad(req, res, result.rejected?.[0]?.reason === 'FORBIDDEN' ? 403 : 400, result.rejected?.[0]?.reason || result.error || 'REJECTED', 'به‌روزرسانی انجام نشد.');
+    if (!result.ok || result.rejected.length) return bad(req, res, result.rejected?.[0]?.reason?.startsWith('FORBIDDEN') ? 403 : 400, result.rejected?.[0]?.reason || result.error || 'REJECTED', 'به‌روزرسانی انجام نشد.');
     res.json(merged);
   }));
 }
