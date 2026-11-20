@@ -123,7 +123,7 @@ export function ReportsWorkspace({ state, updateState, setActiveTab }: ReportsWo
         state={reportHubState}
         updateState={updateState}
         setActiveTab={setActiveTab}
-        canViewReceivables={can('finance', 'VIEW')}
+        canViewFinance={can('finance', 'VIEW')}
         canViewPayments={can('payments', 'VIEW')}
         receivableAccounts={receivableAccounts}
       />

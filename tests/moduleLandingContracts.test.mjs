@@ -32,6 +32,22 @@ test('landing tile paths refer to registered routes and preserve ERP boundaries'
  assert.match(catalogue,/tile\('orders',[^\n]*'\/operations\?tab=orders'/);
  assert.match(catalogue,/tile\('invoices',[^\n]*'\/finance\?tab=invoices'/);
 });
+test('operations and finance views each have one catalog tile under the owning workspace', () => {
+  const destinations = [
+    ['commerce', '/operations?tab=overview', 'operations_control'],
+    ['procurement', '/operations?tab=purchasing', 'ops.purchasing'],
+    ['finance', '/operations?tab=profitability', 'ops.profitability'],
+    ['finance', '/finance?tab=overview', 'finance'],
+    ['finance', '/reports?tab=finance', 'finance'],
+    ['finance', '/reports?tab=receivables', 'finance'],
+  ];
+  const modules = [...catalogue.matchAll(/^    id: '([a-z-]+)'[\s\S]*?(?=^    id: '|^\];)/gm)];
+  for (const [owner, destination, permission] of destinations) {
+    const suffix = `'${destination}', '${permission}'`;
+    assert.equal(catalogue.split(`'${destination}'`).length, 2, destination);
+    assert.ok(modules.find(match => match[1] === owner)?.[0].includes(suffix), destination);
+  }
+});
 test('compact accessible RTL landing retains RBAC, search, icon grid and disclosure',()=>{
  assert.match(component,/dir="rtl"/);
  assert.match(component,/aria-label=\{`جست‌وجو در \$\{definition\.title\}`\}/);

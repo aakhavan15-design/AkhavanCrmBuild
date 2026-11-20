@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  TrendingUp, Users, Package, MapPin, Wallet, ShoppingCart, Activity,
+  Users, Package, MapPin, Wallet, ShoppingCart, Activity,
   FileText, Target, Truck, RotateCcw, ClipboardList, Banknote, ArrowRight, Flame
 } from 'lucide-react';
 import type { Account, AppState, Invoice, NavigationTab, Payment } from '../types';
@@ -25,12 +25,14 @@ import { useDataSyncStatus } from '../services/dataSyncController';
 import { isDemoContext } from '../lib/dataTrust';
 import { reconcileReceivables, resolveCustomerBalanceView } from '../lib/receivableReconciliation';
 import { ReceivablesLifoPanel } from './reports/ReceivablesLifoPanel';
+import { ProfitLossWidget } from './finance/ProfitLossWidget';
+import { CashFlowPanel } from './finance/CashFlowPanel';
 
 interface ReportsHubProps {
   state: AppState;
   updateState: (updater: (draft: AppState) => AppState | void) => void;
   setActiveTab: (tab: NavigationTab) => void;
-  canViewReceivables: boolean;
+  canViewFinance: boolean;
   canViewPayments: boolean;
   receivableAccounts: Account[];
 }
@@ -44,12 +46,12 @@ const REPORT_DEFS: {
   num: number;
   label: string;
   domain: DomainId;
-  chart: 'line' | 'bar' | 'donut' | 'gauge' | 'progress' | 'leaderboard' | 'list' | 'heatmap';
+  chart: 'line' | 'bar' | 'donut' | 'gauge' | 'progress' | 'leaderboard' | 'list' | 'heatmap' | 'ledger';
   heatmap?: boolean;
   icon: React.ReactNode;
 }[] = [
   { id: 'sales-perf', num: 1, label: 'عملکرد فروش و اهداف', domain: 'sales', chart: 'gauge', heatmap: true, icon: <Target size={22} /> },
-  { id: 'finance-pl', num: 2, label: 'هوش مالی و سودآوری', domain: 'finance', chart: 'line', icon: <TrendingUp size={22} /> },
+  { id: 'finance-pl', num: 2, label: 'گزارش‌های مالی', domain: 'finance', chart: 'ledger', icon: <Wallet size={22} /> },
   { id: 'catalog', num: 3, label: 'تحلیل کاتالوگ و پیشنهادها', domain: 'inventory', chart: 'bar', icon: <Package size={22} /> },
   { id: 'rep-perf', num: 4, label: 'عملکرد فروشندگان', domain: 'team', chart: 'leaderboard', heatmap: true, icon: <Users size={22} /> },
   { id: 'proposals', num: 5, label: 'پیشنهادهای تجاری', domain: 'inventory', chart: 'list', icon: <FileText size={22} /> },
@@ -78,7 +80,7 @@ const PERIOD_OPTIONS = [
   { value: 'all', label: 'کل سوابق', days: null },
 ];
 
-export function ReportsHub({ state, canViewReceivables, canViewPayments, receivableAccounts }: ReportsHubProps) {
+export function ReportsHub({ state, canViewFinance, canViewPayments, receivableAccounts }: ReportsHubProps) {
   const [domain, setDomain] = useTabParam(
     ['sales', 'distribution', 'team', 'inventory', 'finance', 'receivables'] as const,
     'sales',
@@ -90,6 +92,7 @@ export function ReportsHub({ state, canViewReceivables, canViewPayments, receiva
 
   const domainMeta = DOMAINS.find((d) => d.id === domain) || DOMAINS[0];
   const domainReports = REPORT_DEFS.filter((r) => r.domain === domain);
+  const isLedgerDomain = domain === 'finance' || domain === 'receivables';
 
   const now = useMemo(() => new Date(), []);
   const periodMeta = useMemo(() => PERIOD_OPTIONS.find((p) => p.value === period) || PERIOD_OPTIONS[1], [period]);
@@ -247,7 +250,7 @@ export function ReportsHub({ state, canViewReceivables, canViewPayments, receiva
 
   return (
     <div className="flex flex-col gap-3.5 pb-24 px-2 pt-2 max-w-5xl mx-auto w-full" dir="rtl">
-      {domain !== 'receivables' && <div className="flex items-center justify-between gap-3 flex-wrap">
+      {!isLedgerDomain && <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-2">
           <Select
             value={period}
@@ -268,7 +271,7 @@ export function ReportsHub({ state, canViewReceivables, canViewPayments, receiva
       </div>}
 
       <div id="reports-domain-selector" data-tour-actions className="flex flex-wrap gap-1.5">
-        {DOMAINS.filter(item => item.id !== 'receivables' || canViewReceivables).map((d) => (
+        {DOMAINS.filter(item => canViewFinance || (item.id !== 'finance' && item.id !== 'receivables')).map((d) => (
           <button
             key={d.id}
             type="button"
@@ -287,12 +290,21 @@ export function ReportsHub({ state, canViewReceivables, canViewPayments, receiva
       </div>
 
       {domain === 'receivables' && (
-        canViewReceivables
+        canViewFinance
           ? <LedgerReceivablesReport state={state} accounts={receivableAccounts} canViewPayments={canViewPayments} />
           : <p role="status" className="text-xs text-text-secondary">مجوز مشاهدهٔ گزارش مطالبات وجود ندارد.</p>
       )}
+      {domain === 'finance' && (
+        canViewFinance ? (
+          <section className="space-y-3" aria-label="گزارش‌های مالی">
+            <SectionHeader title={domainReports[0]?.label || 'گزارش‌های مالی'} />
+            <ProfitLossWidget state={state} />
+            <CashFlowPanel />
+          </section>
+        ) : <p role="status" className="text-xs text-text-secondary">مجوز مشاهدهٔ گزارش‌های مالی وجود ندارد.</p>
+      )}
 
-      {domain !== 'receivables' && !activeReport && (
+      {!isLedgerDomain && !activeReport && (
         <>
           <div className="rounded-2xl border border-border bg-surface p-4">
             <div className="mb-3"><SectionHeader title={`گزارشات ${domainMeta.label}`} action={domainMeta.icon} /></div>
@@ -349,7 +361,7 @@ export function ReportsHub({ state, canViewReceivables, canViewPayments, receiva
         </>
       )}
 
-      {domain !== 'receivables' && activeReport && activeDef && (
+      {!isLedgerDomain && activeReport && activeDef && (
         <div className="flex flex-col gap-3">
           <button
             type="button"
@@ -378,7 +390,7 @@ export function ReportsHub({ state, canViewReceivables, canViewPayments, receiva
             />
           </div>
 
-          {(activeDef.chart === 'line' || activeDef.id === 'finance-pl') && (
+          {activeDef.chart === 'line' && (
             <NeoLineChart
               title={activeDef.label}
               periodLabel={periodLabel}
@@ -400,7 +412,7 @@ export function ReportsHub({ state, canViewReceivables, canViewPayments, receiva
             />
           )}
 
-          {(activeDef.chart === 'donut' || activeDef.domain === 'receivables') && (
+          {activeDef.chart === 'donut' && (
             <NeoDonutChart
               title="ترکیب دریافت‌ها"
               periodLabel={periodLabel}

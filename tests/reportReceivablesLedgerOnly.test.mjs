@@ -47,7 +47,7 @@ const workspace = readFileSync('src/components/ReportsWorkspace.tsx', 'utf8');
 assert.match(workspace, /visibleAccounts\.filter\(row => canOn\('finance', 'VIEW', scopeOf\(row\)\)\)/);
 assert.match(workspace, /<ReportsHub[\s\S]+?receivableAccounts=\{receivableAccounts\}/);
 const hub = readFileSync('src/components/ReportsHub.tsx', 'utf8');
-assert.match(hub, /domain === 'receivables'[\s\S]+?canViewReceivables[\s\S]+?<LedgerReceivablesReport/);
+assert.match(hub, /domain === 'receivables'[\s\S]+?canViewFinance[\s\S]+?<LedgerReceivablesReport/);
 assert.match(hub, /provider\.getDetailSubsidiaryBalances\(\)/);
 assert.match(hub, /canViewPayments \? provider\.getPaymentAllocations\(\)/);
 assert.match(hub, /view\.kind === 'OK' && !view\.incomplete/);

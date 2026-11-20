@@ -45,6 +45,12 @@ describe('reports dashboard style contracts', () => {
     assert.ok(ws.includes('ReportsHub'));
   });
 
+  it('financial domain mounts the existing ledger and cash-flow panels behind finance access', () => {
+    const hub = read('src/components/ReportsHub.tsx');
+    assert.match(hub, /domain === 'finance'[\s\S]+?canViewFinance \? \([\s\S]+?<ProfitLossWidget state=\{state\} \/>[\s\S]+?<CashFlowPanel \/>/);
+    assert.match(hub, /id: 'finance-pl'[^\n]+chart: 'ledger'/);
+  });
+
   it('header/nav tokens defined', () => {
     const css = read('src/theme/colors.css');
     assert.ok(css.includes('--header-h'));

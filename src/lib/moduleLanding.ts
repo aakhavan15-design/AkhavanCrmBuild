@@ -253,7 +253,7 @@ export const MODULE_LANDINGS: ModuleLandingDefinition[] = [
         tiles: [
           tile('collection', 'مطالبات و وصول', 'مانده دفتری، سنی تخمینی و پیگیری وصول', '/finance?tab=collection', 'finance', ArrowDownLeft),
           tile('credit-risk', 'ریسک اعتباری مشتریان', 'پایش اعتبار، چک برگشتی و نرخ تسویه', '/operations?tab=credit', 'ops.credit', ShieldCheck),
-          tile('receivables-reports', 'گزارش‌های مطالبات', 'تحلیل سنی و تمرکز مطالبات', '/reports?tab=receivables', 'reports', BarChart2),
+          tile('receivables-reports', 'گزارش‌های مطالبات', 'تحلیل سنی و تمرکز مطالبات', '/reports?tab=receivables', 'finance', BarChart2),
         ],
       },
       {
@@ -262,7 +262,7 @@ export const MODULE_LANDINGS: ModuleLandingDefinition[] = [
           tile('credits', 'اسناد بستانکاری', 'اعلامیه‌ها و درخواست‌های بستانکاری', '/finance?tab=credits', 'finance', FileCheck),
           tile('expenses', 'هزینه‌ها', 'ثبت و بررسی اسناد هزینه', '/finance?tab=expenses', 'finance', Receipt),
           tile('profitability', 'سودآوری عملیات', 'تحلیل سودآوری فروش و هزینه‌های پخش', '/operations?tab=profitability', 'ops.profitability', TrendingUp),
-          tile('finance-reports', 'گزارش‌های مالی', 'سود و زیان دفتری و جریان نقدینگی', '/reports?tab=finance', 'reports', PieChart),
+          tile('finance-reports', 'گزارش‌های مالی', 'سود و زیان دفتری و جریان نقدینگی', '/reports?tab=finance', 'finance', PieChart),
           tile('audit-finance', 'پایش مغایرت مالی', 'کنترل کدینگ، ماهیت حساب و توازن اسناد', '/audit?module=finance', 'finance', SearchCheck),
           tile('fin-budget', 'بودجه‌ریزی', 'بودجه دوره‌ای هر واحد', '/planned?item=fin-budget', 'finance', Target),
           tile('fin-cost-control', 'کنترل هزینه‌ها', 'هزینه در برابر بودجه', '/planned?item=fin-cost-control', 'finance', Sliders),
