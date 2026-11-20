@@ -1,4 +1,5 @@
 export const SINGLETON_PREFIX: string;
+export function isMarkedFixture(record: unknown, id?: string | null): boolean;
 export function fnv1a(text: string): string;
 export function hashRecord(record: unknown): string;
 export function idFieldOf(name: string, registry: any): string;

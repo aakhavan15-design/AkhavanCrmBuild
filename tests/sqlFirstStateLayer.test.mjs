@@ -123,6 +123,31 @@ test('collection counts distinguish granted empty, populated and denied partitio
   assert.equal((await viewer.counts(auth)).collections.externalProducts, undefined);
 });
 
+test('operational snapshots exclude marked fixtures and production writes reject them without affecting real records', async () => {
+  const driver = new MemoryEntityDriver();
+  const demo = createEntityService({ driver, registry, hasPermission: allow });
+  const production = createEntityService({ driver, registry, hasPermission: allow, excludeFixtures: true });
+  await demo.sync(auth, {
+    upserts: {
+      accounts: [{ id: 'demo-account' }, { id: 'official-account' }],
+      invoices: [{ id: 'old-erp-fixture', source: 'LOCAL_TEST' }, { id: 'official-invoice' }],
+    },
+    singletons: { extraRecords: [{ id: 'demo-old' }] },
+  });
+  const snapshot = await production.snapshot(auth);
+  assert.deepEqual(snapshot.collections.accounts.map(row => row.id), ['official-account']);
+  assert.deepEqual(snapshot.collections.invoices.map(row => row.id), ['official-invoice']);
+  assert.equal(snapshot.singletons.extraRecords, undefined);
+  const result = await production.sync(auth, {
+    upserts: { payments: [{ id: 'TEST-receipt' }, { id: 'normal', source: 'DEMO' }, { id: 'confirmed-receipt' }] },
+    singletons: { fixtureRecords: [{ id: 'unknown-id', isDemo: true }] },
+  });
+  assert.equal(result.upserted, 1);
+  assert.equal(result.rejected.length, 3);
+  assert.ok(result.rejected.every(record => record.reason === 'TEST_DATA_FORBIDDEN'));
+  assert.equal((await demo.snapshot(auth)).collections.accounts.length, 2);
+});
+
 test('allocation snapshots distinguish permitted empty, populated and restricted collections', async () => {
   const driver = new MemoryEntityDriver();
   const allowedService = createEntityService({ driver, registry, hasPermission: allow });

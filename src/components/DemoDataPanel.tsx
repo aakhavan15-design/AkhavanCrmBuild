@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Database, Trash2, X } from 'lucide-react';
 import { AppState } from '../types';
-import { applyDemoSeed, purgeDemoData, DemoSeedReport, isDemoId } from '../lib/seed';
+import { applyDemoSeed, purgeDemoData, DemoSeedReport } from '../lib/seed';
 import { applyDemoSeedExtended } from '../lib/seedExtended';
 import { Button } from './ui/Button';
 import { getStateSyncEngine, isSqlProviderActive } from '../services/stateSyncRuntime';
@@ -17,16 +17,14 @@ const LABELS: Record<string, string> = {
   treasuryAccounts: 'حساب خزانه (صندوق/بانک)', treasuryTransactions: 'تراکنش خزانه', purchaseOrders: 'سفارش خرید', goodsReceipts: 'رسید کالا', supplierPayments: 'پرداخت به تأمین‌کننده', stockMovements: 'حرکت موجودی کالا', bankMaps: 'نگاشت حساب بانکی', cashboxMaps: 'نگاشت صندوق'
 };
 
-/** تولید/حذف داده آزمایشی فقط با درخواست صریح کاربر (دکمه + تأیید). فقط در توسعه یا حالت demoMode یا وقتی داده آزمایشی وجود دارد نمایش داده می‌شود. */
+/** دادهٔ آزمایشی در ساخت توسعه یا ساختی که صریحاً برای دمو فعال شده مدیریت می‌شود. */
 export function DemoDataPanel({ state, updateState, canManage }: { state: AppState; updateState: (u: (d: AppState) => AppState | void) => void; canManage: boolean }) {
   const [open, setOpen] = useState(false);
   const [report, setReport] = useState<DemoSeedReport | null>(null);
   const [removed, setRemoved] = useState<number | null>(null);
   const [sqlNote, setSqlNote] = useState<string | null>(null);
   const [sqlBusy, setSqlBusy] = useState(false);
-  const hasDemo = (state.users || []).some(u => isDemoId(u.id)) || (state.accounts || []).some(a => isDemoId(a.id));
-  // پنل دادهٔ آزمایشی فقط برای مدیر دارای مجوز و در محیط/حالت مجاز نمایش داده می‌شود.
-  const demoContext = import.meta.env.DEV || import.meta.env.VITE_ENABLE_DEMO_DATA === 'true' || state.settings?.demoMode === true || hasDemo;
+  const demoContext = import.meta.env.DEV || import.meta.env.VITE_ENABLE_DEMO_DATA === 'true';
   const allowed = canManage && demoContext;
   if (!allowed) return null;
 

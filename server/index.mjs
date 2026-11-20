@@ -474,7 +474,7 @@ const entityDriver = entityDriverKind === 'mssql'
   : entityDriverKind === 'memory'
     ? new MemoryEntityDriver()
     : new FileEntityDriver(process.env.ENTITY_STORE_FILE || path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../.data/entity-store.json'));
-const entities = createEntityService({ driver: entityDriver, registry: stateRegistry, hasPermission: userHasPermission });
+const entities = createEntityService({ driver: entityDriver, registry: stateRegistry, hasPermission: userHasPermission, excludeFixtures: isProduction });
 
 async function autoSeedEntitiesIfEmpty() {
   if (process.env.NODE_ENV === 'test' || !allowDemoAuth || entityDriverKind === 'mssql') return;

@@ -5,6 +5,15 @@
 export const SINGLETON_PREFIX = '__singleton__';
 const isPlainObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 
+/** Historical and generated fixture labels used by CRM seed profiles. */
+export function isMarkedFixture(record, id = record?.id) {
+  return (typeof id === 'string' && /^(demo|test)-/i.test(id))
+    || ['LOCAL_TEST', 'DEMO', 'TEST_FIXTURE'].includes(record?.source)
+    || record?.enforcement === 'CRM_TEST_ONLY'
+    || record?.isDemo === true;
+}
+
+
 /** FNV-1a 32-bit over a string; used only to detect "did this record change", never for security. */
 export function fnv1a(text) {
   let h = 0x811c9dc5;

@@ -4,6 +4,7 @@ import type { AppState } from '../types';
 import { idbGet, idbSet, idbDel } from './idb';
 import { generateSeedData } from './seed';
 import { DEFAULT_COA_MIRROR, DEFAULT_REPORT_BUCKETS, DEFAULT_ACCOUNT_MAP_RULES } from './accountingMapping';
+import { isMarkedFixture } from './stateModel.mjs';
 import { createAppStorePort, type DataPort } from './dataPorts';
 import { getOfflineQueue, retryFailedOfflineOperations } from './offline';
 
@@ -55,7 +56,13 @@ const mergeCollectionIfSmall = <T extends { id?: string }>(existing: T[] | undef
   return safeExisting.length > 0 ? safeExisting : safeBase;
 };
 
-const ensureStateIntegrity = (state: AppState): AppState => {
+const ensureStateIntegrity = (incomingState: AppState): AppState => {
+  const state = INCLUDE_DEMO_SEED ? incomingState : {
+    ...incomingState,
+    ...Object.fromEntries(Object.entries(incomingState || {}).flatMap(([key, value]) =>
+      Array.isArray(value) ? [[key, value.filter(record => !isMarkedFixture(record))]] : []
+    )),
+  };
   const base = generateSeedData({ includeDemo: INCLUDE_DEMO_SEED });
   
   const safeAuditLogs = Array.isArray(state?.auditLogs) ? state.auditLogs.slice(-MAX_LOG_RECORDS) : [];
@@ -104,15 +111,15 @@ const ensureStateIntegrity = (state: AppState): AppState => {
     salesReturns: Array.isArray(state?.salesReturns) ? state.salesReturns : (base as Record<string, unknown>).salesReturns || [],
     commercialPolicies: Array.isArray(state?.commercialPolicies) ? state.commercialPolicies : (base as Record<string, unknown>).commercialPolicies || [],
     reconciliationCases: Array.isArray(state?.reconciliationCases) ? state.reconciliationCases : (base as Record<string, unknown>).reconciliationCases || [],
-    seedMetadata: state?.seedMetadata || (base as Record<string, unknown>).seedMetadata,
+    seedMetadata: INCLUDE_DEMO_SEED ? (state?.seedMetadata || base.seedMetadata) : base.seedMetadata,
     articles: Array.isArray(state?.articles) && state.articles.length > 0 ? state.articles : (base as Record<string, unknown>).articles || [],
     cases: Array.isArray(state?.cases) && state.cases.length > 0 ? state.cases : (base as Record<string, unknown>).cases || [],
     campaigns: Array.isArray(state?.campaigns) && state.campaigns.length > 0 ? state.campaigns : (base as Record<string, unknown>).campaigns || [],
     creditNotes: Array.isArray(state?.creditNotes) && state.creditNotes.length > 0 ? state.creditNotes : (base as Record<string, unknown>).creditNotes || [],
     financeRequests: Array.isArray(state?.financeRequests) && state.financeRequests.length > 0 ? state.financeRequests : (base as Record<string, unknown>).financeRequests || [],
-    coaMirror: Array.isArray(state?.coaMirror) && state.coaMirror.length > 0 ? state.coaMirror : DEFAULT_COA_MIRROR,
+    coaMirror: Array.isArray(state?.coaMirror) && state.coaMirror.length > 0 ? state.coaMirror : (INCLUDE_DEMO_SEED ? DEFAULT_COA_MIRROR : []),
     reportBuckets: Array.isArray(state?.reportBuckets) && state.reportBuckets.length > 0 ? state.reportBuckets : DEFAULT_REPORT_BUCKETS,
-    accountMapRules: Array.isArray(state?.accountMapRules) && state.accountMapRules.length > 0 ? state.accountMapRules : DEFAULT_ACCOUNT_MAP_RULES,
+    accountMapRules: Array.isArray(state?.accountMapRules) && state.accountMapRules.length > 0 ? state.accountMapRules : (INCLUDE_DEMO_SEED ? DEFAULT_ACCOUNT_MAP_RULES : []),
     bankMaps: Array.isArray(state?.bankMaps) ? state.bankMaps : [],
     cashboxMaps: Array.isArray(state?.cashboxMaps) ? state.cashboxMaps : [],
     outbox: Array.isArray(state?.outbox) ? state.outbox : [],
@@ -134,6 +141,7 @@ const ensureStateIntegrity = (state: AppState): AppState => {
     settings: {
       ...base.settings,
       ...(state?.settings || {}),
+      ...(!INCLUDE_DEMO_SEED ? { demoMode: false } : {}),
       locale: {
         ...(base.settings?.locale || {}),
         ...(state?.settings?.locale || {})

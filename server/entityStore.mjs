@@ -5,7 +5,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import {
-  splitState, policyOf, recordId, classify, checkIntegrity, profileCollections, SINGLETON_PREFIX,
+  splitState, policyOf, recordId, classify, isMarkedFixture, checkIntegrity, profileCollections, SINGLETON_PREFIX,
 } from '../src/lib/stateModel.mjs';
 
 const NAME_RE = /^[A-Za-z][A-Za-z0-9_]{0,79}$/;
@@ -198,7 +198,7 @@ export class MssqlEntityDriver {
 }
 
 /* ------------------------------ service ------------------------------ */
-export function createEntityService({ driver, registry, hasPermission }) {
+export function createEntityService({ driver, registry, hasPermission, excludeFixtures = false }) {
   const can = async (auth, code) => code === 'authenticated' || Boolean(await hasPermission(auth, code));
   const readableCache = async (auth) => {
     const memo = new Map();
@@ -218,9 +218,16 @@ export function createEntityService({ driver, registry, hasPermission }) {
     const storedCollections = { ...full.collections };
     for (const name of includeEmptyCollections) storedCollections[name] ??= [];
     for (const [name, list] of Object.entries(storedCollections)) {
-      if (await canRead(name)) collections[name] = list; else hidden.push(name);
+      if (await canRead(name)) {
+        collections[name] = excludeFixtures ? list.filter(row => !isMarkedFixture(row, recordId(row, name, registry))) : list;
+      } else hidden.push(name);
     }
-    return { collections, singletons: full.singletons, serverVersion: full.version, hiddenCollections: hidden, generatedAt: now() };
+    const singletons = excludeFixtures
+      ? Object.fromEntries(Object.entries(full.singletons).filter(([key, value]) =>
+          !isMarkedFixture(value, key) && !(Array.isArray(value) && value.some(row => isMarkedFixture(row)))
+        ))
+      : full.singletons;
+    return { collections, singletons, serverVersion: full.version, hiddenCollections: hidden, generatedAt: now() };
   }
 
   /** change = { upserts: {name:[record]}, deletes: {name:[id]}, singletons: {key:value} } (client format) */
@@ -240,6 +247,7 @@ export function createEntityService({ driver, registry, hasPermission }) {
       for (const rec of list) {
         const id = recordId(rec, name, registry);
         if (!id) { rejected.push({ collection: name, reason: 'MISSING_ID' }); continue; }
+        if (excludeFixtures && isMarkedFixture(rec, id)) { rejected.push({ collection: name, id, reason: 'TEST_DATA_FORBIDDEN' }); continue; }
         if (bytes(rec) > LIMITS.maxRecordBytes) { rejected.push({ collection: name, id, reason: 'RECORD_TOO_LARGE' }); continue; }
         (upserts[name] ||= []).push({ __id: id, json: rec }); total++;
       }
@@ -255,6 +263,9 @@ export function createEntityService({ driver, registry, hasPermission }) {
       // singletons (settings, locale, flags) follow the strictest write rule: settings.manage
       const needed = code === 'authenticated' ? 'authenticated' : code;
       if (!(await can(auth, needed === 'authenticated' ? 'settings.manage' : needed))) { rejected.push({ collection: key, reason: 'FORBIDDEN' }); continue; }
+      if (excludeFixtures && (isMarkedFixture(value, key) || (Array.isArray(value) && value.some(row => isMarkedFixture(row))))) {
+        rejected.push({ collection: key, reason: 'TEST_DATA_FORBIDDEN' }); continue;
+      }
       if (bytes(value) > LIMITS.maxRecordBytes) { rejected.push({ collection: key, reason: 'RECORD_TOO_LARGE' }); continue; }
       singletons[key] = value; total++;
     }

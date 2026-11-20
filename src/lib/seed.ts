@@ -719,7 +719,7 @@ export function generateSeedData(options: { includeDemo?: boolean } = {}): AppSt
     roles: [],
     permissionSets: [],
   };
-  const retainedConfiguration = new Set(['messagingChannels', 'coaMirror', 'reportBuckets', 'accountMapRules']);
+  const retainedConfiguration = new Set(['messagingChannels', 'reportBuckets']);
   for (const key of Object.keys(productionState)) {
     const value = (productionState as Record<string, unknown>)[key];
     if (Array.isArray(value) && !retainedConfiguration.has(key)) (productionState as Record<string, unknown>)[key] = [];
