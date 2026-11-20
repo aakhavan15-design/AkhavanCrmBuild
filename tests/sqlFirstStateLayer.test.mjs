@@ -362,6 +362,56 @@ test('partial server rejections remain pending and do not report a successful pu
   engine.stop();
 });
 
+test('a record-scoped rejected deletion stays pending without resending accepted deletions', async (t) => {
+  const driver = new MemoryEntityDriver();
+  const service = createEntityService({ driver, registry, hasPermission: allow });
+  await service.sync(auth, { upserts: { accounts: [{ id: 'keep' }, { id: 'remove' }] } });
+  const provider = serviceProvider(service, auth);
+  const requests = [];
+  let allowDeletion = false;
+  const store = fakeStore({ accounts: [] });
+  const engine = new StateSyncEngine(store, { ...provider, syncStateChanges: async (change) => {
+    const ids = change.deletes.accounts || [];
+    requests.push(ids);
+    const rejected = !allowDeletion && ids.includes('keep');
+    const result = await provider.syncStateChanges({ ...change, deletes: { accounts: ids.filter(id => !rejected || id !== 'keep') } });
+    if (rejected) result.rejected.push({ collection: 'accounts', id: 'keep', reason: 'FORBIDDEN_SCOPE' });
+    return result;
+  } }, registry);
+  t.after(() => engine.stop());
+  await engine.start();
+  store.setState({ state: { accounts: [] } });
+  assert.equal(await engine.flush(), false);
+  assert.equal(engine.getStatus().pending, 1);
+  assert.deepEqual((await service.snapshot(auth)).collections.accounts.map(row => row.id), ['keep']);
+  allowDeletion = true;
+  assert.equal(await engine.flush(), true);
+  assert.deepEqual(requests.map(ids => [...ids].sort()), [['keep', 'remove'], ['keep']]);
+  assert.deepEqual((await service.snapshot(auth)).collections.accounts || [], []);
+});
+
+test('bootstrap leaves rejected records pending and successful records indexed', async (t) => {
+  let financeAllowed = false;
+  const service = createEntityService({ driver: new MemoryEntityDriver(), registry,
+    hasPermission: async (_auth, code) => code !== 'finance.manage' || financeAllowed,
+  });
+  const provider = serviceProvider(service, auth);
+  const requests = [];
+  const store = fakeStore({ accounts: [{ id: 'a1' }], invoices: [{ id: 'i1' }] });
+  const engine = new StateSyncEngine(store, { ...provider, syncStateChanges: async (change) => {
+    requests.push(Object.keys(change.upserts));
+    return provider.syncStateChanges(change);
+  } }, registry);
+  t.after(() => engine.stop());
+  await engine.start();
+  assert.deepEqual(await engine.bootstrapFromLocal(), { upserted: 1, rejected: 1 });
+  assert.equal(engine.getStatus().pending, 1);
+  assert.equal(engine.getStatus().lastSyncedAt, null);
+  financeAllowed = true;
+  assert.equal(await engine.flush(), true);
+  assert.deepEqual(requests, [['invoices']]);
+});
+
 test('a failing server never loses local data and recovers with backoff', async () => {
   const svc = createEntityService({ driver: new MemoryEntityDriver(), registry, hasPermission: allow });
   let fail = true;

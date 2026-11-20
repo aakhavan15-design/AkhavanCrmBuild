@@ -7,14 +7,15 @@ import {
 } from '../lib/stateModel.mjs';
 
 export interface StateSnapshot { collections: Record<string, Array<Record<string, unknown>>>; singletons: Record<string, any>; serverVersion?: number; hiddenCollections?: string[] }
-export interface StateSyncResult { ok: boolean; upserted: number; deleted: number; serverVersion: number; rejected: Array<{ collection: string; id?: string; reason: string }> }
+interface RejectedChange { collection: string; id?: string; reason: string }
+export interface StateSyncResult { ok: boolean; upserted: number; deleted: number; serverVersion: number; rejected: RejectedChange[] }
 
 /** The slice of DataProvider the sync engine needs (both providers implement it). */
 export interface StateSyncProvider {
   name: string;
   getStateSnapshot(): Promise<StateSnapshot>;
   syncStateChanges(change: Omit<ChangeSet, 'count'>): Promise<StateSyncResult>;
-  bootstrapState(state: unknown): Promise<{ ok: boolean; upserted: number; rejected: unknown[]; serverVersion: number }>;
+  bootstrapState(state: unknown): Promise<{ ok: boolean; upserted: number; rejected: RejectedChange[]; serverVersion: number }>;
 }
 type SyncStoreSnapshot = { state: AppState };
 export interface SyncableStore {
@@ -111,6 +112,25 @@ export class StateSyncEngine {
     this.timer = setTimeout(() => { this.timer = null; void this.flush(); }, delay);
   }
 
+  private applyAcceptedChanges(change: Omit<ChangeSet, 'count'>, rejected: RejectedChange[]) {
+    const rejectedKeys = new Set(rejected.map(row => `${row.collection}\u0000${row.id ?? ''}`));
+    const isAccepted = (name: string, id?: string | null) =>
+      !rejectedKeys.has(`${name}\u0000`) && !rejectedKeys.has(`${name}\u0000${id ?? ''}`);
+    const accepted: ChangeSet = { upserts: {}, deletes: {}, singletons: {}, count: 0 };
+    for (const [name, records] of Object.entries(change.upserts)) {
+      const rows = records.filter(row => isAccepted(name, recordId(row, name, this.registry)));
+      if (rows.length) accepted.upserts[name] = rows;
+    }
+    for (const [name, ids] of Object.entries(change.deletes)) {
+      const rows = ids.filter(id => isAccepted(name, id));
+      if (rows.length) accepted.deletes[name] = rows;
+    }
+    for (const [key, value] of Object.entries(change.singletons)) {
+      if (isAccepted(key)) accepted.singletons[key] = value;
+    }
+    applyToIndex(this.index, accepted, this.registry);
+  }
+
   /** Push every change made since the last successful sync. Safe to call repeatedly. */
   async flush(): Promise<boolean> {
     if (!this.active) return false;
@@ -132,17 +152,7 @@ export class StateSyncEngine {
       if (generation !== this.generation) return false;
       if (!result.ok) throw new Error('سرور تغییرات را نپذیرفت.');
       // Fold only what the server accepted into the index; rejected records stay "pending" so the UI can surface them.
-      const rejectedKeys = new Set(result.rejected.map(r => `${r.collection}\u0000${r.id ?? ''}`));
-      const rejectedCollections = new Set(result.rejected.filter(r => !r.id).map(r => r.collection));
-      const accepted: Omit<ChangeSet, 'count'> = { upserts: {}, deletes: {}, singletons: {} };
-      for (const [name, list] of Object.entries(payload.upserts)) {
-        if (rejectedCollections.has(name)) continue;
-        const ok = list.filter((rec: unknown) => !rejectedKeys.has(`${name}\u0000${recordId(rec, name, this.registry) ?? ''}`));
-        if (ok.length) accepted.upserts[name] = ok;
-      }
-      for (const [name, ids] of Object.entries(payload.deletes)) if (!rejectedCollections.has(name)) accepted.deletes[name] = ids;
-      for (const [key, value] of Object.entries(payload.singletons)) if (!rejectedCollections.has(key)) accepted.singletons[key] = value;
-      applyToIndex(this.index, { ...accepted, count: 0 }, this.registry);
+      this.applyAcceptedChanges(payload, result.rejected);
       this.failures = 0;
       const stillPending = diffAgainstIndex(this.index, this.store.getState().state, this.registry).count;
       const rejected = result.rejected.length;
@@ -170,15 +180,24 @@ export class StateSyncEngine {
 
   /** Explicit "upload everything I have to SQL" (demo seed / first migration). Merge-only on the server. */
   async bootstrapFromLocal(): Promise<{ upserted: number; rejected: number }> {
+    const generation = this.generation;
     const state = this.store.getState().state;
     const split = splitState(state, this.registry);
     const result = await this.provider.bootstrapState(state);
-    // mark everything we just uploaded as synced so the diff does not re-send it
-    applyToIndex(this.index, {
-      upserts: Object.fromEntries(Object.entries(split.collections).map(([n, m]) => [n, [...m.values()]])),
-      deletes: {}, singletons: split.singletons, count: 0,
-    }, this.registry);
-    this.set({ lastSyncedAt: new Date().toISOString(), serverVersion: result.serverVersion, rejected: result.rejected.length });
-    return { upserted: result.upserted, rejected: result.rejected.length };
+    if (!result.ok) throw new Error('سرور بارگذاری اولیه را نپذیرفت.');
+    const rejected = result.rejected.length;
+    if (generation === this.generation) {
+      this.applyAcceptedChanges({
+        upserts: Object.fromEntries(Object.entries(split.collections).map(([name, rows]) => [name, [...rows.values()]])),
+        deletes: {}, singletons: split.singletons,
+      }, result.rejected);
+      this.set({
+        lastSyncedAt: rejected ? this.status.lastSyncedAt : new Date().toISOString(),
+        pending: diffAgainstIndex(this.index, this.store.getState().state, this.registry).count,
+        serverVersion: result.serverVersion,
+        rejected,
+      });
+    }
+    return { upserted: result.upserted, rejected };
   }
 }
