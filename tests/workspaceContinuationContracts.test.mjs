@@ -5,6 +5,7 @@ const activities = read('src/components/ActivitiesWorkspace.tsx');
 const leads = read('src/components/LeadsWorkspace.tsx');
 const tasks = read('src/components/TasksWorkspace.tsx');
 const modal = read('src/components/ui/Modal.tsx');
+const overlay = read('src/hooks/useOverlayDialog.ts');
 const css = read('src/index.css');
 assert.match(activities, /const events = state\.timelineEvents \|\| \[\]/, 'activities must use persisted events only');
 assert.doesNotMatch(activities, /تماس تلفنی جهت هماهنگی جلسه دمو|صدور پیش\-فاکتور اولیه سیستم/, 'sample activity records must not be rendered');
@@ -13,7 +14,8 @@ assert.match(leads, /مرحله سرنخ[\s\S]*<Select/, 'lead stage navigation 
 assert.doesNotMatch(leads, /<FilterChip/, 'lead stages must not be rendered as a bubble rail');
 assert.match(tasks, /<Select value=\{filterStatus\}/, 'task status must use a compact selector');
 assert.doesNotMatch(tasks, /<FilterChip/, 'task status must not be rendered as a bubble rail');
-assert.match(modal, /event\.key === 'Tab'/, 'modal must trap keyboard focus');
-assert.match(modal, /previousActive\?\.focus\(\)/, 'modal must restore focus on close');
+assert.match(modal, /useOverlayDialog\(isOpen, modalRef, requestClose\)/, 'modal must use the shared dialog focus scope');
+assert.match(overlay, /event\.key !== 'Tab'[\s\S]*event\.preventDefault\(\)/, 'shared dialog must trap keyboard focus');
+assert.match(overlay, /trigger\.focus\(\{ preventScroll: true \}\)/, 'shared dialog restores focus on close');
 assert.match(css, /Checkpoint 02 — unified operational form/, 'shared form and data interface standards must be present');
 console.log('workspaceContinuationContracts: PASS (10 assertions)');

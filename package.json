@@ -17,7 +17,8 @@
     "audit:source": "node scripts/audit-source-surface.mjs",
     "start:api": "node server/index.mjs",
     "start": "node server/index.mjs",
-    "test:one": "node scripts/run-tests.mjs"
+    "test:one": "node scripts/run-tests.mjs",
+    "quality:ux": "bash scripts/quality-ux.sh"
   },
   "dependencies": {
     "@google/genai": "^3.2.0",

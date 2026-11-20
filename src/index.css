@@ -1137,7 +1137,7 @@
   .crm-dialog-viewport .crm-form-actions button { min-block-size: var(--size-touch-target); }
   :where(.crm-dialog-viewport, .crm-workspace) :is(input:not([type=checkbox],[type=radio],[type=range],[type=hidden],[type=button],[type=submit]),select,textarea),
   .crm-text-field {
-    font-size: max(1em, var(--font-size-mobile-field));
+    font-size: max(1em, var(--font-size-input));
   }
 }
 

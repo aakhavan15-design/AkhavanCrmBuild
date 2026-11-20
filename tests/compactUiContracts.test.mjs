@@ -27,8 +27,9 @@ assert.match(css, /font-size: var\(--font-size-input\) !important/,
   'mobile text inputs must prevent iOS focus zoom');
 assert.match(modal, /hasUnsavedChanges/ ,
   'modal and drawer must expose a controlled unsaved-change close guard');
-assert.match(modal, /--app-viewport-height/,
-  'modal max-height must follow the visual viewport when the virtual keyboard opens');
+assert.match(modal, /crm-dialog-viewport/, 'modal must use the common overlay viewport');
+assert.match(css, /\.crm-dialog-viewport\s*\{[^}]*--app-viewport-height/,
+  'common overlay viewport must follow the visible height when the virtual keyboard opens');
 assert.match(modal, /overflow-y-auto overscroll-contain/,
   'modal content must scroll independently');
 assert.match(modal, /safe-area-inset-bottom/,

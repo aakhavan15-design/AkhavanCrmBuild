@@ -20,5 +20,6 @@ assert.ok(forms.includes('sensitiveForm')&&forms.includes('token|secret'),'sensi
 assert.ok(forms.includes("announceToScreenReader(`فرم دارای"),'form validation errors are announced to screen readers');
 assert.ok(announcer.includes('aria-live={announcement.priority}')&&announcer.includes('akhavan:a11y-announce'),'global live announcer is installed');
 assert.ok(loginCanvas.includes('weakDevice')&&loginCanvas.includes('prefers-reduced-motion')&&loginCanvas.includes('Graceful degradation'),'login WebGL uses a lightweight fallback on constrained devices');
-assert.ok(modal.includes('cubic-bezier(0.22, 1.2, 0.36, 1)')&&modal.includes('Math.pow(Math.abs(delta), 0.72)'),'mobile modal sheet has touch resistance and spring return');
+assert.match(modal, /Math\.pow\(Math\.abs\(delta\), 0\.72\)/, 'mobile modal drag preserves resistance');
+assert.match(modal, /transform var\(--motion-dialog-duration\) var\(--motion-dialog-easing\)/, 'modal return uses the shared motion tokens');
 console.log('PASS: 10 assertions (UI scale, graphics quality, form autosave privacy guard and screen-reader announcements)');
