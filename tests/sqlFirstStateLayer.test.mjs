@@ -220,6 +220,67 @@ test('bootstrap uploads the full local state (demo seed) merge-only and is idemp
   assert.equal((await svc.integrity(auth)).issueCount, 0);
 });
 
+test('stopping an in-flight initial read leaves the store and queue untouched', async () => {
+  let resolveSnapshot;
+  let writes = 0;
+  const store = fakeStore({ accounts: [{ id: 'new-session-local' }] });
+  const engine = new StateSyncEngine(store, {
+    getStateSnapshot: () => new Promise(resolve => { resolveSnapshot = resolve; }),
+    syncStateChanges: async () => { writes++; throw new Error('unexpected write'); },
+  }, registry, { debounceMs: 5 });
+  const starting = engine.start();
+  engine.stop();
+  resolveSnapshot({ collections: { accounts: [{ id: 'old-session-remote' }] }, singletons: {} });
+  await starting;
+  assert.equal(engine.getStatus().phase, 'stopped');
+  assert.deepEqual(store.getState().state.accounts.map(row => row.id), ['new-session-local']);
+  assert.equal(await engine.flush(), false);
+  assert.equal(writes, 0);
+});
+
+test('no records are sent until the first server snapshot succeeds', async () => {
+  let denyRead = true;
+  let writes = 0;
+  const store = fakeStore({ accounts: [{ id: 'a1' }] });
+  const engine = new StateSyncEngine(store, {
+    getStateSnapshot: async () => {
+      if (denyRead) throw new Error('read unavailable');
+      return { collections: {}, singletons: {} };
+    },
+    syncStateChanges: async () => {
+      writes++;
+      return { ok: true, upserted: 1, deleted: 0, serverVersion: 1, rejected: [] };
+    },
+  }, registry);
+  await engine.start();
+  assert.equal(await engine.flush(), false);
+  assert.equal(writes, 0);
+  denyRead = false;
+  assert.equal(await engine.flush(), true);
+  assert.equal(writes, 1);
+  engine.stop();
+});
+
+test('partial server rejections remain pending and do not report a successful push', async () => {
+  const service = createEntityService({
+    driver: new MemoryEntityDriver(),
+    registry,
+    hasPermission: async (_auth, code) => ['accounts.view', 'accounts.edit'].includes(code),
+  });
+  const store = fakeStore({ accounts: [{ id: 'a1' }], invoices: [{ id: 'i1' }] });
+  const engine = new StateSyncEngine(store, serviceProvider(service, auth), registry);
+  await engine.start();
+  assert.equal(await engine.flush(), false);
+  const status = engine.getStatus();
+  assert.equal(status.phase, 'error');
+  assert.equal(status.pending, 1);
+  assert.equal(status.rejected, 1);
+  assert.equal(status.lastSyncedAt, null);
+  assert.deepEqual(store.getState().state.invoices, [{ id: 'i1' }]);
+  assert.equal((await service.snapshot(auth)).collections.accounts.length, 1);
+  engine.stop();
+});
+
 test('a failing server never loses local data and recovers with backoff', async () => {
   const svc = createEntityService({ driver: new MemoryEntityDriver(), registry, hasPermission: allow });
   let fail = true;
@@ -227,10 +288,12 @@ test('a failing server never loses local data and recovers with backoff', async 
   const store = fakeStore(sampleState());
   const engine = new StateSyncEngine(store, provider, registry, { debounceMs: 5, maxBackoffMs: 10 });
   provider.getStateSnapshot = async () => ({ collections: {}, singletons: {} });
-  await engine.start(); await engine.flush();
-  assert.equal(engine.getStatus().phase === 'error' || engine.getStatus().phase === 'pending', true);
+  await engine.start();
+  assert.equal(await engine.flush(), false);
+  assert.equal(engine.getStatus().phase, 'error');
   assert.equal(store.getState().state.accounts.length, 2);
-  fail = false; await engine.flush(); await engine.flush();
+  fail = false;
+  assert.equal(await engine.flush(), true);
   assert.equal((await svc.snapshot(auth)).collections.accounts.length, 2);
   engine.stop();
 });

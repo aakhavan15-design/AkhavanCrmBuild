@@ -1,6 +1,6 @@
 import { useAppStore } from '../lib/storage';
-import { getActiveDataProvider, type DataProvider } from './dataProvider';
-import { StateSyncEngine, type StateSnapshot, type StateSyncResult } from './stateSync';
+import { getActiveDataProvider } from './dataProvider';
+import { StateSyncEngine } from './stateSync';
 import registry from '../config/stateCollections.json' with { type: 'json' };
 
 export type DataSyncState = 
@@ -54,7 +54,7 @@ export class DataSyncController {
   private activeCollection?: string;
 
   private engine: StateSyncEngine | null = null;
-  private unsubscribeStore: (() => void) | null = null;
+  private unsubscribeEngine: (() => void) | null = null;
   private statusListeners = new Set<(status: DataSyncStatus) => void>();
   private completedTimer: ReturnType<typeof setTimeout> | null = null;
   private isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
@@ -88,7 +88,7 @@ export class DataSyncController {
     window.addEventListener('focus', () => {
       const engine = this.engine;
       if (!engine || !this.isOnline) return;
-      void engine.flush().then(() => engine.hydrate()).catch(() => undefined);
+      void engine.flush().then(() => this.engine === engine && engine.hydrate()).catch(() => undefined);
     });
   }
 
@@ -166,15 +166,16 @@ export class DataSyncController {
 
     if (this.engine) return;
 
-    this.engine = new StateSyncEngine(
-      useAppStore as unknown as any,
-      provider as unknown as any,
+    const engine = new StateSyncEngine(
+      useAppStore,
+      provider,
       registry,
       { debounceMs: 600, maxBackoffMs: 30000 }
     );
 
     // گوش دادن به تغییرات وضعیت موتور سطح پایین
-    this.engine.onStatus((engineStatus) => {
+    this.engine = engine;
+    this.unsubscribeEngine = engine.onStatus((engineStatus) => {
       this.pendingCount = engineStatus.pending;
       this.serverVersion = engineStatus.serverVersion;
       this.rejectedCount = engineStatus.rejected;
@@ -185,6 +186,7 @@ export class DataSyncController {
         return;
       }
 
+      this.lastError = engineStatus.lastError;
       switch (engineStatus.phase) {
         case 'hydrating':
           this.setState('retrieving');
@@ -214,10 +216,10 @@ export class DataSyncController {
 
     try {
       this.setState('retrieving');
-      await this.engine.start();
+      await engine.start();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'خطا در بارگذاری اولیه داده‌های پایگاه دادهٔ مرکزی';
-      this.setState('failed', msg);
+      if (this.engine === engine) this.setState('failed', msg);
     }
   }
 
@@ -231,24 +233,17 @@ export class DataSyncController {
     }
 
     const provider = getActiveDataProvider();
-    if (provider.name !== 'SQLSERVER_BACKEND') return true;
+    if (provider.name !== 'SQLSERVER_BACKEND') return false;
 
-    if (!this.engine) {
-      await this.initialize();
-    }
-
-    try {
-      this.setState('saving');
-      await this.engine?.flush();
-      this.retryAttempt = 0;
-      this.setState('completed');
-      return true;
-    } catch (err: unknown) {
-      this.retryAttempt++;
-      const msg = err instanceof Error ? err.message : 'خطا در ارسال تغییرات به سرور';
-      this.setState('failed', msg);
-      return false;
-    }
+    if (!this.engine) await this.initialize();
+    const engine = this.engine;
+    if (!engine) return false;
+    this.setState('saving');
+    const ok = await engine.flush();
+    if (this.engine !== engine || !ok) return false;
+    this.retryAttempt = 0;
+    this.setState('completed', null);
+    return true;
   }
 
   /**
@@ -261,21 +256,21 @@ export class DataSyncController {
     }
 
     const provider = getActiveDataProvider();
-    if (provider.name !== 'SQLSERVER_BACKEND') return true;
+    if (provider.name !== 'SQLSERVER_BACKEND') return false;
 
+    if (!this.engine) await this.initialize();
+    const engine = this.engine;
+    if (!engine) return false;
     try {
       this.setState('retrieving');
-      if (!this.engine) {
-        await this.initialize();
-      } else {
-        await this.engine.hydrate();
-      }
+      const ok = await engine.hydrate();
+      if (this.engine !== engine || !ok) return false;
       this.lastSyncedAt = new Date().toISOString();
-      this.setState('completed');
+      this.setState('completed', null);
       return true;
-    } catch (err: unknown) {
+    } catch (err) {
       const msg = err instanceof Error ? err.message : 'خطا در بازیابی رکوردهای سرور';
-      this.setState('failed', msg);
+      if (this.engine === engine) this.setState('failed', msg);
       return false;
     }
   }
@@ -291,11 +286,16 @@ export class DataSyncController {
   }
 
   public stop(): void {
+    this.unsubscribeEngine?.();
+    this.unsubscribeEngine = null;
     this.engine?.stop();
     this.engine = null;
-    this.unsubscribeStore?.();
-    this.unsubscribeStore = null;
-    this.setState('idle');
+    this.pendingCount = 0;
+    this.lastSyncedAt = null;
+    this.retryAttempt = 0;
+    this.serverVersion = 0;
+    this.rejectedCount = 0;
+    this.setState('idle', null);
   }
 }
 
