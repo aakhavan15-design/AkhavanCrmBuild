@@ -20,7 +20,7 @@ import { executePayrollRun as computePayrollRun } from './payrollEngine';
 import { AuthService } from './AuthService';
 import type { StateSnapshot, StateSyncResult } from './stateSync';
 import { RBACService } from '../lib/rbac';
-import { policyOf, splitState } from '../lib/stateModel.mjs';
+import { hashRecord, policyOf, splitState } from '../lib/stateModel.mjs';
 import stateRegistry from '../config/stateCollections.json' with { type: 'json' };
 import {
   buildApprovalContext, buildFinancial360, resolveAccountingMapping, recordApprovalSnapshot, stateFromSnapshot,
@@ -30,6 +30,10 @@ import { withViewer } from '../lib/financialAccess';
 import { queryJournalLines, buildDetailBalancesResult, type JournalLineFilter, type JournalLinePage, type DetailBalancesResult, type LedgerResultStatus } from '../lib/receivableReconciliation';
 import { journalQueryParams } from '../lib/ledgerQueryParams.mjs';
 import { readCustomerProposalReceipt, type CustomerProposalReceipt } from '../lib/customerProposal';
+import { applyTaskWorkflow, type TaskWorkflowInput } from './taskWorkflow';
+
+export type TaskWorkflowCommand = Omit<TaskWorkflowInput, 'actorId' | 'at'> & { version: string };
+export interface TaskWorkflowRecord { task: Task; version: string }
 
 export interface ErpSyncConnectorOverview {
   id: string;
@@ -114,6 +118,8 @@ export interface DataProvider {
   getTaskById(id: string): Promise<Task | null>;
   createTask(task: Partial<Task>, idempotencyKey?: string): Promise<Task>;
   updateTask(id: string, patch: Partial<Task>): Promise<Task>;
+  getTaskWorkflow(id: string): Promise<TaskWorkflowRecord>;
+  changeTaskWorkflow(id: string, command: TaskWorkflowCommand): Promise<TaskWorkflowRecord>;
   
   // Finance
   getInvoices(filter?: any, pagination?: PaginationParams): Promise<PaginatedResult<Invoice>>;
@@ -312,6 +318,26 @@ export class ClientStorageDataProvider implements DataProvider {
 
   async getTaskById(id: string): Promise<Task | null> {
     return (this.getState().tasks || []).find(t => t.id === id) || null;
+  }
+
+  async getTaskWorkflow(id: string): Promise<TaskWorkflowRecord> {
+    const task = await this.getTaskById(id);
+    if (!task) throw new Error('وظیفه در دسترس نیست.');
+    return { task, version: hashRecord(task) };
+  }
+
+  async changeTaskWorkflow(id: string, command: TaskWorkflowCommand): Promise<TaskWorkflowRecord> {
+    const state = this.getState();
+    const actorId = state.currentUserId;
+    const task = state.tasks?.find(row => row.id === id);
+    if (!task || !actorId) throw new Error('وظیفه در دسترس نیست.');
+    if (hashRecord(task) !== command.version) {
+      throw Object.assign(new Error('وظیفه تغییر کرده است. نسخهٔ تازه را دریافت کنید.'), { status: 409 });
+    }
+    const result = applyTaskWorkflow(task, { ...command, actorId });
+    if (!result.ok) throw new Error(result.error);
+    await this.updateTask(id, result.task);
+    return { task: result.task, version: hashRecord(result.task) };
   }
 
   async createTask(task: Partial<Task>): Promise<Task> {
@@ -665,6 +691,16 @@ export class HttpBackendDataProvider implements DataProvider {
 
   async getTaskById(id: string): Promise<Task | null> {
     return this.request<Task>(`/tasks/${id}`);
+  }
+
+  async getTaskWorkflow(id: string): Promise<TaskWorkflowRecord> {
+    return this.request<TaskWorkflowRecord>(`/tasks/${encodeURIComponent(id)}/workflow`);
+  }
+
+  async changeTaskWorkflow(id: string, command: TaskWorkflowCommand): Promise<TaskWorkflowRecord> {
+    return this.request<TaskWorkflowRecord>(`/tasks/${encodeURIComponent(id)}/workflow`, {
+      method: 'POST', body: JSON.stringify(command),
+    });
   }
 
   async createTask(task: Partial<Task>, idempotencyKey?: string): Promise<Task> {

@@ -1,6 +1,6 @@
 import { useCan } from '../hooks/useCan';
 import { useDataQuery } from '../hooks/useDataProvider';
-import { getActiveDataProvider } from '../services/dataProvider';
+import { getActiveDataProvider, type TaskWorkflowRecord } from '../services/dataProvider';
 import { canCreateCrossDepartmentTask } from '../services/taskAccessEngine';
 import { Select, Textarea } from './ui';
 import React, { useState, useMemo, useEffect } from 'react';
@@ -24,7 +24,7 @@ import { assignSla, proposeOverflow, assessTaskSla, rankTasksForAttention, type 
 import { OPERATIONS_CONFIG } from '../config/operations';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { appendTaskActivity } from '../services/taskActivity';
-import { applyTaskWorkflow, type TaskWorkflowAction } from '../services/taskWorkflow';
+import type { TaskWorkflowAction } from '../services/taskWorkflow';
 import { evaluateAllCustomerCollections } from '../services/collectionEngine';
 import { buildOperationalExceptionCenter } from '../services/operationalExceptionCenter';
 import { VerdictStrip } from './shared/VerdictStrip';
@@ -70,6 +70,9 @@ export function TasksWorkspace({ state, updateState }: TasksWorkspaceProps) {
   const [editingTask, setEditingTask] = useState<CustomerTask | null>(null);
   const [showAttachModalFor, setShowAttachModalFor] = useState<ID | null>(null);
   const [workflowTaskId, setWorkflowTaskId] = useState<ID | null>(null);
+  const [workflowRecord, setWorkflowRecord] = useState<TaskWorkflowRecord | null>(null);
+  const [workflowBusy, setWorkflowBusy] = useState(false);
+  const workflowRequest = React.useRef(0);
   const [workflowReason, setWorkflowReason] = useState('');
   const [workflowResult, setWorkflowResult] = useState('');
   const [workflowNextAction, setWorkflowNextAction] = useState('');
@@ -257,37 +260,60 @@ export function TasksWorkspace({ state, updateState }: TasksWorkspaceProps) {
     setShowTaskModal(false);
   };
 
-  const handleToggleTaskStatus = (taskId: ID) => {
+  const handleToggleTaskStatus = async (taskId: ID) => {
     const task = visibleTasks.find(item => item.id === taskId);
     if (!task || !canOn('tasks', 'EDIT', taskScope(task) || undefined)) return denied('تغییر وضعیت این وظیفه');
-    const closed = canReopenTask(task);
+    const request = ++workflowRequest.current;
     setWorkflowTaskId(task.id);
-    setWorkflowReason(closed ? '' : task.blockReason || '');
-    setWorkflowResult(closed ? '' : task.result || '');
-    setWorkflowNextAction(closed ? '' : task.nextAction || '');
+    setWorkflowRecord(null);
+    setWorkflowBusy(true);
     setWorkflowError('');
+    try {
+      const record = await getActiveDataProvider().getTaskWorkflow(task.id);
+      if (workflowRequest.current !== request) return;
+      const fresh = record.task;
+      const closed = canReopenTask(fresh);
+      setWorkflowReason(closed ? '' : fresh.blockReason || '');
+      setWorkflowResult(closed ? '' : fresh.result || '');
+      setWorkflowNextAction(closed ? '' : fresh.nextAction || '');
+      setWorkflowRecord(record);
+    } catch (error) {
+      if (workflowRequest.current === request) setWorkflowError(error instanceof Error ? error.message : 'دریافت گردش وظیفه ناموفق بود.');
+    } finally {
+      if (workflowRequest.current === request) setWorkflowBusy(false);
+    }
   };
 
-  const applyWorkflowAction = (action: TaskWorkflowAction) => {
-    const task = visibleTasks.find(item => item.id === workflowTaskId);
-    if (!task) return;
+  const applyWorkflowAction = async (action: TaskWorkflowAction) => {
+    if (!workflowRecord || workflowBusy) return;
+    const { task, version } = workflowRecord;
     if (!canOn('tasks', 'EDIT', taskScope(task) || undefined)) return denied('تغییر گردش کار این وظیفه');
-    const result = applyTaskWorkflow(task, {
-      action, actorId: currentUserId, reason: workflowReason,
-      result: action === 'REOPEN' ? undefined : workflowResult,
-      nextAction: workflowNextAction,
-    });
-    if (!result.ok) { setWorkflowError(result.error || 'تغییر وضعیت انجام نشد.'); return; }
-    updateState(draft => { const idx = draft.tasks?.findIndex(item => item.id === task.id) ?? -1; if (idx >= 0 && draft.tasks) draft.tasks[idx] = result.task as CustomerTask; });
-    void enqueueOptimisticMutation({
-      action: 'UPDATE',
-      entityType: 'tasks',
-      entityId: task.id,
-      payload: { ...(result.task as object), workflowAction: action },
-      alwaysQueue: true,
-    });
-    setWorkflowError(''); setWorkflowReason(''); setWorkflowResult(''); setWorkflowNextAction('');
-    if (action === 'COMPLETE' || action === 'RECORD_RESULT') setWorkflowTaskId(null);
+    const request = ++workflowRequest.current;
+    setWorkflowBusy(true);
+    setWorkflowError('');
+    try {
+      const record = await getActiveDataProvider().changeTaskWorkflow(task.id, {
+        version, action, reason: workflowReason,
+        result: action === 'REOPEN' ? undefined : workflowResult,
+        nextAction: workflowNextAction,
+      });
+      if (workflowRequest.current !== request) return;
+      updateState(draft => {
+        const index = draft.tasks?.findIndex(item => item.id === task.id) ?? -1;
+        if (index >= 0) draft.tasks[index] = record.task;
+      });
+      setWorkflowRecord(record);
+      setWorkflowReason(record.task.blockReason || '');
+      setWorkflowResult('');
+      setWorkflowNextAction(record.task.nextAction || '');
+      if (action === 'COMPLETE' || action === 'RECORD_RESULT') setWorkflowTaskId(null);
+    } catch (error) {
+      if (workflowRequest.current !== request) return;
+      if (error instanceof Error && 'status' in error && error.status === 409) setWorkflowRecord(null);
+      setWorkflowError(error instanceof Error ? error.message : 'تغییر وضعیت انجام نشد.');
+    } finally {
+      if (workflowRequest.current === request) setWorkflowBusy(false);
+    }
   };
 
   const taskFormSchema = createTaskWorkspaceFormSchema(state.users || [], state.groups || [], visibleAccounts);
@@ -514,10 +540,15 @@ export function TasksWorkspace({ state, updateState }: TasksWorkspaceProps) {
         )}
       </Modal>
 
-      <Modal isOpen={!!workflowTaskId} onClose={() => { setWorkflowTaskId(null); setWorkflowError(''); }} title="گردش کار و نتیجه پیگیری">
+      <Modal isOpen={!!workflowTaskId} onClose={() => { workflowRequest.current++; setWorkflowTaskId(null); }} title="گردش کار و نتیجه پیگیری">
         {(() => {
-          const task = visibleTasks.find(item => item.id === workflowTaskId);
-          if (!task) return <p className="text-sm text-text-secondary">وظیفه در دسترس نیست.</p>;
+          const task = workflowRecord?.task;
+          if (!task) return workflowBusy ? <p role="status">در حال دریافت نسخهٔ وظیفه…</p> : (
+            <div className="space-y-2">
+              <p role="alert" className="text-xs text-danger">{workflowError}</p>
+              <Button variant="secondary" size="sm" onClick={() => workflowTaskId && void handleToggleTaskStatus(workflowTaskId)}>دریافت نسخهٔ تازه</Button>
+            </div>
+          );
           const status = String(task.status || 'OPEN').toUpperCase();
           return (
             <div className="space-y-3 text-xs">
@@ -536,14 +567,15 @@ export function TasksWorkspace({ state, updateState }: TasksWorkspaceProps) {
               <label className="block font-bold text-text-main">شرح مانع / علت توقف<Textarea value={workflowReason} onChange={e => setWorkflowReason(e.target.value)} rows={2} className="mt-1" placeholder="در صورت وجود مانع الزامی است" /></label>
               <label className="block font-bold text-text-main">نتیجه پیگیری<Textarea value={workflowResult} onChange={e => setWorkflowResult(e.target.value)} rows={2} className="mt-1" placeholder="نتیجه حاصل‌شده را وارد کنید" /></label>
               <label className="block font-bold text-text-main">اقدام بعدی<Textarea value={workflowNextAction} onChange={e => setWorkflowNextAction(e.target.value)} rows={2} className="mt-1" placeholder="اقدام تکمیلی بعدی" /></label>
-              <div className="grid grid-cols-2 gap-2 pt-1">
+              {workflowBusy && <p role="status">در حال ثبت گردش وظیفه…</p>}
+              <fieldset disabled={workflowBusy} className="grid grid-cols-2 gap-2 pt-1">
                 {canReopenTask(task) && <Button variant="secondary" size="sm" onClick={() => applyWorkflowAction('REOPEN')}>بازگشایی وظیفه</Button>}
                 {['OPEN', 'PENDING'].includes(status) && <Button variant="secondary" size="sm" onClick={() => applyWorkflowAction('START')}>شروع کار</Button>}
                 {['OPEN', 'PENDING', 'IN_PROGRESS'].includes(status) && <Button variant="secondary" size="sm" onClick={() => applyWorkflowAction('BLOCK')}>ثبت مانع</Button>}
                 {status === 'BLOCKED' && <Button variant="secondary" size="sm" onClick={() => applyWorkflowAction('UNBLOCK')}>رفع مانع</Button>}
                 {['OPEN', 'PENDING', 'IN_PROGRESS'].includes(status) && <Button variant="primary" size="sm" onClick={() => applyWorkflowAction('COMPLETE')}>ثبت نتیجه و تکمیل</Button>}
                 <Button variant="outline" size="sm" disabled={!workflowResult.trim()} onClick={() => applyWorkflowAction('RECORD_RESULT')}>ثبت نتیجه بدون تکمیل وظیفه</Button>
-              </div>
+              </fieldset>
             </div>
           );
         })()}

@@ -14,6 +14,9 @@ const PARTY_COLLECTIONS = ['accounts', 'customers'];
 const FINANCIAL_PARTY_COLLECTIONS = ['invoices', 'payments', 'cheques', 'paymentallocations', 'creditnotes'];
 const sqlCollectionList = names => names.map(name => `N'${name}'`).join(',');
 const scopedCollections = new Set([...PARTY_COLLECTIONS, ...FINANCIAL_PARTY_COLLECTIONS]);
+const taskWorkflowFields = sqlCollectionList([
+  'status', 'result', 'nextAction', 'blockReason', 'blockedAt', 'unblockedAt', 'completedAt', 'activityHistory',
+]);
 const now = () => new Date().toISOString();
 const bytes = (value) => Buffer.byteLength(JSON.stringify(value ?? null), 'utf8');
 
@@ -104,6 +107,9 @@ export class MssqlEntityDriver {
                 record.TenantId,LOWER(record.CollectionName),N'finance.view',record.JsonDoc
               )
             ))
+            AND (LOWER(record.CollectionName)<>N'tasks' OR EXISTS (
+              SELECT 1 FROM security.fn_TaskEntityScope(record.TenantId,record.JsonDoc,'VIEW')
+            ))
           ORDER BY CreatedAtUtc, EntityId`)).recordset;
       const version = (await new sql.Request(tx).input('tenantId', sql.UniqueIdentifier, tenantId)
         .query('SELECT ISNULL(MAX(Version),0) AS V FROM sync.EntityStore WHERE TenantId=@tenantId')).recordset[0]?.V || 0;
@@ -113,6 +119,7 @@ export class MssqlEntityDriver {
         if (row.CollectionName === SINGLETON_PREFIX) singletons[row.EntityId] = json;
         else (collections[row.CollectionName] ||= []).push(json);
       }
+      collections.tasks ??= [];
       return { collections, singletons, version: Number(version) };
     });
   }
@@ -135,6 +142,48 @@ export class MssqlEntityDriver {
       for (const partition of partitions) {
         for (let at = 0; at < partition.length; at += 400) {
           let chunk = partition.slice(at, at + 400);
+          const tasks = chunk.flatMap((row, index) => row.c.toLowerCase() === 'tasks' ? [{ ...row, index }] : []);
+          if (tasks.length) {
+            const permissions = await new sql.Request(tx)
+              .input('tenantId', sql.UniqueIdentifier, tenantId)
+              .input('tasks', sql.NVarChar(sql.MAX), JSON.stringify(tasks))
+              .query(`SELECT incoming.RowIndex,
+                CASE WHEN incoming.IsDelete=0 AND previous.IsDeleted=0
+                  AND previous.JsonDoc COLLATE Latin1_General_100_BIN2=incoming.JsonDoc COLLATE Latin1_General_100_BIN2
+                  THEN 1 ELSE 0 END AS Unchanged,
+                CASE WHEN incoming.IsDelete=0 AND ISNULL(JSON_VALUE(previous.JsonDoc,'$.taskWorkflowRevision'),N'')
+                    <> ISNULL(JSON_VALUE(incoming.JsonDoc,'$.taskWorkflowRevision'),N'')
+                  THEN 'TASK_VERSION_CONFLICT'
+                WHEN incoming.IsDelete=0 AND JSON_VALUE(previous.JsonDoc,'$.taskWorkflowRevision') IS NOT NULL AND EXISTS (
+                  SELECT 1
+                  FROM (SELECT [key],[type],[value] FROM OPENJSON(previous.JsonDoc) WHERE [key] IN (${taskWorkflowFields})) AS protected
+                  FULL JOIN (SELECT [key],[type],[value] FROM OPENJSON(incoming.JsonDoc) WHERE [key] IN (${taskWorkflowFields})) AS proposed
+                    ON protected.[key]=proposed.[key]
+                  WHERE protected.[key] IS NULL OR proposed.[key] IS NULL OR protected.[type]<>proposed.[type]
+                    OR ISNULL(protected.[value],N'') COLLATE Latin1_General_100_BIN2 <> ISNULL(proposed.[value],N'') COLLATE Latin1_General_100_BIN2
+                ) THEN 'TASK_WORKFLOW_REQUIRED' END AS Rejection
+                FROM OPENJSON(@tasks) WITH (RowIndex int '$.index', CollectionName nvarchar(80) '$.c',
+                  EntityId nvarchar(200) '$.i', JsonDoc nvarchar(max) '$.j', IsDelete bit '$.d') AS incoming
+                LEFT JOIN sync.EntityStore AS previous WITH (UPDLOCK,HOLDLOCK)
+                  ON previous.TenantId=@tenantId AND previous.CollectionName=incoming.CollectionName AND previous.EntityId=incoming.EntityId
+                WHERE (
+                  (previous.EntityId IS NULL AND incoming.IsDelete=0)
+                  OR EXISTS (SELECT 1 FROM security.fn_TaskEntityScope(@tenantId,previous.JsonDoc,
+                    CASE WHEN incoming.IsDelete=1 THEN 'DELETE' ELSE 'EDIT' END))
+                ) AND (
+                  incoming.IsDelete=1 OR EXISTS (SELECT 1 FROM security.fn_TaskEntityScope(@tenantId,incoming.JsonDoc,
+                    CASE WHEN previous.EntityId IS NULL THEN 'CREATE' ELSE 'EDIT' END))
+                )`);
+            const results = new Map(permissions.recordset.map(row => [row.RowIndex, row]));
+            const skipped = new Set();
+            for (const task of tasks) {
+              const result = results.get(task.index);
+              const reason = result ? result.Rejection : 'FORBIDDEN_SCOPE';
+              if (reason || result?.Unchanged) skipped.add(task.index);
+              if (reason) rejected.push({ collection: task.c, id: task.i, reason });
+            }
+            chunk = chunk.filter((_, index) => !skipped.has(index));
+          }
           const scoped = chunk.flatMap((row, index) =>
             scopedCollections.has(row.c.toLowerCase()) ? [{ ...row, index }] : []
           );

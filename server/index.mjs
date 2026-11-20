@@ -15,6 +15,7 @@ import { recordId } from '../src/lib/stateModel.mjs';
 import { projectLedgerBalances } from './ledgerBalances.mjs';
 import { parseJournalQuery } from './ledgerJournalQuery.mjs';
 import { buildLedgerPnlSql, bindPnlRequest } from './ledgerPnlQuery.mjs';
+import { createTaskWorkflowStore, parseTaskWorkflowInput, TaskWorkflowError } from './taskWorkflowStore.mjs';
 
 const app = express();
 app.disable('x-powered-by');
@@ -671,6 +672,26 @@ app.post('/api/v1/state/bootstrap', authenticate, guardEntityDriver, wrap(async 
   res.json(result);
 }));
 
+const taskWorkflowStore = createTaskWorkflowStore({ sql, run: withTenantContext, excludeFixtures: isProduction });
+app.route('/api/v1/tasks/:id/workflow').all(authenticate).get(wrap(taskWorkflowEndpoint(false))).post(wrap(taskWorkflowEndpoint(true)));
+
+function taskWorkflowEndpoint(change) {
+  return async (req, res) => {
+    if (entityDriverKind !== 'mssql') return bad(req, res, 503, 'TASK_WORKFLOW_UNAVAILABLE', 'ذخیرهٔ گردش وظیفه به اتصال پایگاه داده نیاز دارد.');
+    const id = req.params.id;
+    if (!id || id.length > 200) return bad(req, res, 400, 'INVALID_TASK_ID', 'شناسهٔ وظیفه معتبر نیست.');
+    try {
+      const result = change
+        ? await taskWorkflowStore.change(req.auth, id, parseTaskWorkflowInput(req.body), req.correlationId)
+        : await taskWorkflowStore.read(req.auth, id);
+      res.json(result);
+    } catch (error) {
+      if (!(error instanceof TaskWorkflowError)) throw error;
+      return bad(req, res, error.status, error.code, error.message);
+    }
+  };
+}
+
 // Typed REST façade over the same store, used by HttpBackendDataProvider repositories (no more static stubs).
 function mountCollectionRoutes(route, collection) {
   const policy = stateRegistry.collections[collection];
@@ -708,8 +729,17 @@ function mountCollectionRoutes(route, collection) {
   app.put(`/api/v1/${route}/:id`, authenticate, guardEntityDriver, wrap(async (req, res) => {
     const current = ((await load(req)) || []).find((item) => idOf(item) === req.params.id);
     if (!current) return bad(req, res, 404, 'NOT_FOUND', 'رکورد پیدا نشد.');
+    if (collection === 'tasks' && current.taskWorkflowRevision && req.body?.taskWorkflowRevision !== current.taskWorkflowRevision) {
+      return bad(req, res, 409, 'TASK_VERSION_CONFLICT', 'وظیفه تغییر کرده است. نسخهٔ تازه را دریافت کنید.');
+    }
     const merged = { ...current, ...(req.body || {}), [policy?.idField || 'id']: req.params.id };
     const result = await entities.sync(req.auth, { upserts: { [collection]: [merged] } });
+    if (result.rejected?.[0]?.reason === 'TASK_VERSION_CONFLICT') {
+      return bad(req, res, 409, 'TASK_VERSION_CONFLICT', 'وظیفه تغییر کرده است. نسخهٔ تازه را دریافت کنید.');
+    }
+    if (result.rejected?.[0]?.reason === 'TASK_WORKFLOW_REQUIRED') {
+      return bad(req, res, 409, 'TASK_WORKFLOW_REQUIRED', 'تغییر وضعیت یا نتیجه از مسیر گردش وظیفه ثبت می‌شود.');
+    }
     if (!result.ok || result.rejected.length) return bad(req, res, result.rejected?.[0]?.reason?.startsWith('FORBIDDEN') ? 403 : 400, result.rejected?.[0]?.reason || result.error || 'REJECTED', 'به‌روزرسانی انجام نشد.');
     res.json(merged);
   }));

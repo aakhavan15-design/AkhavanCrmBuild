@@ -181,6 +181,7 @@ test('SQL driver filters account reads and authorizes existing and incoming reco
         if (!this.params.scoped) {
           assert.match(text, /record.TenantId,@?N'accounts.view'/);
           assert.match(text, /fn_EntityFinancialDocumentScope/);
+          assert.match(text, /fn_TaskEntityScope\(record.TenantId,record.JsonDoc,'VIEW'\)/);
           return { recordset: [] };
         }
         assert.match(text, /WITH \(UPDLOCK,HOLDLOCK\)/);
@@ -189,6 +190,17 @@ test('SQL driver filters account reads and authorizes existing and incoming reco
         assert.match(text, /collection.Name,N'finance.manage',previous.JsonDoc/);
         assert.match(text, /collection.Name,N'finance.manage',incoming.JsonDoc/);
         return { recordset: [{ RowIndex: JSON.parse(this.params.scoped).find(row => row.i === 'own-draft').index }] };
+      }
+      if (this.params.tasks) {
+        assert.match(text, /WITH \(UPDLOCK,HOLDLOCK\)/);
+        assert.match(text, /fn_TaskEntityScope\(@tenantId,previous.JsonDoc/);
+        assert.match(text, /fn_TaskEntityScope\(@tenantId,incoming.JsonDoc/);
+        assert.match(text, /TASK_WORKFLOW_REQUIRED/);
+        return { recordset: JSON.parse(this.params.tasks).flatMap(row => {
+          if (row.i === 'task1') return [{ RowIndex: row.index }];
+          if (row.i === 'stale-task') return [{ RowIndex: row.index, Rejection: 'TASK_VERSION_CONFLICT' }];
+          return [];
+        }) };
       }
       assert.match(text, /MAX\(Version\)/);
       return { recordset: [{ V: 3 }] };
@@ -205,12 +217,14 @@ test('SQL driver filters account reads and authorizes existing and incoming reco
   const svc = createEntityService({ driver, registry, hasPermission: allow });
   assert.equal((await svc.snapshot(auth)).serverVersion, 3);
   const result = await svc.sync(auth, {
-    upserts: { accounts: [{ id: 'own-draft' }, { id: 'different-branch' }], tasks: [{ id: 'task1' }], invoices: [{ id: 'different-branch-invoice' }] },
+    upserts: { accounts: [{ id: 'own-draft' }, { id: 'different-branch' }], tasks: [{ id: 'task1' }, { id: 'stale-task' }, { id: 'other-task' }], invoices: [{ id: 'different-branch-invoice' }] },
     deletes: { customers: ['hidden'] },
   });
   assert.equal(result.upserted, 2);
   assert.equal(result.deleted, 0);
   assert.deepEqual(result.rejected, [
+    { collection: 'tasks', id: 'stale-task', reason: 'TASK_VERSION_CONFLICT' },
+    { collection: 'tasks', id: 'other-task', reason: 'FORBIDDEN_SCOPE' },
     { collection: 'accounts', id: 'different-branch', reason: 'FORBIDDEN_SCOPE' },
     { collection: 'invoices', id: 'different-branch-invoice', reason: 'FORBIDDEN_SCOPE' },
     { collection: 'customers', id: 'hidden', reason: 'FORBIDDEN_SCOPE' },
