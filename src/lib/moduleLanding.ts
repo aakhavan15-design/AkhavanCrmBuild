@@ -71,7 +71,7 @@ export const MODULE_LANDINGS: ModuleLandingDefinition[] = [
         title: 'زمان‌بندی',
         tiles: [
           tile('calendar', 'تقویم کاری', 'رویدادها، مهلت‌ها و برنامه روزانه', '/calendar', 'calendar', CalendarDays),
-          tile('meetings', 'جلسات و مصوبات', 'برنامه جلسات و پیگیری مصوبات', '/internal_automation?tab=meetings', 'internal_automation', Users),
+          tile('meetings', 'جلسات و مصوبات', 'برنامه جلسات و پیگیری مصوبات', '/calendar?tab=meetings', 'calendar', Users),
         ],
       },
       {

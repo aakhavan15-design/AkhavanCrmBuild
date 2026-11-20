@@ -1,4 +1,4 @@
-import type { InternalMeeting } from '../types';
+import type { AppState, InternalMeeting } from '../types';
 
 export interface MeetingConflictCandidate {
   id?: string;
@@ -41,4 +41,17 @@ export function getMeetingConflict(
     if (shared.length) return `با جلسه «${meeting.title}» در بازه ${meeting.startTime} تا ${meeting.endTime} برای ${shared.length} شرکت‌کننده تداخل دارد.`;
   }
   return null;
+}
+
+export function getVisibleMeetings(state: Pick<AppState, 'internalMeetings' | 'groups' | 'currentUserId'>): InternalMeeting[] {
+  const userId = state.currentUserId;
+  if (!userId) return [];
+  const groupIds = new Set((state.groups || []).filter(group => group.memberIds.includes(userId)).map(group => group.id));
+  return (state.internalMeetings || []).filter(meeting =>
+    !meeting.deletedAt && (
+      meeting.organizerId === userId ||
+      meeting.participantIds?.includes(userId) ||
+      meeting.groupIds?.some((groupId: string) => groupIds.has(groupId))
+    )
+  );
 }

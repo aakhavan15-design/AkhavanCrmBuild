@@ -884,6 +884,7 @@ export interface EmployeePerformanceAssessment {
 }
 
 export interface AppState {
+  internalMeetings?: InternalMeeting[];
   financeRequests?: any[];
   approvalSnapshots?: any[];
   paymentNatureMappings?: any[];

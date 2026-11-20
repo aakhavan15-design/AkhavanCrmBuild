@@ -76,7 +76,7 @@ const REQUEST_TYPE_LABELS: Record<RequestType, { title: string; category: 'PERSO
 export function InternalAutomationWorkspace({ state, updateState }: InternalAutomationProps) {
   const { can, canOn, denied } = useCan(state, updateState);
   const navigate = useNavigate();
-  type AutomationTab = 'INBOX' | 'MY_REQUESTS' | 'MEETINGS';
+  type AutomationTab = 'INBOX' | 'MY_REQUESTS';
   const [automationTabParam, setAutomationTabParam] = useTabParam(AUTOMATION_TABS, 'inbox');
   const activeTab = automationTabParam.toUpperCase() as AutomationTab;
   const setLocalTab = (next: AutomationTab) => setAutomationTabParam(next.toLowerCase() as typeof automationTabParam);
@@ -121,12 +121,6 @@ export function InternalAutomationWorkspace({ state, updateState }: InternalAuto
 
   const myRequests = filterRequestList((state.internalRequests || []).filter((r: any) => r.creatorId === currentUserId));
   const orgRequests = isAdmin ? filterRequestList(state.internalRequests || []) : [];
-  const myMeetings = (state.internalMeetings || []).filter((m: any) => 
-    m.organizerId === currentUserId || 
-    (m.participantIds || []).includes(currentUserId) || 
-    (m.groupIds || []).some((gid: any) => userGroupIds.includes(gid))
-  );
-
   const [isNewRequestOpen, setIsNewRequestOpen] = useState(false);
   useDeepLinkCreate(() => setIsNewRequestOpen(true), can('internal', 'CREATE'));
   const [formError, setFormError] = useState('');
@@ -434,9 +428,11 @@ export function InternalAutomationWorkspace({ state, updateState }: InternalAuto
           <button onClick={() => setLocalTab('MY_REQUESTS')} className={`px-4 py-2 text-sm font-bold whitespace-nowrap border-b-(length:--bw-accent) cursor-pointer transition-colors ${activeTab === 'MY_REQUESTS' ? 'border-primary text-primary' : 'border-transparent text-text-secondary hover:text-text-main'}`}>
             درخواست‌های من ({myRequests.length})
           </button>
-          <button onClick={() => setLocalTab('MEETINGS')} className={`px-4 py-2 text-sm font-bold whitespace-nowrap border-b-(length:--bw-accent) cursor-pointer transition-colors ${activeTab === 'MEETINGS' ? 'border-primary text-primary' : 'border-transparent text-text-secondary hover:text-text-main'}`}>
-            جلسات و مصوبات ({myMeetings.length})
-          </button>
+          {rbac.canAccessWorkspace('calendar') && (
+            <Button variant="ghost" size="sm" onClick={() => navigate('/calendar?tab=meetings')} icon={<CalendarDays size={14} />}>
+              جلسات و مصوبات
+            </Button>
+          )}
         </div>
       </div>
 
@@ -464,48 +460,6 @@ export function InternalAutomationWorkspace({ state, updateState }: InternalAuto
                 description="شما تاکنون هیچ درخواست مرخصی، مأموریت یا اداری ثبت نکرده‌اید."
                 actionLabel={can('internal', 'CREATE') ? 'ثبت درخواست جدید' : undefined}
                 onAction={can('internal', 'CREATE') ? () => setIsNewRequestOpen(true) : undefined}
-              />
-            )}
-          </div>
-        )}
-
-        {activeTab === 'MEETINGS' && (
-          <div className="space-y-3">
-            {myMeetings.length > 0 ? myMeetings.map((m: any) => (
-              <Card key={m.id} padding="md" className="space-y-3 border-border hover:shadow-card transition-shadow">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <h4 className="font-bold text-sm text-text-main">{m.title}</h4>
-                    <div className="text-xs text-text-secondary mt-1 flex items-center gap-3 font-mono">
-                      <span>تاریخ: {m.date}</span>
-                      <span>ساعت: {m.startTime} تا {m.endTime}</span>
-                    </div>
-                  </div>
-                  <span className="px-2.5 py-1 text-micro font-bold rounded-lg bg-sky-50 text-info">
-                    {m.status === 'SCHEDULED' ? 'برنامه‌ریزی شده' : 'برگزار شده'}
-                  </span>
-                </div>
-                {m.agenda && <p className="text-xs text-text-secondary bg-canvas p-2 rounded-xl">{m.agenda}</p>}
-                {m.actionItems && m.actionItems.length > 0 && (
-                  <div className="pt-2 border-t border-border">
-                    <span className="text-micro font-bold text-text-secondary block mb-1">مصوبات و اقدامات جلسه:</span>
-                    <div className="space-y-1">
-                      {m.actionItems.map((act: any, idx: number) => (
-                        <div key={idx} className="text-xs flex items-center gap-2 text-text-main">
-                          <CheckCircle2 size={13} className="text-primary" />
-                          <span>{act.title}</span>
-                          {act.dueDate && <span className="text-micro text-text-secondary font-mono">({act.dueDate})</span>}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </Card>
-            )) : (
-              <EmptyState surface="internal_automation_workspace_3" 
-                icon={<CalendarDays className="w-8 h-8 text-text-secondary opacity-50"/>} 
-                title="جلسه‌ای یافت نشد" 
-                description="جلسه کاری برای شما در این بخش ثبت نشده است."
               />
             )}
           </div>

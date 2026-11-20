@@ -1,4 +1,5 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useId, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { cn } from '../../lib/utils';
 import { X, ChevronLeft } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -34,6 +35,7 @@ export const Modal: React.FC<ModalProps> = ({
   confirmCloseMessage = 'تغییرات ذخیره‌نشده دارید. آیا بدون ذخیره خارج می‌شوید؟',
 }) => {
   const modalRef = useRef<HTMLDivElement>(null);
+  const titleId = useId();
   const effectiveSize = size || maxWidth;
   const sheetDrag = useRef<number | null>(null);
   const onCloseRef = useRef(onClose);
@@ -87,8 +89,8 @@ export const Modal: React.FC<ModalProps> = ({
     '3xl': 'max-w-3xl',
   };
 
-  return (
-    <div className="fixed inset-0 z-(--z-modal) flex items-end sm:items-center justify-center" dir="rtl" role="dialog" aria-modal="true" aria-labelledby="crm-modal-title">
+  return createPortal(
+    <div className="fixed inset-0 z-(--z-modal) flex items-end sm:items-center justify-center" dir="rtl" role="dialog" aria-modal="true" aria-labelledby={titleId}>
       <div onClick={requestClose} className="fixed inset-0 bg-ink/40 backdrop-blur-sm animate-in fade-in transition-opacity" />
       
       <div
@@ -141,7 +143,7 @@ export const Modal: React.FC<ModalProps> = ({
 
         <div className="flex min-h-12 items-center justify-between gap-3 px-4 py-2.5 shrink-0">
           <div>
-            <h3 id="crm-modal-title" className="text-sm font-bold text-ink">{title}</h3>
+            <h3 id={titleId} className="text-sm font-bold text-ink">{title}</h3>
             {subtitle && <p className="text-xs text-ink-soft mt-1">{subtitle}</p>}
           </div>
           <button onClick={requestClose} className="h-9 w-9 grid place-items-center bg-canvas rounded-lg text-ink-soft hover:text-ink cursor-pointer" aria-label="بستن"><X size={18} /></button>
@@ -157,7 +159,8 @@ export const Modal: React.FC<ModalProps> = ({
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 

@@ -6,13 +6,15 @@ import {
   Clock, ArrowLeft, ChevronRight, ChevronLeft, 
   Calendar as CalendarIcon, Users, AlertTriangle
 } from 'lucide-react';
+import { EmptyState } from './ui/EmptyState';
 import { Card } from './ui/Card';
 import { Button } from './ui/Button';
 import { Modal } from './ui/Modal';
 import { useCan } from '../hooks/useCan';
+import { useTabParam } from '../hooks/useTabParam';
 import { useDeepLinkCreate } from '../hooks/useDeepLinkCreate';
 import { generateId } from '../lib/utils';
-import { getMeetingConflict } from '../lib/internalWorkflow';
+import { getMeetingConflict, getVisibleMeetings } from '../lib/internalWorkflow';
 import { assignSla } from '../services/taskIntelligence';
 import { appendTaskActivity } from '../services/taskActivity';
 import { processTaskCollaborationEvents } from '../lib/collaboration';
@@ -27,11 +29,14 @@ import {
   toLocalDateISO
 } from '../lib/utils';
 
+const calendarTabs = ['calendar', 'meetings'] as const;
+
 export function CalendarWorkspace({ state, updateState }: { state: AppState; updateState: (updater: (draft: AppState) => AppState | void) => void }) {
   const { can, denied } = useCan(state, updateState);
   const navigate = useNavigate();
   const tasks = state.tasks || [];
-  const meetings = state.internalMeetings || [];
+  const meetings = getVisibleMeetings(state);
+  const [activeTab, setActiveTab] = useTabParam(calendarTabs, 'calendar');
   const cheques = state.cheques || [];
   
   const isJalali = state.settings?.locale?.calendar !== 'gregorian';
@@ -102,7 +107,7 @@ export function CalendarWorkspace({ state, updateState }: { state: AppState; upd
   const itemsForDay = (day: number) => {
     const dayISO = jalaliToGregorianISO(currentYear, currentMonth, day);
     const dayTasks = tasks.filter(t => t.dueDate === dayISO);
-    const dayMeetings = meetings.filter((m: Record<string, unknown>) => m.date === dayISO || (!m.date && day === todayJalali.jd && currentMonth === todayJalali.jm));
+    const dayMeetings = meetings.filter(m => m.date === dayISO || (!m.date && day === todayJalali.jd && currentMonth === todayJalali.jm));
     const dayCheques = cheques.filter(c => c.dueDate === dayISO);
 
     return {
@@ -124,8 +129,11 @@ export function CalendarWorkspace({ state, updateState }: { state: AppState; upd
     const organizerId = state.currentUserId || '';
     if (!organizerId) { setMeetingError('کاربر فعال معتبر نیست.'); return; }
     const candidate = { date: meetingDate, startTime: meetingStart, endTime: meetingEnd, organizerId, participantIds: meetingParticipants };
-    const conflict = getMeetingConflict((state.internalMeetings || []) as InternalMeeting[], candidate);
-    if (conflict) { setMeetingError(conflict); return; }
+    const conflict = getMeetingConflict((state.internalMeetings || []).filter(item => !item.deletedAt), candidate);
+    if (conflict) {
+      setMeetingError(getMeetingConflict(meetings, candidate) || 'زمان انتخاب‌شده با برنامهٔ یکی از شرکت‌کنندگان تداخل دارد.');
+      return;
+    }
     meetingSubmitLock.current = true;
     const at = new Date().toISOString();
     const meeting: InternalMeeting = {
@@ -162,10 +170,10 @@ export function CalendarWorkspace({ state, updateState }: { state: AppState; upd
       sourceMeetingId: selectedMeeting.id, createdAt: at
     }), { action: 'CREATED', actorId: state.currentUserId || 'UNKNOWN', at, summary: 'وظیفه از مصوبه جلسه ایجاد شد', details: `جلسه: ${selectedMeeting.title}` });
     updateState(draft => {
-      const meeting = (draft.internalMeetings || []).find((item: Record<string, unknown>) => item.id === selectedMeeting.id);
+      const meeting = getVisibleMeetings(draft).find(item => item.id === selectedMeeting.id);
       if (!meeting) return;
       if (!Array.isArray(meeting.actionItems)) meeting.actionItems = [];
-      if (meeting.actionItems.some((item: Record<string, unknown>) => item.taskId === task.id)) return;
+      if (meeting.actionItems.some(item => item.taskId === task.id)) return;
       meeting.actionItems.push({ id: generateId(), title: decisionTitle.trim(), assigneeId: decisionAssignee, dueDate: decisionDueDate, completed: false, taskId: task.id });
       if (!draft.tasks) draft.tasks = [];
       if (!draft.tasks.some((item: Record<string, unknown>) => item.id === task.id)) {
@@ -176,13 +184,51 @@ export function CalendarWorkspace({ state, updateState }: { state: AppState; upd
     setSelectedMeeting(null); setDecisionTitle(''); setDecisionTaskId(null); setMeetingError('');
   };
 
+  const renderMeeting = (meeting: InternalMeeting) => (
+    <Card key={meeting.id} padding="sm" className="space-y-2">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <h3 className="text-sm font-bold text-text-main">{meeting.title}</h3>
+          <p className="mt-1 text-xs text-text-secondary">
+            {formatAppDate(meeting.date, state.settings?.locale)} · {toPersianDigits(meeting.startTime)} تا {toPersianDigits(meeting.endTime)}
+          </p>
+        </div>
+        <span className="rounded-md bg-canvas px-2 py-1 text-xs text-text-secondary">
+          {meeting.status === 'SCHEDULED' ? 'برنامه‌ریزی‌شده' : meeting.status === 'COMPLETED' ? 'برگزارشده' : 'وضعیت نامشخص'}
+        </span>
+      </div>
+      {meeting.location && <p className="text-xs text-text-secondary">محل جلسه {meeting.location}</p>}
+      {meeting.agenda && <p className="rounded-lg bg-canvas p-2 text-xs text-text-secondary">{meeting.agenda}</p>}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-1 text-xs text-text-secondary"><Users size={13} /> {toPersianDigits(meeting.participantIds?.length || 1)} شرکت‌کننده</div>
+        {can('tasks', 'CREATE') && (
+          <Button variant="outline" size="sm" onClick={() => {
+            setSelectedMeeting(meeting);
+            setDecisionTaskId(generateId());
+            setDecisionTitle('');
+            setDecisionAssignee(state.currentUserId || '');
+            setMeetingError('');
+          }}>ثبت مصوبه و ارجاع وظیفه</Button>
+        )}
+      </div>
+      {(meeting.actionItems || []).map(item => (
+        <div key={item.id || item.taskId} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-canvas px-2 py-1.5 text-xs">
+          <span>{item.title}</span>
+          <span className="text-text-secondary">
+            {item.completed ? 'انجام‌شده' : item.dueDate ? formatAppDate(item.dueDate, state.settings?.locale) : 'بدون مهلت'}
+          </span>
+        </div>
+      ))}
+    </Card>
+  );
+
   return (
     <main className="crm-page crm-page-calendar flex-1 min-w-0 overflow-y-auto bg-transparent px-2 py-3 sm:px-4 sm:py-4 space-y-4 pb-[calc(6rem+env(safe-area-inset-bottom))]" dir="rtl" aria-label="تقویم کاری و سررسیدها">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
         <div>
-          <h1 data-tour-heading className="text-xl font-black text-text-main tracking-tight">تقویم کاری و سررسیدهای خورشیدی</h1>
+          <h1 data-tour-heading className="text-xl font-black text-text-main tracking-tight">{activeTab === 'meetings' ? 'جلسات و مصوبات' : 'تقویم کاری و سررسیدها'}</h1>
           <p className="text-xs text-text-secondary mt-0.5">
-            {isJalali ? `تقویم رسمی هجری شمسی (${monthYearDisplay})` : 'نمای تقویم میلادی'}
+            {activeTab === 'meetings' ? 'جلسات مرتبط با شما و وضعیت پیگیری مصوبات' : isJalali ? `تقویم رسمی هجری شمسی (${monthYearDisplay})` : 'نمای تقویم میلادی'}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -192,6 +238,18 @@ export function CalendarWorkspace({ state, updateState }: { state: AppState; upd
         </div>
       </div>
 
+      <nav aria-label="زمان‌بندی" className="flex flex-wrap gap-2">
+        <Button size="sm" variant={activeTab === 'calendar' ? 'soft' : 'ghost'} aria-current={activeTab === 'calendar' ? 'page' : undefined} onClick={() => setActiveTab('calendar')}>تقویم کاری</Button>
+        <Button size="sm" variant={activeTab === 'meetings' ? 'soft' : 'ghost'} aria-current={activeTab === 'meetings' ? 'page' : undefined} onClick={() => setActiveTab('meetings')}>جلسات و مصوبات</Button>
+      </nav>
+
+      {activeTab === 'meetings' ? (
+        <section aria-label="فهرست جلسات" className="space-y-2">
+          {meetings.length === 0
+            ? <EmptyState surface="calendar" title="جلسه‌ای یافت نشد" description="جلسه‌ای برای شما یا گروه‌های شما ثبت نشده است." />
+            : [...meetings].sort((a, b) => `${b.date} ${b.startTime}`.localeCompare(`${a.date} ${a.startTime}`)).map(renderMeeting)}
+        </section>
+      ) : (
       <div id="calendar-grid" className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <Card padding="lg" className="bg-surface border border-border/80 shadow-subtle rounded-3xl p-6 lg:col-span-2 space-y-5">
           <div className="flex justify-between items-center border-b border-border/60 pb-3">
@@ -309,19 +367,7 @@ export function CalendarWorkspace({ state, updateState }: { state: AppState; upd
           </div>
 
           <div id="calendar-agenda" className="space-y-2 max-h-96 overflow-y-auto no-scrollbar">
-            {(activeFilter === 'ALL' || activeFilter === 'MEETINGS') && activeDayData.meetings.map((m: any) => (
-              <div key={m.id} className="p-3 rounded-2xl bg-purple-50/70 border border-purple-100 space-y-1">
-                <div className="flex justify-between items-start">
-                  <strong className="text-xs font-bold text-purple-900">{m.title}</strong>
-                  <span className="text-micro font-mono text-purple-700 font-bold">{m.startTime} - {m.endTime}</span>
-                </div>
-                <div className="flex items-center justify-between gap-2">
-                  <div className="text-micro text-purple-600 flex items-center gap-1"><Users size={11} /> {m.participantIds?.length || 1} شرکت‌کننده</div>
-                  <Button variant="outline" size="sm" onClick={() => { setSelectedMeeting(m); setDecisionTaskId(generateId()); setDecisionAssignee(state.currentUserId || ''); setMeetingError(''); }} >ثبت مصوبه و ارجاع وظیفه</Button>
-                </div>
-                {(m.actionItems || []).map((item: any) => <div key={item.id || item.taskId} className="mt-2 flex items-center justify-between gap-2 rounded-lg bg-white/70 px-2 py-1.5 text-micro"><span className="truncate text-text-main">{item.title}</span><span className="shrink-0 text-text-secondary">{item.completed ? 'انجام‌شده' : item.dueDate || 'بدون مهلت'}</span></div>)}
-              </div>
-            ))}
+            {(activeFilter === 'ALL' || activeFilter === 'MEETINGS') && activeDayData.meetings.map(renderMeeting)}
 
             {(activeFilter === 'ALL' || activeFilter === 'TASKS') && activeDayData.tasks.map(t => (
               <div 
@@ -365,6 +411,8 @@ export function CalendarWorkspace({ state, updateState }: { state: AppState; upd
           </div>
         </Card>
       </div>
+
+      )}
 
       <Modal isOpen={newMeetingOpen} onClose={() => setNewMeetingOpen(false)} title="برنامه‌ریزی جلسه سازمانی" footer={<><Button size="sm" variant="ghost" onClick={() => setNewMeetingOpen(false)}>انصراف</Button><Button size="sm" variant="primary" onClick={handleCreateMeeting}>بررسی تداخل و ثبت جلسه</Button></>}>
         <div className="space-y-3 text-xs">

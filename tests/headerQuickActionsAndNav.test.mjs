@@ -33,6 +33,7 @@ assert.equal(resolveHeaderQuickAction('/accounts', '', adminRbac)?.path, '/accou
 assert.equal(resolveHeaderQuickAction('/leads', '', adminRbac)?.path, '/leads?new=1');
 assert.equal(resolveHeaderQuickAction('/quotes', '', adminRbac)?.path, '/quotes?new=1');
 assert.equal(resolveHeaderQuickAction('/internal_automation', '?tab=meetings', adminRbac)?.path, '/calendar?new=1');
+assert.equal(resolveHeaderQuickAction('/calendar', '?tab=meetings', adminRbac)?.path, '/calendar?tab=meetings&new=1');
 assert.equal(resolveHeaderQuickAction('/internal_automation', '', adminRbac)?.path, '/internal_automation?new=1');
 assert.equal(resolveHeaderQuickAction('/finance', '', adminRbac)?.path, '/finance?tab=requests&new=1');
 assert.equal(resolveHeaderQuickAction('/reports', '', adminRbac), null, 'Read-only reports route must not show + action');

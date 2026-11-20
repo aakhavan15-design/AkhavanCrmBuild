@@ -55,7 +55,7 @@ export const PERMISSION_MATRIX: Record<PermModule, Partial<Record<PermAction, Ca
   groups:        { VIEW: [], CREATE: AD, EDIT: AD, ASSIGN: AD, SOFT_DELETE: AD },          // VIEW = فقط عضویت واقعی
   messages:      { VIEW: [], CREATE: [], EDIT: [], SOFT_DELETE: [] },                       // عضویت + مالکیت پیام (بدون مجوز مدیریتی خودکار)
   internal:      { VIEW: ['internal.view', 'internal.manage'], CREATE: ['internal.view', 'internal.manage'], EDIT: ['internal.manage'], ASSIGN: ['internal.manage'], APPROVE: ['internal.manage'], SOFT_DELETE: ['internal.manage'] },
-  calendar:      { VIEW: ['accounts.view', 'internal.view'], CREATE: ['accounts.edit', 'internal.view'], EDIT: ['accounts.edit', 'internal.view'], SOFT_DELETE: ['accounts.edit', 'internal.manage'] },
+  calendar:      { VIEW: ['accounts.view', 'internal.view', 'internal.manage'], CREATE: ['accounts.edit', 'internal.view'], EDIT: ['accounts.edit', 'internal.view'], SOFT_DELETE: ['accounts.edit', 'internal.manage'] },
   reports:       { VIEW: ['accounts.view', 'finance.view', 'internal.view'] },
   geo:           { VIEW: ['geo.view'], CREATE: ['geo.manage'], EDIT: ['geo.manage'], ASSIGN: ['geo.manage'], SOFT_DELETE: ['geo.manage'] },
   // ⚠ نگاشت موقت؛ کلید صریح onboarding.* در permissionSet اولویت دارد
@@ -186,7 +186,7 @@ export class RBACService {
       case 'dashboard': return this.hasPermission('accounts.view') || this.hasPermission('finance.view') || this.hasPermission('internal.view');
       case 'tasks': return this.hasPermission('accounts.view') || this.hasPermission('internal.view') || this.hasPermission('internal.manage');
       case 'activities': return this.hasPermission('accounts.view') || this.hasPermission('leads.view');
-      case 'calendar': return this.hasPermission('accounts.view') || this.hasPermission('internal.view');
+      case 'calendar': return this.can('calendar', 'VIEW');
       case 'reports': return this.hasPermission('accounts.view') || this.hasPermission('finance.view') || this.hasPermission('internal.view');
       case 'operations_control': return this.hasPermission('quotes.view') || this.hasPermission('finance.view') || this.hasPermission('internal.view');
       case 'geo_intelligence': return this.hasPermission('geo.view') || this.hasPermission('geo.manage') || this.hasPermission('settings.manage') || this.hasPermission('roles.manage');

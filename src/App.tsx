@@ -62,6 +62,10 @@ const OnboardingAdminWorkspace = lazy(() => import('./components/onboarding/Onbo
 function AppContent() {
   const { state, updateState, error } = useAppStore();
   const location = useLocation();
+  const legacyMeetingParams = new URLSearchParams(location.search);
+  const legacyMeetingsUrl = legacyMeetingParams.get('tab')?.toLowerCase() === 'meetings'
+    ? `/calendar?${legacyMeetingParams}${location.hash}`
+    : null;
   const navigate = useNavigate();
 
   // Funnel: page views (first two path segments only, so record ids never reach telemetry)
@@ -264,7 +268,9 @@ function AppContent() {
           <Route path="/cases" element={guard('cases', <CasesWorkspace state={state} updateState={updateState} setActiveTab={(t: string) => navigate(`/${t}`)} />)} />
           <Route path="/marketing" element={guard('marketing', <CampaignsWorkspace state={state} updateState={updateState} setActiveTab={(t: string) => navigate(`/${t}`)} />)} />
           <Route path="/knowledge" element={guard('knowledge', <KnowledgeWorkspace state={state} updateState={updateState} setActiveTab={(t: string) => navigate(`/${t}`)} />)} />
-          <Route path="/internal_automation" element={guard('internal_automation', <InternalAutomationWorkspace state={state} updateState={updateState} setActiveTab={(t: string) => navigate(`/${t}`)} />)} />
+          <Route path="/internal_automation" element={legacyMeetingsUrl
+            ? <Navigate to={legacyMeetingsUrl} replace />
+            : guard('internal_automation', <InternalAutomationWorkspace state={state} updateState={updateState} setActiveTab={(t: string) => navigate(`/${t}`)} />)} />
           <Route path="/groups" element={guardAny(rbac.hasPermission('accounts.view') || rbac.hasPermission('internal.view') || rbac.hasPermission('internal.manage'), <GroupsWorkspace state={state} updateState={updateState} />)} />
           <Route path="/calendar" element={guard('calendar', <CalendarWorkspace state={state} updateState={updateState} />)} />
           <Route path="/reports" element={guard('reports', <ReportsWorkspace state={state} updateState={updateState} setActiveTab={(t: string) => navigate(`/${t}`)} />)} />

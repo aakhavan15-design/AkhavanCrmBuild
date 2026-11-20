@@ -69,7 +69,7 @@ export const SETTINGS_TABS = ['org', 'users', 'groups', 'rules', 'agents', 'inte
 export const SETTINGS_USER_SUBS = ['list', 'roles', 'permissions'] as const;
 
 /** Internal automation (/internal_automation?tab=…). */
-export const AUTOMATION_TABS = ['inbox', 'my_requests', 'meetings'] as const;
+export const AUTOMATION_TABS = ['inbox', 'my_requests'] as const;
 
 export function areaOf(areas: AreaDef[], viewId: string): AreaDef {
   return areas.find(a => a.views.some(v => v.id === viewId)) || areas[0];

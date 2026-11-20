@@ -40,6 +40,7 @@ const actionsByRoute: ReadonlyMap<string, ActionDefinition> = new Map([
   ['/tasks', task],
   ['/calendar', meeting],
   ['/internal_automation:meetings', meeting],
+  ['/calendar:meetings', { ...meeting, path: '/calendar?tab=meetings&new=1' }],
   ['/finance', paymentOrder],
   ['/finance:overview', paymentOrder],
   ['/finance:requests', paymentOrder],
