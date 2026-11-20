@@ -50,7 +50,7 @@ import {
 import { DOCUMENT_TYPE_LABELS, buildPaymentFormPrefill, type CapturedDocumentType, type IntakePrefillPayload } from '../lib/documentCapture';
 import { checkReceipt, buildReceiptPayment, approveAndAllocate, markNeedsFix, transferToErp, RECEIPT_STATUS_LABEL } from '../lib/receiptFlow';
 import { DynamicFormRenderer } from './shared/DynamicFormRenderer';
-import { COLLECTION_PROMISE_SCHEMA, createInvoiceFormSchema, createPaymentReceiptFormSchema, createChequeFormSchema, RECEIPT_METHOD_FIELDS } from '../services/dynamicFormEngine';
+import { createInvoiceFormSchema, createPaymentReceiptFormSchema, createChequeFormSchema, RECEIPT_METHOD_FIELDS } from '../services/dynamicFormEngine';
 import { VerdictStrip } from './shared/VerdictStrip';
 
 // Contract Audit Markers: CREDIT_NOTE_REQUEST_DRAFT_CREATED CREDIT_NOTE_REQUEST_${next} تأیید مستقل آمادهٔ ورود در ERP؛ ثبت مالی انجام نشده
@@ -221,8 +221,8 @@ export function FinanceWorkspace({ state, updateState }: FinanceWorkspaceProps) 
   }, [expenses]);
 
   const handleCreatePaymentOrder = (values: Record<string, unknown>) => {
-    if (!can('financeRequests', 'CREATE')) return denied('ثبت دستور پرداخت');
-    if (!updateState || !state.currentUserId || paymentOrderSubmitted.current) return;
+    if (!can('financeRequests', 'CREATE')) { denied('ثبت دستور پرداخت'); return false; }
+    if (!updateState || !state.currentUserId || paymentOrderSubmitted.current) return false;
 
     const input: FinanceRequestInput = {
       kind: 'PAYMENT_ORDER',
@@ -235,25 +235,32 @@ export function FinanceWorkspace({ state, updateState }: FinanceWorkspaceProps) 
     const check = checkFinanceRequest(state, input);
     if (!check.ok) {
       setPaymentOrderError(check.errors.join(' '));
-      return;
+      return false;
     }
 
     paymentOrderSubmitted.current = true;
     const request = buildFinanceRequest(input, generateId(), new Date());
+    let errors: string[] = [];
     updateState(draft => {
-      if (!checkFinanceRequest(draft, input).ok) return;
+      const validation = checkFinanceRequest(draft, input);
+      if (!validation.ok) { errors = validation.errors; return; }
       draft.financeRequests ??= [];
       draft.financeRequests.unshift(request);
     });
+    if (errors.length) {
+      paymentOrderSubmitted.current = false;
+      setPaymentOrderError(errors.join(' '));
+      return false;
+    }
     setShowPaymentOrder(false);
   };
 
   const handleCreatePayment = (values: Record<string, unknown>) => {
-    if (!can('payments', 'CREATE')) return denied('ثبت پرداخت');
-    if (!updateState) return;
+    if (!can('payments', 'CREATE')) { denied('ثبت پرداخت'); return false; }
+    if (!updateState) return false;
     const rawMethod = String(values.method || 'TRANSFER');
     const sayad = toLatinDigits(String(values.sayadId || '')).replace(/\s/g, '');
-    if (rawMethod === 'CHEQUE' && !/^\d{16}$/.test(sayad)) { setNotice('شناسهٔ صیاد باید ۱۶ رقم باشد.'); setTimeout(() => setNotice(null), 6000); return; }
+    if (rawMethod === 'CHEQUE' && !/^\d{16}$/.test(sayad)) { setNotice('شناسهٔ صیاد باید ۱۶ رقم باشد.'); setTimeout(() => setNotice(null), 6000); return false; }
     // کارتخوان با اطلاعات کانال به‌صورت «نقدی» ذخیره می‌شود تا ساختار فعلی پرداخت‌ها نشکند.
     const storedMethod = rawMethod === 'CARD_READER' ? 'CASH' : rawMethod;
     const referenceValue = rawMethod === 'CHEQUE' ? sayad : rawMethod === 'CASH' ? String(values.receiptNo || '') : String(values.reference || '');
@@ -262,7 +269,7 @@ export function FinanceWorkspace({ state, updateState }: FinanceWorkspaceProps) 
     for (const key of RECEIPT_METHOD_FIELDS[rawMethod] || []) { const v = values[key]; if (v !== undefined && v !== null && String(v).trim() !== '' && !['bankName', 'reference'].includes(key)) channelExtras[key] = typeof v === 'string' ? v.trim() : v; }
     const requireEvidence = (state.settings as unknown as FinanceSettingsView | undefined)?.orgConfig?.requireReceiptEvidence !== false;
     const check = checkReceipt(state, { ...input, requireEvidence, hasEvidence: !!payEvidence });
-    if (!check.ok) { setNotice(check.errors.join(' ')); setTimeout(() => setNotice(null), 6000); return; }
+    if (!check.ok) { setNotice(check.errors.join(' ')); setTimeout(() => setNotice(null), 6000); return false; }
     const newPayment = { ...buildReceiptPayment(input, generateId(), new Date(), check.probableDuplicateOf), ...channelExtras };
     updateState(draft => {
       if (!draft.payments) draft.payments = [];
@@ -276,7 +283,7 @@ export function FinanceWorkspace({ state, updateState }: FinanceWorkspaceProps) 
       alwaysQueue: true,
     });
     setShowPaymentModal(false); setPayEvidence(null);
-    setNotice(`رسید به مبلغ ${Number(values.amount).toLocaleString('fa-IR')} ریال ثبت شد و در انتظار بررسی حسابداری است.`);
+    setNotice(`رسید به مبلغ ${input.amount.toLocaleString('fa-IR')} ریال در صف همگام‌سازی است. وضعیت رسید پس از بررسی حسابداری مشخص می‌شود.`);
     setTimeout(() => setNotice(null), 5000);
   };
 
@@ -709,23 +716,9 @@ export function FinanceWorkspace({ state, updateState }: FinanceWorkspaceProps) 
           isOpen={showPromiseModal} 
           onClose={() => { setShowPromiseModal(false); setSelectedProfileForPromise(null); }} 
           title={`ثبت تعهد پرداخت: ${selectedProfileForPromise.accountName}`}
+          footer={<Button type="button" variant="secondary" onClick={() => { setShowPromiseModal(false); setSelectedProfileForPromise(null); }}>بازگشت به مطالبات</Button>}
         >
-          <DynamicFormRenderer
-            schema={COLLECTION_PROMISE_SCHEMA}
-            initialValues={{
-              promisedAmount: selectedProfileForPromise.overdueBalance || undefined,
-              promisedDate: new Date(Date.now() + 86400000 * 3).toISOString().split('T')[0],
-              paymentMethod: 'TRANSFER',
-              autoGenerateCalendarTask: true,
-              contactPerson: selectedProfileForPromise.accountName
-            }}
-            onSubmit={(vals) => {
-              setShowPromiseModal(false);
-              setNotice('تعهد پرداخت با موفقیت ثبت شد.');
-            }}
-            onCancel={() => { setShowPromiseModal(false); setSelectedProfileForPromise(null); }}
-            submitLabel="ثبت تعهد"
-          />
+          <p role="status" className="text-sm leading-relaxed text-text-secondary">ثبت تعهد پرداخت برای این مشتری در حال حاضر در دسترس نیست.</p>
         </Modal>
       )}
 

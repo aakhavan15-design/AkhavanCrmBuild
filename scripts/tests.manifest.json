@@ -1,5 +1,9 @@
 [
   {
+    "file": "tests/uxTransactionExperience.test.mjs",
+    "flags": []
+  },
+  {
     "file": "tests/cashFlowRecoveryContracts.test.mjs",
     "flags": [
       "--experimental-strip-types"

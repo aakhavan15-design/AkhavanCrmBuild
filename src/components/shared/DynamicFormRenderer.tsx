@@ -18,7 +18,7 @@ import { findMentionToken, searchMentions, createMentionReference, MentionEntity
 interface DynamicFormRendererProps {
   schema: DynamicFormSchema;
   initialValues?: Record<string, unknown>;
-  onSubmit: (values: Record<string, unknown>) => void;
+  onSubmit: (values: Record<string, unknown>) => unknown;
   onCancel?: () => void;
   submitLabel?: string;
   cancelLabel?: string;
@@ -48,6 +48,7 @@ export function DynamicFormRenderer({
   const canAutoSaveDraft = autoSaveDraft && autoSaveEnabled && !sensitiveForm;
   const [draftReady, setDraftReady] = useState(false);
   const [submittingInternal, setSubmittingInternal] = useState(false);
+  const [submissionError, setSubmissionError] = useState(false);
   const submissionLock = useRef(false);
   const submitting = isSubmitting || submittingInternal;
   const [draftSavedAt, setDraftSavedAt] = useState<string | null>(null);
@@ -151,9 +152,10 @@ export function DynamicFormRenderer({
     });
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (submissionLock.current || submitting) return;
+    setSubmissionError(false);
 
     // مارک کردن تمامی فیلدها به عنوان تاچ‌شده
     const allTouched: Record<string, boolean> = {};
@@ -184,15 +186,10 @@ export function DynamicFormRenderer({
       const clearDraft = () => { try { if (typeof window !== 'undefined') window.localStorage.removeItem(resolvedDraftKey); setDraftSavedAt(null); } catch { /* ignore denied storage */ } };
       const releaseLock = () => { submissionLock.current = false; setSubmittingInternal(false); };
       try {
-        const submission = (onSubmit as (values: Record<string, unknown>) => unknown)(formValues);
-        if (submission && typeof (submission as Record<string, unknown>).then === 'function') {
-          Promise.resolve(submission).then(() => clearDraft()).catch(() => announceToScreenReader('ارسال فرم کامل نشد؛ پیش‌نویس محلی حفظ شده است.', 'assertive')).finally(releaseLock);
-        } else {
-          clearDraft();
-          releaseLock();
-        }
+        if (await onSubmit(formValues) !== false) clearDraft();
       } catch {
-        announceToScreenReader('ارسال فرم با خطا مواجه شد؛ پیش‌نویس محلی حفظ شده است.', 'assertive');
+        setSubmissionError(true);
+      } finally {
         releaseLock();
       }
     } else {
@@ -210,6 +207,7 @@ export function DynamicFormRenderer({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4" dir="rtl">
+      {submissionError && <p role="alert" className="text-xs text-danger">ارسال فرم انجام نشد. اطلاعات همین فرم حفظ شده است و می‌توانید دوباره تلاش کنید.</p>}
       {schema.description && (
         <div className="p-3 bg-primary/5 rounded-xl border border-primary/20 text-xs text-text-secondary flex items-start gap-2">
           <ShieldCheck className="w-4 h-4 text-primary shrink-0 mt-0.5" />

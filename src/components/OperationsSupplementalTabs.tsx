@@ -10,6 +10,8 @@ import { guard, requireActiveUser, useCan } from '../hooks/useCan';
 import { calculateProfitability, buildOperationsMetrics, calculateCreditMetrics, analyzeReturns } from '../lib/operationsEngine';
 import { formatAppDate, formatRialOrUnknown, matchesSearch } from '../lib/utils';
 import { useDataQuery } from '../hooks/useDataProvider';
+import { isMarkedFixture } from '../lib/stateModel.mjs';
+import { formatNumber } from '../lib/format';
 import { resolveCustomerBalanceView } from '../lib/receivableReconciliation';
 import { buildLedgerAgingInputs, estimateLedgerAging } from '../services/agingBuckets';
 import { useDataSyncStatus } from '../services/dataSyncController';
@@ -147,10 +149,77 @@ export function InventoryTab({ state }: { state: AppState }) {
 export function PurchasingTab({ state, updateState }: { state: AppState; updateState: StateUpdater }) {
   const suppliers: { id: string; name: string }[] = state.suppliers || [];
   const products = state.externalProducts || [];
-  const requests: PurchaseRequestView[] = state.purchaseRequests || [];
-  const [supplierId,setSupplierId] = useState(''); const [productId,setProductId] = useState(''); const [quantity,setQuantity] = useState(''); const [reason,setReason] = useState('');
-  const submit = (e: React.FormEvent) => { e.preventDefault(); if(!guard(state,updateState,'internal','EDIT','ثبت درخواست خرید آزمایشی')||!requireActiveUser(state,updateState,'ثبت درخواست خرید')) return; const qty=Number(quantity); const supplier=suppliers.find(s=>s.id===supplierId); const product=products.find(p=>p.id===productId); if(!supplier||!product||!Number.isFinite(qty)||qty<=0||!reason.trim()) return; const item={id:newId('pr'),requestNumber:`PR-TEST-${requests.length+1}`,supplierId,productId,quantity:qty,status:'OPEN',reason:reason.trim(),source:'LOCAL_TEST',createdBy:state.currentUserId,createdAt:new Date().toISOString()}; updateState(d=>{d.purchaseRequests=[...(d.purchaseRequests||[]),item];log(d,'CREATED','PurchaseRequest',item.id,'درخواست خرید آزمایشی ایجاد شد؛ سفارش خرید رسمی یا تغییر موجودی انجام نشده است');});setSupplierId('');setProductId('');setQuantity('');setReason(''); };
-  return <div className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(300px,1fr)]"><Card><h2 className="mb-4 font-black text-text-main">درخواست‌های خرید</h2><div className="space-y-2">{requests.map(r=><div key={r.id} className="rounded-2xl border border-border p-3"><div className="flex flex-wrap justify-between gap-2"><b className="text-xs text-text-main">{r.requestNumber}</b><StatusBadge status={r.status}/></div><div className="mt-2 text-xs text-text-secondary">تأمین‌کننده: {suppliers.find(s=>s.id===r.supplierId)?.name||'نامشخص'} · کالا: {products.find(p=>p.id===r.productId)?.name||'نامشخص'}</div><div className="mt-1 text-xs text-text-main">تعداد: {Number(r.quantity).toLocaleString('fa-IR')} · {r.reason}</div><div className="mt-2 text-micro text-warning">درخواست داخلی آزمایشی؛ سفارش خرید رسمی ثبت نشده است.</div></div>)}{!requests.length&&<p className="py-8 text-center text-sm text-text-secondary">درخواست خریدی ثبت نشده است.</p>}</div></Card><Card><h2 className="mb-4 font-black text-text-main">ثبت درخواست خرید آزمایشی</h2><form className="space-y-3" onSubmit={submit}><div><label className="mb-1 block text-xs font-bold text-text-main">تأمین‌کننده</label><Select aria-label="تأمین‌کننده" required value={supplierId} onChange={e=>setSupplierId(e.target.value)} ><option value="">انتخاب تأمین‌کننده</option>{suppliers.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</Select></div><div><label className="mb-1 block text-xs font-bold text-text-main">کالا</label><Select aria-label="کالا" required value={productId} onChange={e=>setProductId(e.target.value)} ><option value="">انتخاب کالا</option>{products.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</Select></div><Input label="تعداد درخواستی" type="number" min="0.001" step="any" required value={quantity} onChange={e=>setQuantity(e.target.value)}/><Input label="دلیل درخواست" required value={reason} onChange={e=>setReason(e.target.value)} placeholder="کمبود موجودی، سفارش مشتری..."/><Button className="w-full" type="submit" icon={<ShoppingCart size={15}/>} disabled={!supplierId||!productId||Number(quantity)<=0||!reason.trim()}>ثبت درخواست داخلی</Button></form></Card></div>;
+  const testing = import.meta.env.DEV;
+  const requests: PurchaseRequestView[] = (state.purchaseRequests || []).filter((request: PurchaseRequestView) =>
+    testing || (!isMarkedFixture(request) && !request.requestNumber?.startsWith('PR-TEST-')),
+  );
+  const [supplierId, setSupplierId] = useState('');
+  const [productId, setProductId] = useState('');
+  const [quantity, setQuantity] = useState('');
+  const [reason, setReason] = useState('');
+  const submit = (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!testing || !guard(state, updateState, 'internal', 'EDIT', 'ثبت درخواست خرید') ||
+      !requireActiveUser(state, updateState, 'ثبت درخواست خرید')) return;
+    const qty = Number(quantity);
+    const supplier = suppliers.find(item => item.id === supplierId);
+    const product = products.find(item => item.id === productId);
+    if (!supplier || !product || !Number.isFinite(qty) || qty <= 0 || !reason.trim()) return;
+    const item = {
+      id: newId('pr'), requestNumber: `PR-TEST-${requests.length + 1}`, supplierId, productId,
+      quantity: qty, status: 'OPEN', reason: reason.trim(), source: 'LOCAL_TEST',
+      createdBy: state.currentUserId, createdAt: new Date().toISOString(),
+    };
+    updateState(draft => {
+      draft.purchaseRequests = [...(draft.purchaseRequests || []), item];
+      log(draft, 'CREATED', 'PurchaseRequest', item.id, 'درخواست خرید آزمایشی در محیط توسعه ایجاد شد.');
+    });
+    setSupplierId('');
+    setProductId('');
+    setQuantity('');
+    setReason('');
+  };
+
+  return (
+    <div className={testing ? 'grid gap-4 xl:grid-cols-2' : 'space-y-3'}>
+      <Card>
+        <h2 className="mb-3 font-bold text-text-main">درخواست‌های خرید</h2>
+        {!testing && <p className="mb-3 text-xs text-text-secondary">ثبت رسمی سفارش خرید از طریق سامانهٔ مرجع انجام می‌شود.</p>}
+        {!requests.length ? <p className="py-5 text-sm text-text-secondary">درخواستی برای نمایش وجود ندارد.</p> : (
+          <ul className="divide-y divide-border">
+            {requests.map(request => (
+              <li key={request.id} className="space-y-1 py-3 text-xs text-text-secondary">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <bdi className="font-semibold text-text-main">{request.requestNumber}</bdi>
+                  <StatusBadge status={request.status} />
+                </div>
+                <p>تأمین‌کننده {suppliers.find(item => item.id === request.supplierId)?.name || 'نامشخص'} · کالا {products.find(item => item.id === request.productId)?.name || 'نامشخص'}</p>
+                <p>{formatNumber(request.quantity)} · {request.reason}</p>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
+      {testing && (
+        <Card>
+          <h2 className="mb-4 font-semibold text-text-main">درخواست خرید در محیط توسعه</h2>
+          <form className="space-y-3" onSubmit={submit}>
+            <Select label="تأمین‌کننده" required value={supplierId} onChange={event => setSupplierId(event.target.value)}>
+              <option value="">انتخاب تأمین‌کننده</option>
+              {suppliers.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
+            </Select>
+            <Select label="کالا" required value={productId} onChange={event => setProductId(event.target.value)}>
+              <option value="">انتخاب کالا</option>
+              {products.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
+            </Select>
+            <Input label="تعداد درخواستی" type="number" min="0.001" step="any" required value={quantity} onChange={event => setQuantity(event.target.value)} />
+            <Input label="دلیل درخواست" required value={reason} onChange={event => setReason(event.target.value)} />
+            <Button block type="submit" icon={<ShoppingCart size={15} />} disabled={!supplierId || !productId || Number(quantity) <= 0 || !reason.trim()}>ثبت درخواست داخلی</Button>
+          </form>
+        </Card>
+      )}
+    </div>
+  );
 }
 
 export function CreditTab({ state }: { state: AppState }) {
