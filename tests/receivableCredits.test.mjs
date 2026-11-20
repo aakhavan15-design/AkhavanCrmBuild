@@ -38,3 +38,20 @@ const wrongSource=reconcileReceivables([{...invoice,balance:800}],payments,alloc
 assert.equal(wrongSource.authoritative,false,'local requests cannot be passed off as ERP mirror credits');
 assert.ok(wrongSource.issues.some(i=>i.code==='CREDIT_NOTE_SOURCE_INVALID'));
 console.log('PASS: 20 assertions after approved/voided/source-isolation cases');
+
+const conflictingVersion = { ...posted, id: 'cn-new-crm-id', sourceSystemCode: ' erp ', amount: 175 };
+for (const versions of [[posted, conflictingVersion], [conflictingVersion, posted], [posted, { ...conflictingVersion, status: 'VOID' }]]) {
+  const result = reconcileReceivables([{ ...invoice, balance: 800 }], payments, allocations, versions);
+  assert.equal(result.totalValidCredits, 0);
+  assert.equal(result.authoritative, false);
+  assert.equal(result.priorities.length, 0);
+  assert.equal(result.issues.filter(issue => issue.code === 'CREDIT_NOTE_EXTERNAL_ID_DUPLICATE').length, 2);
+}
+const separateSources = reconcileReceivables([{ ...invoice, balance: 600 }], payments, allocations,
+  [posted, { ...posted, id: 'cn-other-source', sourceSystemCode: 'ERP-B' }]);
+assert.equal(separateSources.totalValidCredits, 200);
+assert.equal(separateSources.authoritative, true);
+
+const replaced = reconcileReceivables([invoice], payments, allocations, [posted, { ...conflictingVersion, isDeleted: true }]);
+assert.equal(replaced.totalValidCredits, 100);
+assert.equal(replaced.authoritative, true);
