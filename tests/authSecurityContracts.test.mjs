@@ -30,10 +30,12 @@ assert.ok(permissionCatalog.includes("N'accounts.create'"), 'permission catalog 
 assert.ok(permissionCatalog.includes('WHERE NOT EXISTS'), 'permission catalog migration is idempotent');
 assert.ok(permissionCatalog.includes('grants no role access'), 'permission catalog does not grant permissions to tenant roles');
 assert.ok(server.includes("String(permission).trim().toLowerCase()"), 'API permission checks normalize permission codes');
-assert.match(server, /hasSqlPermission\(req\.auth, permission\)/);
+assert.match(server, /hasSqlPermission\(req\.auth, permission, \{ organizationWide \}\)/);
 assert.match(server, /u\.UserId=ur\.UserId AND u\.IsActive=1/);
 assert.match(server, /t\.TenantId=ur\.TenantId AND t\.IsActive=1/);
-assert.match(server, /rp\.FieldCode=N'' AND rp\.FieldAccess='DO'/);
+assert.match(server, /rp\.FieldCode=N''/);
+assert.match(server, /rp.FieldAccess='DO' OR \(@isRead=1 AND rp.FieldAccess='SEE'\)/);
+assert.match(server, /@organizationWide=0 OR rp.ScopeCode='ORG'/);
 
 assert.ok(server.includes("u.TenantId, u.UserId"), 'login profile includes canonical tenant id for record-scope checks');
 assert.ok(auth.includes('tenantId: serverUser.tenantId'), 'client uses canonical tenant id rather than tenant code');

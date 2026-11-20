@@ -29,6 +29,7 @@ JOIN crm.JournalStatusMap sm
  AND sm.ExternalStatusCode = je.StatusCode
 WHERE jl.TenantId = @tenantId
   AND je.TenantId = @tenantId
+  AND EXISTS (SELECT 1 FROM security.fn_RecordReadScope(jl.TenantId,N'finance.view',NULL,NULL,NULL,NULL))
   AND je.IsVoided = 0
   AND NULLIF(LTRIM(RTRIM(je.DocumentNumber)), '') IS NOT NULL
   AND sm.IncludeInBalance = 1

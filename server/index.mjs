@@ -148,10 +148,10 @@ function authenticate(req, res, next) {
   req.auth = claims;
   next();
 }
-function requirePermission(permission) {
+function requirePermission(permission, { organizationWide = false } = {}) {
   return async (req, res, next) => {
     try {
-      const allowed = await hasSqlPermission(req.auth, permission);
+      const allowed = await hasSqlPermission(req.auth, permission, { organizationWide });
       if (!allowed) return res.status(403).json({ error: { code: 'FORBIDDEN', message: 'مجوز انجام این عملیات را ندارید.' }, correlationId: req.correlationId });
       next();
     } catch (error) { next(error); }
@@ -423,7 +423,10 @@ app.get('/api/v1/accounts', typedAccountsOnly, authenticate, requirePermission('
       .input('cursorName', sql.NVarChar(250), cursorName)
       .input('cursorId', sql.UniqueIdentifier, cursorId || null)
       .query(`SELECT TOP (@take) AccountId, AccountCode, Name, StatusCode, OwnerUserId, UpdatedAtUtc
-        FROM crm.Account WHERE TenantId=@tenantId
+        FROM crm.Account AS account WHERE account.TenantId=@tenantId
+          AND EXISTS (SELECT 1 FROM security.fn_RecordReadScope(
+            account.TenantId,N'accounts.view',account.OwnerUserId,account.BranchId,account.TerritoryId,account.TeamId
+          ))
           AND (@cursorId IS NULL OR Name>@cursorName OR (Name=@cursorName AND AccountId>@cursorId))
         ORDER BY Name ASC, AccountId ASC`));
     const last = result.recordset.at(-1);
@@ -441,12 +444,15 @@ async function userHasPermission(claims, permission) {
   return allowDemoAuth || hasSqlPermission(claims, permission);
 }
 
-async function hasSqlPermission(claims, permission) {
+async function hasSqlPermission(claims, permission, { organizationWide = false } = {}) {
+  const permissionCode = String(permission).trim().toLowerCase();
   return withTenantContext(claims, async (transaction) => {
     const result = await new sql.Request(transaction)
       .input('tenantId', sql.UniqueIdentifier, claims.tenantId)
       .input('userId', sql.UniqueIdentifier, claims.userId)
-      .input('permission', sql.NVarChar(120), String(permission).trim().toLowerCase())
+      .input('permission', sql.NVarChar(120), permissionCode)
+      .input('isRead', sql.Bit, permissionCode.endsWith('.view'))
+      .input('organizationWide', sql.Bit, organizationWide)
       .query(`SELECT TOP (1) 1 AS Allowed
         FROM core.UserRole ur
         JOIN core.AppUser u ON u.TenantId=ur.TenantId AND u.UserId=ur.UserId AND u.IsActive=1
@@ -454,7 +460,9 @@ async function hasSqlPermission(claims, permission) {
         JOIN core.RolePermission rp ON rp.TenantId=ur.TenantId AND rp.RoleId=ur.RoleId
         WHERE ur.TenantId=@tenantId AND ur.UserId=@userId
           AND ur.ValidFromUtc<=SYSUTCDATETIME() AND (ur.ValidToUtc IS NULL OR ur.ValidToUtc>SYSUTCDATETIME())
-          AND rp.PermissionCode=@permission AND rp.FieldCode=N'' AND rp.FieldAccess='DO'`);
+          AND rp.PermissionCode=@permission AND rp.FieldCode=N''
+          AND (rp.FieldAccess='DO' OR (@isRead=1 AND rp.FieldAccess='SEE'))
+          AND (@organizationWide=0 OR rp.ScopeCode='ORG')`);
     return result.recordset.length > 0;
   });
 }
@@ -508,13 +516,14 @@ app.get('/api/v1/ledger/balances', authenticate, requirePermission('finance.VIEW
       FROM analytics.vw_DetailSubsidiaryBalance b
       LEFT JOIN crm.FiscalPeriod fp ON fp.FiscalPeriodId=b.FiscalPeriodId AND fp.TenantId=b.TenantId
       WHERE b.TenantId=@tenantId ${detailKey ? "AND b.ExternalDetailCode=@detailKey" : ""}
+        AND EXISTS (SELECT 1 FROM security.fn_LedgerDetailReadScope(b.TenantId,b.SourceSystemCode,b.ExternalDetailCode))
       GROUP BY b.ExternalDetailCode, b.ExternalAccountCode ${byPeriod ? ", fp.ExternalPeriodCode" : ""}`);
   });
   res.json(projectLedgerBalances(result.recordset, { detailKey, byPeriod }));
 }));
 
 // Aggregated P&L lines (GROUP BY account code + month); only P&L prefixes; numbered + IncludeInBalance.
-app.get('/api/v1/ledger/pnl', authenticate, requirePermission('finance.VIEW'), wrap(async (req, res) => {
+app.get('/api/v1/ledger/pnl', authenticate, requirePermission('finance.VIEW', { organizationWide: true }), wrap(async (req, res) => {
   const fromRaw = req.query.fromDate == null ? null : String(req.query.fromDate).trim();
   const toRaw = req.query.toDate == null ? null : String(req.query.toDate).trim();
   const iso = (s) => s && /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null;
@@ -526,7 +535,7 @@ app.get('/api/v1/ledger/pnl', authenticate, requirePermission('finance.VIEW'), w
 
   // Prefixes aligned with client COA_PREFIX_BUCKETS / PNL_ACCOUNT_PREFIXES
   const prefixes = ['41', '42', '51', '52'];
-  const { sqlText, prefixCount } = buildLedgerPnlSql(prefixes, { maxRows: 5000 });
+  const { sqlText } = buildLedgerPnlSql(prefixes, { maxRows: 5000 });
 
   const result = await withTenantContext(req.auth, async (transaction) => {
     const request = new sql.Request(transaction);
@@ -569,6 +578,7 @@ app.get('/api/v1/ledger/journal-lines', authenticate, requirePermission('finance
       .input('offset', sql.Int, (page - 1) * pageSize)
       .input('pageSize', sql.Int, pageSize);
     const conditions = ['jl.TenantId=@tenantId', 'je.TenantId=@tenantId', 'je.IsVoided=0',
+      'EXISTS (SELECT 1 FROM security.fn_LedgerDetailReadScope(jl.TenantId,jl.SourceSystemCode,jl.ExternalDetailCode))',
       "NULLIF(LTRIM(RTRIM(je.DocumentNumber)), '') IS NOT NULL", 'sm.IncludeInBalance=1'];
     if (filter.detailKey) { request.input('detailKey', sql.NVarChar(120), filter.detailKey); conditions.push('jl.ExternalDetailCode=@detailKey'); }
     if (filter.subsidiaryCode) { request.input('subsidiaryCode', sql.NVarChar(120), filter.subsidiaryCode); conditions.push('jl.ExternalAccountCode=@subsidiaryCode'); }
@@ -796,6 +806,9 @@ app.get('/api/v1/analytics/reports/:reportId', authenticate, async (req, res) =>
   const reportId = Number(req.params.reportId);
   if (!Number.isInteger(reportId) || reportId < 1 || reportId > 11) {
     return res.status(400).json({ error: { code: 'INVALID_REPORT_ID', message: 'شناسه گزارش نامعتبر است.' } });
+  }
+  if (entityDriverKind === 'mssql' && !await hasSqlPermission(req.auth, 'finance.view', { organizationWide: true })) {
+    return bad(req, res, 403, 'FORBIDDEN', 'مجوز مشاهدهٔ وضعیت منابع مالی کل سازمان را ندارید.');
   }
   // F0-08: وضعیت از Query واقعی روی آینهٔ SQL (با زمینهٔ Tenant/RLS)؛ در نبود SQL یا خطا = UNAVAILABLE
   const result = await buildReportStatus({

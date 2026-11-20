@@ -499,7 +499,7 @@ export class HttpBackendDataProvider implements DataProvider {
 
     if (!response.ok) {
       const errorJson = await response.json().catch(() => ({}));
-      throw new Error(errorJson?.error?.message || `HTTP error ${response.status}`);
+      throw Object.assign(new Error(errorJson?.error?.message || `HTTP error ${response.status}`), { status: response.status });
     }
 
     return response.json();
@@ -558,7 +558,7 @@ export class HttpBackendDataProvider implements DataProvider {
       };
     } catch (e) {
       return {
-        status: 'UNAVAILABLE',
+        status: e instanceof Error && 'status' in e && e.status === 403 ? 'RESTRICTED' : 'UNAVAILABLE',
         source: this.name,
         journalLines: [],
         coaMirror: [],
