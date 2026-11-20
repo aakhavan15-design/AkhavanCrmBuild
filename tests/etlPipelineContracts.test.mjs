@@ -1,8 +1,18 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { runEtlBatch, checkpointKey, validateEtlRecord, stablePayloadHash, resolveLedgerAccount, mapJournalLines, reconcileControlTotal } from '../src/lib/etlPipeline.ts';
 import { computeLedgerPnl } from '../src/lib/ledgerPnl.ts';
 import { DEFAULT_REPORT_BUCKETS } from '../src/lib/accountingMapping.ts';
 import { createMemoryPort } from '../src/lib/dataPorts.ts';
+
+const sqlFinalization = readFileSync(new URL('../database/sqlserver/v1/032_finalize_erp_sync_batch.sql', import.meta.url), 'utf8');
+assert.match(sqlFinalization, /XACT_STATE\(\)<>1/);
+assert.match(sqlFinalization, /@TenantId<>@ContextTenant/);
+assert.match(sqlFinalization, /b WITH \(UPDLOCK,HOLDLOCK\)/);
+assert.match(sqlFinalization, /@ExistingHash<>@Hash/);
+assert.match(sqlFinalization, /INSERT integration.StagingRejection/);
+assert.match(sqlFinalization, /@StatusCode='SUCCEEDED' AND @ModeCode<>'REPLAY' AND @WatermarkUtc IS NOT NULL/);
+assert.match(sqlFinalization, /WatermarkUtc IS NULL OR WatermarkUtc<@WatermarkUtc/);
 
 const base = { tenantId: 't1', sourceSystemCode: 'erp-a' };
 const pay = (id, extra = {}) => ({ ...base, externalId: id, paymentDate: '2026-10-01', amount: 500, sourceModifiedAtUtc: '2026-10-01T08:00:00Z', ...extra });
