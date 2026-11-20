@@ -141,13 +141,29 @@
 - موتورهای موجود باید توسعه یابند؛ ساخت نسخه موازی، Store دوم یا موتور دوم برای همان مسئولیت ممنوع است.
 
 
+### ۲-۴-الف. یکپارچه‌سازی ERP و گردش ارسال
+
+#### C01 — یکپارچه‌سازی Pull ERP و کیفیت داده
+
+- **هدف و گردش.** اعتماد کامل به نسخه جاری اطلاعات؛ حذف پیگیری دستی اختلاف ERP/CRM. مدیر وضعیت آخرین همگام‌سازی/خطا را می‌بیند؛ worker تغییرات قابل تشخیص را می‌گیرد، اعتبارسنجی و ثبت mirror می‌کند؛ خطا quarantine و تسک می‌سازد.
+- **قواعد و تجربه.** sourceVersion بالاتر اولویت دارد؛ idempotent key=tenant+source+entity+id+version؛ offset فقط بعد commit؛ حذف بدون tombstone معتبر نامشخص. مرکز اتصال، زمان آخرین به‌روزرسانی هر حوزه، تعداد رکورد جدید/ردشده، ریزخطا و retry مجاز.
+- **مدل و قرارداد پیشنهادی.** قرارداد منطقی `SyncSource(tenantId,code,mode,health,lastRunAt), SyncRun(id,source,checkpoint,received,upserted,rejected,status,startedAt,endedAt), SourceRowMirror(sourceId,entityType,sourceVersion,checksum), SyncQuarantine(id,reason,payloadRef)`. `GET /api/v1/integrations/health؛ POST /api/v1/integrations/sync-runs (service-only)؛ GET /sync-runs؛ POST /quarantine/{id}/retry`. مسیر فیزیکی با API، Migration و Provider موجود تطبیق داده شود.
+- **اتصال، وابستگی و پذیرش.** `src/lib/erpImportService.ts؛ src/lib/etlPipeline.ts؛ src/lib/erpDataQuality.ts؛ dataProvider؛ database/sqlserver/v1/*`. پیش‌نیاز `CRM mapping، RBAC، source schema`. سناریوهای پذیرش `Replay batch دوباره، stale overwrite، delete، timestamp collision، قطع اتصال، branch isolation؛ گزارش count صحیح`. قید امنیت `No UPDATE ERP؛ encrypt credentials؛ rate-limit و masked logs`.
+
+#### C02 — Push رسمی CRM به ERP، Outbox و تأیید نتیجه
+
+- **هدف و گردش.** ثبت کنترل‌شده و قابل پیگیری به‌جای تماس/ویرایش دستی. درخواست کاربر پس از تأیید در صف قرار گیرد؛ API رسمی فراخوانی و ACK ثبت شود؛ Pull بعدی واقعیت را بازتطبیق دهد؛ وضعیت رد/انتظار صریح.
+- **قواعد و تجربه.** SENT≠APPLIED≠CONFIRMED؛ عدم ارسال دوباره با idempotencyKey؛ optimistic concurrency با expectedSourceVersion. نوار مرحله، آخرین تلاش، خطا، شناسه رسید ERP و «در انتظار تأیید نتیجه».
+- **مدل و قرارداد پیشنهادی.** قرارداد منطقی `IntegrationCommand(id,tenantId,type,aggregateId,payloadVersion,sourceVersion,key,status), CommandAttempt(id,status,responseCode,receivedAt), ReconcileResult(commandId,sourceVersion,result)`. `POST /api/v1/integration-commands؛ GET /{id}؛ POST /{id}/retry برای اپراتور؛ callback تنها signature verified`. مسیر فیزیکی با API، Migration و Provider موجود تطبیق داده شود.
+- **اتصال، وابستگی و پذیرش.** `src/lib/negotiationErpLifecycle.ts؛ src/lib/erpContracts.ts؛ database/.../014_api_idempotency_and_outbox.sql`. پیش‌نیاز `01، 03، 04، policy approvals`. سناریوهای پذیرش `ارسال تکراری، timeout بعد موفقیت در ERP، ERP رد کند، موفقیت ACK بدون sync، crash و replay`. قید امنیت `Least privilege API ERP، outbox transaction، redacted payload و audit`.
+
 ### ۲-5. چرخه‌های اصلی
 
 #### سفارش، فاکتور و مذاکره
 - سفارش‌ها و فاکتورهای رسمی از ERP دریافت می‌شوند؛ CRM مرجع صدور یا ویرایش رسمی آن‌ها نیست.
 - هر سفارش با وضعیت، نوع پرداخت، مشتری، مبلغ، تاریخ، اقلام، سابقه و داده معتبر ERP تحلیل می‌شود. قواعد نسخه‌دار می‌توانند آن را پرریسک/نیازمند توجه، نقدی، دارای فرصت افزایش فروش یا عادی تشخیص دهند؛ علت، شدت و شواهد هر طبقه‌بندی نمایش داده می‌شود.
 - سفارش واجد شرایط و فاکتور‌نشده می‌تواند وارد CPQ شود: اصلاح مقدار، افزودن کالای مکمل، ترکیب سبد، افزایش ارزش سفارش و بررسی حاشیه سود/شرایط اعتباری. کارشناس از همان پرونده سفارش مذاکره و نتیجه را ثبت می‌کند.
-- هر تغییر رسمی فقط با مجوز و از طریق Integration به ERP ارسال می‌شود؛ وضعیت موفق تنها با پاسخ مقصد ثبت می‌شود. فاکتور ERP پس از صدور مرجع رسمی و فقط‌خواندنی است، ولی برای تحلیل سود، کنترل، پخش، وصول و پیگیری استفاده می‌شود.
+- هر تغییر رسمی فقط با مجوز و از طریق Integration به ERP ارسال می‌شود؛ دریافت پاسخ مقصد، وضعیت پذیرش پیام را ثبت می‌کند. نتیجهٔ رسمی با Pull تازه و تطبیق سند تأیید می‌شود. فاکتور ERP پس از صدور مرجع رسمی و فقط‌خواندنی است، ولی برای تحلیل سود، کنترل، پخش، وصول و پیگیری استفاده می‌شود.
 
 #### پخش، برگشت و تسویه
 - برنامه پخش/ظرفیت خودرو، رخداد بارگیری و تحویل، برگشت کالا و تسویه وصولی جریان‌های مرتبط ولی دارای وضعیت و سند مستقل هستند.
@@ -182,7 +198,7 @@
 - موارد هم‌معنا در یک گروه و صفحه تجمیع می‌شوند؛ مثلاً تمام کنترل‌های سند حسابداری، هزینه، شرح و کدینگ زیر «اسناد و سرفصل‌های مالی»؛ تخفیف نقد، قیمت، بهای تمام‌شده و حاشیه سود زیر «قیمت و سودآوری»؛ بارگیری، برنامه حمل، تحویل و تسویه زیر «چرخه توزیع». هر قانون شناسه مستقل، ولی UI به تعداد قوانین آیکون/کاشی جداگانه نمی‌سازد.
 - صفحهٔ پایش از موتورهای یگانهٔ موجود استفاده می‌کند؛ موتور موازی برای کیفیت داده ساخته نشود. نمودارها، KPIها، فهرست یافته‌ها، فیلترها، شواهد و موارد ارزیابی‌نشده فقط از خروجی واقعی موتور/Provider ساخته شوند.
 - نبود قانون یا داده، «ارزیابی‌نشده/ناموجود» است؛ هرگز به‌صورت صفر خطا یا سلامت کامل نمایش داده نشود. وضعیت منبع LIVE/LOCAL/DEMO/PARTIAL/STALE/UNAVAILABLE همیشه آشکار باشد.
-- پایش فقط خواندنی است؛ اصلاح داده در ERP خارج از این صفحه و توسط نقش مجاز انجام می‌شود. هدر و منوی قفل‌شده تغییر نمی‌کنند.
+- پایش آینه فقط‌خواندنی است. نقش مجاز پس از تأیید می‌تواند درخواست اصلاح رسمی را با Outbox و API ERP بفرستد و نتیجه را پس از Pull تطبیق دهد. هدر و منوی قفل‌شده تغییر نمی‌کنند.
 
 ### ۲-۸-۱. مرجع یگانه کاتالوگ و چرخه رسیدگی
 جزئیات کامل کاتالوگ کنترل‌ها، چرخه Sync، Rule Registry، شواهد، lifecycle پرونده، SLA، Badge، صفحه حوزه و نگاشت داده فقط در §۱۲ نگهداری می‌شود. این بخش صرفاً اصول محصول را تعیین می‌کند: هر کنترل شناسه و نسخه مستقل دارد؛ UI گروه‌بندی‌شده و بدون کاشی جداگانه برای هر Rule است؛ داده و پوشش ناموجود «ارزیابی‌نشده» است؛ اصلاح رسمی فقط در ERP انجام می‌شود؛ رفع پرونده فقط پس از Sync معتبر و اجرای مجدد Rule اثبات می‌شود. برای جلوگیری از دو مرجع متناقض، کاتالوگ تفصیلی در این بخش تکرار نمی‌شود.
@@ -291,6 +307,15 @@
 ### ۵-۶. هویت، مدیریت پرسنل و رشد شغلی
 منابع انسانی و چرخه کامل کارکنان جزو هسته اصلی محصول است، نه قابلیت فرعی. اصول این حوزه عبارت‌اند از هویت یگانه Person/Employee/User، دریافت داده ERP به‌صورت read-only و ثبت محلی فقط با منشأ مشخص، جذب تا استخدام، پرونده و وضعیت شغلی، نقش‌ها و کدهای عملیاتی، آموزش و آزمون نقش‌محور، تأیید مدیر، ارزیابی عملکرد، پلکان رشد و حقوق، و درخواست‌های مرخصی/مأموریت/اضافه‌کاری/مساعده با گردش تأیید. نمره فروش یا تحقق هدف به‌تنهایی تصمیم خودکار درباره مرخصی، مساعده یا حقوق ایجاد نمی‌کند. جزئیات کامل چرخه، مراحل، وضعیت‌ها، محرمانگی و مجوزها فقط در §۱۴ مرجع است؛ اینجا از تکرار جزئیات جلوگیری می‌شود.
 
+### ۵-۷. قرارداد هویت و دسترسی
+
+#### C03 — هویت یگانه و سطح دسترسی سراسری
+
+- **هدف و گردش.** حذف کاربران/اشخاص تکراری و دسترسی ناخواسته. Person یک هویت؛ Employee رابطه همکاری؛ UserAccount حساب ورود؛ کد ERP و کد تفصیلی با نگاشت معتبر؛ تغییر سمت/تیم با تاریخ اثر.
+- **قواعد و تجربه.** unknown permissions deny؛ role+branch+owner+entity scope؛ شخص تکراری merge فقط با شواهد و trace. تنظیمات هویت، صفحه تعارض نگاشت، دسترسی مؤثر و تاریخچه نقش.
+- **مدل و قرارداد پیشنهادی.** قرارداد منطقی `Person(id,tenantId,...), Employee(personId,employmentStatus,...), UserAccount(personId,authId,...), IdentityMapping(sourceId,entityId,validFrom,validTo), RoleScopeGrant`. `GET/PUT /api/v1/identity-mappings؛ /api/v1/access/effective؛ /api/v1/people/{id}`. مسیر فیزیکی با API، Migration و Provider موجود تطبیق داده شود.
+- **اتصال، وابستگی و پذیرش.** `src/lib/rbac.ts؛ src/lib/permissions.ts؛ src/services/AuthService.ts؛ database/.../013,016,028`. پیش‌نیاز `01، SQL RLS، hierarchy`. سناریوهای پذیرش `کاربر در دو شعبه، کد تکراری، scope خالی، تعلیق کارمند، تغییر مدیر، دسترسی بعد از خروج`. قید امنیت `RBAC server + RLS + audit؛ شکستن رابطه مالی با merge ممنوع`.
+
 ## ۶. موتورهای دامنه‌ای و موتور جریمه/ارزیابی
 
 ### ۶-۱. نقشهٔ موتورها (موتور موجود را وصل کن؛ موازی نساز)
@@ -317,7 +342,7 @@
 | Rule Registry | — | — | — | **NOT IMPLEMENTED** |
 | هوش مکانی | `geoIntelligence, geoRoutingEngine, geoCollectionReporting` | ۱ | geo | سالم؛ Heatmap گزارش‌ها هنوز بر مبنای فاکتور/روز |
 | OCR سند | `documentCapture`, `GlobalFloatingIntakeDrawer` | ۲ | document capture | ثبت مضاعف + جهت چک ثابت RECEIVABLE |
-| FIFO | — | — | — | **NOT IMPLEMENTED** |
+| FIFO | مصوبهٔ C12 در پیوست الف §۸ | کاتالوگ فقط‌خواندنی | `fifoInventoryHonestyContracts` | نمایش مقدار/مجهول آزموده شده، موتور لایه‌مند و SQL باز |
 
 ### ۶-۲. سیاست محاسبهٔ یگانه (قانون ۷)
 
@@ -333,6 +358,64 @@
 
 ### ۶-۳. موتور جریمه و ارزیابی (سه‌حوزه‌ای)
 ۱) جریمه دیرکرد مشتری (مانده مشمول، روز تأخیر، چک سررسیدشده، مهلت ارفاقی، سقف، بخشودگی) — مستقل از حقوق. ۲) ارزیابی عملکرد پرسنل (تأخیر ورود، غیبت، عدم تحقق سفارش روزانه، چک برگشتی، تأخیر دریافت چک، مطالبات معوق، عدم وصول، بازدید ناموفق، کسری کارکرد). ۳) حقوق (فقط خروجی تأییدشده دو موتور را می‌گیرد). مدیر عوامل/وزن/آستانه/ضریب/سقف/دوره را بدون تغییر کد تنظیم می‌کند (Rule Registry). نتیجه قابل بازتولید؛ تغییر سیاست نتیجه قدیمی را خاموش عوض نکند؛ اعمال مجدد جریمه برای یک مبنا ممنوع. فرمول‌ها: پیوست الف.
+
+### ۶-۴. قراردادهای گردش کار و خدمات
+
+#### C04 — موتور وظیفه و کارتابل شخصی
+
+- **هدف و گردش.** کاهش تماس و جلوگیری از کار بدون مسئول. کاربر وظیفه مرتبط رکورد می‌سازد؛ مسئول/جانشین/مهلت/مدرک دارد؛ سیستم هشدار و escalation و تأیید نتیجه می‌دهد.
+- **قواعد و تجربه.** حالت new/in_progress/at_risk/overdue/waiting/verified/closed/reopened؛ task close با evidence و policy؛ watcher و SLA pause ثبت. My Work، Kanban، جزئیات، زمان‌بندی، تاریخچه تغییر مسئول، اولویت و اقدام زمینه‌ای.
+- **مدل و قرارداد پیشنهادی.** قرارداد منطقی `Task(id,tenant,entityRef,ownerId,backupId,deadline,status,priority,version), TaskEvent(taskId,actor,from,to,reason), TaskEvidence(taskId,attachmentId)`. `GET/POST /api/v1/tasks؛ PATCH /tasks/{id} با rowVersion؛ POST /tasks/{id}/transition؛ /assign`. مسیر فیزیکی با API، Migration و Provider موجود تطبیق داده شود.
+- **اتصال، وابستگی و پذیرش.** `src/services/taskWorkflow.ts؛ taskActivity.ts؛ taskIntelligence.ts؛ taskAccessEngine.ts؛ src/lib/myWorkQueue.ts`. پیش‌نیاز `03، 05، 06`. سناریوهای پذیرش `تسک بی‌مسئول، دو تأیید هم‌زمان، مهلت و تعطیلات، بسته‌شدن بدون سند، بازگشایی، branch leak`. قید امنیت `Authorization رکورد و تاریخچه immutable؛ notify فقط مخاطب مجاز`.
+
+#### C05 — گفت‌وگوی داخلی متصل به هر رکورد (Chatter)
+
+- **هدف و گردش.** حذف تماس‌های «چه شد» و متمرکزکردن مکالمات. در پرونده مشتری/فاکتور/چک/تسک/درخواست پیام، منشن، فایل و پیگیری ایجاد شود؛ وضعیت موضوع کنار آن نمایش داده شود.
+- **قواعد و تجربه.** پیام به موجودیت معتبر متعلق tenant؛ حذف نرم با audit؛ @mention با audience و permission واقعی؛ لینک رکورد قابل جست‌وجو. پنل گفتگو در جزئیات، composer کوتاه، thread، فایل، pin، فیلتر «تصمیم/درخواست».
+- **مدل و قرارداد پیشنهادی.** قرارداد منطقی `RecordThread(id,tenant,entityType,entityId), ThreadMessage(id,threadId,authorId,body,createdAt,editedAt), ThreadMention(messageId,userId), AttachmentRef`. `GET/POST /api/v1/records/{type}/{id}/messages؛ GET /mentions؛ POST /read-receipts`. مسیر فیزیکی با API، Migration و Provider موجود تطبیق داده شود.
+- **اتصال، وابستگی و پذیرش.** `src/lib/collaboration.ts؛ src/services/mentionEngine.ts؛ notification services؛ existing groups/routes`. پیش‌نیاز `03، 04، 06`. سناریوهای پذیرش `دسترسی به thread مشتری شعبه دیگر، منشن کاربر غیرفعال، فایل آلوده، حذف/ویرایش، pagination`. قید امنیت `Virus scan/storage signed URL؛ HTML sanitize؛ scope در read و push`.
+
+#### C06 — اعلان‌های هوشمند، SLA و مرکز ارجاع
+
+- **هدف و گردش.** اطلاع به فرد درست بدون اسپم و تماس مکرر. رویداد جدید با subscription/role/scope به inbox می‌آید؛ اعلان Push/SMS فقط طبق رضایت/قانون؛ acknowledge و escalation.
+- **قواعد و تجربه.** dedupeKey رویداد+گیرنده+کانال+زمان؛ quiet hours و retries configurable؛ unread count فقط واقعیت DB. مرکز اعلان، کشوی هدر قفل‌شده، فیلتر خوانده/اقدام، یک‌کلیک ورود به رکورد.
+- **مدل و قرارداد پیشنهادی.** قرارداد منطقی `Notification(id,tenant,recipientId,eventId,status), DeliveryAttempt(notificationId,channel,result), Subscription(userId,endpointHash), SlaPolicy(version,clock,threshold)`. `GET /api/v1/notifications؛ POST /notifications/{id}/read؛ POST /api/v1/push/subscribe؛ /unsubscribe؛ /send فقط admin/service`. مسیر فیزیکی با API، Migration و Provider موجود تطبیق داده شود.
+- **اتصال، وابستگی و پذیرش.** `src/lib/notifyAndPush.ts؛ src/lib/webPush.ts؛ server/index.mjs؛ src/lib/reminders.ts`. پیش‌نیاز `03، 04، 05، security`. سناریوهای پذیرش `Push unauthorized 401/403؛ broadcast scope؛ stale unread؛ duplicate delivery؛ opt-out؛ retry`. قید امنیت `فوری: middleware auth+permission روی Push send، rate-limit، audit، endpoint validation`.
+
+#### C21 — درخواست‌های داخلی، فرم و گردش تأیید
+
+- **هدف و گردش.** بهبود نظم اداری و جلوگیری از درخواست گم‌شده. کارمند درخواست مرخصی/ماموریت/هزینه/خدمات/تأیید ایجاد؛ فرم پویا به approval chain؛ نتیجه در کارتابل.
+- **قواعد و تجربه.** فرم نسخه‌دار و field validation؛ SLA؛ تفکیک «درخواست داخلی» از تغییر ERP رسمی؛ SoD. کتابخانه فرم‌ها، ویزارد ساده، مرحله انتظار/تأیید، اسناد/تاریخچه.
+- **مدل و قرارداد پیشنهادی.** قرارداد منطقی `FormDefinition(id,version,schema), InternalRequest(id,type,status,owner), ApprovalStep, RequestEvent`. `GET /api/v1/forms؛ POST /api/v1/requests؛ POST /requests/{id}/actions`. مسیر فیزیکی با API، Migration و Provider موجود تطبیق داده شود.
+- **اتصال، وابستگی و پذیرش.** `src/services/dynamicFormEngine.ts؛ src/lib/internalAutomation.ts؛ src/lib/internalWorkflow.ts`. پیش‌نیاز `03، 04، 06`. سناریوهای پذیرش `دو تأیید همزمان، مدیر مرخصی، فیلد اجباری حذف‌شده نسخه قبلی، رد/عودت`. قید امنیت `تصویب با role+amount+scope، محرمانگی درخواست`.
+
+#### C22 — جریمه، ارزیابی، اعتراض و ارسال سند رسمی
+
+- **هدف و گردش.** انضباط منصفانه با سابقه قابل دفاع. مدیر رویداد تخلف را با قانون و شاهد ثبت؛ شخص حق مشاهده/اعتراض طبق سیاست؛ تأیید حقوقی/مدیر؛ در صورت نیاز سند ERP.
+- **قواعد و تجربه.** مبلغ/وزن/حد جرایم در policy نسخه‌دار؛ جریمه بدون شواهد و تایید مؤثر نیست؛ تخفیف/لغو تاریخچه حفظ. پرونده رخداد، شواهد، تایم‌لاین دفاع، اثر حقوقی پیشنهادی و وضعیت سند.
+- **مدل و قرارداد پیشنهادی.** قرارداد منطقی `PenaltyPolicy(id,version,rule), PenaltyCase(id,employee,event,amount,status), Appeal, PenaltyDecision, IntegrationCommandRef`. `POST/GET /api/v1/penalties؛ POST /penalties/{id}/appeals؛ /approve؛ /send-to-erp`. مسیر فیزیکی با API، Migration و Provider موجود تطبیق داده شود.
+- **اتصال، وابستگی و پذیرش.** `src/lib/orgPolicy.ts؛ src/services/payrollEngine.ts؛ approvals/outbox`. پیش‌نیاز `03، 02، 21، 23`. سناریوهای پذیرش `اعتراض، بخشودگی، انقضا، تغییر قانون بعد واقعه، مدیر شخص خودش`. قید امنیت `دو مرحله تایید و دسترسی حداقلی؛ حقوق خودکار تغییر نکند`.
+
+#### C26 — دستورالعمل‌های سازمانی SOP، دانش و جانشین‌پروری
+
+- **هدف و گردش.** پایداری دانش و پاسخ‌گویی مستقل از افراد. در هر فعالیت راهنمای مرتبط و نسخه معتبر نمایش داده شود؛ کارمند مطالعه/آزمون؛ هنگام خروج انتقال open tasks و ownership.
+- **قواعد و تجربه.** هر فرآیند دارای owner,backup,definition,form,KPI,reviewDate؛ تغییر SOP روی پرونده سابق retroactive اجرا نشود. کتابخانه دانش، Help context، SOP inline، چک‌لیست انتقال کار، «چه کسی جانشین است».
+- **مدل و قرارداد پیشنهادی.** قرارداد منطقی `SopDocument(id,version,role,scope), SopReadReceipt, RoleBackupAssignment, HandoverCase`. `GET /api/v1/knowledge؛ /knowledge/context؛ POST /handover-cases؛ POST /sop/{id}/ack`. مسیر فیزیکی با API، Migration و Provider موجود تطبیق داده شود.
+- **اتصال، وابستگی و پذیرش.** `docs/Project.pdf و B(1).txt؛ src/lib/orgPolicy.ts؛ taskWorkflow`. پیش‌نیاز `03، 04، 23`. سناریوهای پذیرش `عدم وجود جانشین، انتشار نسخه جدید، موظف بودن چند واحد، خروج ناگهانی`. قید امنیت `اسناد داخلی ACL و immutable revision`.
+
+#### C27 — میز خدمت، شکایت و وضعیت تحویل/برگشتی
+
+- **هدف و گردش.** حفظ مشتری و حل سریع مسئله خدمات. فروش/پخش مشتری شکایت/تأخیر/مرجوعی را از ERP تشخیص؛ پرونده خدمات با تعهد پاسخ، مالک و اقدام ایجاد؛ بعد اصلاح ERP بسته.
+- **قواعد و تجربه.** SLA نوع شکایت، علت، شواهد و نرخ تکرار؛ ادعای تحویل بدون سند رسمی پذیرفته نشود. لیست پرونده خدمات، وضعیت بار/مرجوعی، تایم‌لاین و دکمه پیگیری محترمانه.
+- **مدل و قرارداد پیشنهادی.** قرارداد منطقی `ServiceCase(id,customerId,sourceDocId,type,status,ownerId), ServiceEvent, ResolutionProof`. `GET/POST /api/v1/service-cases؛ POST /service-cases/{id}/resolve؛ GET /dispatch/{id}/status`. مسیر فیزیکی با API، Migration و Provider موجود تطبیق داده شود.
+- **اتصال، وابستگی و پذیرش.** `src/lib/operationsEngine.ts؛ taskWorkflow؛ ERP Mirror`. پیش‌نیاز `01، 04، 08، 07`. سناریوهای پذیرش `بار معطل، اختلاف وزن، مرجوعی، پاسخ مشتری نامعلوم، سند اصلاحی تأخیری`. قید امنیت `مشتری فقط داده خود، شواهد قابل اتکا`.
+
+#### C29 — جلسات مدیریتی، تصمیم‌ها و مدیریت ریسک/بحران
+
+- **هدف و گردش.** اجرای مصوبات، کاهش فراموشی و افزایش تاب‌آوری. جلسه با دستور، صورت‌جلسه، تصمیم، تسک، مسئول و موعد؛ در جلسه بعد وضعیت اجرای خودکار؛ playbook قطع ERP/فقدان نیرو.
+- **قواعد و تجربه.** تصمیم بدون مالک و deadline نیازمند اصلاح؛ تست سناریو بحران و بازیابی؛ هیچ پیام «رفع شد» بدون تأیید. صفحه جلسه، decision board، گانت سبک، playbook بحران و checklist.
+- **مدل و قرارداد پیشنهادی.** قرارداد منطقی `ManagementMeeting(id,date,scope), Decision(id,owner,dueAt,status), Incident(id,severity,owner), RecoveryRun`. `GET/POST /api/v1/meetings؛ /decisions؛ /incidents؛ POST /incidents/{id}/resolve`. مسیر فیزیکی با API، Migration و Provider موجود تطبیق داده شود.
+- **اتصال، وابستگی و پذیرش.** `src/lib/decisionBriefs.ts؛ src/lib/internalWorkflow.ts؛ taskWorkflow`. پیش‌نیاز `04، 06، 26، health`. سناریوهای پذیرش `جلسه بدون مسئول، تصمیم تکراری، قطع ERP، انقضای SSO، restore خطا`. قید امنیت `Auditable minutes و role-scoped incident access`.
 
 ## ۷. گزارش‌ها، تحلیل و نمودارها
 
@@ -366,6 +449,50 @@
 ### ۷-۳. حوزهٔ دید
 همهٔ گزارش‌ها از حوزهٔ دید §۵-۴ تبعیت می‌کنند (سرپرست فقط تیم خود).
 
+### ۷-۳-الف. قراردادهای فروش و میدان
+
+#### C15 — افزایش فروش روی سفارش ERP و میز مذاکره
+
+- **هدف و گردش.** رشد سبد بدون تبدیل CRM به ERP. از سفارش واقعی وارد میز مذاکره؛ سیستم کالا/مقدار مکمل پیشنهاد؛ مدیر حاشیه را می‌بیند؛ تغییر تأیید به ERP درخواست می‌شود.
+- **قواعد و تجربه.** Quote ≠ Order؛ version match؛ سیاست قیمت/تخفیف/طرح در DB؛ افزایش فقط با اعتبار و permission. پنل سفارش خواندنی، پیشنهادی‌ها با دلیل، مقایسه قبل/بعد و مارجین، Send status.
+- **مدل و قرارداد پیشنهادی.** قرارداد منطقی `Negotiation(id,sourceOrderId,stage,owner), ProposalLine(productId,qty,priceRuleId), ProposalVersion, CommandLink`. `GET/POST /api/v1/negotiations؛ GET /orders/{id}/upsell-suggestions؛ POST /negotiations/{id}/submit`. مسیر فیزیکی با API، Migration و Provider موجود تطبیق داده شود.
+- **اتصال، وابستگی و پذیرش.** `src/lib/negotiationEngine.ts؛ src/lib/cpqEngine.ts؛ src/lib/negotiationErpLifecycle.ts`. پیش‌نیاز `02، 08، 12، 13`. سناریوهای پذیرش `سفارش بین مذاکره در ERP تغییر کند، کف سود رد، طرح ترکیبی، نبود کالا، re-submit`. قید امنیت `اجازه قیمت و Override فقط با approval و audit`.
+
+#### C16 — پیشنهاد خرید بعدی، ریزش و Next Best Action
+
+- **هدف و گردش.** افزایش تکرار خرید و جلوگیری از مشتری خوابیده. با تاریخ خرید/ویزیت/کالا، چرخه خرید مشتری تخمین می‌شود؛ علت افت و اقدام پیشنهادی با confidence و تسک؛ نتیجه بعدی سنجش.
+- **قواعد و تجربه.** آستانه، پنجره زمانی، تفاوت فصلی، تعطیل/مقطعی و کمبود کالا از DB policy؛ بدون data پیشنهاد جعلی ممنوع. باکس «چرا این پیشنهاد؟»، احتمال، منبع، آخرین خرید و ایجاد تماس/ویزیت.
+- **مدل و قرارداد پیشنهادی.** قرارداد منطقی `CustomerBehaviorFeature(customerId,period,metricVersion), ActionRecommendation(id,confidence,evidence,status), ActionOutcome`. `GET /api/v1/customers/{id}/recommendations؛ GET /api/v1/sales/churn-risk؛ POST /recommendations/{id}/accept`. مسیر فیزیکی با API، Migration و Provider موجود تطبیق داده شود.
+- **اتصال، وابستگی و پذیرش.** `src/services/churnPredictionService.ts؛ src/lib/insights.ts؛ src/lib/decisionBriefs.ts`. پیش‌نیاز `08، 04، 19`. سناریوهای پذیرش `مشتری تازه، دوره بدون فروش، فصل، برگشت سنگین، داده ناقص، no data AI`. قید امنیت `Explainability، عدم ارسال خودکار پیام تحریک‌آمیز`.
+
+#### C17 — سرنخ‌ها، فرصت‌ها، کمپین و بازار هدف
+
+- **هدف و گردش.** ساخت قیف فروش جدید و ارزیابی واقعی کمپین. کاربر سرنخ ثبت؛ dedupe مشتری؛ مرحله و احتمال با شواهد؛ برنامه تماس/ویزیت و کمپین؛ هزینه و فروش افزوده جدا.
+- **قواعد و تجربه.** Lead stage policy؛ campaign ROI با درآمد/سود افزوده معتبر و هزینه؛ cross-sell منوط margin. کانبان Pipeline، فیلتر منطقه/منبع، فرم سریع، قیف تبدیل، نمودار cohort.
+- **مدل و قرارداد پیشنهادی.** قرارداد منطقی `Lead(id,source,status,owner,zone), Opportunity(id,customerId,stage,forecast), Campaign(id,budget,period), CampaignTouch`. `GET/POST /api/v1/leads؛ /opportunities؛ /campaigns؛ /campaigns/{id}/performance`. مسیر فیزیکی با API، Migration و Provider موجود تطبیق داده شود.
+- **اتصال، وابستگی و پذیرش.** `src/lib/segments.ts؛ src/lib/customerProposal.ts؛ negotiation engines؛ existing Routes`. پیش‌نیاز `04، 08، 15، 19`. سناریوهای پذیرش `Duplicate lead، تبدیل به مشتری ERP، کمپین بدون گروه پایه، lead بدون مجوز شعبه`. قید امنیت `Consent/outbound messaging، audit marketing claims`.
+
+#### C18 — نظام ویزیت میدانی ۱۰ مرحله‌ای و تور ثابت
+
+- **هدف و گردش.** افزایش نرخ تبدیل، پوشش و اجرای میدانی. ویزیتور برنامه مسیر می‌بیند؛ پیش از ویزیت خرید/بدهی بررسی؛ در فروشگاه checklists، وصول، چیدمان، پیشنهاد، ثبت نتیجه و اقدام بعد.
+- **قواعد و تجربه.** گام‌های ده‌گانه از B(1).txt؛ نرخ پوشش/StrikeRate/هدف SKU از metric registry؛ GPS فقط با رضایت و سیاست. صفحه امروز من، نقشه تور، card مشتری، فرم Check-in/Out، چک‌لیست ۱۰ گام و تصویر قفسه.
+- **مدل و قرارداد پیشنهادی.** قرارداد منطقی `VisitPlan(ownerId,customerId,sequence,scheduledAt), VisitEvent, VisitChecklistResponse, DisplayEvidence`. `GET /api/v1/visits/today؛ POST /visits/{id}/check-in؛ /checklist؛ /complete`. مسیر فیزیکی با API، Migration و Provider موجود تطبیق داده شود.
+- **اتصال، وابستگی و پذیرش.** `src/services/tourEngine.ts؛ src/lib/geoRoutingEngine.ts؛ src/lib/geoIntelligence.ts`. پیش‌نیاز `08، 09، 19، 20، 24`. سناریوهای پذیرش `ویزیت بدون GPS، مشتری بسته، مسیر خارج برنامه، اتصال موقت قطع، ویزیت دوباره`. قید امنیت `Privacy location / data minimization؛ offline claim جدا از LIVE`.
+
+#### C19 — زون، پوشش بازار، Heatmap و پیشنهاد توسعه
+
+- **هدف و گردش.** افزایش نفوذ منطقه‌ای و تخصیص صحیح تیم. مدیر نقشه پوشش، مشتری فعال/غیرفعال، SKU penetration، شکاف منطقه و مسیر را می‌بیند؛ برنامه اقدام ایجاد می‌شود.
+- **قواعد و تجربه.** coverage=active served / eligible target؛ denominator policy؛ بدون داده کامل «نامشخص»؛ هیچ geo ساختگی. نقشه حرارتی فیلترشونده، فهرست مشتری پشت نقشه، مقایسه دوره/ویزیت/فروش.
+- **مدل و قرارداد پیشنهادی.** قرارداد منطقی `SalesZone(id,geometry,owner), CoverageFact(period,zone,metricVersion), TerritoryAssignment`. `GET /api/v1/geo/coverage؛ /geo/product-heatmap؛ /geo/white-spaces`. مسیر فیزیکی با API، Migration و Provider موجود تطبیق داده شود.
+- **اتصال، وابستگی و پذیرش.** `src/lib/geoIntelligence.ts؛ productZoneHeatmap.ts؛ geoRoutingEngine.ts`. پیش‌نیاز `01، 08، 18`. سناریوهای پذیرش `حذف موقعیت مشتری، مختصات نامعتبر، محل تکراری، تراکم بالا، مشتری بدون زون`. قید امنیت `محدود کردن دسترسی مختصات، location consent`.
+
+#### C20 — طبقه‌بندی مشتریان، KAM و HoReCa
+
+- **هدف و گردش.** توسعه کانال‌های سودآور و برنامه بازدید. سرپرست رده‌بندی A/B/C/D یا RFM مبتنی داده را می‌بیند؛ مدیر حساب کلیدی برنامه رابطه/تعهد و فرصت کانال را مدیریت می‌کند.
+- **قواعد و تجربه.** معیارهای رتبه و فرکانس بازدید در DB؛ A/B/C/D نمونه نظام AT-COS نه ثابت برنامه؛ کانال مستقل. Customer Segment detail، برنامه حساب، scorecard، نیازهای HORECA و وفاداری.
+- **مدل و قرارداد پیشنهادی.** قرارداد منطقی `SegmentPolicy(id,version,criteria), CustomerSegment(customerId,period,score), KeyAccountPlan, ChannelOpportunity`. `GET /api/v1/customers/segments؛ /key-accounts؛ POST /key-accounts/{id}/plans`. مسیر فیزیکی با API، Migration و Provider موجود تطبیق داده شود.
+- **اتصال، وابستگی و پذیرش.** `src/lib/segments.ts؛ customer360 UI؛ reports`. پیش‌نیاز `08، 18، 19`. سناریوهای پذیرش `کانال‌های همپوشان، تغییر فصل، داده ناقص، مشتری تازه/عمده`. قید امنیت `حفاظت از اطلاعات تجاری کلیدی`.
+
 ### ۷-۴. داشبوردهای حوزه‌ای و پرونده ۳۶۰ (سبک: `docs/DESIGN_SYSTEM_FA.md` §۹)
 به‌جای «یک صفحه برای هر گزارش»، گزارش‌های مرتبط در **داشبوردهای ۴ تا ۷ ویجتی** کنار هم می‌آیند؛ هر ویجت با Drill-down به گزارش کامل می‌رود و هر داشبورد تب قرصی، فیلتر سراسری و فیلتر محلی کارت خودش را دارد:
 - **فروش** (فضای ۳): R2 + R3 + R5 + R6 ← KPI ۲×۲ با اسپارک، روند درآمد، دونات منبع/گروه، رتبهٔ فروشندگان؛ تب‌ها: نمای کلی / فروش / عملکرد / فعالیت.
@@ -375,6 +502,22 @@
 - **بینش‌ها:** D1 و بینش‌های قاعده‌محور هر حوزه (فرصت/در خطر/نیازمند اقدام) با دکمهٔ «ایجاد تسک».
 - **پرونده ۳۶۰ مشتری** (`/accounts`): سربرگ، اطلاعات تماس، امتیاز سلامت (موتور واقعی)، مانده/خرید، تایم‌لاین، نمودار ماهانه، یادداشت/توصیهٔ سیستم.
 هر نوع نمودار ECharts مجاز است به‌شرط رعایت §۹ سیستم طراحی؛ نمودار پایه و پرتراکم ممنوع.
+
+### ۷-۵. قراردادهای تحلیلی و پروندهٔ مشتری
+
+#### C08 — پرونده مشتری ۳۶۰ و وضعیت قابل پاسخ
+
+- **هدف و گردش.** پاسخ یکجا درباره خرید، مانده، چک، فرصت و اقدام. از مشتری وارد خرید/فاکتور/مانده دفتری/چک/وصول/تماس/وظایف/شکایت می‌شود؛ تمام لینک‌ها Drill-down.
+- **قواعد و تجربه.** هویت مشتری با source mapping؛ کلیه مانده‌ها تفصیلی×معین؛ unknown به‌جای صفر؛ timeline ترتیب رویداد sourceAt/receivedAt. header هویت، KPI strip، تب‌های «فروش، مالی، فعالیت، خدمات، اسناد»، تسک و Chatter داخل پرونده.
+- **مدل و قرارداد پیشنهادی.** قرارداد منطقی `CustomerMirror(sourceId,detailCode,...), CustomerTimeline(eventId,entityType,occurredAt,source), CustomerAccessScope`. `GET /api/v1/customers/{id}/360؛ /timeline؛ /receivables؛ /tasks`. مسیر فیزیکی با API، Migration و Provider موجود تطبیق داده شود.
+- **اتصال، وابستگی و پذیرش.** `Customer360 components؛ src/services/dataProvider.ts؛ src/lib/segments.ts`. پیش‌نیاز `01، 03، 04، 05، 10`. سناریوهای پذیرش `مشتری چند معین، تغییر کد تفصیلی، No Data، stale ERP، کاربر فاقد مجوز سود`. قید امنیت `فیلتر row-level و masking فیلدهای حساس`.
+
+#### C28 — اتاق فرمان مدیرعامل، گزارش‌ها و KPI
+
+- **هدف و گردش.** تصمیم سریع درباره فروش، پول، سود، ریسک، اجرا و رشد. مدیر داشبورد وضعیت با ۳-۵ KPI اصلی و drill-down؛ برای هر هشدار «چرا، سند، مسئول، اقدام»؛ گزارش نقشه/زون.
+- **قواعد و تجربه.** KPI Registry منبع یگانه؛ هر عدد sourceCoverage/confidence/period/currency؛ رتبه‌بندی با معیار و گزارش stale جدا. Executive Cockpit با ترکیب کارت فشرده، ECharts trend/waterfall/funnel/heatmap، اعلان بحران و منوی اقدام.
+- **مدل و قرارداد پیشنهادی.** قرارداد منطقی `ReportDefinition, ReportAccess, MetricSnapshot, FindingLink, DecisionRecord (پس از audit ساختار موجود)`. `GET /api/v1/reports/executive؛ /reports/{key}؛ /metrics/{id}/lineage؛ POST /decisions`. مسیر فیزیکی با API، Migration و Provider موجود تطبیق داده شود.
+- **اتصال، وابستگی و پذیرش.** `src/lib/metricRegistry.ts؛ reportAnalytics.ts؛ src/lib/decisionBriefs.ts؛ ReportsHub`. پیش‌نیاز `07، 09، 13، 14، 16، 19`. سناریوهای پذیرش `مقدار صفر vs null، مخاطب شعبه، فرمول غلط، داده دیررس، export مجوزندارد`. قید امنیت `محرمانگی گزارش، audit export و عدم AI hallucination`.
 
 ## ۸. ممیزی و قواعد SQL و داده
 قراردادهای مفهومی پایش و منابع انسانی فقط در §۱۵ به‌عنوان مرجع داده این حوزه‌ها نگهداری می‌شوند؛ این نام‌ها مجوز ساخت جدول بدون ممیزی نیستند. معیارهای پذیرش سرتاسری در §۱۶ مرجع واحد دارند.
@@ -395,7 +538,7 @@
 **الزامات یکپارچگی (برای هر واحد):** ماژول مستقل + منوی استاندارد + داشبورد مدیریتی؛ جداول و روابط صحیح؛ ذخیره دائمی در پایگاه داده؛ ممنوعیت داده آزمایشی به‌جای واقعی؛ نقش/مجوز؛ تاریخچه تغییرات و فعالیت؛ گردش کار و تأیید؛ گزارش مدیریتی و عملیاتی؛ هشدار سررسید/بدهی/قرارداد/وظیفه؛ رابط فارسی راست‌چین موبایل و دسکتاپ؛ ارتباط با فروش، مالی، انبار، توزیع و مشتریان؛ آزمون ثبت/ویرایش/حذف مجاز/بازیابی؛ رعایت محرمانگی مالی، پرسنلی و حقوقی.
 **تحویل هر ماژول:** رابط کاربری، منطق و گردش کار، پایگاه داده، رابط‌های برنامه‌نویسی، گزارش و داشبورد، تست؛ وضعیت جداگانه: اجراشده / ناموفق / مسدود / تأییدنشده.
 
-## ۱۰. وضعیت تاریخی سورس (ممیزی v0.12.62؛ ۲۰۲۶-۱۱-۱۵ — نیازمند ممیزی مجدد روی v0.12.90)
+## ۱۰. وضعیت تاریخی سورس (ممیزی v0.12.62؛ ۲۰۲۶-۱۱-۱۵)
 
 - **تست:** خط پایه قبل از این پاک‌سازی: ۱۰۳ PASS / ۷ FAIL / ۰ خارج از Manifest (`node scripts/run-tests.mjs`). هفت شکست فقط نبود وابستگی (`jalaali-js`، `zustand`، `react`) است؛ `npm install` ممکن نبود. Build/tsc: BLOCKED.
 - **فایل‌ها:** ۲۳۶ فایل `src`؛ ۲۲۰ از `main.tsx` قابل‌دسترس؛ **۱۶ بدون ارجاع (باید وصل یا طبق ممیزی تعیین‌تکلیف شوند، حذف فقط با ممیزی مصرف‌کننده):** `ReportEnginePanels` (۹۴KB)، `LightHighwayCanvas`، `ProfitWaterfallChart`، `MotionListItem`، `NotificationCenter`، `useDocumentAutoFill`، `confetti`، `notifyAndPush`، `repository` + موتورهای فقط‌تست‌شده: `erpContracts`، `erpImportService`، `etlPipeline`، `ledgerPnl`، `metricRegistry`، `negotiationErpLifecycle`، `reportAnalytics`.
@@ -465,10 +608,36 @@
 پارامترها: مانده مشمول (فاکتورهای قابل‌وصول منهای تخصیص/بستانکاری)، روز تأخیر، چک سررسیدشده، مهلت ارفاقی، نرخ، سقف، بخشودگی، تاریخ مؤثر، نسخه سیاست.
 - **پیشنهاد:** `جریمه = min(سقف, مانده_مشمول × نرخ_روزانه × max(0, روز_تأخیر − مهلت_ارفاقی)) − بخشودگی`، یک بار برای هر مبنا (جلوگیری از اعمال مجدد)، پیش‌نمایش، تأیید، لغو/اصلاح/محاسبه مجدد، سیاست جدید نتیجه قدیمی را تغییر نمی‌دهد. کاملاً مستقل از حقوق پرسنل.
 
-### ۸. FIFO و موجودی — وضعیت: هدف
+### ۸. FIFO و موجودی — مصوبهٔ ۲۰۲۶-۱۱-۲۰
 
-- **الزام ذخیره FIFO در دیتابیس خودمان:** اگر محاسبه FIFO/موجودی انبار لازم شود (با هر طرحی)، لایه‌ها و مصرف آن‌ها در دیتابیس CRM ذخیره می‌شوند، نه State/آرایهٔ موقت: لایهٔ موجودی (کالا، انبار، تاریخ ورود، مرجع سند رسید/برگشت، تعداد اولیه/باقی‌مانده، بهای واحد، منبع و وضعیت تأیید) و ریز مصرف لایه (مرجع فروش/خروج/برگشت، تعداد، بهای مصرف‌شده) با Migration افزایشی (ابتدا ممیزی `ProductCostMirror`/`InventorySnapshotMirror`؛ جدول موازی نسازید)؛ محاسبه و بازیابی فقط از مسیر `DataProvider`؛ ماندهٔ لایه‌ها قابل بازتولید از گردش (replay idempotent)؛ تا کامل‌بودن گردش‌ها نمایش `NOT VERIFIED`؛ مشخصات کالا از ERP فقط‌خواندنی می‌ماند.
-لایه‌های ورودی از رسید خرید (مقدار، بهای واحد، تاریخ)؛ خروج فروش از قدیمی‌ترین لایه؛ برگشت فروش به لایه مبدأ؛ برگشت از خرید کاهش لایه؛ `بهای تمام‌شده فروش = Σ(مقدار مصرفی از لایه × بهای لایه)`؛ موجودی = Σ باقی‌مانده لایه‌ها. تا کامل و معتبر بودن تمام گردش‌ها وضعیت `NOT VERIFIED`. منبع: `stockMovements`، رسید/سفارش خرید، فاکتور، برگشت‌ها (اکنون Seed با LOCAL_TEST و `product.stock` جمع ساده).
+CRM محاسبهٔ تحلیلی و پایدارسازی لایه و مصرف را انجام می‌دهد. ERP مالک اسناد گردش و موجودی رسمی است. رابط موجود فقط‌خواندنی است و موتور کامل تا اتصال افتتاحیه و گردش رسمی باز است.
+
+**ورودی:** موجودی ابتدای دوره ERP (تعداد + بهای واحد یا ارزش کل قابل تبدیل معتبر)، گردش ورودی‌های رسمی (خرید/رسید و برگشت از فروش مطابق مرجع)، خروجی‌های رسمی (فروش، برگشت به تأمین‌کننده، مصرف/ضایعات اگر در داده ERP مؤثر است)، انتقال بین انبارها و اصلاحات دارای سند؛ واحد اندازه‌گیری، تبدیل بسته/شل، کالا، انبار، تاریخ مؤثر، sequence سند، نرخ ارز/هزینه قابل استناد.
+
+**موتور:**
+1. `OpeningSnapshot` معتبر به لایه‌های اولیه FIFO تبدیل می‌شود؛ اگر فقط ارزش کل موجود است و بهای هر لایه تاریخی معلوم نیست، یک لایه افتتاحیه `OPENING_AGGREGATE` با قیمت متوسط ارزش/تعداد به‌صورت **فرض حسابداری افتتاحیه دارای برچسب** ساخته شود، فقط در صورت مجوز سیاست نسخه‌دار؛ وگرنه `NOT VERIFIED`.
+2. هر ورودی مؤثر یک لایه `(Item, Warehouse, EffectiveDate, SourceDocumentId, SourceLineId, Sequence, QtyInitial, QtyRemaining, UnitCost, TotalValue, Currency, CostMethodVersion)` ایجاد می‌کند.
+3. هر خروج به ترتیب `(EffectiveDate, Sequence, StableId)` از قدیمی‌ترین لایه‌های قابل استفاده همان کالا/انبار تخصیص می‌یابد؛ برای هر برداشت `LayerConsumption` با `Qty/UnitCost/TotalCost/SourceSaleLine` ذخیره شود.
+4. `QtyOnHand = OpeningQty + ΣReceipts - ΣIssues + ΣReturns ± ΣAuthorizedAdjustments` به تفکیک کالا×انبار×دوره؛ `InventoryValue = Σ(QtyRemaining_layer × UnitCost_layer)` با دقت Decimal.
+5. `COGS(saleLine) = Σ(consumedQty_i × layerUnitCost_i)`؛ هزینه کل فاکتور جمع COGS خطوط پس از اثر برگشت‌های مرتبط.
+6. برگشت فروش در صورت داشتن `originalConsumption` باید با بازگردانی لایه/بهای اصلی و اثر زمانی قابل ردیابی اجرا شود؛ اگر مرجع فروش نامعلوم است policy مستند «valuation pending» یا سیاست مصوب قابل تنظیم، نه تخمین خاموش.
+7. اصلاح یا لغو سند، backdated posting و تغییر opening باعث **بازمحاسبه قطعی از نخستین تاریخ مؤثر** می‌شوند؛ snapshot/version قبلی برای audit حفظ، محاسبه atomically publish شود.
+8. انتقال بین انبارها هزینه لایه را حفظ کند و در انبار مقصد با trace مناسب ثبت شود؛ double count ممنوع.
+9. Qty منفی، unitCost نامعتبر، شناسه تکراری، ترتیب نامشخص، اختلاف UOM، ارز ناسازگار، نبود گردش یا checksum failure → `NOT VERIFIED/REQUIRES_RECONCILIATION` نه عدد غلط.
+10. `Decimal(28,6)` برای مقدار و `Decimal(28,8)` برای UnitCost به‌عنوان **پیشنهاد فنی**؛ با قواعد مالی/مقیاس موجود SQL تطبیق داده شود، نه تکرار کورکورانه. جمع/گرد کردن در سطح خط/سند بر اساس سیاست نسخه‌دار، بدون float مالی.
+11. موجودی/COGS تحلیلی CRM از موجودی قانونی ERP واضح تفکیک و با گزارش reconciliation دوره‌ای مقایسه شود.
+12. اثر برگشت و قیمت خرید اصلاحی، بهای حمل/عوارض قابل تخصیص، فروش با طرح و کالاهای هدیه فقط با قرارداد قیمت تمام‌شده معتبر اعمال شود؛ واحد فروش و حسابداری از هم جدا باقی بمانند.
+
+**سناریوهای تست عددی نمونه فقط در پوشه tests**: افتتاحیه ۱۰ عدد × ۱۰۰، ورود ۵ عدد × ۱۲۰، خروج ۱۲ عدد => COGS=۱٬۲۴۰ و مانده ۳ عدد × ۱۲۰=۳۶۰؛ replay مجدد هیچ تغییری ندهد. برگشت دو عدد از فروش با رجوع به ریز تخصیص، اصلاح تاریخ‌گذشته، shortage، duplicate، انتقال و Currency تست شوند. اعداد مثال نباید وارد کد عملیاتی/seed production شوند.
+
+### ۸-الف. قرارداد اجرایی FIFO
+
+#### C12 — FIFO تحلیلی و لایه‌های SQL
+
+- **هدف و گردش.** ارزش موجودی و COGS دقیق، بدون خرید و انبار موازی. موتور از اول دوره و ERP stream وارد محاسبات می‌شود؛ لایه‌های جدید و مصرف را پایدار و قابل ردیابی می‌کند؛ روی اصلاح سند بازپخش.
+- **قواعد و تجربه.** فرمول‌ها و ۱۲ استثنای §۴.۲؛ اصل قدیمی‌ترین لایه؛ برگشت source-aware؛ replay و period freeze. داشبورد موجودی تعداد/ارزش/کیفیت؛ جدول لایه‌ها و trace مصرف فاکتور؛ هشدار unknown.
+- **مدل و قرارداد پیشنهادی.** قرارداد منطقی `FifoOpening, FifoLayer, FifoConsumption, FifoRun, FifoException, FifoReconciliation با FK/tenant/RLS؛ اول audit ProductCostMirror`. `GET /api/v1/inventory/fifo/valuation؛ /fifo/layers؛ /fifo/sales/{id}/cogs؛ POST /fifo/rebuild service-only`. مسیر فیزیکی با API، Migration و Provider موجود تطبیق داده شود.
+- **اتصال، وابستگی و پذیرش.** `src/components/OperationsSupplementalTabs.tsx؛ src/lib/ledgerPnl.ts؛ provider؛ migrations 017/022/024 + جدید فقط پس از audit`. پیش‌نیاز `01، 03، 10، item and UOM mapping`. سناریوهای پذیرش `Opening 10@100 + receipt 5@120 - sale12=COGS1240/value360؛ negative stock؛ return؛ backdate؛ replay؛ multiwarehouse`. قید امنیت `تراکنش سریال/قفل محاسبه، نسخه اثرگذار، checksum و RLS`.
 
 ### ۹. وضعیت منبع داده هر خروجی
 هر خروجی محاسباتی باید `LIVE / LOCAL / DEMO / PARTIAL / STALE / UNAVAILABLE` را نشان دهد؛ داده ناقص NULL می‌ماند و حدس زده نمی‌شود.
@@ -595,6 +764,37 @@
 
 هر Rule باید حداقل شناسه، شرح، حوزه، شدت، شرط، پارامتر، بازه زمانی، شعبه/انبار مشمول، مسئول، SLA، اقدام مورد انتظار، نسخه، تاریخ اعتبار، منبع داده/نگاشت دقیق، شواهد، coverage و تست داشته باشد. مدیر مجاز باید فعال/غیرفعال، شدت، آستانه، بازه، شعبه/انبار، مسئول، حداقل سود، سقف تخفیف، مهلت و اقدام مورد انتظار را تنظیم کند. همه تغییرات نسخه‌دار و audit شوند.
 
+### ۱۲-۴-الف. قرارداد پروندهٔ مغایرت
+
+#### C07 — مرکز مغایرت و پایش حوزه‌ای ERP
+
+- **هدف و گردش.** تشخیص خطا، اقدام، اثبات رفع و جلوگیری از افت کیفیت. Rule روی تغییر mirror اجرا؛ finding پایدار با شواهد ساخته می‌شود؛ مسئول رسیدگی و تأیید/استثنا؛ بعد sync مجدد رفع واقعی تأیید می‌شود.
+- **قواعد و تجربه.** rule versioned؛ status جدید/فعال/تحت بررسی/تأیید با علت/حل‌شده/بازگشوده؛ رفع فقط با داده جدید سالم؛ exception دارای expiry. landing هشدارها، دسته‌بندی حوزه، کارت severity، نوار فیلتر/زمان، timeline علت و مستندات.
+- **مدل و قرارداد پیشنهادی.** قرارداد منطقی `MonitorRule(id,version,domain,parameterSet,scope), Finding(id,ruleVersion,sourceEntityId,fingerprint,status,severity), FindingEvent, FindingEvidence`. `GET /api/v1/findings؛ POST /findings/{id}/actions؛ GET /monitoring/rules؛ POST /findings/{id}/recheck`. مسیر فیزیکی با API، Migration و Provider موجود تطبیق داده شود.
+- **اتصال، وابستگی و پذیرش.** `src/services/operationalExceptionCenter.ts؛ src/lib/erpDataQuality.ts؛ src/lib/insights.ts؛ domain reports`. پیش‌نیاز `01، 03، 04`. سناریوهای پذیرش `همان batch مجدد، تغییر نسخه قانون، تأیید موقت و رخداد جدید، داده دیررس، حل بدون Pull نباید رخ دهد`. قید امنیت `مدیر و واحد مربوطه فقط دامنه خود را ببینند؛ immutable evidence`.
+
+### ۱۲-۵. قواعد پذیرش ER01 تا ER15 — مصوبهٔ ۲۰۲۶-۱۱-۲۰
+
+| کد قانون | رخداد/مشکل | معیار تشخیص و استثنا | اقدام قابل اجرا/شاهد |
+|---|---|---|---|
+| ER01 | سند مالی نامعتبر/اشتباه | سند ثبت‌شده بدون توازن بدهکار/بستانکار، تفصیلی/معین ناسازگار، دوره بسته، مرجع نادرست؛ tolerance پول نسخه‌دار نه هاردکد | Finding مالی با لینک ریزسند، وظیفه حسابدار، مسیر اصلاح رسمی ERP، recheck |
+| ER02 | موبایل اشتباه | نرمال‌سازی `+98/0098/0` برای شماره ایران طبق rule version؛ طول/الگو نامعتبر، چند شماره مشترک مورد تردید؛ شماره ثابت و خارجی مجاز با نوع جداگانه | پیشنهاد تصحیح یا درخواست تأیید انسانی، جلوگیری از ادغام خودکار مشتری، audit قبل/بعد |
+| ER03 | مشتری در مسیر اشتباه | انتساب رسمی فعال مشتری با محدوده زون، شهر/آدرس و مسیر توافقی ناسازگار؛ GPS/آدرس بی‌کیفیت => UNKNOWN نه اشتباه قطعی | هشدار به سرپرست، پیشنهاد تغییر مسیر، approval و Push/Sync رسمی |
+| ER04 | مشتری بدون مسیر | مشتری فعال و قابل ویزیت بدون انتساب معتبر در بازه اثر (به‌جز استثنای کانال عمده/مشخص) | صف انتساب، گزارش پوشش و مسئول تعیین |
+| ER05 | مشتری مدت طولانی بدون خرید | آخرین سفارش/فاکتور معتبر نسبت به الگوی دوره‌ای خودش و آستانه نسخه‌دار؛ رکورد جدید/تعلیق/فصلی استثنا | فرصت بازگشت و follow-up با اطلاعات آخرین سبد و علت |
+| ER06 | مشتری احتمالی تکراری | رتبه‌بندی مشابهت کد ملی/شناسه معتبر در دسترس، موبایل، نام، تابلو، آدرس؛ امتیاز فقط پیشنهاد و قابل توضیح | پرونده Compare/Merge با تأیید انسان و نگاشت ExternalId؛ هرگز Auto-merge |
+| ER07 | گردش حساب با سرفصل ناسازگار | سند معتبر از ERP با AccountClass، معین، تفصیلی، جهت بدهکار/بستانکار مخالف سیاست و تاریخچه حساب؛ استثناء تعدیل/بستانکار طبیعی | گزارش دلیل، ریز گردش، Action برای کنترل کدینگ |
+| ER08 | مشتری بستانکار غیرمنتظره | `Σ بدهکار − Σ بستانکار < 0` در حساب‌های بدهکارماهیت مربوط و دوره؛ ممکن است پیش‌دریافت/مرجوعی واقعی باشد => صرفاً «نیازمند بررسی» | نمایش مانده، ماهیت حساب، سند مبدأ، طبقه‌بندی واقعی/مغایرت |
+| ER09 | هزینه بستانکار غیرمنتظره | در حساب هزینه عادی credit خالص یا credit posting غیرمعمول؛ برگشت هزینه/اصلاحیه مجاز تفکیک شود | هشدار حسابداری و دفتر معین با اسناد، پیشنهاد بازبینی نه اصلاح خودکار |
+| ER10 | مساعده ثبت‌شده در هزینه | نگاشت نوع `مساعده/پیش‌پرداخت کارکنان` به کدینگ هزینه به‌جای حساب دارایی/طلب طبق policy version | یافتن سند، ثبت علت و پیشنهاد انتقال با سند رسمی ERP بعد تأیید |
+| ER11 | گردش ریالی غیرعادی در سرفصل | جهش نسبت به baseline دوره مشابه/حجم و سیاست شعبه؛ برچسب «ناهنجاری احتمالی» نه خطای قطعی | تحلیل انحراف، رکوردهای تشکیل‌دهنده، trigger کنترل انسانی |
+| ER12 | فاکتور، چک، وصول یا برگشتی تکراری | externalSourceId/version و fingerprints مالی با تشخیص reversal/refund معتبر؛ receipt واقعی را دو بار نشمار | quarantine، audit و task finance؛ بدون حذف رکورد بدون تأیید |
+| ER13 | انتقال، تخصیص یا وضعیت ناقص سفارش/فاکتور | وضعیت نامعتبر در state machine رسمی ERP یا missing/mismatched references؛ تأخیر sync با خطای سند تفاوت دارد | نمایش sync freshness، یافتن سند مرتبط، retry یا escalation |
+| ER14 | قیمت، تخفیف، سود یا مبلغ نادرست | ضرب فی×تعداد با UOM و rules، تخفیف/مالیات واقعی ERP و تلورانس مصوب؛ عدم داده کافی = NOT EVALUATED | مقایسه expected/actual در ریزفاکتور، درخواست بررسی قیمت، history |
+| ER15 | تناقض تاریخ/مسیر/پخش | برنامه تحویل، مقصد، وزن/ظرفیت، تحویل/مرجوعی بر اساس ERP و مدارک واقعی؛ نبود GPS یا ظرفیت = UNKNOWN | هشدار عملیاتی، پرونده علت و وظیفه توزیع |
+
+**قرارداد Rule:** `RuleDefinition(id,key,domain,version,effectiveFrom,effectiveTo,parameters,severity,enabled,ownerRole)`, `Finding(id,entityRef,ruleVersion,evidenceHash,sourceVersion,firstSeen,lastSeen,status,assignee,decision)`, `FindingEvent` و `FindingAction`; وضعیت `NEW/ACKNOWLEDGED/IN_PROGRESS/PENDING_ERP/RESOLVED/REOPENED/WAIVED` و `NOT_EVALUATED` برای منبع ناقص؛ رفع پس از re-evaluation با داده تازه و هویت مناسب. مجوز دیدن/اعمال باید حوزه‌ای/مالی/RLS باشد. تمام قوانین با تست مثال مثبت/منفی/استثنا/داده ناقص و تست false-positive پوشش داده شوند.
+
 ## ۱۳. مشخصات تفصیلی علت‌یابی شواهدمحور مانده بستانکار مشتری
 > این بخش، مرجع تفصیلی قاعده خلاصه‌شده در §۲-۵ و §۲-۸-۲ است.
 
@@ -627,7 +827,42 @@
 ### ۱۴-۶. داشبورد و امنیت
 نمایش سطح فعلی و بعدی، دوره‌های گذرانده، آزمون‌های باقی‌مانده، نمره‌ها، تأیید مدیر، وضعیت درخواست افزایش حقوق و تاریخچه رشد. مجوز مشاهده/ویرایش پرونده، آموزش، آزمون، ارزیابی و حقوق تفکیک شود؛ API و RLS هم‌سطح UI کنترل و تست شوند.
 
+### ۱۴-۷. قرارداد آموزش، مهارت و جبران خدمات
+
+#### C23 — جذب، شروع کار از صفر، آموزش/LMS و مهارت‌سنجی
+
+- **هدف و گردش.** کم‌شدن وابستگی به نیروی باتجربه و سرعت استقلال کارمند. درخواست جذب→متقاضی→مصاحبه→استخدام→پرونده و مدیر→برنامه آموزشی روزانه نقش‌محور→محتوا/تمرین میدانی→آزمون→تأیید مربی و مدیر→سطح/اختیارات→بازآموزی.
+- **قواعد و تجربه.** هیچ قبولی صرف نمره؛ نیاز به آزمون + شواهد مهارت + مجوز مدیر؛ هر role دوره و گیت مخصوص؛ محتوا و حدنصاب نسخه‌دار؛ تلاش مردود قابل ردیابی. پنل «شروع همکاری» قدم‌به‌قدم، Welcome، برنامه امروز، نوار پیشرفت، ویدئو/متن/کوییز، تایم‌لاین مربی، سطح فعلی/بعدی.
+- **مدل و قرارداد پیشنهادی.** قرارداد منطقی `RecruitmentRequisition, Applicant, Interview, OnboardingPlan, LearningPath(version,role), LearningModule, Enrollment, AssessmentAttempt, SkillEvidence, ManagerSignoff, CompetencyGrant`. `GET/POST /api/v1/hr/recruitment؛ GET /hr/onboarding/me؛ POST /hr/lessons/{id}/complete؛ POST /hr/exams/{id}/attempts؛ POST /hr/approvals`. مسیر فیزیکی با API، Migration و Provider موجود تطبیق داده شود.
+- **اتصال، وابستگی و پذیرش.** `docs/MASTER_SPEC_FA.md §۱۴؛ docs/CHECKLIST_FA.md F8-11..17؛ src/lib/onboarding.ts؛ src/services/payrollEngine.ts؛ HR existing`. پیش‌نیاز `03، 04، 21، 24`. سناریوهای پذیرش `قبولی بدون مدیر، کارمند بدون تجربه، محتوای عوض‌شده، خروج/بازگشت نیرو، افت آزمون، دسترسی پیش از صلاحیت`. قید امنیت `انتشار پاسخ آزمون محرمانه؛ حد اختیار توسط API؛ عدم تصمیم خودکار حقوق`.
+
+#### C24 — سطح‌بندی چهارگانه و ارزیابی عملکرد ویزیتور
+
+- **هدف و گردش.** رشد مهارت، پورسانت عادلانه و مسیر شغلی قابل دفاع. سیستم سطح فعلی و مهارت‌های موردنیاز بعدی را نشان می‌دهد؛ سرپرست آزمون می‌گیرد؛ ارزیابی عملی و وصول/ویزیت/سود را با مستندات بررسی می‌کند.
+- **قواعد و تجربه.** ۴ سطح ویزیتور از PDF مرجع؛ وزن و حدنصاب مصوب به DB؛ هیچ KPI تنها برای ارتقا/جریمه کافی نیست؛ حقوق پس از تصویب جدا. صفحه رشد فرد، Skill matrix، Radar chart با معیار معتبر، آزمون‌ها و سوابق تایید.
+- **مدل و قرارداد پیشنهادی.** قرارداد منطقی `CompetencyLevelPolicy(id,role,level,version), SkillAssessment(employeeId,criterion,score,evidence), PromotionRequest, SalaryChangeRequest`. `GET /api/v1/hr/levels؛ /employees/{id}/competencies؛ POST /promotion-requests؛ /approvals`. مسیر فیزیکی با API، Migration و Provider موجود تطبیق داده شود.
+- **اتصال، وابستگی و پذیرش.** `src/services/payrollEngine.ts؛ docs F8-14..17؛ metricRegistry`. پیش‌نیاز `23، 18، 09، 03`. سناریوهای پذیرش `ویزیتور جدید، نبود داده KPI، مدیر غایب، انتقال شعبه، اختلاف دوره سیاست`. قید امنیت `حقوق و نمرات محرمانه، اعتراض و audit`.
+
+#### C25 — حقوق، پورسانت، مزایا و حضور/مرخصی
+
+- **هدف و گردش.** کنترل هزینه و انگیزش شفاف. سیاست حقوق پایه/پاداش با امتیاز فروش، وصول و حضور نسخه‌دار؛ پیش‌نمایش و تأیید؛ صورت رسمی فقط ERP.
+- **قواعد و تجربه.** پارامترها در DB؛ تأثیر سطح تنها پس از approval و effective date؛ deductions و امتیازهای نامعتبر withheld. داشبورد HR مدیر و نمای خود کارمند با حد دید؛ preview با تفکیک محرمانه.
+- **مدل و قرارداد پیشنهادی.** قرارداد منطقی `PayrollPolicy(version,role), CommissionPolicy(version,targets), PayrollPreview, AttendanceMirror, LeaveRequest`. `GET /api/v1/hr/payroll-preview؛ GET /hr/attendance؛ POST /hr/compensation-change-requests`. مسیر فیزیکی با API، Migration و Provider موجود تطبیق داده شود.
+- **اتصال، وابستگی و پذیرش.** `src/services/payrollEngine.ts؛ database/sqlserver/v1/021,028؛ hr routes`. پیش‌نیاز `03، 23، 24، 22`. سناریوهای پذیرش `نیمه‌وقت، ترک همکاری، پرداخت دوباره، برگشت فروش بعد تسویه، KPI ناقص`. قید امنیت `No self approval؛ access payroll by role and person`.
+
 ## ۱۵. مرجع یگانه مدل داده و قراردادهای SQL — فقط پس از ممیزی Schema
+
+### قرارداد مشترک C01 تا C30
+
+- درخواست از UI فارسی RTL و Provider به API موجود می‌رسد. حالت‌های بارگذاری، دادهٔ خالی معتبر، منبع کهنه، خطا، تلاش مجدد و منع مجوز مشخص‌اند. Refresh، API، SQL، RLS و آزمون‌های جداسازی مستأجر و شعبه در پذیرش هر قابلیت قرار دارند.
+- شناسهٔ مستأجر، بازیگر گرفته‌شده از auth، زمان UTC، نسخهٔ مؤثر سیاست، شناسه و نسخهٔ منبع، زمان اثر و دریافت، شناسهٔ همبستگی، RowVersion، تاریخچهٔ حسابرسی، FK/index/RLS و حذف نرم مطابق الگوی موجودند. Migration افزایشی پس از بررسی Schema و تست روی محیط کنترل‌شده است.
+- خواندن دارای صفحه‌بندی و فیلتر، نوشتن دارای idempotency و transition دارای نسخهٔ موردانتظار است. پاسخ قابل ردیابی باید منبع، زمان اعتبار، پوشش و وضعیت را مشخص کند. مسیرهای پیشنهادی قابلیت‌ها اعلان وجود API نیستند. خطاهای مجوز، داده، تداخل نسخه، محدودیت نرخ و در دسترس نبودن باید کدهای متمایز داشته باشند.
+- سیاست و آستانهٔ کسب‌وکار از نسخهٔ معتبر رجیستری یا DB می‌آیند. دادهٔ ناقص `UNKNOWN/NOT VERIFIED` است. نتیجهٔ آزمون محیط کنترل‌شده از تأیید SQL و ERP واقعی جدا ثبت می‌شود.
+
+### آموزش نقش‌محور و دورهٔ شروع
+
+روزها و هفته‌های نمونه در ورودی مالک زمان‌بندی ثابت محصول نیستند. مبنا چهار سطح قابل تنظیم ویزیتور و مسیر مستقل حسابدار، راننده، موزع، انبار، سرپرست و پشتیبانی است. محتوا، همراهی مربی، تمرین، آزمون عملی و کتبی، ارزیابی مدیر و مجوز محدود هرکدام مدرک دارند. صلاحیت بدون شواهد مهارت و تأیید مدیر به مجوز مستقل یا تغییر حقوق نمی‌رسد.
+
 > این بخش مرجع مدل مفهومی حوزه‌های پایش و منابع انسانی است؛ §۸ فقط به آن ارجاع می‌دهد. نام‌های مفهومی، نام جدول قطعی یا مجوز Migration نیستند.
 
 جداول مفهومی موردنیاز پایش عبارت‌اند از: `AuditRules`، `AuditRuleVersions`، `AuditRuleParameters`، `AuditRuns`، `AuditFindings`، `FindingEvidence`، `FindingStatusHistory`، `FindingComments`، `FindingAttachments`، `FindingAssignments`، `FindingApprovals`، `FindingExceptions`، `FindingRelations`، `FindingOccurrences`، `SyncEvents`، `SyncCheckpoints`، `AuditNotifications` و `AuditDashboardSnapshots`. این‌ها نام‌های مفهومی‌اند؛ پیش از Migration باید تمام ۲۶+ Migration موجود، جداول/ستون‌ها/کلیدها/ایندکس‌ها/RLS/Provider و مدل‌های هم‌معنا ممیزی شوند. جدول موازی ممنوع؛ موجودیت مشابه توسعه داده شود. اگر جدول تازه لازم است، Migration افزایشی، idempotent، tenant-scoped، FK/index و RLS موجود رعایت شود.
@@ -645,6 +880,15 @@
 
 **پیش‌نیازهای مسدودکننده اتصال واقعی:** مشخصات موتور و نسخه دیتابیس تجمیعی؛ دسترسی read-only و محیط تست؛ Schema/Data Dictionary یا DDL؛ نام دقیق جداول/ویوها/ستون‌ها/کلیدها؛ قواعد tenant/branch؛ روش قابل‌اتکای تشخیص تغییر و حذف؛ تعریف وضعیت سند معتبر/باطل/قطعی؛ روابط دریافت/تخصیص/فاکتور/چک/برگشت؛ سیاست‌های مصوب آستانه‌ها و SLA؛ کاربران و نقش‌های تأییدکننده. فقدان این پیش‌نیازها فقط همان بخش وابسته را BLOCKED می‌کند؛ توسعه Provider، مدل مستقل، UI، تست واحد و قراردادها ادامه می‌یابد.
 
+
+### ۱۶-۱. قرارداد کیفیت و انتشار
+
+#### C30 — پایان تا انتها: کیفیت، سرعت، استقرار و حکمرانی
+
+- **هدف و گردش.** تحویل محصول قابل استفاده، امن و قابل توسعه. هر قابلیت تست E2E و visual؛ migration staging→prod، monitoring، backup، rollback، health و مستند deploy.
+- **قواعد و تجربه.** هیچ PASS بدون اجرای واقعی؛ rollback tested؛ migration forward safe؛ error budget و هدف latency در تنظیمات عملیات. Status screens، fallback‌های صادق، معیارهای دسترس‌پذیری و پیشرفت استقرار.
+- **مدل و قرارداد پیشنهادی.** قرارداد منطقی `Release(id,version,commit,artifactHash), DeploymentCheck, MigrationAudit, SecurityEvent, FeatureFlag`. `GET /api/v1/health/readiness؛ /live؛ /version (حداقل اطلاعات مجاز)`. مسیر فیزیکی با API، Migration و Provider موجود تطبیق داده شود.
+- **اتصال، وابستگی و پذیرش.** `scripts/run-tests.mjs؛ scripts/tests.manifest.json؛ existing test suites؛ server/index.mjs`. پیش‌نیاز `تمام قابلیت‌ها`. سناریوهای پذیرش `RTL visual، typecheck، performance، SQL indexes، missing ERP، 401/403، concurrency، restore`. قید امنیت `Security review و secret scan قبل ZIP/commit`.
 
 ## ۱۷. فرمان مالک ۲۰۲۶-۱۱-۱۹ — اتاق فرمان وصول، نقدینگی، سودآوری و مصرف منابع
 
@@ -684,6 +928,43 @@
 - عملکرد روی موبایل فارسی RTL با فیلتر فشرده، کارت و نمودار مینیمال موجود، بدون تغییر هدر/منوی قفل‌شده. Drill-down و ساخت تسک/پیگیری از داده باید واقعی و قابل آزمون باشد.
 - پذیرش هر Slice مستلزم سناریوی نمونه واقعی/کنترل‌شده، آزمون محاسبه و edge cases (پرداخت جزئی، برگشت، چک برگشتی، انتقال داخلی، هزینه سرمایه‌ای، فاکتور بدون FIFO)، RBAC API/SQL، تست UI/Provider و تطبیق ERP/بانک است. بدون شواهد = NOT VERIFIED/BLOCKED؛ وجود صفحه یا سند = DONE نیست.
 
+
+### ۱۷-۷. قراردادهای حسابداری، وصول و خزانه
+
+#### C09 — وصول هوشمند و تطبیق چک/وجه
+
+- **هدف و گردش.** وصول سریع، رفع اختلاف حساب و کاهش تماس پیگیری. لیست مانده دفتری، قول مشتری، ثبت فیش/چک اعلامی، پیگیری ثبت چک، ارجاع به حسابدار، تطبیق ERP و بانک.
+- **قواعد و تجربه.** وعده/فیش ≠ وصول؛ مانده فقط دفتر کل؛ aging تخمینی؛ چک ثبت‌نشده هشدار؛ اختلاف مانده/چک گزارش مستقل. کارتابل بر اساس خطر/موعد/VIP، چک‌لیست تماس، پیام‌های محترمانه، status واقعی، تاریخ وعده.
+- **مدل و قرارداد پیشنهادی.** قرارداد منطقی `CollectionCase(id,customer,owner,status,ledgerBalanceRef), PaymentPromise(date,amount), CollectionEvidence, ReceiptMatch(sourceReceiptId,bankRef,status)`. `GET /api/v1/collections/worklist؛ POST /collections/{id}/promises؛ POST /collections/{id}/evidence؛ /reconcile`. مسیر فیزیکی با API، Migration و Provider موجود تطبیق داده شود.
+- **اتصال، وابستگی و پذیرش.** `src/services/collectionEngine.ts؛ src/services/receivableReports.ts؛ src/lib/receivableReconciliation.ts؛ src/lib/collectionTaskOutcome.ts`. پیش‌نیاز `01، 02، 03، 04، 10`. سناریوهای پذیرش `چک ثبت نشده، چند رسید یکسان، وصول از شخص ثالث، اختلاف معین، موعد گذشته، برگشتی و دریافتی تأییدنشده`. قید امنیت `فیش محرمانه و PII، سیاست نگهداری، تأیید دوگانه در reconcile`.
+
+#### C10 — دفتر کل، مانده تفکیکی و سنی مطالبات
+
+- **هدف و گردش.** صحت عددی گزارش مالی و امکان استناد به سند. کاربر مشتری و معین/دوره را انتخاب؛ گردش بدهکار/بستانکار و سند جزئی را می‌بیند؛ aging با برچسب تخمینی.
+- **قواعد و تجربه.** Σdebit-Σcredit در تفصیلی×معین×دوره؛ aging LIFO تخمینی از آخرین فاکتور؛ عدم تخصیص واقعی. دفتر گردش با subtotal، filter و drill-down، export محدود و برچسب تخمینی.
+- **مدل و قرارداد پیشنهادی.** قرارداد منطقی `LedgerEntryMirror(sourceDocId,lineId,detail,account,period,debit,credit,posted), LedgerBalanceView`. `GET /api/v1/ledger/journal-lines؛ GET /api/v1/ledger/balances؛ GET /api/v1/receivables/aging`. مسیر فیزیکی با API، Migration و Provider موجود تطبیق داده شود.
+- **اتصال، وابستگی و پذیرش.** `server/ledgerBalances.mjs؛ server/ledgerJournalQuery.mjs؛ src/services/receivableReports.ts`. پیش‌نیاز `01، 03، fiscal period contracts`. سناریوهای پذیرش `دو معین مشتری، سند لغوشده، currency، بازه تاریخ، جداسازی بدهکار/بستانکار، paging`. قید امنیت `محدودیت دید دفتر کل + Audit export`.
+
+#### C11 — دستور پرداخت قطعی/غیرقطعی و خزانه
+
+- **هدف و گردش.** نظم پرداخت و حذف چرخه شفاهی. در CRM درخواست با نوع هزینه/مرکز/کدینگ می‌سازند؛ حسابدار کنترل مستند؛ تأیید مجاز؛ ERP ثبت نتیجه؛ بدون تأیید پرداخت قطعی نمایش داده نشود.
+- **قواعد و تجربه.** غیرقطعی درخواست داخلی است؛ قطعی نیازمند تأیید و سند؛ نگاشت کدینگ versioned؛ جلوگیری از duplicate payment. ویزارد کوتاه، انتخاب ذینفع، نوع پرداخت، فایل فیش/چک، timeline تایید، پیشنهاد کدینگ با توضیح.
+- **مدل و قرارداد پیشنهادی.** قرارداد منطقی `PaymentRequest(id,tenant,beneficiary,amount,currency,reason,type,status,accountingMapVersion), PaymentApproval, PaymentAttachment`. `GET/POST /api/v1/payment-requests؛ POST /payment-requests/{id}/approve؛ /reject؛ /send-to-erp`. مسیر فیزیکی با API، Migration و Provider موجود تطبیق داده شود.
+- **اتصال، وابستگی و پذیرش.** `src/lib/financeRequests.ts؛ src/lib/accountingMapping.ts؛ src/lib/approvalChain.ts`. پیش‌نیاز `02، 03، 04، 10`. سناریوهای پذیرش `تأیید بدون سند، تضاد نقش درخواست‌کننده/تأییدکننده، re-submit، چک صادرشده و فیش نامعتبر`. قید امنیت `Segregation of duties، no self-approval، payment fraud controls`.
+
+#### C13 — سود/زیان سفارش و فاکتور، Cost-to-Serve
+
+- **هدف و گردش.** شناسایی فروش زیان‌ده و قیمت‌گذاری سودآور. نمایش درآمد خالص، FIFO COGS، تخفیف، برگشت، حمل و سهم هزینه با trace؛ فیلتر مشتری/کالا/منطقه/کارمند.
+- **قواعد و تجربه.** فرمول §۴.۳؛ gross vs contribution vs net تفکیک؛ هزینه ناقص ⇒ UNVERIFIED؛ سود مالیاتی غیرقطعی جدا. P&L waterfall، trend، ranking سود نه صرف فروش، نوار علت و کنترل کف سود.
+- **مدل و قرارداد پیشنهادی.** قرارداد منطقی `CostAllocation(ruleVersion,sourceCostId,targetType,targetId,amount), InvoiceProfitSnapshot, ProfitLineage`. `GET /api/v1/ledger/pnl؛ GET /api/v1/profit/invoices/{id}؛ /margin-analysis`. مسیر فیزیکی با API، Migration و Provider موجود تطبیق داده شود.
+- **اتصال، وابستگی و پذیرش.** `src/lib/ledgerPnl.ts؛ server/ledgerPnlQuery.mjs؛ src/lib/metricRegistry.ts`. پیش‌نیاز `10، 12، 01`. سناریوهای پذیرش `فاکتور با طرح رایگان، برگشت بعد دوره، نبود COGS، هزینه دوباره، تخفیف بیشتر از فروش`. قید امنیت `مجوز مدیر برای بهای خرید و gross profit، audit read`.
+
+#### C14 — جریان نقد و شکاف فروش تا بانک
+
+- **هدف و گردش.** فهمیدن «پول کجاست» و پیشگیری از کسری. نمایش قیف سفارش→فاکتور→بدهی→وعده→وصول تأییدشده→بانک؛ forecasting و تعهدهای تصویب‌شده.
+- **قواعد و تجربه.** فقط بانک واقعی نقد است؛ forecast پیش‌بینی جدا؛ مانده تعهد با سناریو و منبع معتبر. نمودار waterfall نقد، جدول تعهد/وصول، سناریوهای قابل تنظیم، drilldown سند.
+- **مدل و قرارداد پیشنهادی.** قرارداد منطقی `CashFlowProjection(runId,period,assumptionSetVersion), CashEvent(refId,type,confidence), BankMatch`. `GET /api/v1/finance/cash-flow؛ /cash-gap؛ /scenarios؛ POST /scenarios بدون تغییر ledger`. مسیر فیزیکی با API، Migration و Provider موجود تطبیق داده شود.
+- **اتصال، وابستگی و پذیرش.** `src/lib/cashFlowEngine.ts؛ cashFlowEngineV2.candidate.ts (تطبیق، نه تولید موازی)`. پیش‌نیاز `09، 10، 11، 13`. سناریوهای پذیرش `چک دریافت‌شده پرداخت‌نشده، چند بانک، برگشتی، هزینه سرمایه‌ای، duplicate payment، سناریو بدون data`. قید امنیت `محرمانگی بانک و تایید نشده بودن رقم آینده`.
 
 ## ۱۸. فرمان مالک — تکمیل صفر تا صد محصول، لندینگ تصویری و یکپارچگی سراسری
 
