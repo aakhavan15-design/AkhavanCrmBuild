@@ -100,8 +100,10 @@ export function Layout({
   useEffect(() => {
     const viewport = window.visualViewport;
     const updateViewport = () => {
-      const height = viewport?.height || window.innerHeight;
-      const offsetTop = viewport?.offsetTop || 0;
+      // A zoom gesture changes visualViewport too. Keep the layout stable while magnified.
+      const unzoomedViewport = viewport && Math.abs(viewport.scale - 1) < 0.01 ? viewport : null;
+      const height = unzoomedViewport?.height || window.innerHeight;
+      const offsetTop = unzoomedViewport?.offsetTop || 0;
       document.documentElement.style.setProperty('--app-viewport-height', `${height}px`);
       document.documentElement.style.setProperty('--app-viewport-offset-top', `${offsetTop}px`);
     };

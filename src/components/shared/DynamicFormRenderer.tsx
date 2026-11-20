@@ -379,7 +379,7 @@ export function DynamicFormRenderer({
       </div>
 
       {/* اکشن‌های دکمه فرم */}
-      <div className="pt-4 border-t border-border flex items-center justify-end gap-2">
+      <div className="crm-form-actions pt-4 border-t border-border flex items-center justify-end gap-2">
         {onCancel && (
           <Button 
             type="button" 

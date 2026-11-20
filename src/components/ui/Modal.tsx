@@ -1,5 +1,6 @@
-import React, { useEffect, useId, useRef } from 'react';
+import React, { useId, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import { useOverlayDialog } from '../../hooks/useOverlayDialog';
 import { cn } from '../../lib/utils';
 import { X, ChevronLeft } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -38,43 +39,12 @@ export const Modal: React.FC<ModalProps> = ({
   const titleId = useId();
   const effectiveSize = size || maxWidth;
   const sheetDrag = useRef<number | null>(null);
-  const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
   const requestClose = () => {
     if (hasUnsavedChanges && typeof window !== 'undefined' && !window.confirm(confirmCloseMessage)) return;
-    onCloseRef.current();
+    onClose();
   };
   
-  useEffect(() => {
-    if (!isOpen) return;
-    const previousOverflow = document.body.style.overflow;
-    const previousActive = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const focusable = 'button:not([disabled]),a[href],input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
-    const focusFirst = () => modalRef.current?.querySelector<HTMLElement>(focusable)?.focus();
-    const frame = window.requestAnimationFrame(focusFirst);
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.stopPropagation();
-        requestClose();
-        return;
-      }
-      if (event.key === 'Tab' && modalRef.current) {
-        const nodes = Array.from(modalRef.current.querySelectorAll<HTMLElement>(focusable)).filter(el => el.offsetParent !== null);
-        if (!nodes.length) { event.preventDefault(); modalRef.current.focus(); return; }
-        const first = nodes[0], last = nodes[nodes.length - 1];
-        if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
-        else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
-      }
-    };
-    document.addEventListener('keydown', onKeyDown);
-    document.body.style.overflow = 'hidden';
-    return () => {
-      window.cancelAnimationFrame(frame);
-      document.removeEventListener('keydown', onKeyDown);
-      document.body.style.overflow = previousOverflow;
-      previousActive?.focus();
-    };
-  }, [isOpen, hasUnsavedChanges, confirmCloseMessage]);
+  useOverlayDialog(isOpen, modalRef, requestClose);
 
   if (!isOpen) return null;
 
@@ -90,17 +60,18 @@ export const Modal: React.FC<ModalProps> = ({
   };
 
   return createPortal(
-    <div className="fixed inset-0 z-(--z-modal) flex items-end sm:items-center justify-center" dir="rtl" role="dialog" aria-modal="true" aria-labelledby={titleId}>
-      <div onClick={requestClose} className="fixed inset-0 bg-ink/40 backdrop-blur-sm animate-in fade-in transition-opacity" />
+    <div className="crm-dialog-viewport fixed inset-0 z-(--z-modal) flex items-end sm:items-center justify-center" dir="rtl" role="dialog" aria-modal="true" aria-labelledby={titleId}>
+      <div onClick={requestClose} aria-hidden="true" className="fixed inset-0 bg-ink/40 backdrop-blur-sm animate-in fade-in transition-opacity" />
       
       <div
         ref={modalRef}
+        tabIndex={-1}
         className={cn(
           "relative w-full bg-surface shadow-[var(--shadow-modal)] flex flex-col z-10",
-          "rounded-t-3xl sm:rounded-2xl max-h-[calc(var(--app-viewport-height,100dvh)-env(safe-area-inset-top,0px)-0.5rem)] sm:max-h-[min(86vh,calc(100dvh-2rem))]",
+          "rounded-t-3xl sm:rounded-2xl max-h-[calc(100%-var(--safe-top)-0.5rem)] sm:max-h-[min(86dvh,calc(100%-2rem))]",
           "animate-in slide-in-from-bottom sm:zoom-in-95 duration-180 ease-out",
           widthClasses[effectiveSize] || 'max-w-lg',
-          fullOnMobile && 'max-sm:h-dvh max-sm:max-h-none max-sm:rounded-none max-sm:pt-[env(safe-area-inset-top,0px)]',
+          fullOnMobile && 'max-sm:h-full max-sm:max-h-full max-sm:rounded-none max-sm:pt-[env(safe-area-inset-top,0px)]',
           className
         )}
       >
@@ -125,7 +96,7 @@ export const Modal: React.FC<ModalProps> = ({
             const dy = sheetDrag.current !== null ? e.clientY - sheetDrag.current : 0;
             sheetDrag.current = null;
             if (modalRef.current) {
-              modalRef.current.style.transition = 'transform 340ms cubic-bezier(0.22, 1.2, 0.36, 1)';
+              modalRef.current.style.transition = 'transform var(--motion-dialog-duration) var(--motion-dialog-easing)';
               modalRef.current.style.transform = '';
             }
             if (dy > 110) requestClose();
@@ -133,7 +104,7 @@ export const Modal: React.FC<ModalProps> = ({
           onPointerCancel={() => {
             sheetDrag.current = null;
             if (modalRef.current) {
-              modalRef.current.style.transition = 'transform 280ms cubic-bezier(0.22, 1.2, 0.36, 1)';
+              modalRef.current.style.transition = 'transform var(--motion-dialog-duration) var(--motion-dialog-easing)';
               modalRef.current.style.transform = '';
             }
           }}
@@ -142,14 +113,14 @@ export const Modal: React.FC<ModalProps> = ({
         </div>
 
         <div className="flex min-h-12 items-center justify-between gap-3 px-4 py-2.5 shrink-0">
-          <div>
+          <div className="min-w-0 break-words">
             <h3 id={titleId} className="text-sm font-bold text-ink">{title}</h3>
             {subtitle && <p className="text-xs text-ink-soft mt-1">{subtitle}</p>}
           </div>
-          <button onClick={requestClose} className="h-9 w-9 grid place-items-center bg-canvas rounded-lg text-ink-soft hover:text-ink cursor-pointer" aria-label="بستن"><X size={18} /></button>
+          <button type="button" onClick={requestClose} className="crm-dialog-close shrink-0 h-9 w-9 grid place-items-center bg-canvas rounded-lg text-ink-soft hover:text-ink cursor-pointer" aria-label="بستن"><X size={18} /></button>
         </div>
 
-        <div className={cn("min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-3 space-y-3 [scrollbar-gutter:stable]", !footer && "pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))]")}>
+        <div className={cn("crm-dialog-content min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-3 space-y-3 [scrollbar-gutter:stable]", !footer && "pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))]")}>
           {children}
         </div>
 

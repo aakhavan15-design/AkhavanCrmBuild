@@ -1,4 +1,6 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useId, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { useOverlayDialog } from '../../hooks/useOverlayDialog';
 import { cn } from '../../lib/utils';
 import { X } from 'lucide-react';
 
@@ -30,16 +32,15 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({
   const sheetRef = useRef<HTMLDivElement>(null);
   const touchStartY = useRef<number | null>(null);
   const [dragOffsetY, setDragOffsetY] = useState(0);
-  const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
+  const titleId = useId();
 
-  const requestClose = useCallback(() => {
+  const requestClose = () => {
     if (hasUnsavedChanges && typeof window !== 'undefined' && !window.confirm(confirmCloseMessage)) {
       return;
     }
     setDragOffsetY(0);
-    onCloseRef.current();
-  }, [hasUnsavedChanges, confirmCloseMessage]);
+    onClose();
+  };
 
   // Touch gesture handling for drag-to-dismiss
   const handleTouchStart = (e: React.TouchEvent) => {
@@ -65,69 +66,18 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({
     touchStartY.current = null;
   };
 
-  useEffect(() => {
-    if (!isOpen) {
-      setDragOffsetY(0);
-      return;
-    }
-
-    const previousOverflow = document.body.style.overflow;
-    const previousActive = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const focusable =
-      'button:not([disabled]),a[href],input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
-
-    const frame = window.requestAnimationFrame(() => {
-      sheetRef.current?.querySelector<HTMLElement>(focusable)?.focus();
-    });
-
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.stopPropagation();
-        requestClose();
-        return;
-      }
-
-      if (event.key === 'Tab' && sheetRef.current) {
-        const nodes = Array.from(sheetRef.current.querySelectorAll<HTMLElement>(focusable)).filter(
-          el => el.offsetParent !== null
-        );
-        if (!nodes.length) {
-          event.preventDefault();
-          sheetRef.current.focus();
-          return;
-        }
-        const first = nodes[0];
-        const last = nodes[nodes.length - 1];
-        if (event.shiftKey && document.activeElement === first) {
-          event.preventDefault();
-          last.focus();
-        } else if (!event.shiftKey && document.activeElement === last) {
-          event.preventDefault();
-          first.focus();
-        }
-      }
-    };
-
-    document.addEventListener('keydown', onKeyDown);
-    document.body.style.overflow = 'hidden';
-
-    return () => {
-      window.cancelAnimationFrame(frame);
-      document.removeEventListener('keydown', onKeyDown);
-      document.body.style.overflow = previousOverflow;
-      previousActive?.focus();
-    };
-  }, [isOpen, requestClose]);
+  useOverlayDialog(isOpen, sheetRef, requestClose);
 
   if (!isOpen) return null;
 
-  return (
+  return createPortal(
     <div
-      className="fixed inset-0 z-(--z-modal) flex items-end sm:items-center justify-center pointer-events-auto"
+      className="crm-dialog-viewport fixed inset-0 z-(--z-modal) flex items-end sm:items-center justify-center pointer-events-auto"
       dir="rtl"
       role="dialog"
       aria-modal="true"
-      aria-labelledby={title ? 'bottom-sheet-title' : undefined}
+      aria-labelledby={title ? titleId : undefined}
+      aria-label={title ? undefined : 'پنجرهٔ عملیات'}
     >
       {/* Backdrop */}
       <div
@@ -139,34 +89,37 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({
       {/* Sheet Container */}
       <div
         ref={sheetRef}
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
         tabIndex={-1}
         style={{
           transform: dragOffsetY > 0 ? `translateY(${dragOffsetY}px)` : undefined,
-          transition: dragOffsetY === 0 ? 'transform 0.22s cubic-bezier(0.16, 1, 0.3, 1)' : 'none',
+          transition: dragOffsetY === 0 ? 'transform var(--motion-dialog-duration) var(--motion-dialog-easing)' : 'none',
         }}
         className={cn(
           'relative w-full sm:max-w-lg bg-surface text-ink-main shadow-floating flex flex-col outline-none z-10',
           'rounded-t-3xl sm:rounded-2xl overflow-hidden',
           'pb-[max(1rem,env(safe-area-inset-bottom,0px))]',
+          'max-sm:max-h-[calc(100%-var(--safe-top))]',
           maxHeight,
           'animate-in slide-in-from-bottom duration-250',
           className
         )}
       >
         {/* Pull Handle for mobile drag */}
-        <div className="w-full flex justify-center pt-2.5 pb-1 cursor-grab active:cursor-grabbing sm:hidden">
+        <div className="w-full flex justify-center pt-2.5 pb-1 cursor-grab active:cursor-grabbing touch-none sm:hidden"
+          aria-hidden="true"
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+          onTouchCancel={() => { touchStartY.current = null; setDragOffsetY(0); }}>
           <span className="w-10 h-1.5 rounded-full bg-border-strong opacity-70" />
         </div>
 
         {/* Header */}
-        {(title || subtitle) && (
+        {(
           <div className="flex items-center justify-between px-4 py-3 shrink-0">
             <div className="min-w-0 pr-1">
               {title && (
-                <h3 id="bottom-sheet-title" className="text-sm font-bold text-ink-main tracking-tight">
+                <h3 id={titleId} className="text-sm font-bold text-ink-main tracking-tight">
                   {title}
                 </h3>
               )}
@@ -176,7 +129,7 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({
               type="button"
               onClick={requestClose}
               aria-label="بستن"
-              className="p-1.5 rounded-full text-ink-muted hover:text-ink-main hover:bg-canvas transition-colors cursor-pointer"
+              className="crm-dialog-close shrink-0 grid place-items-center p-1.5 rounded-full text-ink-muted hover:text-ink-main hover:bg-canvas transition-colors cursor-pointer"
             >
               <X size={17} />
             </button>
@@ -184,7 +137,7 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({
         )}
 
         {/* Content Body */}
-        <div className="flex-1 overflow-y-auto px-4 py-3 text-xs leading-relaxed overscroll-contain">
+        <div className="crm-dialog-content min-h-0 flex-1 overflow-y-auto px-4 py-3 text-xs leading-relaxed overscroll-contain">
           {children}
         </div>
 
@@ -195,6 +148,7 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 };

@@ -1,12 +1,15 @@
 import React, { useId } from 'react';
 import { cn } from '../../lib/utils';
 
+const describeField = (id: string, error?: string, description?: string) =>
+  [description, error && `${id}-err`].filter(Boolean).join(' ') || undefined;
+
 export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
   label?: string;
   error?: string;
 }
 
-export const Input: React.FC<InputProps> = ({ label, error, className = '', id: propId, ...props }) => {
+export const Input: React.FC<InputProps> = ({ label, error, className = '', id: propId, 'aria-describedby': description, 'aria-invalid': invalid, ...props }) => {
   const generatedId = useId();
   const id = propId || generatedId;
 
@@ -15,10 +18,10 @@ export const Input: React.FC<InputProps> = ({ label, error, className = '', id: 
       {label && <label htmlFor={id} className="block text-caption font-semibold text-ink">{label}</label>}
       <input
         id={id}
-        aria-invalid={error ? true : undefined}
-        aria-describedby={error ? `${id}-err` : undefined}
+        aria-invalid={error ? true : invalid}
+        aria-describedby={describeField(id, error, description)}
         className={cn(
-          "w-full min-w-0 bg-surface border border-border/80 rounded-lg px-3 py-2 min-h-(--size-input) text-compact text-ink outline-none transition-[border-color,box-shadow] duration-150 placeholder:text-ink-soft/60 focus:border-primary focus:ring-2 focus:ring-primary/15 shadow-none",
+          "crm-text-field w-full min-w-0 bg-surface border border-border/80 rounded-lg px-3 py-2 min-h-(--size-input) text-compact text-ink outline-none transition-[border-color,box-shadow] duration-150 placeholder:text-ink-soft/60 focus:border-primary focus:ring-2 focus:ring-primary/15 shadow-none",
           error ? "border-danger focus:border-danger focus:ring-danger/20" : "",
           className
         )}
@@ -31,7 +34,7 @@ export const Input: React.FC<InputProps> = ({ label, error, className = '', id: 
 
 /* ── کنترل‌های پایهٔ مشترک: لیست کشویی و متن چندخطی (هم‌توکن با Input) ── */
 const FIELD_BASE =
-  "w-full min-w-0 bg-surface border border-border/80 rounded-lg px-3 text-compact text-ink outline-none transition-[border-color,box-shadow] duration-150 placeholder:text-ink-soft/60 focus:border-primary focus:ring-2 focus:ring-primary/15 disabled:opacity-60 disabled:cursor-not-allowed";
+  "crm-text-field w-full min-w-0 bg-surface border border-border/80 rounded-lg px-3 text-compact text-ink outline-none transition-[border-color,box-shadow] duration-150 placeholder:text-ink-soft/60 focus:border-primary focus:ring-2 focus:ring-primary/15 disabled:opacity-60 disabled:cursor-not-allowed";
 const FIELD_ERROR = "border-danger focus:border-danger focus:ring-danger/20";
 
 export interface SelectProps extends React.SelectHTMLAttributes<HTMLSelectElement> {
@@ -41,14 +44,14 @@ export interface SelectProps extends React.SelectHTMLAttributes<HTMLSelectElemen
   density?: 'default' | 'compact';
 }
 
-export const Select: React.FC<SelectProps> = ({ label, error, density = 'default', className = '', id: propId, children, ...props }) => {
+export const Select: React.FC<SelectProps> = ({ label, error, density = 'default', className = '', id: propId, children, 'aria-describedby': description, 'aria-invalid': invalid, ...props }) => {
   const generatedId = useId();
   const id = propId || generatedId;
   const control = (
     <select
       id={id}
-      aria-invalid={error ? true : undefined}
-      aria-describedby={error ? `${id}-err` : undefined}
+      aria-invalid={error ? true : invalid}
+      aria-describedby={describeField(id, error, description)}
       className={cn(FIELD_BASE, "cursor-pointer", density === 'compact' ? "min-h-(--size-control-sm) py-1 text-caption" : "min-h-(--size-input) py-2", error && FIELD_ERROR, className)}
       {...props}
     >
@@ -70,15 +73,15 @@ export interface TextareaProps extends React.TextareaHTMLAttributes<HTMLTextArea
   error?: string;
 }
 
-export const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(({ label, error, className = '', id: propId, ...props }, ref) => {
+export const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(({ label, error, className = '', id: propId, 'aria-describedby': description, 'aria-invalid': invalid, ...props }, ref) => {
   const generatedId = useId();
   const id = propId || generatedId;
   const control = (
     <textarea
       ref={ref}
       id={id}
-      aria-invalid={error ? true : undefined}
-      aria-describedby={error ? `${id}-err` : undefined}
+      aria-invalid={error ? true : invalid}
+      aria-describedby={describeField(id, error, description)}
       className={cn(FIELD_BASE, "py-2 min-h-(--size-input) resize-y", error && FIELD_ERROR, className)}
       {...props}
     />
