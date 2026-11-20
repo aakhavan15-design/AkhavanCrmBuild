@@ -299,8 +299,10 @@ export function TasksWorkspace({ state, updateState }: TasksWorkspaceProps) {
       });
       if (workflowRequest.current !== request) return;
       updateState(draft => {
-        const index = draft.tasks?.findIndex(item => item.id === task.id) ?? -1;
-        if (index >= 0) draft.tasks[index] = record.task;
+        const tasks = draft.tasks;
+        if (!tasks) return;
+        const index = tasks.findIndex(item => item.id === task.id);
+        if (index >= 0) tasks[index] = record.task;
       });
       setWorkflowRecord(record);
       setWorkflowReason(record.task.blockReason || '');
@@ -540,7 +542,11 @@ export function TasksWorkspace({ state, updateState }: TasksWorkspaceProps) {
         )}
       </Modal>
 
-      <Modal isOpen={!!workflowTaskId} onClose={() => { workflowRequest.current++; setWorkflowTaskId(null); }} title="گردش کار و نتیجه پیگیری">
+      <Modal isOpen={!!workflowTaskId} onClose={() => {
+        if (workflowBusy && workflowRecord) return;
+        workflowRequest.current++;
+        setWorkflowTaskId(null);
+      }} title="گردش کار و نتیجه پیگیری">
         {(() => {
           const task = workflowRecord?.task;
           if (!task) return workflowBusy ? <p role="status">در حال دریافت نسخهٔ وظیفه…</p> : (

@@ -18,6 +18,7 @@ for (const action of ['BLOCK', 'UNBLOCK', 'COMPLETE', 'REOPEN', 'RECORD_RESULT']
 assert.match(workspace, /getActiveDataProvider\(\).getTaskWorkflow/);
 assert.match(workspace, /getActiveDataProvider\(\).changeTaskWorkflow/);
 assert.match(workspace, /error.status === 409/);
+assert.match(workspace, /onClose=\{\(\) => \{\s*if \(workflowBusy && workflowRecord\) return;/);
 assert.match(workspace, /fresh.blockReason \|\|/);
 assert.match(workspace, /activityHistory/);
 assert.match(provider, /encodeURIComponent\(id\)\}\/workflow/);
