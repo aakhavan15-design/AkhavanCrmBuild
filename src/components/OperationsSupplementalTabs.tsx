@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
 import { generateSecureId } from '../lib/secureId';
 import { ShoppingCart, ShieldCheck, Gauge } from 'lucide-react';
+import { EmptyState } from './ui/EmptyState';
 import { Card } from './ui/Card';
 import { Button } from './ui/Button';
 import { Badge, StatusBadge } from './ui/Badge';
 import { Input, Select } from './ui/Input';
 import { guard, requireActiveUser, useCan } from '../hooks/useCan';
 import { calculateProfitability, buildOperationsMetrics, calculateCreditMetrics, analyzeReturns } from '../lib/operationsEngine';
-import { formatRialOrUnknown } from '../lib/utils';
+import { formatAppDate, formatRialOrUnknown, matchesSearch } from '../lib/utils';
 import { useDataQuery } from '../hooks/useDataProvider';
 import { resolveCustomerBalanceView } from '../lib/receivableReconciliation';
 import { buildLedgerAgingInputs, estimateLedgerAging } from '../services/agingBuckets';
@@ -42,9 +43,105 @@ const log = (draft: AppState, action: string, type: string, id: string, details:
   }].slice(-1000);
 };
 
+const catalogPageSize = 25;
+const catalogBrand = (brand: unknown) => typeof brand === 'string' ? brand.trim() : '';
+
 export function InventoryTab({ state }: { state: AppState }) {
-  const products = state.externalProducts || [];
-  return <Card><div className="mb-4 flex flex-wrap items-center justify-between gap-2"><h2 className="font-black text-text-main">کاتالوگ و وضعیت موجودی</h2><Badge variant="warning">مقادیر آزمایشی؛ موجودی مرجع هنوز وصل نیست</Badge></div><div className="overflow-x-auto"><table className="w-full min-w-(--size-620) text-right text-xs"><thead><tr className="border-b border-border text-text-secondary"><th className="p-3">کالا</th><th className="p-3">کد</th><th className="p-3">قیمت آزمایشی</th><th className="p-3">مالیات (ERP)</th><th className="p-3">موجودی</th><th className="p-3">ارزش موجودی (FIFO، دیتابیس)</th><th className="p-3">نقطه سفارش</th><th className="p-3">وضعیت</th></tr></thead><tbody>{products.map(p=>{const stock=readKnownAmount(p.stock);const minimum=readKnownAmount(p.minStock);const low=stock!==null&&minimum!==null&&stock<=minimum;return <tr key={p.id} className="border-b border-border last:border-0"><td className="p-3 font-bold text-text-main">{p.name}</td><td className="p-3 text-text-secondary">{p.sku||p.code||'—'}</td><td className="p-3">{money(readKnownAmount(p.unitPrice ?? p.basePrice))}</td><td className="p-3" data-testid="product-tax-rate">{p.taxRatePercent==null||!Number.isFinite(Number(p.taxRatePercent))?<Badge variant="neutral">نامشخص</Badge>:Number(p.taxRatePercent)===0?<Badge variant="success">معاف (۰٪)</Badge>:`${Number(p.taxRatePercent).toLocaleString('fa-IR')}٪`}</td><td className="p-3">{stock!==null?stock.toLocaleString('fa-IR'):'نامشخص'}</td><td className="p-3" data-testid="product-fifo-value">{p.inventoryValueFifo==null||!Number.isFinite(Number(p.inventoryValueFifo))?'نامشخص':money(Number(p.inventoryValueFifo))}</td><td className="p-3">{minimum===null?'تعریف نشده':minimum.toLocaleString('fa-IR')}</td><td className="p-3">{low?<Badge variant="warning">زیر نقطه سفارش</Badge>:stock===null?<Badge variant="neutral">بدون داده معتبر</Badge>:minimum===null?<Badge variant="neutral">آستانه تعریف نشده</Badge>:<Badge variant="success">در محدوده</Badge>}</td></tr>})}</tbody></table></div><p className="mt-3 text-caption leading-6 text-text-secondary">محصولات خارجی فقط‌خواندنی هستند. این صفحه فقط تصویر لحظه‌ای موجود در داده آزمایشی را نمایش می‌دهد و موجودی را تغییر نمی‌دهد.</p></Card>;
+  const [query, setQuery] = useState('');
+  const [brand, setBrand] = useState('');
+  const [page, setPage] = useState(1);
+  const products = (state.externalProducts || []).filter(product => !product.deletedAt);
+  const brands = [...new Set(products.map(product => catalogBrand(product.brand)).filter((value): value is string => !!value))]
+    .sort((a, b) => a.localeCompare(b, 'fa'));
+  const filtered = products.filter(product =>
+    (!brand || catalogBrand(product.brand) === brand) &&
+    matchesSearch([product.name, product.sku, product.code, product.brand, product.category].filter(Boolean).join(' '), query)
+  );
+  const totalPages = Math.max(1, Math.ceil(filtered.length / catalogPageSize));
+  const activePage = Math.min(page, totalPages);
+  const visibleProducts = filtered.slice((activePage - 1) * catalogPageSize, activePage * catalogPageSize);
+
+  return (
+    <Card className="space-y-4">
+      <div>
+        <h2 className="font-black text-text-main">کاتالوگ و وضعیت موجودی</h2>
+        <p className="mt-1 text-xs leading-6 text-text-secondary">کالاها فقط‌خواندنی‌اند. قیمت و موجودی نمایش داده‌شده از رکورد CRM خوانده می‌شود. تازگی اتصال ERP راستی‌آزمایی نشده است.</p>
+      </div>
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        <Input label="جست‌وجوی کالا" value={query} placeholder="نام، کد، گروه یا برند"
+          onChange={event => { setQuery(event.target.value); setPage(1); }} />
+        <div>
+          <label htmlFor="inventory-brand" className="mb-1 block text-xs font-bold text-text-main">برند</label>
+          <Select id="inventory-brand" value={brand} onChange={event => { setBrand(event.target.value); setPage(1); }}>
+            <option value="">همهٔ برندها</option>
+            {brands.map(value => <option key={value} value={value}>{value}</option>)}
+          </Select>
+        </div>
+      </div>
+      {visibleProducts.length === 0 ? (
+        <EmptyState surface="operations"
+          title={products.length ? 'کالایی با این فیلتر یافت نشد' : 'کاتالوگ خالی است'}
+          description={products.length ? 'عبارت جست‌وجو یا برند را تغییر دهید.' : 'رکورد کالایی برای نمایش دریافت نشده است.'} />
+      ) : (
+        <div className="overflow-x-auto" role="region" aria-label="جدول کاتالوگ و موجودی" tabIndex={0}>
+          <table className="w-full min-w-(--size-620) text-right text-xs">
+            <thead>
+              <tr className="border-b border-border text-text-secondary">
+                {['کالا', 'کد', 'منبع', 'قیمت ثبت‌شده', 'مالیات', 'موجودی', 'ارزش FIFO', 'نقطه سفارش', 'وضعیت'].map(label =>
+                  <th key={label} scope="col" className="p-3">{label}</th>
+                )}
+              </tr>
+            </thead>
+            <tbody>
+              {visibleProducts.map(product => {
+                const stock = readKnownAmount(product.stock);
+                const minimum = readKnownAmount(product.minStock);
+                const tax = readKnownAmount(product.taxRatePercent);
+                const fifo = readKnownAmount(product.inventoryValueFifo);
+                const brandLabel = catalogBrand(product.brand);
+                const isSample = product.source === 'LOCAL_TEST' || String(product.id).startsWith('demo-');
+                const asOf = typeof product.stockAsOf === 'string' && /^\d{4}-\d{2}-\d{2}/.test(product.stockAsOf) && Number.isFinite(Date.parse(product.stockAsOf))
+                  ? formatAppDate(product.stockAsOf, state.settings?.locale) : null;
+                return (
+                  <tr key={product.id} className="border-b border-border last:border-0">
+                    <th scope="row" className="p-3 font-bold text-text-main">
+                      <span>{product.name}</span>
+                      {(product.category || brandLabel) && <span className="mt-1 block font-normal text-text-secondary">{[product.category, brandLabel].filter(Boolean).join(' · ')}</span>}
+                    </th>
+                    <td className="p-3 text-text-secondary" dir="auto">{product.sku || product.code || '—'}</td>
+                    <td className="p-3">{isSample ? <Badge variant="warning">آزمایشی</Badge> : 'رکورد CRM'}</td>
+                    <td className="p-3">{money(readKnownAmount(product.unitPrice ?? product.basePrice))}</td>
+                    <td className="p-3" data-testid="product-tax-rate">
+                      {tax === null ? 'نامشخص' : tax === 0 ? <Badge variant="success">معاف (۰٪)</Badge> : `${tax.toLocaleString('fa-IR')}٪`}
+                    </td>
+                    <td className="p-3">
+                      {stock === null ? 'نامشخص' : stock.toLocaleString('fa-IR')}
+                      {stock !== null && asOf && <span className="mt-1 block whitespace-nowrap text-text-secondary">{asOf}</span>}
+                    </td>
+                    <td className="p-3" data-testid="product-fifo-value">{money(fifo)}</td>
+                    <td className="p-3">{minimum === null ? 'تعریف نشده' : minimum.toLocaleString('fa-IR')}</td>
+                    <td className="p-3">
+                      {stock === null ? <Badge variant="neutral">بدون داده معتبر</Badge>
+                        : minimum === null ? <Badge variant="neutral">آستانه تعریف نشده</Badge>
+                          : stock <= minimum ? <Badge variant="warning">به نقطه سفارش رسیده</Badge>
+                            : <Badge variant="success">در محدوده</Badge>}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {totalPages > 1 && (
+        <nav aria-label="صفحه‌بندی کاتالوگ" className="flex flex-wrap items-center justify-between gap-2">
+          <Button size="sm" variant="outline" disabled={activePage === 1} onClick={() => setPage(activePage - 1)}>قبلی</Button>
+          <span className="text-xs text-text-secondary">صفحهٔ {activePage.toLocaleString('fa-IR')} از {totalPages.toLocaleString('fa-IR')}</span>
+          <Button size="sm" variant="outline" disabled={activePage === totalPages} onClick={() => setPage(activePage + 1)}>بعدی</Button>
+        </nav>
+      )}
+    </Card>
+  );
 }
 
 export function PurchasingTab({ state, updateState }: { state: AppState; updateState: StateUpdater }) {

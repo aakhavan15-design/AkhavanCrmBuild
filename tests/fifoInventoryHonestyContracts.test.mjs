@@ -15,19 +15,23 @@ test('F7-04: types declare inventoryValueFifo as optional/nullable (DB-sourced)'
   assert.match(types, /CRM محاسبه نمی‌کند/);
 });
 
-test('F7-04: InventoryTab shows نامشخص when inventoryValueFifo is null/undefined/non-finite', () => {
-  assert.match(invTab, /data-testid="product-fifo-value"/);
-  assert.match(invTab, /inventoryValueFifo==null\|\|!Number\.isFinite\(Number\(p\.inventoryValueFifo\)\)\s*\?\s*'نامشخص'/);
-});
-
-test('F7-04: no client-side last-purchase-as-FIFO; labels DB source', () => {
+test('F7-04: InventoryTab reads FIFO and price from recorded fields and retains the unknown state', () => {
   const start = invTab.indexOf('InventoryTab');
   const end = invTab.indexOf('PurchasingTab');
   assert.ok(start > 0 && end > start);
   const fifoSection = invTab.slice(start, end);
+  assert.match(fifoSection, /readKnownAmount\(product\.inventoryValueFifo\)/);
+  assert.match(fifoSection, /data-testid="product-fifo-value"\>\{money\(fifo\)\}/);
   assert.equal(/lastPurchase|آخرین خرید/i.test(fifoSection), false);
-  assert.match(fifoSection, /FIFO، دیتابیس/);
-  assert.match(fifoSection, /inventoryValueFifo/);
-  assert.match(fifoSection, /money\(readKnownAmount\(p\.unitPrice \?\? p\.basePrice\)\)/);
-  assert.match(fifoSection, /stock!==null&&minimum!==null&&stock<=minimum/);
+  assert.match(fifoSection, /money\(readKnownAmount\(product\.unitPrice \?\? product\.basePrice\)\)/);
+  assert.match(fifoSection, /stock === null.*بدون داده معتبر/);
+  assert.match(fifoSection, /minimum === null.*آستانه تعریف نشده/);
+});
+
+test('F2-03: InventoryTab identifies sample rows and exposes no product write control', () => {
+  const section = invTab.slice(invTab.indexOf('InventoryTab'), invTab.indexOf('PurchasingTab'));
+  assert.match(section, /product\.source === 'LOCAL_TEST'/);
+  assert.match(section, /آزمایشی/);
+  assert.match(section, /تازگی اتصال ERP راستی‌آزمایی نشده است/);
+  assert.doesNotMatch(section, /updateState|type="submit"/);
 });
