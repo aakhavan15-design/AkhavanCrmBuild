@@ -23,7 +23,7 @@ for (const operation of ['subscribe', 'unsubscribe', 'send']) {
 }
 assert.match(server, /sendPushToUser\(req\.auth, payload\)/);
 const pushSend = server.slice(server.indexOf("app.post('/api/v1/push/send'"), server.indexOf("app.get('/api/v1/analytics"));
-assert.match(pushSend, /authenticate, requirePushSession, limitPushSend, requirePushSendPermission/);
+assert.match(pushSend, /authenticate, requireSignedSession, limitPushSend, requirePushSendPermission/);
 assert.match(pushSend, /userId !== req\.auth\.userId/);
 assert.match(pushSend, /await auditPushSend\(req\);[\s\S]*?sendPushToUser/);
 assert.doesNotMatch(pushSend, /req\.body\?*\.(title|body|url)/);

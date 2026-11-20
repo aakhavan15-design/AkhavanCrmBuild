@@ -697,9 +697,9 @@ app.get('/api/v1/push/vapid-public-key', (_req, res) => {
   res.json({ publicKey, vapidPublicKey: publicKey });
 });
 
-function requirePushSession(req, res, next) {
+function requireSignedSession(req, res, next) {
   if (!req.get('authorization')) {
-    return bad(req, res, 401, 'UNAUTHENTICATED', 'برای اعلان دستگاه وارد سامانه شوید.');
+    return bad(req, res, 401, 'UNAUTHENTICATED', 'برای انجام این عملیات وارد سامانه شوید.');
   }
   next();
 }
@@ -751,7 +751,7 @@ async function auditPushSend(req) {
   });
 }
 
-app.post('/api/v1/push/subscribe', authenticate, requirePushSession, (req, res) => {
+app.post('/api/v1/push/subscribe', authenticate, requireSignedSession, (req, res) => {
   const subscription = req.body?.subscription || req.body;
   if (!saveSubscription(subscription, req.auth)) {
     return res.status(400).json({ error: 'invalid_subscription' });
@@ -759,7 +759,7 @@ app.post('/api/v1/push/subscribe', authenticate, requirePushSession, (req, res) 
   res.json({ ok: true });
 });
 
-app.post('/api/v1/push/unsubscribe', authenticate, requirePushSession, (req, res) => {
+app.post('/api/v1/push/unsubscribe', authenticate, requireSignedSession, (req, res) => {
   const endpoint = req.body?.endpoint;
   if (typeof endpoint !== 'string' || !endpoint) return res.status(400).json({ error: 'endpoint_required' });
   removeSubscription(endpoint, req.auth);
@@ -767,7 +767,7 @@ app.post('/api/v1/push/unsubscribe', authenticate, requirePushSession, (req, res
 });
 
 // This endpoint sends only a generic preview to the authorized caller's own subscriptions.
-app.post('/api/v1/push/send', authenticate, requirePushSession, limitPushSend, requirePushSendPermission, wrap(async (req, res) => {
+app.post('/api/v1/push/send', authenticate, requireSignedSession, limitPushSend, requirePushSendPermission, wrap(async (req, res) => {
   const { userId, tag, id, linkTab, requireInteraction } = req.body || {};
   if (userId != null && userId !== req.auth.userId) {
     return res.status(403).json({ error: 'push_recipient_forbidden' });
@@ -811,11 +811,11 @@ app.get('/api/v1/analytics/reports/:reportId', authenticate, async (req, res) =>
  * Intelligent Document Capture (OCR & Vision AI API)
  * - Server-side multimodal extraction via @google/genai using gemini-3.8-flash
  * - Strict adherence to Partial Extraction (extracts whatever is visible, flags unread as MISSING)
- * - Heuristic fallback when GEMINI_API_KEY is not configured or in case of network issues
+ * - Unavailable OCR returns a failure so the operator may enter the actual fields manually.
  */
-app.post('/api/v1/documents/ocr-extract', authenticate, async (req, res) => {
+app.post('/api/v1/documents/ocr-extract', authenticate, requireSignedSession, async (req, res) => {
   try {
-    const { imageBase64, mimeType = 'image/jpeg', fileName = 'document.jpg', expectedDocType } = req.body || {};
+    const { imageBase64, mimeType = 'image/jpeg', expectedDocType } = req.body || {};
     if (!imageBase64 || typeof imageBase64 !== 'string') {
       return res.status(400).json({ error: { code: 'INVALID_PAYLOAD', message: 'ارسال تصویر یا فایل سند به صورت base64 الزامی است.' } });
     }
@@ -823,14 +823,14 @@ app.post('/api/v1/documents/ocr-extract', authenticate, async (req, res) => {
     // پاکسازی پیشوند data:image/...;base64, در صورت وجود
     const cleanBase64 = imageBase64.replace(/^data:[^;]+;base64,/, '');
 
-    let ocrEngine = 'HEURISTIC_PARSER';
+    const apiKey = process.env.GEMINI_API_KEY;
     let extractedResult = null;
 
-    if (process.env.GEMINI_API_KEY) {
+    if (apiKey) {
       try {
         const { GoogleGenAI, Type } = await import('@google/genai');
         const ai = new GoogleGenAI({
-          apiKey: process.env.GEMINI_API_KEY,
+          apiKey,
           httpOptions: {
             headers: {
               'User-Agent': 'aistudio-build',
@@ -960,40 +960,28 @@ app.post('/api/v1/documents/ocr-extract', authenticate, async (req, res) => {
         const textOutput = response.text;
         if (textOutput) {
           extractedResult = JSON.parse(textOutput);
-          ocrEngine = 'GEMINI_VISION';
         }
-      } catch (geminiError) {
-        console.warn('[OCR GEMINI API FALLBACK]:', geminiError?.message || geminiError);
+      } catch {
+        console.warn('[OCR PROVIDER UNAVAILABLE]', { correlationId: req.correlationId });
       }
+    } else {
+      return bad(req, res, 503, 'OCR_UNAVAILABLE', 'سرویس استخراج اطلاعات سند پیکربندی نشده است.');
     }
 
-    // اگر Gemini در دسترس نبود یا پاسخی نداد، از موتور قواعدی fallback استفاده می‌کنیم
-    if (!extractedResult) {
-      extractedResult = {
-        documentType: expectedDocType || 'BANK_RECEIPT',
-        overallConfidence: 0.8,
-        fields: {
-          amount: { value: 250000000, rawText: '۲۵۰,۰۰۰,۰۰۰ ریال', confidence: 0.9, status: 'EXTRACTED', evidence: 'مبلغ ۲۵۰,۰۰۰,۰۰۰ ریال' },
-          trackingNumber: { value: '9847120354', rawText: '۹۸۴۷۱۲۰۳۵۴', confidence: 0.95, status: 'EXTRACTED', evidence: 'شماره پیگیری: ۹۸۴۷۱۲۰۳۵۴' },
-          date: { value: '1405/08/21', rawText: '۱۴۰۵/۰۸/۲۱', confidence: 0.9, status: 'EXTRACTED', evidence: 'تاریخ: ۱۴۰۵/۰۸/۲۱' },
-          bankName: { value: 'بانک ملت', rawText: 'ملت', confidence: 0.9, status: 'EXTRACTED', evidence: 'بانک ملت' },
-          personName: { value: 'شرکت پترو صنعت اخوان', rawText: 'شرکت پترو صنعت اخوان', confidence: 0.85, status: 'EXTRACTED', evidence: 'واریزکننده: شرکت پترو صنعت اخوان' },
-          sayadId: { value: null, confidence: 0, status: 'MISSING', reviewReason: 'شناسه صیادی در سند موجود نیست' }
-        }
-      };
-      ocrEngine = 'HEURISTIC_PARSER';
+    if (!extractedResult?.fields || typeof extractedResult.fields !== 'object' || Array.isArray(extractedResult.fields)) {
+      return bad(req, res, 503, 'OCR_UNAVAILABLE', 'پاسخ معتبر از سرویس استخراج سند دریافت نشد.');
     }
 
     return res.status(200).json({
       ok: true,
-      ocrEngine,
+      ocrEngine: 'GEMINI_VISION',
       documentType: extractedResult.documentType || expectedDocType || 'BANK_RECEIPT',
-      overallConfidence: extractedResult.overallConfidence || 0.85,
+      overallConfidence: Number.isFinite(extractedResult.overallConfidence) ? extractedResult.overallConfidence : null,
       fields: extractedResult.fields || {},
       rawExtractedAt: new Date().toISOString()
     });
   } catch (err) {
-    console.error('[DOCUMENT OCR ERROR]', err);
+    console.error('[DOCUMENT OCR ERROR]', { correlationId: req.correlationId });
     return res.status(500).json({
       error: {
         code: 'OCR_PROCESSING_FAILED',

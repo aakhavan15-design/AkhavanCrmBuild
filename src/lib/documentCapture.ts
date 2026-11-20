@@ -58,7 +58,7 @@ export interface DocumentCaptureResult {
   fileSize: number;
   mimeType: string;
   imageBase64: string;
-  ocrEngine: 'GEMINI_VISION' | 'HEURISTIC_PARSER';
+  ocrEngine: 'GEMINI_VISION' | 'HEURISTIC_PARSER' | 'MANUAL';
   overallConfidence: number;
   extractedAt: string;
   fields: Record<string, ExtractedField<any>>;
@@ -425,7 +425,7 @@ export function buildDocumentCaptureResult(params: {
   fileSize: number;
   mimeType: string;
   imageBase64: string;
-  ocrEngine?: 'GEMINI_VISION' | 'HEURISTIC_PARSER';
+  ocrEngine?: 'GEMINI_VISION' | 'HEURISTIC_PARSER' | 'MANUAL';
   fields: Record<string, ExtractedField<any>>;
   state: Pick<AppState, 'accounts' | 'users' | 'invoices' | 'payments' | 'cheques'>;
 }): DocumentCaptureResult {

@@ -28,8 +28,10 @@ import {
   DocumentCaptureResult, 
   ExtractedField, 
   FieldStatus, 
-  buildDocumentCaptureResult, 
-  heuristicExtractDocumentText,
+  buildDocumentCaptureResult,
+  detectDuplicateDocument,
+  parseNormalizedAmount,
+  parseNormalizedDate,
   DOCUMENT_CAPTURE_LEGAL_DISCLAIMER,
   resolveIntakeCommit,
   type IntakeTargetAction,
@@ -37,7 +39,9 @@ import {
 } from '../../lib/documentCapture';
 import { DuplicateDetectionBanner } from './DuplicateDetectionBanner';
 import { ExtractedFieldsReviewer } from './ExtractedFieldsReviewer';
-import { generateId, cn } from '../../lib/utils';
+import { toLatinDigits } from '../../lib/digits';
+import { generateId, cn, getJalaliMonthDays, jalaliToGregorianISO } from '../../lib/utils';
+import { RBACService } from '../../lib/rbac';
 import { AuthService } from '../../services/AuthService';
 import { Button } from '../ui/Button';
 
@@ -56,6 +60,8 @@ export interface GlobalFloatingIntakeDrawerProps {
   }) => void;
 }
 
+type DocumentFile = { dataUrl: string; name: string; size: number; mimeType: string };
+
 export type ProcessingStep = 'IDLE' | 'READING_FILE' | 'CALLING_GEMINI_VISION' | 'EXTRACTING_FIELDS' | 'COMPLETED' | 'ERROR';
 
 export function GlobalFloatingIntakeDrawer({
@@ -67,12 +73,7 @@ export function GlobalFloatingIntakeDrawer({
   onApplyToForm,
 }: GlobalFloatingIntakeDrawerProps) {
   const [docType, setDocType] = useState<CapturedDocumentType>(initialType);
-  const [imageFile, setImageFile] = useState<{
-    dataUrl: string;
-    name: string;
-    size: number;
-    mimeType: string;
-  } | null>(null);
+  const [imageFile, setImageFile] = useState<DocumentFile | null>(null);
 
   const [processingStep, setProcessingStep] = useState<ProcessingStep>('IDLE');
   const [captureResult, setCaptureResult] = useState<DocumentCaptureResult | null>(null);
@@ -161,112 +162,74 @@ export function GlobalFloatingIntakeDrawer({
     reader.readAsDataURL(file);
   };
 
-  const runOcrProcess = async (
-    fileInfo: { dataUrl: string; name: string; size: number; mimeType: string },
-    selectedType: CapturedDocumentType
+  const prepareReview = (
+    file: DocumentFile,
+    documentType: CapturedDocumentType,
+    fields: Record<string, ExtractedField<unknown>>,
+    engine: DocumentCaptureResult['ocrEngine'],
   ) => {
+    ensureStandardFields(fields, documentType);
+    const capture = buildDocumentCaptureResult({
+      id: generateId(), documentType, fileName: file.name, fileSize: file.size,
+      mimeType: file.mimeType, imageBase64: file.dataUrl, ocrEngine: engine, fields, state,
+    });
+    const values: Record<string, unknown> = Object.fromEntries(Object.entries(fields).map(([key, field]) => [key, field.value]));
+    if (capture.matchedEntity?.entityType === 'CUSTOMER') {
+      values.accountId = capture.matchedEntity.id;
+      values.customerName = capture.matchedEntity.name;
+    }
+    setSelectedCustomerId(typeof values.accountId === 'string' ? values.accountId : '');
+    setDocType(documentType);
+    setEditableValues(values);
+    setCaptureResult(capture);
+    setErrorMsg(null);
+    setProcessingStep('COMPLETED');
+  };
+
+  const runOcrProcess = async (file: DocumentFile, selectedType: CapturedDocumentType) => {
     setProcessingStep('CALLING_GEMINI_VISION');
     setErrorMsg(null);
     setIsDuplicateConfirmed(false);
 
     try {
       const token = AuthService.getAccessToken();
-      let serverResponse: Record<string, any> | null = null;
-
-      try {
-        const resp = await fetch('/api/v1/documents/ocr-extract', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(token ? { Authorization: `Bearer ${token}` } : {})
-          },
-          body: JSON.stringify({
-            imageBase64: fileInfo.dataUrl,
-            mimeType: fileInfo.mimeType,
-            fileName: fileInfo.name,
-            expectedDocType: selectedType
-          })
-        });
-
-        if (resp.ok) {
-          serverResponse = await resp.json();
-        }
-      } catch (networkErr) {
-        console.warn('[OCR CLIENT] Network fetch failed, falling back to local parser', networkErr);
+      const response = await fetch('/api/v1/documents/ocr-extract', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ imageBase64: file.dataUrl, mimeType: file.mimeType, expectedDocType: selectedType }),
+      });
+      if (!response.ok) throw new Error('OCR_UNAVAILABLE');
+      const result = await response.json();
+      if (result?.ok !== true || result.ocrEngine !== 'GEMINI_VISION' || !result.fields || typeof result.fields !== 'object' || Array.isArray(result.fields)) {
+        throw new Error('INVALID_OCR_RESPONSE');
       }
 
       setProcessingStep('EXTRACTING_FIELDS');
-
-      let detectedFields: Record<string, ExtractedField<any>> = {};
-      let detectedType = selectedType;
-      let engine: 'GEMINI_VISION' | 'HEURISTIC_PARSER' = 'HEURISTIC_PARSER';
-
-      if (serverResponse && serverResponse.ok && serverResponse.fields) {
-        engine = serverResponse.ocrEngine || 'GEMINI_VISION';
-        detectedType = (serverResponse.documentType as CapturedDocumentType) || selectedType;
-
-        const rawFields = serverResponse.fields as Record<string, Record<string, any>>;
-        for (const [k, v] of Object.entries(rawFields)) {
-          const status: FieldStatus =
-            (v.status as FieldStatus) ||
-            (v.value !== null && v.value !== undefined ? 'EXTRACTED' : 'MISSING');
-
-          detectedFields[k] = {
-            key: k,
-            label: getFieldLabel(k, detectedType),
-            value: v.value ?? null,
-            rawText: v.rawText,
-            confidence:
-              typeof v.confidence === 'number'
-                ? v.confidence
-                : status === 'EXTRACTED'
-                  ? 0.94
-                  : 0.5,
-            status,
-            evidence: v.evidence,
-            reviewReason: v.reviewReason
-          };
-        }
-      } else {
-        const heuristic = heuristicExtractDocumentText(fileInfo.name, fileInfo.name);
-        detectedFields = heuristic.fields;
-        detectedType = selectedType || heuristic.documentType;
+      const detectedType: CapturedDocumentType = Object.hasOwn(DOCUMENT_TYPE_LABELS, result.documentType)
+        ? result.documentType : selectedType;
+      const fields: Record<string, ExtractedField<unknown>> = {};
+      for (const [key, entry] of Object.entries(result.fields)) {
+        if (!entry || typeof entry !== 'object' || ['__proto__', 'constructor', 'prototype'].includes(key)) continue;
+        const raw = entry as Record<string, unknown>;
+        const missing = raw.status === 'MISSING' || raw.value == null;
+        const confidence = typeof raw.confidence === 'number' && Number.isFinite(raw.confidence)
+          ? Math.max(0, Math.min(1, raw.confidence)) : 0;
+        const status: FieldStatus = missing ? 'MISSING' : raw.status === 'EXTRACTED' && confidence > 0 ? 'EXTRACTED' : 'NEEDS_REVIEW';
+        fields[key] = {
+          key, label: getFieldLabel(key, detectedType), value: missing ? null : raw.value,
+          confidence: missing ? 0 : confidence, status,
+          rawText: typeof raw.rawText === 'string' ? raw.rawText : undefined,
+          evidence: typeof raw.evidence === 'string' ? raw.evidence : undefined,
+          reviewReason: typeof raw.reviewReason === 'string' ? raw.reviewReason : undefined,
+        };
       }
-
-      ensureStandardFields(detectedFields, detectedType);
-
-      const captureObj = buildDocumentCaptureResult({
-        id: generateId(),
-        documentType: detectedType,
-        fileName: fileInfo.name,
-        fileSize: fileInfo.size,
-        mimeType: fileInfo.mimeType,
-        imageBase64: fileInfo.dataUrl,
-        ocrEngine: engine,
-        fields: detectedFields,
-        state
-      });
-
-      setDocType(detectedType);
-      setCaptureResult(captureObj);
-
-      const initialVals: Record<string, unknown> = {};
-      for (const [k, f] of Object.entries(detectedFields)) {
-        initialVals[k] = f.value;
-      }
-
-      if (captureObj.matchedEntity?.entityType === 'CUSTOMER') {
-        setSelectedCustomerId(captureObj.matchedEntity.id);
-        initialVals.accountId = captureObj.matchedEntity.id;
-        initialVals.customerName = captureObj.matchedEntity.name;
-      }
-
-      setEditableValues(initialVals);
-      setProcessingStep('COMPLETED');
-    } catch (err) {
-      console.error('[OCR ERROR]', err);
+      prepareReview(file, detectedType, fields, 'GEMINI_VISION');
+    } catch {
       setProcessingStep('ERROR');
-      setErrorMsg('خطا در پردازش هوشمند سند. می‌توانید اطلاعات را دستی وارد کنید یا دوباره تلاش نمایید.');
+      setErrorMsg('سرویس استخراج سند در دسترس نیست. فایل را برای ورود دستی نگه دارید یا دوباره تلاش کنید.');
     }
   };
 
@@ -316,13 +279,7 @@ export function GlobalFloatingIntakeDrawer({
 
   const handleUpdateFieldValue = (key: string, val: unknown) => {
     setEditableValues(prev => ({ ...prev, [key]: val }));
-    if (captureResult) {
-      const field = captureResult.fields[key];
-      if (field) {
-        field.value = val;
-        field.status = val ? 'EXTRACTED' : 'MISSING';
-      }
-    }
+    setIsDuplicateConfirmed(false);
   };
 
   const filteredCustomers = (state?.accounts || []).filter((acc: Customer) => {
@@ -337,9 +294,26 @@ export function GlobalFloatingIntakeDrawer({
 
   const selectedCustomerObj = (state?.accounts || []).find((a: Customer) => a.id === selectedCustomerId);
 
+  const rawAmount = toLatinDigits(String(editableValues.amount ?? '')).trim();
+  const amount = /^[-−]/.test(rawAmount) ? null : parseNormalizedAmount(rawAmount).amount;
+  const parsedDate = parseNormalizedDate(editableValues.date);
+  const [year, month, day] = (parsedDate.jalali || '').split('/').map(Number);
+  const dateCandidate = parsedDate.gregorianIso || (year && month && day && day <= getJalaliMonthDays(year, month)
+    ? jalaliToGregorianISO(year, month, day) : null);
+  const candidateUtc = dateCandidate ? new Date(`${dateCandidate}T00:00:00Z`) : null;
+  const documentDate = candidateUtc && Number.isFinite(candidateUtc.getTime()) && candidateUtc.toISOString().slice(0, 10) === dateCandidate
+    ? dateCandidate : null;
+  const sayadId = toLatinDigits(String(editableValues.sayadId || '')).replace(/\s/g, '');
+  const duplicateCheck = captureResult ? detectDuplicateDocument(state, docType, {
+    amount, date: documentDate,
+    trackingNumber: String(editableValues.trackingNumber || editableValues.invoiceNumber || ''),
+    sayadId,
+    accountId: selectedCustomerId || undefined,
+  }) : { isDuplicate: false };
+
   const handleConfirmAndLinkToCrm = () => {
     if (!captureResult) return;
-    if (captureResult.duplicateCheck.isDuplicate && !isDuplicateConfirmed) return;
+    if (duplicateCheck.isDuplicate && !isDuplicateConfirmed) return;
 
     const plan = resolveIntakeCommit({
       documentType: docType,
@@ -350,10 +324,27 @@ export function GlobalFloatingIntakeDrawer({
     if (plan.blockedReason) return;
 
     const linkedId = selectedCustomerId || (captureResult.matchedEntity?.entityType === 'CUSTOMER' ? captureResult.matchedEntity.id : 'UNLINKED');
-    const amountVal = Number(editableValues.amount) || 0;
-    const dateVal = editableValues.date ? String(editableValues.date) : new Date().toISOString();
+    const isReceipt = docType === 'BANK_RECEIPT' || docType === 'PAYMENT_RECEIPT';
+    const isCheque = docType === 'CHEQUE';
 
+    if (plan.persistDirect && (!updateState || !imageFile)) {
+      setErrorMsg('ثبت مستقیم سند در این صفحه در دسترس نیست.');
+      return;
+    }
     if (plan.persistDirect && updateState && imageFile) {
+      const rbac = new RBACService(state);
+      if ((isReceipt && !rbac.can('payments', 'CREATE')) || (isCheque && !rbac.can('finance', 'CREATE'))) {
+        setErrorMsg('مجوز ثبت این سند مالی را ندارید.');
+        return;
+      }
+      if ((isReceipt || isCheque) && (!(amount && amount > 0) || !documentDate || !selectedCustomerId)) {
+        setErrorMsg('برای ثبت مستقیم سند مالی، مبلغ، تاریخ و طرف حساب را وارد کنید.');
+        return;
+      }
+      if (isCheque && !/^\d{16}$/.test(sayadId)) {
+        setErrorMsg('شناسهٔ صیادی باید ۱۶ رقم باشد.');
+        return;
+      }
       updateState(draft => {
         if (docType === 'BANK_RECEIPT' || docType === 'PAYMENT_RECEIPT') {
           if (!draft.payments) draft.payments = [];
@@ -361,23 +352,23 @@ export function GlobalFloatingIntakeDrawer({
             id: generateId(),
             accountId: linkedId,
             customerId: linkedId,
-            amount: amountVal,
-            date: dateVal,
+            amount: amount!,
+            date: documentDate!,
             method: 'TRANSFER',
             reference: String(editableValues.trackingNumber || ''),
             bankName: String(editableValues.bankName || ''),
-            status: 'CLEARED',
-            notes: `ثبت خودکار از طریق درگاه ورود هوشمند سند - سند: ${imageFile.name}`
+            status: 'PENDING',
+            notes: `ثبت رسید اعلامی برای بررسی حسابداری - سند: ${imageFile.name}`
           };
           draft.payments.unshift(newPayment);
         } else if (docType === 'CHEQUE') {
           if (!draft.cheques) draft.cheques = [];
           const newCheque: Cheque = {
             id: generateId(),
-            amount: amountVal,
-            sayadNumber: String(editableValues.sayadId || ''),
-            chequeNumber: String(editableValues.sayadId || editableValues.trackingNumber || ''),
-            dueDate: dateVal,
+            amount: amount!,
+            sayadNumber: sayadId,
+            chequeNumber: sayadId,
+            dueDate: documentDate!,
             bankName: String(editableValues.bankName || ''),
             status: 'PENDING',
             direction: editableValues.direction as ChequeDirection,
@@ -400,7 +391,8 @@ export function GlobalFloatingIntakeDrawer({
           uploadedBy: state.currentUserId,
           ocrMetadata: {
             captureId: captureResult.id,
-            confidence: captureResult.overallConfidence,
+            source: captureResult.ocrEngine,
+            confidence: captureResult.ocrEngine === 'MANUAL' ? null : captureResult.overallConfidence,
             documentType: captureResult.documentType,
             isDuplicateOverride: isDuplicateConfirmed,
             linkedCustomerId: linkedId,
@@ -423,7 +415,7 @@ export function GlobalFloatingIntakeDrawer({
     setSuccessNotice(
       plan.applyToForm
         ? 'مقادیر سند به فرم منتقل شد؛ ثبت نهایی از فرم انجام می‌شود.'
-        : 'سند با موفقیت پردازش، تأیید و به پرونده مالی در سامانه الصاق گردید.'
+        : 'سند به پرونده پیوست شد. ثبت اثر مالی به بررسی حسابداری وابسته است.'
     );
     setTimeout(() => {
       onClose();
@@ -434,7 +426,7 @@ export function GlobalFloatingIntakeDrawer({
     processingStep === 'CALLING_GEMINI_VISION' ||
     processingStep === 'EXTRACTING_FIELDS' ||
     processingStep === 'READING_FILE';
-  const isSubmissionBlockedByDuplicate = Boolean(captureResult?.duplicateCheck.isDuplicate) && !isDuplicateConfirmed;
+  const isSubmissionBlockedByDuplicate = duplicateCheck.isDuplicate && !isDuplicateConfirmed;
   const commitPlan = resolveIntakeCommit({
     documentType: docType,
     targetAction,
@@ -563,9 +555,9 @@ export function GlobalFloatingIntakeDrawer({
               <span>بازبینی و ثبت نهایی</span>
             </span>
           </div>
-          {captureResult && (
+          {captureResult && captureResult.ocrEngine !== 'MANUAL' && (
             <span className="text-micro font-mono text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-              ضریب اطمینان: {Math.round((captureResult.overallConfidence || 0.85) * 100)}٪
+              ضریب اطمینان: {Math.round(captureResult.overallConfidence * 100)}٪
             </span>
           )}
         </div>
@@ -747,17 +739,22 @@ export function GlobalFloatingIntakeDrawer({
 
           <div className="w-full md:w-1/2 h-1/2 md:h-full flex flex-col bg-surface overflow-hidden">
             {errorMsg && (
-              <div className="p-3 bg-rose-500/10 border-b border-rose-500/20 text-rose-800 dark:text-rose-300 text-xs flex items-center gap-2">
-                <AlertTriangle size={15} className="shrink-0" />
-                <span>{errorMsg}</span>
+              <div className="space-y-2 border-b border-danger/20 bg-danger-soft p-3 text-xs text-danger">
+                <div role="alert" className="flex items-center gap-2"><AlertTriangle size={15} className="shrink-0" />{errorMsg}</div>
+                {processingStep === 'ERROR' && imageFile && (
+                  <div className="flex flex-wrap gap-2">
+                    <Button type="button" variant="outline" size="sm" onClick={() => void runOcrProcess(imageFile, docType)}>تلاش دوباره</Button>
+                    <Button type="button" variant="soft" size="sm" onClick={() => prepareReview(imageFile, docType, {}, 'MANUAL')}>ورود دستی اطلاعات سند</Button>
+                  </div>
+                )}
               </div>
             )}
 
             {captureResult && (
               <div className="shrink-0 p-3.5 border-b border-border bg-canvas/30 space-y-2.5">
-                {captureResult.duplicateCheck.isDuplicate && (
+                {duplicateCheck.isDuplicate && (
                   <DuplicateDetectionBanner
-                    duplicateCheck={captureResult.duplicateCheck}
+                    duplicateCheck={duplicateCheck}
                     isConfirmed={isDuplicateConfirmed}
                     onToggleConfirm={setIsDuplicateConfirmed}
                   />
@@ -792,6 +789,7 @@ export function GlobalFloatingIntakeDrawer({
                       value={selectedCustomerId}
                       onChange={(e) => {
                         setSelectedCustomerId(e.target.value);
+                        setIsDuplicateConfirmed(false);
                         const acc = (state?.accounts || []).find((a: Customer) => a.id === e.target.value);
                         if (acc) {
                           setEditableValues(prev => ({ ...prev, accountId: acc.id, customerName: acc.name }));
@@ -828,7 +826,7 @@ export function GlobalFloatingIntakeDrawer({
                   editableValues={editableValues}
                   onChangeField={handleUpdateFieldValue}
                   stats={captureResult.partialExtractionStats}
-                  overallConfidence={captureResult.overallConfidence}
+                  overallConfidence={captureResult.ocrEngine === 'MANUAL' ? undefined : captureResult.overallConfidence}
                 />
               ) : isProcessing ? (
                 <div className="h-full flex flex-col items-center justify-center text-center p-6 space-y-3">

@@ -59,6 +59,22 @@ describe('Intelligent Document Capture & Partial Extraction Contracts', () => {
     assert.ok(result.overallConfidence > 0);
   });
 
+  test('manual review retains the file and leaves unavailable extracted values blank', () => {
+    const result = buildDocumentCaptureResult({
+      id: 'manual-1', fileName: 'amount 999999.png', fileSize: 32,
+      documentType: 'BANK_RECEIPT', mimeType: 'image/png', imageBase64: 'data:image/png;base64,AA==',
+      ocrEngine: 'MANUAL',
+      fields: { amount: { key: 'amount', label: 'مبلغ', value: null, confidence: 0, status: 'MISSING' } },
+      state: { accounts: [], users: [], invoices: [], payments: [], cheques: [] },
+    });
+    assert.equal(result.ocrEngine, 'MANUAL');
+    assert.equal(result.fields.amount.value, null);
+    assert.equal(result.partialExtractionStats.extractedCount, 0);
+    assert.equal(result.overallConfidence, 0);
+    assert.equal(result.matchedEntity, undefined);
+    assert.equal(result.duplicateCheck.isDuplicate, false);
+  });
+
   test('Amount normalization: Handles Persian and Latin digits, Rials and Tomans correctly', () => {
     // رقم فارسی با کاما و ریال
     const res1 = parseNormalizedAmount('مبلغ ۲۵,۰۰۰,۰۰۰ ریال');
