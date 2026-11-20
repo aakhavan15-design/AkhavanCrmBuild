@@ -9,7 +9,7 @@ assert.equal(planned.nextState.salesOrders.length, 2);
 assert.equal(planned.nextState.salesOrders[1].origin, 'ERP');
 planned = planErpImport(planned.nextState, 'SALES_ORDER', [incoming]);
 assert.equal(planned.summary.inserted, 0);
-assert.equal(planned.summary.updated, 1);
+assert.equal(planned.summary.updated, 0, 'identical source data is not applied again');
 assert.equal(planned.nextState.salesOrders.length, 2);
 planned = planErpImport(planned.nextState, 'SALES_ORDER', [{ ...incoming, totalAmount: 80, sourceModifiedAtUtc: '2026-10-26T10:00:00Z' }]);
 assert.equal(planned.summary.skippedStale, 1);

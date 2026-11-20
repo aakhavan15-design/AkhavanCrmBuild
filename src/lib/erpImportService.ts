@@ -36,7 +36,7 @@ export const ERP_ENTITY_TYPES = Object.keys(COLLECTIONS) as ErpEntityType[];
 export const erpCollectionFor = (entityType: ErpEntityType) => COLLECTIONS[entityType];
 
 function normalizeRecord(entityType: ErpEntityType, source: ErpImportRecord) {
-  const externalId = String(source.externalId ?? source.externalOrderId ?? source.externalInvoiceId ?? '').trim();
+  const externalId = String(source.externalId ?? source.externalOrderId ?? source.externalInvoiceId ?? source.externalCreditNoteId ?? '').trim();
   const tenantId = String(source.tenantId ?? '').trim();
   const sourceSystemCode = String(source.sourceSystemCode ?? '').trim().toUpperCase();
   const modifiedAt = source.sourceModifiedAtUtc;
@@ -81,6 +81,8 @@ export function planErpImport(state: Record<string, unknown>, entityType: ErpEnt
   });
   return {
     nextState: { ...state, [collectionName]: result.records },
+    appliedKeys: result.appliedKeys,
+    conflictKeys: result.conflictKeys,
     summary: {
       entityType,
       received: incoming.length,
@@ -123,5 +125,5 @@ export async function importErpIntoApp(entityType: ErpEntityType, incoming: ErpI
 }
 
 export function getErpIdentity(record: ErpImportRecord, entityType: ErpEntityType) {
-  return externalIdentityKey({ tenantId: record.tenantId, sourceSystemCode: record.sourceSystemCode, entityType, externalId: String(record.externalId ?? record.externalOrderId ?? record.externalInvoiceId ?? '') });
+  return externalIdentityKey({ tenantId: record.tenantId, sourceSystemCode: record.sourceSystemCode, entityType, externalId: String(record.externalId ?? record.externalOrderId ?? record.externalInvoiceId ?? record.externalCreditNoteId ?? '') });
 }

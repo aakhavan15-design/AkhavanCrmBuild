@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { runEtlBatch, validateEtlRecord, stablePayloadHash, resolveLedgerAccount, mapJournalLines, reconcileControlTotal } from '../src/lib/etlPipeline.ts';
+import { runEtlBatch, checkpointKey, validateEtlRecord, stablePayloadHash, resolveLedgerAccount, mapJournalLines, reconcileControlTotal } from '../src/lib/etlPipeline.ts';
 import { computeLedgerPnl } from '../src/lib/ledgerPnl.ts';
 import { DEFAULT_REPORT_BUCKETS } from '../src/lib/accountingMapping.ts';
 import { createMemoryPort } from '../src/lib/dataPorts.ts';
@@ -25,21 +25,46 @@ let state = { payments: [] };
 const r1 = runEtlBatch(state, 'PAYMENT', [pay('P1'), pay('P2'), pay('P3', { amount: -1 })], { now: new Date('2026-11-08T00:00:00Z') });
 assert.equal(r1.summary.inserted, 2); assert.equal(r1.summary.rejected, 1); assert.equal(r1.summary.status, 'PARTIAL');
 assert.equal(r1.nextState.payments.length, 2); assert.equal(r1.nextState.payments[0].isErpMirror, true);
-assert.equal(r1.nextState.etl.checkpoints.PAYMENT.watermarkUtc, '2026-10-01T08:00:00Z');
+const ledgerKey = checkpointKey(base, 'PAYMENT');
+assert.equal(r1.nextState.etl.checkpoints[ledgerKey], undefined, 'partial batches cannot advance a checkpoint');
 const r2 = runEtlBatch(r1.nextState, 'PAYMENT', [pay('P1'), pay('P2')]);
 assert.equal(r2.summary.duplicate, 2); assert.equal(r2.summary.inserted + r2.summary.updated, 0);
 assert.equal(r2.nextState.payments.length, 2, 'replay creates no duplicate rows');
+assert.equal(r2.nextState.etl.checkpoints[ledgerKey].watermarkUtc, '2026-10-01T08:00:00.000Z');
 // changed payload updates; older source version is stale
 const r3 = runEtlBatch(r2.nextState, 'PAYMENT', [pay('P1', { amount: 700, sourceModifiedAtUtc: '2026-10-02T08:00:00Z' })]);
 assert.equal(r3.summary.updated, 1); assert.equal(r3.nextState.payments.find(p => p.externalId === 'P1').amount, 700);
 const r4 = runEtlBatch(r3.nextState, 'PAYMENT', [pay('P1', { amount: 100, sourceModifiedAtUtc: '2026-09-01T08:00:00Z' })]);
 assert.equal(r4.summary.skippedStale, 1); assert.equal(r4.nextState.payments.find(p => p.externalId === 'P1').amount, 700);
+assert.deepEqual(r4.nextState.etl.hashes, r3.nextState.etl.hashes, 'stale payload must not overwrite the accepted hash');
+assert.deepEqual(r4.nextState.etl.checkpoints, r3.nextState.etl.checkpoints, 'stale payload must not rewind checkpoint');
+const equalTime = runEtlBatch(r4.nextState, 'PAYMENT', [pay('P1', { amount: 900, sourceModifiedAtUtc: '2026-10-02T08:00:00Z' })]);
+assert.equal(equalTime.summary.conflicts, 1);
+assert.equal(equalTime.rejections[0].ruleCode, 'SOURCE_VERSION_CONFLICT');
+assert.equal(equalTime.nextState.payments.find(row => row.externalId === 'P1').amount, 700);
+const wrongTenant = runEtlBatch(r4.nextState, 'PAYMENT', [pay('P1', { tenantId: 'other-tenant' })], { feed: base });
+assert.equal(wrongTenant.rejections[0].ruleCode, 'FEED_SCOPE_MISMATCH');
+assert.deepEqual(wrongTenant.nextState.etl.checkpoints, r4.nextState.etl.checkpoints);
+const collision = runEtlBatch({ payments: [] }, 'PAYMENT', [pay('collision', { amount: 22 }), pay('collision', { amount: 99 })]);
+assert.equal(collision.summary.status, 'FAILED');
+assert.equal(collision.summary.rejected, 2);
+assert.equal(collision.rejections[0].ruleCode, 'SOURCE_VERSION_CONFLICT');
+assert.deepEqual(collision.nextState.payments, []);
+const replay = runEtlBatch(r4.nextState, 'PAYMENT', [pay('new-in-replay', { sourceModifiedAtUtc: '2026-10-09T12:00:00Z' })], { mode: 'REPLAY', feed: base });
+assert.equal(replay.summary.inserted, 1);
+assert.deepEqual(replay.nextState.etl.checkpoints, r4.nextState.etl.checkpoints);
+const missingVersion = runEtlBatch(r4.nextState, 'PAYMENT', [pay('P1', { amount: 900, sourceModifiedAtUtc: undefined })]);
+assert.equal(missingVersion.summary.conflicts, 1);
+assert.equal(missingVersion.nextState.payments.find(row => row.externalId === 'P1').amount, 700);
+
 // in-batch duplicate keeps the newer source version
 const r5 = runEtlBatch({ payments: [] }, 'PAYMENT', [pay('P9', { amount: 1, sourceModifiedAtUtc: '2026-10-01T00:00:00Z' }), pay('P9', { amount: 2, sourceModifiedAtUtc: '2026-10-03T00:00:00Z' })]);
 assert.equal(r5.summary.duplicate, 1); assert.equal(r5.nextState.payments[0].amount, 2);
 // same external id from another source system is a different record (traceable to its own source)
 const r6 = runEtlBatch(r1.nextState, 'PAYMENT', [pay('P1', { sourceSystemCode: 'erp-b' })]);
 assert.equal(r6.summary.inserted, 1); assert.equal(r6.nextState.payments.length, 3);
+assert.ok(r6.nextState.etl.checkpoints[checkpointKey({ ...base, sourceSystemCode: 'ERP-B' }, 'PAYMENT')]);
+assert.equal(r6.nextState.etl.checkpoints[ledgerKey], undefined);
 // credit notes keep reconciliation-compatible identity fields
 const cn = runEtlBatch({ creditNotes: [] }, 'CREDIT_NOTE', [{ ...base, externalId: 'CN1', externalInvoiceId: 'I1', amount: 10 }]);
 assert.equal(cn.nextState.creditNotes[0].externalCreditNoteId, 'CN1'); assert.equal(cn.nextState.creditNotes[0].sourceType, 'ERP_MIRROR');

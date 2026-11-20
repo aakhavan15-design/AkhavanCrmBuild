@@ -45,31 +45,41 @@ export function isNegotiableErpOrder(order: Record<string, unknown>): boolean {
 /** Source-scoped identity. Never deduplicate across ERP sources by visible document number alone. */
 export function externalIdentityKey(input: { tenantId: string; sourceSystemCode: string; entityType: string; externalId: string }): string | null {
   const tenantId = input.tenantId.trim(), source = input.sourceSystemCode.trim().toUpperCase(), type = input.entityType.trim().toUpperCase(), id = input.externalId.trim();
-  return tenantId && source && type && id ? [tenantId, source, type, id].join('|') : null;
+  return tenantId && source && type && id ? [tenantId, source, type, id].map(part => part.replace(/%/g, '%25').replace(/\|/g, '%7C')).join('|') : null;
 }
 
-export interface SyncResult<T> { records: T[]; inserted: number; updated: number; skippedStale: number; conflicts: number }
+export interface SyncResult<T> { records: T[]; inserted: number; updated: number; skippedStale: number; conflicts: number; appliedKeys: string[]; conflictKeys: string[] }
 /** Idempotent in-memory upsert contract mirroring DB unique keys. Stable external IDs are required. */
 export function upsertExternalRecords<T extends Record<string, unknown>>(existing: T[], incoming: T[], keyFields: { tenantField?: string; sourceField?: string; typeField?: string; externalIdField?: string } = {}): SyncResult<T> {
   const fields = { tenantField: 'tenantId', sourceField: 'sourceSystemCode', typeField: 'entityType', externalIdField: 'externalId', ...keyFields };
   const records = existing.map(record => ({ ...record }));
   let inserted = 0, updated = 0, skippedStale = 0, conflicts = 0;
+  const appliedKeys: string[] = [];
+  const conflictKeys: string[] = [];
   const keyOf = (record: T) => externalIdentityKey({ tenantId: String(record[fields.tenantField] ?? ''), sourceSystemCode: String(record[fields.sourceField] ?? ''), entityType: String(record[fields.typeField] ?? ''), externalId: String(record[fields.externalIdField] ?? '') });
   for (const source of incoming) {
     const key = keyOf(source);
     if (!key) { conflicts++; continue; }
     const matches = records.map((record, index) => ({ record, index })).filter(item => keyOf(item.record) === key);
-    if (matches.length > 1) { conflicts++; continue; }
-    if (!matches.length) { records.push({ ...source }); inserted++; continue; }
+    if (matches.length > 1) { conflicts++; conflictKeys.push(key); continue; }
+    if (!matches.length) { records.push({ ...source }); appliedKeys.push(key); inserted++; continue; }
     const { record, index } = matches[0];
-    const oldTime = record.sourceModifiedAtUtc ? Date.parse(record.sourceModifiedAtUtc) : NaN;
-    const newTime = source.sourceModifiedAtUtc ? Date.parse(source.sourceModifiedAtUtc) : NaN;
+    const oldTime = Date.parse(String(record.sourceModifiedAtUtc ?? ''));
+    const newTime = Date.parse(String(source.sourceModifiedAtUtc ?? ''));
     if (Number.isFinite(oldTime) && Number.isFinite(newTime) && newTime < oldTime) { skippedStale++; continue; }
-    // Preserve CRM-only fields and overwrite source-owned fields from ERP; field ownership must be configured at adapter boundary.
-    records[index] = { ...record, ...source };
+    const unchanged = Object.keys(source).every(field =>
+      field === 'id' || (field === 'sourceModifiedAtUtc' && oldTime === newTime) || JSON.stringify(record[field]) === JSON.stringify(source[field])
+    );
+    if (unchanged) continue;
+    if (!Number.isFinite(newTime) || (Number.isFinite(oldTime) && newTime === oldTime)) {
+      conflicts++; conflictKeys.push(key); continue;
+    }
+    // Keep the CRM identity when a newer source record replaces an earlier version.
+    records[index] = { ...record, ...source, ...(record.id == null ? {} : { id: record.id }) };
+    appliedKeys.push(key);
     updated++;
   }
-  return { records, inserted, updated, skippedStale, conflicts };
+  return { records, inserted, updated, skippedStale, conflicts, appliedKeys, conflictKeys };
 }
 
 export function makeErpChangeRequest(input: Omit<ErpChangeRequest, 'status' | 'requestedAt'> & { requestedAt?: string }): ErpChangeRequest {

@@ -26,8 +26,13 @@ export const emptyEtlLedger = (): EtlLedger => ({ hashes: {}, checkpoints: {}, b
 
 /** Stable, key-order-independent 53-bit hash (sync; works in browser, Node and workers). Not cryptographic — used for change detection only. */
 export function stablePayloadHash(value: unknown): string {
-  const norm = (v: Record<string, unknown>): unknown => Array.isArray(v) ? v.map(norm) : v && typeof v === 'object' ? Object.keys(v).sort().reduce((o: unknown, k) => { o[k] = norm(v[k]); return o; }, {}) : v;
-  const str = JSON.stringify(norm(value));
+  const norm = (v: unknown): unknown => {
+    if (Array.isArray(v)) return v.map(norm);
+    if (!v || typeof v !== 'object') return v;
+    const fields = v as Record<string, unknown>;
+    return Object.fromEntries(Object.keys(fields).sort().map(key => [key, norm(fields[key])]));
+  };
+  const str = JSON.stringify(norm(value)) ?? 'null';
   let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
   for (let i = 0; i < str.length; i++) { const ch = str.charCodeAt(i); h1 = Math.imul(h1 ^ ch, 2654435761); h2 = Math.imul(h2 ^ ch, 1597334677); }
   h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
@@ -78,52 +83,95 @@ export function validateEtlRecord(entityType: ErpEntityType, record: ErpImportRe
   return out;
 }
 
-export interface RunEtlOptions { mode?: EtlMode; now?: Date; batchId?: string }
+type FeedIdentity = { tenantId: string; sourceSystemCode: string };
+export interface RunEtlOptions { mode?: EtlMode; now?: Date; batchId?: string; feed?: FeedIdentity }
+export const checkpointKey = (feed: FeedIdentity, entityType: ErpEntityType) =>
+  JSON.stringify([String(feed.tenantId).trim(), String(feed.sourceSystemCode).trim().toUpperCase(), entityType]);
 
-/** Pure batch run: validate → drop in-batch & replay duplicates → apply via the existing upsert engine → update ledger/checkpoint. Re-running the same payload changes nothing. */
+/** Plan one import. The adapter can persist the result and checkpoint in the same transaction. */
 export function runEtlBatch(state: Record<string, unknown>, entityType: ErpEntityType, records: ErpImportRecord[], options: RunEtlOptions = {}) {
   const mode = options.mode ?? 'INCREMENTAL';
   const startedAt = (options.now ?? new Date()).toISOString();
   const ledger: EtlLedger = { ...emptyEtlLedger(), ...(state.etl ?? {}) };
   const batchId = options.batchId ?? `batch-${ledger.batches.length + 1}`;
   const rejections: EtlRejection[] = [];
-  const accepted = new Map<string, ErpImportRecord>();
-  let duplicate = 0, valid = 0;
+  const accepted = new Map<string, { record: ErpImportRecord; hash: string }>();
+  const replayed: ErpImportRecord[] = [];
+  const held = new Set<string>();
+  const expectedFeed = options.feed ? checkpointKey(options.feed, entityType) : null;
+  let duplicate = 0;
 
   for (const record of records) {
     const problems = validateEtlRecord(entityType, record);
     if (problems.length) { rejections.push(...problems); continue; }
-    const key = externalIdentityKey({ tenantId: String(record.tenantId), sourceSystemCode: String(record.sourceSystemCode).toUpperCase(), entityType, externalId: String(record.externalId ?? record.externalOrderId ?? record.externalInvoiceId ?? record.externalCreditNoteId) });
-    if (!key) continue;
+    const externalId = String(record.externalId ?? record.externalOrderId ?? record.externalInvoiceId ?? record.externalCreditNoteId);
+    if (expectedFeed && checkpointKey(record, entityType) !== expectedFeed) {
+      rejections.push({ entityType, externalId, ruleCode: 'FEED_SCOPE_MISMATCH', severity: 'ERROR', messageFa: 'مستأجر یا منبع رکورد با دستهٔ ورودی سازگار نیست.' });
+      continue;
+    }
+    const key = externalIdentityKey({ tenantId: String(record.tenantId), sourceSystemCode: String(record.sourceSystemCode), entityType, externalId });
+    if (!key || held.has(key)) continue;
     const hash = stablePayloadHash(record);
     const inBatch = accepted.get(key);
     if (inBatch) {
-      duplicate++;
-      const a = Date.parse(String(inBatch.sourceModifiedAtUtc ?? '')), b = Date.parse(String(record.sourceModifiedAtUtc ?? ''));
-      if (Number.isFinite(a) && Number.isFinite(b) && b > a) accepted.set(key, record); // keep the newer source version
+      const previousTime = Date.parse(inBatch.record.sourceModifiedAtUtc ?? '');
+      const candidateTime = Date.parse(record.sourceModifiedAtUtc ?? '');
+      if (inBatch.hash !== hash && (!Number.isFinite(previousTime) || !Number.isFinite(candidateTime) || previousTime === candidateTime)) {
+        accepted.delete(key);
+        held.add(key);
+        rejections.push({ entityType, externalId, ruleCode: 'SOURCE_VERSION_CONFLICT', severity: 'ERROR', messageFa: 'برای یک رکورد، نسخه‌های متفاوت بدون ترتیب قطعی دریافت شدند.' });
+      } else {
+        duplicate++;
+        if (candidateTime > previousTime) accepted.set(key, { record, hash });
+      }
       continue;
     }
-    if (ledger.hashes[key] === hash && mode !== 'FULL') { duplicate++; continue; }
-    valid++;
-    accepted.set(key, record);
+    if (ledger.hashes[key] === hash && mode !== 'FULL') {
+      duplicate++;
+      replayed.push(record);
+      continue;
+    }
+    accepted.set(key, { record, hash });
   }
 
-  const planned = planErpImport(state, entityType, [...accepted.values()]);
+  const planned = planErpImport(state, entityType, [...accepted.values()].map(entry => entry.record));
   const hashes = { ...ledger.hashes };
-  for (const [key, record] of accepted) hashes[key] = stablePayloadHash(record);
-  const cpKey = `${entityType}`;
-  const watermark = [...accepted.values()].map(r => String(r.sourceModifiedAtUtc ?? '')).filter(validDate).sort().at(-1);
-  const rejected = rejections.length ? new Set(rejections.map(r => `${r.externalId ?? ''}|${r.ruleCode}`)).size : 0;
+  const checkpoints = { ...ledger.checkpoints };
+  const applied: ErpImportRecord[] = [];
+  for (const key of planned.appliedKeys) {
+    const entry = accepted.get(key);
+    if (!entry) continue;
+    hashes[key] = entry.hash;
+    applied.push(entry.record);
+  }
+  for (const key of planned.conflictKeys) {
+    const record = accepted.get(key)?.record;
+    if (record) rejections.push({
+      entityType, externalId: record.externalId, ruleCode: 'SOURCE_VERSION_CONFLICT',
+      severity: 'ERROR', messageFa: 'نسخهٔ ورودی با رکورد ذخیره‌شده قابل تطبیق نیست.',
+    });
+  }
+  const valid = accepted.size - planned.summary.conflicts;
   const rejectedRecords = records.length - valid - duplicate;
   const summary: EtlBatchSummary = {
     batchId, entityType, mode, startedAt, received: records.length, valid, rejected: rejectedRecords, duplicate,
     inserted: planned.summary.inserted, updated: planned.summary.updated, skippedStale: planned.summary.skippedStale, conflicts: planned.summary.conflicts,
-    status: rejectedRecords === 0 && planned.summary.conflicts === 0 ? 'SUCCEEDED' : valid > 0 ? 'PARTIAL' : records.length === 0 ? 'SUCCEEDED' : 'FAILED',
+    status: rejectedRecords === 0 && planned.summary.conflicts === 0 ? 'SUCCEEDED'
+      : applied.length || replayed.length ? 'PARTIAL' : 'FAILED',
   };
-  void rejected;
+  if (summary.status === 'SUCCEEDED' && mode !== 'REPLAY') {
+    for (const record of [...applied, ...replayed]) {
+      const time = Date.parse(record.sourceModifiedAtUtc ?? '');
+      if (!Number.isFinite(time)) continue;
+      const key = checkpointKey(record, entityType);
+      const previous = checkpoints[key];
+      if (previous?.watermarkUtc && Date.parse(previous.watermarkUtc) >= time) continue;
+      checkpoints[key] = { watermarkUtc: new Date(time).toISOString(), lastBatchId: batchId };
+    }
+  }
   const nextLedger: EtlLedger = {
     hashes,
-    checkpoints: { ...ledger.checkpoints, [cpKey]: { ...ledger.checkpoints[cpKey], ...(watermark && summary.status !== 'FAILED' ? { watermarkUtc: watermark } : {}), lastBatchId: batchId } },
+    checkpoints,
     batches: [...ledger.batches, summary],
     rejections: [...ledger.rejections, ...rejections],
   };
