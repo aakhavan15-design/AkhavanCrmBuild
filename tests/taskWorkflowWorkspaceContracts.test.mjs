@@ -10,6 +10,7 @@ assert.equal((workspace.match(/<Modal isOpen=\{!!workflowTaskId\}/g) || []).leng
 assert.ok(workspace.includes("applyWorkflowAction('BLOCK')"), 'block transition is connected to UI');
 assert.ok(workspace.includes("applyWorkflowAction('UNBLOCK')"), 'unblock transition is connected to UI');
 assert.ok(workspace.includes("applyWorkflowAction('COMPLETE')"), 'completion transition is connected to UI');
+assert.ok(workspace.includes("applyWorkflowAction('REOPEN')"), 'reopening is connected to the existing workflow modal');
 assert.ok(workspace.includes("applyWorkflowAction('RECORD_RESULT')"), 'result-only transition is connected to UI');
 assert.ok(workspace.includes('task.blockReason ||'), 'workflow form restores current blocker');
 assert.ok(workspace.includes('activityHistory'), 'workflow panel exposes activity history');

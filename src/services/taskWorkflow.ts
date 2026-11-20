@@ -22,21 +22,35 @@ const transitions: Record<TaskWorkflowAction, { from: string[]; to?: string; eve
 
 /** Validates a workflow transition and appends its business event. Local history is not a server-authoritative audit. */
 export function applyTaskWorkflow<T extends Record<string, any>>(task: T, input: TaskWorkflowInput): TaskWorkflowResult<T> {
+  if (!Object.hasOwn(transitions, input.action)) return { ok: false, task, error: 'عملیات گردش وظیفه معتبر نیست.' };
   const rule = transitions[input.action];
   const current = String(task.status || 'OPEN').toUpperCase();
   if (!rule.from.includes(current)) return { ok: false, task, error: `این عملیات از وضعیت «${current}» مجاز نیست.` };
   if (input.action === 'BLOCK' && !input.reason?.trim()) return { ok: false, task, error: 'برای توقف وظیفه، شرح مانع الزامی است.' };
   if (input.action === 'COMPLETE' && !input.result?.trim()) return { ok: false, task, error: 'برای تکمیل وظیفه، نتیجه انجام کار الزامی است.' };
   if (input.action === 'RECORD_RESULT' && !input.result?.trim()) return { ok: false, task, error: 'نتیجه پیگیری را وارد کنید.' };
+  const at = input.at ?? new Date().toISOString();
+  if (!Number.isFinite(Date.parse(at))) return { ok: false, task, error: 'زمان ثبت عملیات معتبر نیست.' };
   const next: Record<string, any> = { ...task };
   if (rule.to) next.status = rule.to;
-  if (input.action === 'BLOCK') { next.blockReason = input.reason!.trim(); next.blockedAt = input.at || new Date().toISOString(); }
-  if (input.action === 'UNBLOCK') { next.blockReason = ''; next.unblockedAt = input.at || new Date().toISOString(); }
-  if (input.result?.trim()) next.result = input.result.trim();
+  if (input.action === 'BLOCK') { next.blockReason = input.reason!.trim(); next.blockedAt = at; }
+  if (input.action === 'UNBLOCK') { next.blockReason = ''; next.unblockedAt = at; }
+  if (input.action === 'REOPEN') {
+    next.completedAt = null;
+    next.result = '';
+    next.nextAction = '';
+    next.blockReason = '';
+  } else if (input.result?.trim()) next.result = input.result.trim();
   if (input.nextAction?.trim()) next.nextAction = input.nextAction.trim();
-  if (input.action === 'COMPLETE') next.completedAt = input.at || new Date().toISOString();
-  const details = [input.reason?.trim() ? `مانع/دلیل: ${input.reason.trim()}` : '', input.result?.trim() ? `نتیجه: ${input.result.trim()}` : '', input.nextAction?.trim() ? `اقدام بعدی: ${input.nextAction.trim()}` : ''].filter(Boolean).join('؛ ');
-  const updated = appendTaskActivity(next, { action: rule.event, actorId: input.actorId || 'UNKNOWN', at: input.at, summary: rule.summary, details: details || undefined }) as T;
+  if (input.action === 'COMPLETE') next.completedAt = at;
+  const outcome = input.action === 'REOPEN' ? String(task.result ?? '').trim() : input.result?.trim();
+  const details = [
+    input.reason?.trim() ? `مانع/دلیل: ${input.reason.trim()}` : '',
+    outcome ? `${input.action === 'REOPEN' ? 'نتیجه چرخه قبل' : 'نتیجه'}: ${outcome}` : '',
+    input.action === 'REOPEN' && task.completedAt ? `زمان تکمیل چرخه قبل: ${task.completedAt}` : '',
+    input.nextAction?.trim() ? `اقدام بعدی: ${input.nextAction.trim()}` : '',
+  ].filter(Boolean).join('؛ ');
+  const updated = appendTaskActivity(next, { action: rule.event, actorId: input.actorId || 'UNKNOWN', at, summary: rule.summary, details: details || undefined }) as T;
   return { ok: true, task: updated };
 }
 

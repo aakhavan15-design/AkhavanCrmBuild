@@ -46,6 +46,18 @@ const final = applyTaskWorkflow(resultOnly.task, { action: 'COMPLETE', actorId: 
 assert.equal(final.task.completedAt, completedAt);
 assert.equal(final.task.status, 'COMPLETED');
 assert.equal(final.task.activityHistory.at(-1).action, 'COMPLETED');
+const reopened = applyTaskWorkflow(final.task, { action: 'REOPEN', actorId: 'U-2', at: '2026-10-29T08:20:00.000Z' });
+assert.equal(reopened.task.status, 'OPEN');
+assert.equal(reopened.task.completedAt, null);
+assert.equal(reopened.task.result, '');
+assert.equal(reopened.task.nextAction, '');
+assert.match(reopened.task.activityHistory.at(-1).details, /تأیید نهایی دریافت شد/);
+assert.equal(reopened.task.activityHistory.at(-2).at, completedAt);
+assert.equal(applyTaskWorkflow(reopened.task, { action: 'COMPLETE', actorId: 'U-2' }).ok, false);
+assert.equal(applyTaskWorkflow(reopened.task, { action: 'START', actorId: 'U-2', at: 'bad-date' }).ok, false);
+assert.equal(applyTaskWorkflow(reopened.task, { action: 'constructor', actorId: 'U-2' }).ok, false);
+assert.equal(applyTaskWorkflow(task, { action: 'COMPLETE', actorId: 'U-1', result: 'نتیجه' }).task.activityHistory.at(-1).at.length, 24);
+assert.equal(completed.task.completedAt, completed.task.activityHistory.at(-1).at);
 const exceptions = getTaskExceptions([
   { id: 'late', status: 'OPEN', dueDate: '2026-10-28T12:00:00.000Z', assigneeId: 'U-1' },
   { id: 'blocked', status: 'BLOCKED', dueDate: 'invalid', assigneeId: '', priority: 'URGENT' },

@@ -41,6 +41,9 @@ interface TasksWorkspaceProps {
   updateState: (updater: (draft: AppState) => AppState | void) => void;
 }
 
+const canReopenTask = (task: CustomerTask) => !task.isDeleted && !task.deletedAt &&
+  ['COMPLETED', 'CANCELLED', 'CANCELED'].includes(String(task.status).toUpperCase());
+
 export function TasksWorkspace({ state, updateState }: TasksWorkspaceProps) {
   const { can, canOn, denied } = useCan(state, updateState);
   const [searchParams] = useSearchParams();
@@ -119,7 +122,7 @@ export function TasksWorkspace({ state, updateState }: TasksWorkspaceProps) {
 
     if (slaFilter === 'BLOCKED') list = list.filter(task => String(task.status).toUpperCase() === 'BLOCKED');
     else if (slaFilter !== 'ALL') list = list.filter(task => assessTaskSla(task).state === (slaFilter as TaskSlaState));
-    return rankTasksForAttention(list).map(item => item as typeof list[number]);
+    return [...rankTasksForAttention(list), ...list.filter(canReopenTask)];
   }, [visibleTasks, activeAccountId, filterStatus, slaFilter, debouncedSearchQuery, priorityFilter, overdueOnly]);
 
   const activeTasks = useMemo(() => visibleTasks.filter(task => !['COMPLETED','CANCELLED','CANCELED','VOID','DELETED'].includes(String(task.status || '').toUpperCase()) && (!activeAccountId || task.accountId === activeAccountId || task.customerId === activeAccountId)), [visibleTasks, activeAccountId]);
@@ -257,10 +260,11 @@ export function TasksWorkspace({ state, updateState }: TasksWorkspaceProps) {
   const handleToggleTaskStatus = (taskId: ID) => {
     const task = visibleTasks.find(item => item.id === taskId);
     if (!task || !canOn('tasks', 'EDIT', taskScope(task) || undefined)) return denied('تغییر وضعیت این وظیفه');
+    const closed = canReopenTask(task);
     setWorkflowTaskId(task.id);
-    setWorkflowReason(task.blockReason || '');
-    setWorkflowResult(task.result || '');
-    setWorkflowNextAction(task.nextAction || '');
+    setWorkflowReason(closed ? '' : task.blockReason || '');
+    setWorkflowResult(closed ? '' : task.result || '');
+    setWorkflowNextAction(closed ? '' : task.nextAction || '');
     setWorkflowError('');
   };
 
@@ -268,7 +272,11 @@ export function TasksWorkspace({ state, updateState }: TasksWorkspaceProps) {
     const task = visibleTasks.find(item => item.id === workflowTaskId);
     if (!task) return;
     if (!canOn('tasks', 'EDIT', taskScope(task) || undefined)) return denied('تغییر گردش کار این وظیفه');
-    const result = applyTaskWorkflow(task, { action, actorId: state.currentUserId || 'UNKNOWN', reason: workflowReason, result: workflowResult, nextAction: workflowNextAction });
+    const result = applyTaskWorkflow(task, {
+      action, actorId: currentUserId, reason: workflowReason,
+      result: action === 'REOPEN' ? undefined : workflowResult,
+      nextAction: workflowNextAction,
+    });
     if (!result.ok) { setWorkflowError(result.error || 'تغییر وضعیت انجام نشد.'); return; }
     updateState(draft => { const idx = draft.tasks?.findIndex(item => item.id === task.id) ?? -1; if (idx >= 0 && draft.tasks) draft.tasks[idx] = result.task as CustomerTask; });
     void enqueueOptimisticMutation({
@@ -396,15 +404,7 @@ export function TasksWorkspace({ state, updateState }: TasksWorkspaceProps) {
               <button
                 key={item.id}
                 type="button"
-                onClick={() => {
-                  const task = visibleTasks.find(t => String(t.id) === item.taskId);
-                  if (!task) return;
-                  setWorkflowTaskId(task.id);
-                  setWorkflowReason(task.blockReason || '');
-                  setWorkflowResult(task.result || '');
-                  setWorkflowNextAction(task.nextAction || '');
-                  setWorkflowError('');
-                }}
+                onClick={() => { if (item.taskId) handleToggleTaskStatus(item.taskId); }}
                 className="w-full text-start rounded-lg bg-surface border border-border p-2.5 cursor-pointer hover:bg-canvas transition-colors"
               >
                 <div className="flex items-center justify-between gap-2">
@@ -445,7 +445,7 @@ export function TasksWorkspace({ state, updateState }: TasksWorkspaceProps) {
                   onToggleStatus={() => handleToggleTaskStatus(task.id)}
                   onEdit={() => openEditTaskModal(task)}
                   onAttach={() => setShowAttachModalFor(task.id)}
-                  onWorkflow={() => { setWorkflowTaskId(task.id); setWorkflowReason(task.blockReason || ''); setWorkflowResult(task.result || ''); setWorkflowNextAction(task.nextAction || ''); setWorkflowError(''); }}
+                  onWorkflow={() => handleToggleTaskStatus(task.id)}
                 />
               );
             })}
@@ -537,6 +537,7 @@ export function TasksWorkspace({ state, updateState }: TasksWorkspaceProps) {
               <label className="block font-bold text-text-main">نتیجه پیگیری<Textarea value={workflowResult} onChange={e => setWorkflowResult(e.target.value)} rows={2} className="mt-1" placeholder="نتیجه حاصل‌شده را وارد کنید" /></label>
               <label className="block font-bold text-text-main">اقدام بعدی<Textarea value={workflowNextAction} onChange={e => setWorkflowNextAction(e.target.value)} rows={2} className="mt-1" placeholder="اقدام تکمیلی بعدی" /></label>
               <div className="grid grid-cols-2 gap-2 pt-1">
+                {canReopenTask(task) && <Button variant="secondary" size="sm" onClick={() => applyWorkflowAction('REOPEN')}>بازگشایی وظیفه</Button>}
                 {['OPEN', 'PENDING'].includes(status) && <Button variant="secondary" size="sm" onClick={() => applyWorkflowAction('START')}>شروع کار</Button>}
                 {['OPEN', 'PENDING', 'IN_PROGRESS'].includes(status) && <Button variant="secondary" size="sm" onClick={() => applyWorkflowAction('BLOCK')}>ثبت مانع</Button>}
                 {status === 'BLOCKED' && <Button variant="secondary" size="sm" onClick={() => applyWorkflowAction('UNBLOCK')}>رفع مانع</Button>}
