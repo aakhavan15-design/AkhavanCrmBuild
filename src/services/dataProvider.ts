@@ -31,6 +31,27 @@ import { queryJournalLines, buildDetailBalancesResult, type JournalLineFilter, t
 import { journalQueryParams } from '../lib/ledgerQueryParams.mjs';
 import { readCustomerProposalReceipt, type CustomerProposalReceipt } from '../lib/customerProposal';
 
+export interface ErpSyncConnectorOverview {
+  id: string;
+  displayName: string;
+  sourceSystemCode: string;
+  enabled: boolean;
+  entityType: string | null;
+  batchStatus: string | null;
+  startedAt: string | null;
+  finishedAt: string | null;
+  watermark: string | null;
+  received: number | null;
+  rejected: number | null;
+  inserted: number | null;
+  updated: number | null;
+}
+
+export interface ErpSyncOverview {
+  status: 'AVAILABLE' | 'EMPTY' | 'UNAVAILABLE' | 'RESTRICTED';
+  items: ErpSyncConnectorOverview[];
+}
+
 export interface StateCollectionCounts {
   collections: Record<string, number>;
   hiddenCollections: string[];
@@ -130,6 +151,7 @@ export interface DataProvider {
   // SQL-first state layer: every AppState collection/setting goes through these (see services/stateSync.ts)
   getStateSnapshot(): Promise<StateSnapshot>;
   getStateCounts(collections: readonly string[]): Promise<StateCollectionCounts>;
+  getErpSyncOverview(): Promise<ErpSyncOverview>;
   syncStateChanges(change: { upserts: Record<string, any[]>; deletes: Record<string, string[]>; singletons: Record<string, any> }): Promise<StateSyncResult>;
   bootstrapState(state: any): Promise<{ ok: boolean; upserted: number; rejected: any[]; serverVersion: number }>;
   getStateIntegrity(): Promise<{ collections: Record<string, number>; issueCount: number; issues: any[] }>;
@@ -438,6 +460,9 @@ export class ClientStorageDataProvider implements DataProvider {
       singletons: split.singletons,
       serverVersion: 0
     };
+  }
+  async getErpSyncOverview(): Promise<ErpSyncOverview> {
+    return { status: 'UNAVAILABLE', items: [] };
   }
   async getStateCounts(collections: readonly string[]): Promise<StateCollectionCounts> {
     const state = this.getState();
@@ -842,6 +867,15 @@ export class HttpBackendDataProvider implements DataProvider {
     }
     if (Object.keys(slice).length) await flush(slice);
     return { ok: true, upserted, rejected, serverVersion };
+  }
+  async getErpSyncOverview(): Promise<ErpSyncOverview> {
+    try {
+      const result = await this.request<ErpSyncOverview>('/integrations/erp/sync-overview');
+      if ((result?.status === 'AVAILABLE' || result?.status === 'EMPTY') && Array.isArray(result.items)) return result;
+      return { status: 'UNAVAILABLE', items: [] };
+    } catch (error) {
+      return { status: error instanceof Error && 'status' in error && error.status === 403 ? 'RESTRICTED' : 'UNAVAILABLE', items: [] };
+    }
   }
   async getStateCounts(collections: readonly string[]): Promise<StateCollectionCounts> {
     const params = new URLSearchParams({ includeEmpty: collections.join(',') });

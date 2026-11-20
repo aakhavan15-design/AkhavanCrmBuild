@@ -33,6 +33,10 @@ const collections = [
   { key: 'cheques', label: 'چک‌ها', icon: Receipt },
 ] as const;
 
+const erpBatchLabels: Record<string, string> = {
+  RUNNING: 'در حال پردازش', SUCCEEDED: 'پایان موفق', PARTIAL: 'پذیرش ناقص', FAILED: 'ناموفق', CANCELLED: 'لغوشده',
+};
+
 export function SyncCenterWorkspace({ state }: SyncCenterWorkspaceProps) {
   const sync = useDataSyncStatus();
   const [busy, setBusy] = useState<'push' | 'pull' | null>(null);
@@ -46,6 +50,13 @@ export function SyncCenterWorkspace({ state }: SyncCenterWorkspaceProps) {
     [state.currentUserId, sync.isSqlActive, sync.serverVersion, sync.lastSyncedAt]
   );
   const counts = !inventoryLoading && !inventoryError && inventory?.viewerId === state.currentUserId ? inventory : null;
+
+  const { data: erpOverview, loading: erpLoading, refetch: reloadErp } = useDataQuery(
+    async provider => ({ viewerId: state.currentUserId, ...await provider.getErpSyncOverview() }),
+    [state.currentUserId, sync.isSqlActive]
+  );
+  const erp = !erpLoading && erpOverview?.viewerId === state.currentUserId ? erpOverview : null;
+  const formatErpDate = (value: string | null) => value ? formatAppDate(value, state.settings?.locale) : 'نامشخص';
 
   const status = sync.state;
   const healthy = sync.isSqlActive && Boolean(sync.lastSyncedAt) && ['idle', 'completed'].includes(status) && sync.pendingCount === 0 && !sync.lastError;
@@ -119,6 +130,45 @@ export function SyncCenterWorkspace({ state }: SyncCenterWorkspaceProps) {
             );
           })}
         </ul>
+      </section>
+    </Card>
+
+    <Card padding="lg">
+      <section aria-labelledby="erp-overview-heading" className="space-y-3">
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div>
+            <h2 id="erp-overview-heading" className="text-sm font-black">سوابق ورود داده از ERP</h2>
+            <p className="mt-1 text-xs text-text-secondary">آخرین دستهٔ ثبت‌شده برای حداکثر ۲۵ اتصال ورودی CRM.</p>
+          </div>
+          <Button type="button" size="sm" variant="outline" disabled={erpLoading} onClick={() => void reloadErp()}>
+            بازخوانی سوابق
+          </Button>
+        </div>
+        {erpLoading && <p role="status" className="text-xs text-text-secondary">در حال دریافت سوابق ERP…</p>}
+        {!erpLoading && (!erp || erp.status === 'UNAVAILABLE') &&
+          <p role="alert" className="text-xs text-danger">سوابق ورود ERP در دسترس نیست.</p>}
+        {erp?.status === 'RESTRICTED' && <p className="text-xs text-text-secondary">مجوز مشاهدهٔ سوابق ERP را ندارید.</p>}
+        {erp?.status === 'EMPTY' && <p className="text-xs text-text-secondary">اتصال ورودی ثبت نشده است.</p>}
+        {erp?.status === 'AVAILABLE' && (
+          <ul className="space-y-2">
+            {erp.items.map(item => (
+              <li key={item.id} className="rounded-xl border border-border p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="text-xs font-bold text-text-main">{item.displayName}</h3>
+                  <span className="text-xs text-text-secondary">{item.enabled ? 'فعال در تنظیمات' : 'غیرفعال در تنظیمات'}</span>
+                </div>
+                {item.batchStatus ? (
+                  <dl className="mt-2 grid grid-cols-2 gap-2 text-xs text-text-secondary sm:grid-cols-4">
+                    <div><dt>آخرین دسته</dt><dd className="text-text-main">{erpBatchLabels[item.batchStatus] || 'نامشخص'}</dd></div>
+                    <div><dt>تاریخ پایان</dt><dd className="text-text-main">{formatErpDate(item.finishedAt)}</dd></div>
+                    <div><dt>نقطهٔ ادامهٔ منبع</dt><dd className="text-text-main">{formatErpDate(item.watermark)}</dd></div>
+                    <div><dt>دریافتی / ردشده</dt><dd className="text-text-main">{item.received == null ? 'نامشخص' : fa(item.received)} / {item.rejected == null ? 'نامشخص' : fa(item.rejected)}</dd></div>
+                  </dl>
+                ) : <p className="mt-2 text-xs text-text-secondary">برای این اتصال هنوز دسته‌ای ثبت نشده است.</p>}
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
     </Card>
 

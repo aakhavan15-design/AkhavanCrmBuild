@@ -608,6 +608,44 @@ app.get('/api/v1/ledger/journal-lines', authenticate, requirePermission('finance
     totalPages: Math.max(1, Math.ceil(total / pageSize)) });
 }));
 
+app.get('/api/v1/integrations/erp/sync-overview', authenticate,
+  requirePermission('settings.manage', { organizationWide: true }), wrap(async (req, res) => {
+    if (entityDriverKind !== 'mssql') {
+      return bad(req, res, 503, 'ERP_SYNC_METADATA_UNAVAILABLE', 'سوابق ورود دادهٔ ERP در دسترس نیست.');
+    }
+    const result = await withTenantContext(req.auth, transaction =>
+      new sql.Request(transaction).input('tenantId', sql.UniqueIdentifier, req.auth.tenantId)
+        .query(`SELECT TOP (25)
+          connector.ConnectorId AS id, connector.DisplayName AS displayName,
+          connector.SystemCode AS sourceSystemCode, connector.IsEnabled AS enabled,
+          batch.EntityType AS entityType, batch.StatusCode AS batchStatus,
+          batch.StartedAtUtc AS startedAt, batch.FinishedAtUtc AS finishedAt,
+          batch.ReceivedCount AS received, batch.RejectedCount AS rejected,
+          batch.InsertedCount AS inserted, batch.UpdatedCount AS updated,
+          checkpoint.WatermarkUtc AS watermark
+        FROM integration.Connector AS connector
+        OUTER APPLY (
+          SELECT TOP (1) b.EntityType,b.StatusCode,b.StartedAtUtc,b.FinishedAtUtc,
+            b.ReceivedCount,b.RejectedCount,b.InsertedCount,b.UpdatedCount
+          FROM integration.SyncBatch AS b
+          WHERE b.TenantId=connector.TenantId AND b.ConnectorId=connector.ConnectorId
+            AND b.SourceSystemCode=connector.SystemCode
+          ORDER BY b.StartedAtUtc DESC,b.SyncBatchId DESC
+        ) AS batch
+        LEFT JOIN integration.SyncCheckpoint AS checkpoint
+          ON checkpoint.TenantId=connector.TenantId AND checkpoint.ConnectorId=connector.ConnectorId
+          AND checkpoint.EntityType=batch.EntityType
+        WHERE connector.TenantId=@tenantId
+          AND connector.DirectionCode IN ('INBOUND','BIDIRECTIONAL')
+          AND EXISTS (SELECT 1 FROM security.fn_RecordReadScope(
+            connector.TenantId,N'settings.manage',NULL,NULL,NULL,NULL
+          ))
+        ORDER BY connector.DisplayName,connector.ConnectorId`)
+    );
+    res.json({ status: result.recordset.length ? 'AVAILABLE' : 'EMPTY', items: result.recordset });
+  }),
+);
+
 app.get('/api/v1/state/snapshot', authenticate, guardEntityDriver, wrap(async (req, res) => {
   const requested = typeof req.query.includeEmpty === 'string' ? req.query.includeEmpty.split(',') : [];
   const includeEmptyCollections = requested.filter(name => name === 'paymentAllocations' || name === 'zoneAssignments');
