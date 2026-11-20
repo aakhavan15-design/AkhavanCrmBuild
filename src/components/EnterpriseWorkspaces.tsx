@@ -4,7 +4,7 @@ import { Card } from './ui/Card';
 import { Button } from './ui/Button';
 import { Modal } from './ui/Modal';
 import { Select, InputControl } from './ui/Input';
-import { ShieldAlert, BookOpen, Megaphone, Plus, Building2, Search, FileText, ChevronLeft, Target, Filter, ArrowUpDown, CheckCircle2, PauseCircle, PlayCircle } from 'lucide-react';
+import { ShieldAlert, BookOpen, Megaphone, Building2, Search, FileText, ChevronLeft, Target, Filter, ArrowUpDown, CheckCircle2, PauseCircle, PlayCircle } from 'lucide-react';
 import { generateId, formatAppDate, matchesSearch } from '../lib/utils';
 import { enqueueJob } from '../lib/automation';
 import { emitBusinessEvent } from '../lib/events';
@@ -28,7 +28,7 @@ export function CasesWorkspace({ state, updateState }: WorkspaceProps) {
   const [isNewCaseOpen, setIsNewCaseOpen] = useState(false);
   const [formError, setFormError] = useState('');
 
-  useDeepLinkCreate(() => setIsNewCaseOpen(true));
+  useDeepLinkCreate(() => setIsNewCaseOpen(true), can('cases', 'CREATE'));
 
   const caseFormSchema = createCaseFormSchema(state.accounts || []);
   const handleCreateCase = (values: Record<string, any>) => {
@@ -83,9 +83,6 @@ export function CasesWorkspace({ state, updateState }: WorkspaceProps) {
             </h2>
             <span className="text-xs text-text-secondary">مدیریت تیکت‌ها، شکایات و درخواست‌های پشتیبانی</span>
           </div>
-          <Button variant="primary" onClick={() => setIsNewCaseOpen(true)} icon={<Plus className="w-4 h-4"/>}>
-            مورد جدید
-          </Button>
         </div>
       </div>
       
@@ -152,7 +149,7 @@ export function CampaignsWorkspace({ state, updateState }: WorkspaceProps) {
   const [sortBy, setSortBy] = useState<'RECENT' | 'OLDEST' | 'NAME'>('RECENT');
   const [selectedId, setSelectedId] = useState<string | null>(campaigns[0]?.id || null);
 
-  useDeepLinkCreate(() => setIsNewCampaignOpen(true));
+  useDeepLinkCreate(() => setIsNewCampaignOpen(true), canManage);
 
   const campaignFormSchema = createCampaignFormSchema(segments.map((segment: any) => ({ value: segment.id, label: segment.name })));
 
@@ -232,7 +229,6 @@ export function CampaignsWorkspace({ state, updateState }: WorkspaceProps) {
       <div id="campaigns-toolbar" data-tour-actions><PageToolbar title="بازاریابی و مدیریت کمپین‌ها" subtitle="برنامه‌ریزی، بخش‌بندی و پیگیری اجرای کمپین"
         search={query} onSearchChange={setQuery} searchPlaceholder="جستجوی نام، مخاطب یا شناسه کمپین..." resultCount={visibleCampaigns.length}
         filters={<Select density="compact" aria-label="فیلتر وضعیت کمپین" value={statusFilter} onChange={e => setStatusFilter(e.target.value as any)} ><option value="ALL">همه وضعیت‌ها</option><option value="ACTIVE">فعال</option><option value="PAUSED">متوقف</option><option value="COMPLETED">پایان‌یافته</option></Select>}
-        actions={canManage ? <Button variant="primary" size="sm" onClick={() => setIsNewCampaignOpen(true)} icon={<Plus size={15} />}>کمپین جدید</Button> : undefined}
         activeFilters={statusFilter !== 'ALL' ? [{ key: 'status', label: statusLabel(statusFilter), onRemove: () => setStatusFilter('ALL') }] : []}
         onClearAll={() => { setQuery(''); setStatusFilter('ALL'); }} /></div>
 
@@ -282,7 +278,7 @@ export function KnowledgeWorkspace({ state, updateState }: WorkspaceProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState('ALL');
 
-  useDeepLinkCreate(() => setIsNewArticleOpen(true));
+  useDeepLinkCreate(() => setIsNewArticleOpen(true), rbac.hasPermission('knowledge.manage'));
 
   const categories: string[] = useMemo(() => Array.from(new Set<string>(articles.map((article: KnowledgeArticle) => String(article.category || 'عمومی').trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'fa')), [articles]);
   const visibleArticles = useMemo(() => articles.filter(article =>
@@ -328,7 +324,6 @@ export function KnowledgeWorkspace({ state, updateState }: WorkspaceProps) {
             <h2 data-tour-heading className="text-lg font-extrabold text-text-main flex items-center gap-2"><BookOpen className="w-5 h-5 text-primary" /> پایگاه دانش و دستورالعمل‌ها</h2>
             <p className="text-xs text-text-secondary mt-1">مرجع جست‌وجوپذیر آیین‌نامه‌ها، رویه‌ها و آموزش‌های سازمانی</p>
           </div>
-          {rbac.hasPermission('knowledge.manage') && <Button variant="primary" onClick={() => setIsNewArticleOpen(true)} icon={<Plus className="w-4 h-4" />}>مقاله جدید</Button>}
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
           <div className="rounded-2xl border border-border bg-surface px-3 py-2"><span className="block text-micro text-text-secondary">مستندات قابل مشاهده</span><strong className="mt-1 block text-lg font-black text-text-main tabular-nums">{visibleArticles.length.toLocaleString('fa-IR')}</strong></div>

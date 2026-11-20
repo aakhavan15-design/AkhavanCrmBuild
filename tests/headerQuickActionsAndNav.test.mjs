@@ -34,9 +34,23 @@ assert.equal(resolveHeaderQuickAction('/leads', '', adminRbac)?.path, '/leads?ne
 assert.equal(resolveHeaderQuickAction('/quotes', '', adminRbac)?.path, '/quotes?new=1');
 assert.equal(resolveHeaderQuickAction('/internal_automation', '?tab=meetings', adminRbac)?.path, '/calendar?new=1');
 assert.equal(resolveHeaderQuickAction('/internal_automation', '', adminRbac)?.path, '/internal_automation?new=1');
-assert.equal(resolveHeaderQuickAction('/finance', '', adminRbac)?.path, '/finance?tab=payments&new=1');
+assert.equal(resolveHeaderQuickAction('/finance', '', adminRbac)?.path, '/finance?tab=requests&new=1');
 assert.equal(resolveHeaderQuickAction('/reports', '', adminRbac), null, 'Read-only reports route must not show + action');
 assert.equal(resolveHeaderQuickAction('/audit', '', adminRbac), null, 'Read-only audit route must not show + action');
+
+assert.equal(resolveHeaderQuickAction('/finance', '?tab=payments', adminRbac)?.path, '/finance?tab=payments&new=1');
+assert.equal(resolveHeaderQuickAction('/finance', '?tab=collection', adminRbac), null);
+assert.equal(resolveHeaderQuickAction('/finance', '?tab=credits', adminRbac), null);
+assert.equal(resolveHeaderQuickAction('/marketing', '', adminRbac)?.path, '/marketing?new=1');
+assert.equal(resolveHeaderQuickAction('/opportunities', '', adminRbac)?.path, '/opportunities?new=1');
+assert.equal(resolveHeaderQuickAction('/accounts/record-1', '', adminRbac), null);
+assert.equal(resolveHeaderQuickAction('/accounts-broken', '', adminRbac), null);
+assert.equal(resolveHeaderQuickAction('/accounts', ''), null);
+const createWithoutWorkspace = new RBACService({
+  ...readOnlyState,
+  permissionSets: [{ ...readOnlyState.permissionSets[0], permissions: ['accounts.edit'] }],
+});
+assert.equal(resolveHeaderQuickAction('/accounts', '', createWithoutWorkspace), null);
 
 // کاربر فاقد مجوز ایجاد نباید دکمه + ببیند (fail-closed)
 assert.equal(resolveHeaderQuickAction('/accounts', '', viewRbac), null);

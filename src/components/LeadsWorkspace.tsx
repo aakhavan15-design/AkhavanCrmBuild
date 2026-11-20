@@ -50,7 +50,7 @@ export function LeadsWorkspace({ state, updateState }: LeadsWorkspaceProps) {
   const [activeStage, setActiveStage] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
   const [isNewLeadOpen, setIsNewLeadOpen] = useState(false);
-  useDeepLinkCreate(() => setIsNewLeadOpen(true));
+  useDeepLinkCreate(() => setIsNewLeadOpen(true), can('leads', 'CREATE'));
 
   const stages: { id: string; label: string; color: string }[] = [
     PIPELINE_FILTER_ALL.leads,

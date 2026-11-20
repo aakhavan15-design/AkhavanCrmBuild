@@ -58,7 +58,7 @@ export function CustomersWorkspace({ state, updateState }: CustomersWorkspacePro
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [successNotice, setSuccessNotice] = useState<string | null>(null);
   const [selection, setSelection] = useState<FilterSelection>({});
-  useDeepLinkCreate(() => setShowCreateModal(true));
+  useDeepLinkCreate(() => setShowCreateModal(true), can('accounts', 'CREATE'));
 
   useEffect(() => {
     if (!successNotice) return;

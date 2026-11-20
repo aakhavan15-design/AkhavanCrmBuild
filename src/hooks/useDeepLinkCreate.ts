@@ -1,21 +1,25 @@
-import { useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useEffect, useRef } from 'react';
+import { useLocation, useSearchParams } from 'react-router-dom';
 
-/** اتصال Quick Add به فرم واقعی هر ماژول: مسیر ?new=1 فرم ایجاد همان صفحه را باز می‌کند و پارامتر را پاک می‌کند (تکرار ایجاد نمی‌شود). */
-export function useDeepLinkCreate(open: () => void) {
+/** Consume a create link once, including denied attempts, while preserving other query parameters. */
+export function useDeepLinkCreate(open: () => void, allowed = true) {
+  const { key, state } = useLocation();
   const [params, setParams] = useSearchParams();
-  useEffect(() => {
-    if (params.get('new') === '1') {
-      open();
-      const next = new URLSearchParams(params); next.delete('new');
-      setParams(next, { replace: true });
-    }
-  }, [params, setParams, open]);
+  const handledKey = useRef<string | null>(null);
 
   useEffect(() => {
+    if (params.get('new') !== '1' || handledKey.current === key) return;
+    handledKey.current = key;
+    if (allowed) open();
+    const next = new URLSearchParams(params);
+    next.delete('new');
+    setParams(next, { replace: true, state });
+  }, [allowed, key, params, setParams, open, state]);
+
+  useEffect(() => {
+    if (!allowed) return;
     const handler = () => open();
     window.addEventListener('akhavan-quick-add', handler);
     return () => window.removeEventListener('akhavan-quick-add', handler);
-  }, [open]);
+  }, [allowed, open]);
 }
-

@@ -22,7 +22,7 @@ import { EmptyState } from './ui/EmptyState';
 import { CustomDatePicker } from './ui/CustomDatePicker';
 import { 
   CalendarDays, FileText, CheckCircle2, Inbox, Activity, 
-  AlertTriangle, AlertCircle, RefreshCcw, Plus, Sliders, 
+  AlertTriangle, AlertCircle, RefreshCcw, Sliders,
   Clock, UserCheck, Shield, ChevronDown, Check, X, MessageSquare, 
   ListChecks, ArrowRight, UserPlus
 } from 'lucide-react';
@@ -128,7 +128,7 @@ export function InternalAutomationWorkspace({ state, updateState }: InternalAuto
   );
 
   const [isNewRequestOpen, setIsNewRequestOpen] = useState(false);
-  useDeepLinkCreate(() => setIsNewRequestOpen(true));
+  useDeepLinkCreate(() => setIsNewRequestOpen(true), can('internal', 'CREATE'));
   const [formError, setFormError] = useState('');
   const requestSubmitLock = useRef(false);
   const requestFormSchema = createInternalRequestFormSchema(Object.entries(REQUEST_TYPE_LABELS).map(([value, item]) => ({ value, label: item.title })));
@@ -425,9 +425,6 @@ export function InternalAutomationWorkspace({ state, updateState }: InternalAuto
             </h2>
             <span className="text-xs text-text-secondary">مدیریت یکپارچه درخواست‌های پرسنلی، مأموریت، هزینه‌ها، جلسات و قوانین ارجاع</span>
           </div>
-          <Button variant="primary" onClick={() => setIsNewRequestOpen(true)} icon={<Plus size={16} />}>
-            ثبت درخواست جدید
-          </Button>
         </div>
 
         <div id="automation-tabs" data-tour-actions className="flex gap-2 overflow-x-auto no-scrollbar pb-1 border-b border-border">
@@ -451,8 +448,8 @@ export function InternalAutomationWorkspace({ state, updateState }: InternalAuto
                 icon={<Inbox className="w-8 h-8 text-text-secondary opacity-50"/>} 
                 title="کارتابل شما خالی است" 
                 description="هیچ درخواستی در حال حاضر منتظر اقدام یا بررسی شما نیست."
-                actionLabel="ثبت درخواست جدید"
-                onAction={() => setIsNewRequestOpen(true)}
+                actionLabel={can('internal', 'CREATE') ? 'ثبت درخواست جدید' : undefined}
+                onAction={can('internal', 'CREATE') ? () => setIsNewRequestOpen(true) : undefined}
               />
             )}
           </div>
@@ -465,8 +462,8 @@ export function InternalAutomationWorkspace({ state, updateState }: InternalAuto
                 icon={<FileText className="w-8 h-8 text-text-secondary opacity-50"/>} 
                 title="درخواستی ثبت نشده است" 
                 description="شما تاکنون هیچ درخواست مرخصی، مأموریت یا اداری ثبت نکرده‌اید."
-                actionLabel="ثبت درخواست جدید"
-                onAction={() => setIsNewRequestOpen(true)}
+                actionLabel={can('internal', 'CREATE') ? 'ثبت درخواست جدید' : undefined}
+                onAction={can('internal', 'CREATE') ? () => setIsNewRequestOpen(true) : undefined}
               />
             )}
           </div>

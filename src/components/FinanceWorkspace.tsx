@@ -2,6 +2,7 @@ import { getActiveDataProvider } from '../services/dataProvider';
 import { guard, useCan } from '../hooks/useCan';
 import React, { useState, useMemo } from 'react';
 import { useLocation } from 'react-router-dom';
+import { useDeepLinkCreate } from '../hooks/useDeepLinkCreate';
 import { useTabParam } from '../hooks/useTabParam';
 import { buildAgingBuckets, normalizeAgingBounds, estimateLedgerAging, buildLedgerAgingInputs, estimateInvoiceRemaining } from '../services/agingBuckets';
 import { getAgingBucketDays } from '../lib/metricConfig';
@@ -17,7 +18,7 @@ import { Button } from './ui/Button';
 import { EmptyState } from './ui/EmptyState';
 import { Input, Select } from './ui/Input';
 import { FinancialContextPanel, ContextToggle } from './shared/FinancialContextPanel';
-import { checkFinanceRequest, buildFinanceRequest, decideFinanceRequest, FINANCE_KIND_LABEL, FINANCE_STATUS_LABEL, FinanceRequestKind, type FinanceRequestRecord } from '../lib/financeRequests';
+import { checkFinanceRequest, buildFinanceRequest, type FinanceRequestInput, FINANCE_KIND_LABEL, FINANCE_STATUS_LABEL, FinanceRequestKind, type FinanceRequestRecord } from '../lib/financeRequests';
 
 interface FinanceScopeSource { accountId?: string; customerId?: string; ownerId?: string; requestedBy?: string; createdByUserId?: string; branchId?: string; territoryId?: string; teamId?: string; tenantId?: string }
 interface ExpenseRecord extends FinanceScopeSource { id?: string; category?: string; amount?: number | string; deletedAt?: string | null }
@@ -74,6 +75,28 @@ export function FinanceWorkspace({ state, updateState }: FinanceWorkspaceProps) 
   const [autoTaskNote, setAutoTaskNote] = useState('');
 
   const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [showPaymentOrder, setShowPaymentOrder] = useState(false);
+  const [paymentOrderError, setPaymentOrderError] = useState('');
+  const paymentOrderSubmitted = React.useRef(false);
+  const canCreateReceipt = !!updateState && can('payments', 'CREATE');
+  const canCreatePaymentOrder = !!updateState && can('financeRequests', 'CREATE');
+
+  const openReceipt = () => {
+    setPayEvidence(null);
+    setPaymentFormInitialValues({ method: 'TRANSFER' });
+    setShowPaymentModal(true);
+  };
+
+  useDeepLinkCreate(() => {
+    if (activeTab === 'payments') {
+      openReceipt();
+      return;
+    }
+    paymentOrderSubmitted.current = false;
+    setPaymentOrderError('');
+    setShowPaymentOrder(true);
+  }, activeTab === 'payments' ? canCreateReceipt : activeTab === 'requests' && canCreatePaymentOrder);
+
   const [payEvidence, setPayEvidence] = useState<DocFile | null>(null);
   const [showIntakeDrawer, setShowIntakeDrawer] = useState(false);
   const [intakeInitialType, setIntakeInitialType] = useState<CapturedDocumentType>('BANK_RECEIPT');
@@ -197,6 +220,34 @@ export function FinanceWorkspace({ state, updateState }: FinanceWorkspaceProps) 
     }));
   }, [expenses]);
 
+  const handleCreatePaymentOrder = (values: Record<string, unknown>) => {
+    if (!can('financeRequests', 'CREATE')) return denied('ثبت دستور پرداخت');
+    if (!updateState || !state.currentUserId || paymentOrderSubmitted.current) return;
+
+    const input: FinanceRequestInput = {
+      kind: 'PAYMENT_ORDER',
+      payeeName: String(values.payeeName ?? ''),
+      amount: Number(toLatinDigits(String(values.amount ?? '')).replace(/[,٬]/g, '')),
+      reason: String(values.reason ?? ''),
+      dueDate: typeof values.dueDate === 'string' ? values.dueDate : undefined,
+      requestedBy: state.currentUserId,
+    };
+    const check = checkFinanceRequest(state, input);
+    if (!check.ok) {
+      setPaymentOrderError(check.errors.join(' '));
+      return;
+    }
+
+    paymentOrderSubmitted.current = true;
+    const request = buildFinanceRequest(input, generateId(), new Date());
+    updateState(draft => {
+      if (!checkFinanceRequest(draft, input).ok) return;
+      draft.financeRequests ??= [];
+      draft.financeRequests.unshift(request);
+    });
+    setShowPaymentOrder(false);
+  };
+
   const handleCreatePayment = (values: Record<string, unknown>) => {
     if (!can('payments', 'CREATE')) return denied('ثبت پرداخت');
     if (!updateState) return;
@@ -253,9 +304,6 @@ export function FinanceWorkspace({ state, updateState }: FinanceWorkspaceProps) 
           <div className="flex flex-wrap items-center gap-1.5">
             <Button variant="soft" size="sm" onClick={() => { setIntakeInitialType('BANK_RECEIPT'); setShowIntakeDrawer(true); }} title="عکس‌برداری و استخراج فیش، چک یا فاکتور با هوش مصنوعی" >
               <Sparkles size={14} /> اسکن هوشمند مدرک
-            </Button>
-            <Button variant="primary" size="sm" onClick={() => { setPaymentFormInitialValues({ method: 'TRANSFER' }); setShowPaymentModal(true); }} >
-              <Plus size={13} /> ثبت دریافتی / حواله
             </Button>
             {manualEntry && (
               <Button variant="outline" size="sm" onClick={() => setShowInvoiceModal(true)} >
@@ -453,7 +501,7 @@ export function FinanceWorkspace({ state, updateState }: FinanceWorkspaceProps) 
               <div className="text-xs font-bold text-text-main font-mono">{pay.amount.toLocaleString('fa-IR')} ریال</div>
             </div>
           ))}
-          {payments.length === 0 && <EmptyState surface="finance_workspace" title="دریافتی یافت نشد" description="یک دریافتی یا حواله جدید ثبت کنید." compact actionLabel="ثبت دریافتی" onAction={() => setShowPaymentModal(true)} />}
+          {payments.length === 0 && <EmptyState surface="finance_workspace" title="دریافتی یافت نشد" description="دریافتی‌های ثبت‌شده در این بخش نمایش داده می‌شوند." compact actionLabel={canCreateReceipt && activeTab === 'treasury' ? 'ثبت دریافتی' : undefined} onAction={canCreateReceipt && activeTab === 'treasury' ? openReceipt : undefined} />}
         </div>
       )}
 
@@ -627,6 +675,18 @@ export function FinanceWorkspace({ state, updateState }: FinanceWorkspaceProps) 
       )}
 
       {/* مودال‌های عملیاتی */}
+      {showPaymentOrder && canCreatePaymentOrder && (
+        <Modal isOpen onClose={() => setShowPaymentOrder(false)} title="ثبت دستور پرداخت">
+          <p className="mb-3 text-xs text-text-secondary">درخواست در CRM ثبت می‌شود. اجرای پرداخت در سامانه مالی انجام می‌شود.</p>
+          {paymentOrderError && <p role="alert" className="mb-3 text-xs text-danger">{paymentOrderError}</p>}
+          <DynamicFormRenderer
+            schema={FINANCE_REQUEST_SCHEMA}
+            onSubmit={handleCreatePaymentOrder}
+            onCancel={() => setShowPaymentOrder(false)}
+            submitLabel="ثبت درخواست"
+          />
+        </Modal>
+      )}
       {showPaymentModal && (
         <Modal isOpen={showPaymentModal} onClose={() => { setShowPaymentModal(false); setPayEvidence(null); }} title="ثبت رسید دریافتی و واریز">
           <DynamicFormRenderer

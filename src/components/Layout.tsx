@@ -158,7 +158,7 @@ export function Layout({
   }, [state?.tasks]);
 
   const handleQuickAdd = () => {
-    if (quickAction && quickAction.allowed) {
+    if (quickAction) {
       navigate(quickAction.path);
     }
   };
@@ -213,7 +213,7 @@ export function Layout({
                 >
                   {sidebarCollapsed ? <PanelLeft size={18} /> : <PanelLeftClose size={18} />}
                 </button>
-                {quickAction && quickAction.allowed && (
+                {quickAction && (
                   <button
                     type="button"
                     onClick={handleQuickAdd}

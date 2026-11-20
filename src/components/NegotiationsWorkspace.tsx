@@ -3,7 +3,7 @@ import { requireActiveUser, useCan } from '../hooks/useCan';
 import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AppState, Opportunity, OpportunityStage, ID } from '../types';
-import { TrendingUp, Plus, Calendar, Building2 } from 'lucide-react';
+import { TrendingUp, Calendar, Building2 } from 'lucide-react';
 import { formatCurrency, generateId, formatAppDate } from '../lib/utils';
 import { emitBusinessEvent } from '../lib/events';
 import { Card } from './ui/Card';
@@ -47,7 +47,7 @@ export function NegotiationsWorkspace({ state, updateState }: { state: AppState;
   const wonCount = opportunities.filter(o => o.stage === 'WON').length;
   const inNegotiationCount = opportunities.filter(o => o.stage === 'NEGOTIATION').length;
 
-  useDeepLinkCreate(() => setShowNewModal(true));
+  useDeepLinkCreate(() => setShowNewModal(true), can('opportunities', 'CREATE'));
 
   const opportunitySchema: DynamicFormSchema = useMemo(() => ({
     ...OPPORTUNITY_FORM_SCHEMA,
@@ -119,9 +119,6 @@ export function NegotiationsWorkspace({ state, updateState }: { state: AppState;
               ارزش فیلتر جاری: <strong className="font-mono text-primary">{formatCurrency(totalValue)} ریال</strong>
             </span>
           </div>
-          <Button variant="primary" size="sm" onClick={() => setShowNewModal(true)} icon={<Plus size={14} />}>
-            فرصت جدید
-          </Button>
         </div>
 
         {/* نوار حکم ۸ ثانیه‌ای */}

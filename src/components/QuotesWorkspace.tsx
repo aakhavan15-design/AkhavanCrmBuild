@@ -81,7 +81,7 @@ export function QuotesWorkspace({ state, updateState }: QuotesWorkspaceProps) {
   const [quoteMinAmount, setQuoteMinAmount] = useState('');
   const [quoteMaxAmount, setQuoteMaxAmount] = useState('');
 
-  useDeepLinkCreate(() => setIsWizardOpen(true));
+  useDeepLinkCreate(() => setIsWizardOpen(true), can('quotes', 'CREATE'));
 
   const visibleQuotes = (state.quotes || []).filter(quote => canOn('quotes', 'VIEW', {
     ownerId: quote.ownerId, branchId: quote.branchId, territoryId: quote.territoryId, teamId: quote.teamId, tenantId: quote.tenantId

@@ -4,7 +4,7 @@ import { Select, Textarea } from './ui';
 import { AppState, InternalMeeting, CustomerTask } from '../types';
 import { 
   Clock, ArrowLeft, ChevronRight, ChevronLeft, 
-  Calendar as CalendarIcon, Users, Plus, AlertTriangle
+  Calendar as CalendarIcon, Users, AlertTriangle
 } from 'lucide-react';
 import { Card } from './ui/Card';
 import { Button } from './ui/Button';
@@ -60,7 +60,7 @@ export function CalendarWorkspace({ state, updateState }: { state: AppState; upd
   useDeepLinkCreate(() => {
     setMeetingError('');
     setNewMeetingOpen(true);
-  });
+  }, can('calendar', 'CREATE'));
 
   const handlePrevMonth = () => {
     if (currentMonth === 1) {
@@ -186,7 +186,6 @@ export function CalendarWorkspace({ state, updateState }: { state: AppState; upd
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {can('calendar', 'CREATE') && <Button size="sm" variant="primary" onClick={() => { setMeetingError(''); setNewMeetingOpen(true); }} icon={<Plus size={14} />}>جلسه جدید</Button>}
           <Button variant="soft" onClick={() => navigate('/tasks')} >
             میز کار وظایف <ArrowLeft size={13} />
           </Button>
