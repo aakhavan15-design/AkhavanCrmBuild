@@ -203,7 +203,7 @@ app.post('/api/v1/auth/login', async (req, res, next) => {
         'finance.view','finance.manage','settings.manage','cases.view','cases.edit','marketing.manage','knowledge.manage',
         'agents.manage','automation.manage','users.manage','roles.manage','internal.view','internal.manage','geo.view','geo.manage'
       ];
-      const token = issueToken({ tenantId: 'tenant-akhavan-primary', userId: matched.id, userName: normalizedUser });
+      const token = issueToken({ tenantId: 'tenant-akhavan-primary', userId: matched.id, userName: normalizedUser, role: matched.roleCode });
       return res.json({
         accessToken: token,
         tokenType: 'Bearer',
@@ -731,7 +731,61 @@ app.get('/api/v1/push/vapid-public-key', (_req, res) => {
   res.json({ publicKey, vapidPublicKey: publicKey });
 });
 
-app.post('/api/v1/push/subscribe', authenticate, (req, res) => {
+function requirePushSession(req, res, next) {
+  if (!req.get('authorization')) {
+    return bad(req, res, 401, 'UNAUTHENTICATED', 'برای اعلان دستگاه وارد سامانه شوید.');
+  }
+  next();
+}
+
+const requirePushSendPermission = allowDemoAuth
+  ? (req, res, next) => req.auth.role === 'ADMIN'
+    ? next()
+    : bad(req, res, 403, 'FORBIDDEN', 'مجوز ارسال اعلان دستگاه را ندارید.')
+  : requirePermission('settings.manage');
+
+const pushSendWindows = new Map();
+const pushSendWindowMs = 60_000;
+const pushSendLimit = 10;
+const pushSendMaxActors = 2_000;
+
+function limitPushSend(req, res, next) {
+  const now = Date.now();
+  for (const [key, window] of pushSendWindows) {
+    if (window.expiresAt > now) break;
+    pushSendWindows.delete(key);
+  }
+  const key = JSON.stringify([req.auth.tenantId, req.auth.userId]);
+  let window = pushSendWindows.get(key);
+  if (!window && pushSendWindows.size >= pushSendMaxActors) {
+    res.set('Retry-After', '60');
+    return bad(req, res, 429, 'PUSH_RATE_LIMITED', 'ارسال اعلان موقتاً محدود است.');
+  }
+  if (!window) {
+    window = { expiresAt: now + pushSendWindowMs, attempts: 0 };
+    pushSendWindows.set(key, window);
+  }
+  if (window.attempts >= pushSendLimit) {
+    res.set('Retry-After', String(Math.ceil((window.expiresAt - now) / 1_000)));
+    return bad(req, res, 429, 'PUSH_RATE_LIMITED', 'تعداد درخواست‌های ارسال اعلان بیش از حد مجاز است.');
+  }
+  window.attempts++;
+  next();
+}
+
+async function auditPushSend(req) {
+  if (entityDriverKind !== 'mssql') return;
+  await withTenantContext(req.auth, async transaction => {
+    await new sql.Request(transaction)
+      .input('tenantId', sql.UniqueIdentifier, req.auth.tenantId)
+      .input('actorUserId', sql.UniqueIdentifier, req.auth.userId)
+      .input('correlationId', sql.NVarChar(100), req.correlationId)
+      .query(`INSERT INTO security.AuditEvent (TenantId, ActorUserId, CorrelationId, EventType, EntityType, OutcomeCode)
+        VALUES (@tenantId, @actorUserId, @correlationId, N'push.send.authorized', N'PushSubscription', 'SUCCESS')`);
+  });
+}
+
+app.post('/api/v1/push/subscribe', authenticate, requirePushSession, (req, res) => {
   const subscription = req.body?.subscription || req.body;
   if (!saveSubscription(subscription, req.auth)) {
     return res.status(400).json({ error: 'invalid_subscription' });
@@ -739,35 +793,38 @@ app.post('/api/v1/push/subscribe', authenticate, (req, res) => {
   res.json({ ok: true });
 });
 
-app.post('/api/v1/push/unsubscribe', authenticate, (req, res) => {
+app.post('/api/v1/push/unsubscribe', authenticate, requirePushSession, (req, res) => {
   const endpoint = req.body?.endpoint;
   if (typeof endpoint !== 'string' || !endpoint) return res.status(400).json({ error: 'endpoint_required' });
   removeSubscription(endpoint, req.auth);
   res.json({ ok: true });
 });
 
-// Browser-generated pushes target the signed-in account. Server workflows can dispatch separately.
-app.post('/api/v1/push/send', authenticate, async (req, res) => {
-  const { userId, title, body, url, tag, id, linkTab, requireInteraction } = req.body || {};
+// This endpoint sends only a generic preview to the authorized caller's own subscriptions.
+app.post('/api/v1/push/send', authenticate, requirePushSession, limitPushSend, requirePushSendPermission, wrap(async (req, res) => {
+  const { userId, tag, id, linkTab, requireInteraction } = req.body || {};
   if (userId != null && userId !== req.auth.userId) {
     return res.status(403).json({ error: 'push_recipient_forbidden' });
   }
+  const safeTab = typeof linkTab === 'string' && /^[a-z_]{1,50}$/.test(linkTab) ? linkTab : undefined;
+  const safeTag = typeof tag === 'string' && /^[a-zA-Z0-9_-]{1,128}$/.test(tag) ? tag : 'akhavan';
+  const safeId = typeof id === 'string' && /^[a-zA-Z0-9_-]{1,128}$/.test(id) ? id : undefined;
   const payload = {
-    title: typeof title === 'string' && title ? title.slice(0, 120) : 'اخوان CRM',
-    body: typeof body === 'string' ? body.slice(0, 500) : '',
-    url: typeof url === 'string' && /^\/(?![\/\\])/.test(url) ? url.slice(0, 350) : '/',
-    tag: typeof tag === 'string' ? tag.slice(0, 128) : typeof id === 'string' ? id.slice(0, 128) : 'akhavan',
-    id: typeof id === 'string' ? id.slice(0, 128) : undefined,
-    linkTab: typeof linkTab === 'string' && /^[a-z_]{1,50}$/.test(linkTab) ? linkTab : undefined,
-    requireInteraction: !!requireInteraction,
+    title: 'اعلان جدید اخوان',
+    body: 'برای مشاهده وارد سامانه شوید.',
+    url: safeTab ? `/?tab=${safeTab}` : '/',
+    tag: safeId || safeTag,
+    id: safeId,
+    linkTab: safeTab,
+    requireInteraction: requireInteraction === true,
   };
-  try {
-    const result = await sendPushToUser(req.auth, payload);
-    res.json({ ok: true, sent: result.sent, reason: result.reason });
-  } catch {
-    res.status(500).json({ error: 'push_failed' });
+  await auditPushSend(req);
+  const result = await sendPushToUser(req.auth, payload);
+  if (['web-push-not-installed', 'no-vapid'].includes(result.reason)) {
+    return bad(req, res, 503, 'PUSH_UNAVAILABLE', 'سرویس ارسال اعلان دستگاه در دسترس نیست.');
   }
-});
+  res.json({ ok: true, sent: result.sent, reason: result.reason });
+}));
 
 app.get('/api/v1/analytics/reports/:reportId', authenticate, async (req, res) => {
   const reportId = Number(req.params.reportId);

@@ -4,6 +4,7 @@
 import type { AppState, Notification } from '../types';
 import { generateId } from './utils';
 import { bridgeInAppToSystem, isPushEnabledLocally } from './webPush';
+import { RBACService } from './rbac';
 import { AuthService } from '../services/AuthService';
 
 export function pushNotification(
@@ -35,15 +36,12 @@ export function pushNotification(
   if (typeof window !== 'undefined' && isPushEnabledLocally() && (!n.recipientId || n.recipientId === draft.currentUserId)) {
     bridgeInAppToSystem(n);
     const token = AuthService.getAccessToken();
-    if (!token) return n;
+    if (!token || !new RBACService(draft).hasPermission('settings.manage')) return n;
     void fetch('/api/v1/push/send', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       credentials: 'same-origin',
       body: JSON.stringify({
-        title: 'اعلان جدید اخوان',
-        body: 'برای مشاهده وارد سامانه شوید.',
-        url: n.linkTab ? `/?tab=${n.linkTab}` : '/',
         id: n.id,
         linkTab: n.linkTab,
       }),

@@ -22,6 +22,13 @@ for (const operation of ['subscribe', 'unsubscribe', 'send']) {
   assert.ok(server.includes(`app.post('/api/v1/push/${operation}', authenticate,`), `push ${operation} uses server identity`);
 }
 assert.match(server, /sendPushToUser\(req\.auth, payload\)/);
+const pushSend = server.slice(server.indexOf("app.post('/api/v1/push/send'"), server.indexOf("app.get('/api/v1/analytics"));
+assert.match(pushSend, /authenticate, requirePushSession, limitPushSend, requirePushSendPermission/);
+assert.match(pushSend, /userId !== req\.auth\.userId/);
+assert.match(pushSend, /await auditPushSend\(req\);[\s\S]*?sendPushToUser/);
+assert.doesNotMatch(pushSend, /req\.body\?*\.(title|body|url)/);
+assert.match(server, /requirePermission\('settings\.manage'\)/);
+assert.match(server, /PUSH_RATE_LIMITED/);
 assert.ok(server.includes('crypto.timingSafeEqual'), 'constant-time comparisons are used');
 assert.ok(server.includes('crypto.scryptSync'), 'password verifier uses scrypt');
 assert.ok(server.includes('function requirePermission'), 'server-side permission gate exists');
