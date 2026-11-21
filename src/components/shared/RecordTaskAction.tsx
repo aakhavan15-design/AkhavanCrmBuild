@@ -1,3 +1,6 @@
+import { useNavigate } from 'react-router-dom';
+import { getActiveDataProvider } from '../../services/dataProvider';
+import { QuickTaskRequest } from '../tasks/QuickTaskRequest';
 import React, { useMemo, useState } from 'react';
 import { CheckSquare } from 'lucide-react';
 import type { Account, AppState, CustomerTask } from '../../types';
@@ -39,6 +42,7 @@ export function RecordTaskAction({
 }: RecordTaskActionProps) {
   const { can, canOn, denied } = useCan(state, updateState);
   const [open, setOpen] = useState(false);
+  const navigate=useNavigate();
   const [error, setError] = useState('');
   const activeUsers = useMemo(() => (state.users || []).filter(user => (user.isActive ?? user.active) !== false), [state.users]);
   const activeGroups = useMemo(() => (state.groups || []).filter(group => group.active !== false), [state.groups]);
@@ -55,6 +59,11 @@ export function RecordTaskAction({
     priority: 'NORMAL',
   }), [accountId, state.currentUserId]);
 
+  const recordType=String(record?.type ?? '').toUpperCase();
+  const managed=getActiveDataProvider().name==='SQLSERVER_BACKEND' && (!record || recordType==='ACCOUNT' ||
+    ['ORDER','SALES_ORDER','INVOICE','CHEQUE'].includes(recordType));
+  const linkType=recordType==='SALES_ORDER' || recordType==='ORDER' ? 'ORDER'
+    : recordType==='INVOICE' || recordType==='CHEQUE' ? recordType : null;
   const openForm = () => {
     if (!taskCreateAllowed) return denied('ایجاد وظیفه برای این رکورد');
     setError('');
@@ -133,9 +142,16 @@ export function RecordTaskAction({
       title={selectedCount === 1 ? 'ایجاد تسک متصل به رکورد انتخاب‌شده' : 'ایجاد تسک و انتخاب حساب مرتبط'}>
       {label}{selectedCount === 1 ? ' · رکورد انتخاب‌شده' : ''}
     </Button>
-    <Modal isOpen={open} onClose={() => setOpen(false)} title="ایجاد تسک و ارجاع" subtitle={record ? `این تسک به «${record.display}» متصل می‌شود.` : selectedCount > 1 ? 'برای اتصال مستقیم، یک رکورد انتخاب کنید؛ در غیر این صورت حساب مرتبط را در فرم مشخص کنید.' : 'تسک را به یک حساب تجاری متصل و به مسئول مربوط ارجاع دهید.'} size="2xl">
+    {managed ? <QuickTaskRequest key={`${state.currentUserId}:${record?.id ?? ''}`} open={open} viewer={state.currentUserId || ''} accounts={accounts}
+      initial={{accountId:accountId || null,kind:linkType==='ORDER' ? 'ORDER_APPROVAL' : linkType ? 'FINANCE' : 'GENERAL',
+        links:linkType && record ? [{type:linkType,id:record.id}] : []}}
+      onClose={()=>setOpen(false)} onSaved={(id,saved)=>{
+        setOpen(false);
+        onCreated?.({...saved.task,dueDate:saved.task.dueDate ?? undefined});
+        navigate(`/tasks?request=${encodeURIComponent(id)}`);
+      }}/> : <Modal isOpen={open} onClose={() => setOpen(false)} title="ایجاد تسک و ارجاع" subtitle={record ? `این تسک به «${record.display}» متصل می‌شود.` : selectedCount > 1 ? 'برای اتصال مستقیم، یک رکورد انتخاب کنید؛ در غیر این صورت حساب مرتبط را در فرم مشخص کنید.' : 'تسک را به یک حساب تجاری متصل و به مسئول مربوط ارجاع دهید.'} size="2xl">
       {error && <div role="alert" className="mb-3 rounded-xl border border-danger/20 bg-danger-soft px-3 py-2 text-xs font-semibold text-danger">{error}</div>}
       <DynamicFormRenderer schema={schema} initialValues={initialValues} draftKey={`akhavan:record-task:${record?.type || 'generic'}:${record?.id || 'new'}`} onSubmit={submit} onCancel={() => setOpen(false)} submitLabel="ثبت تسک و ارجاع" />
-    </Modal>
+    </Modal>}
   </>;
 }

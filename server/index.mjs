@@ -900,6 +900,10 @@ app.put('/api/v1/tasks/request-policies/:kind',authenticate,requirePermission('s
   taskRequestRoute(req => taskRequests.savePolicy(req.auth,req.params.kind,req.body)));
 app.get('/api/v1/tasks/requests/:id',authenticate,taskRequestRoute(req => taskRequests.read(req.auth,req.params.id)));
 app.post('/api/v1/tasks/requests/:id/actions',authenticate,taskRequestRoute(req => taskRequests.change(req.auth,req.params.id,req.body)));
+app.get('/api/v1/tasks/requests/:id/files',authenticate,taskRequestRoute(req => taskRequests.files(req.auth,req.params.id)));
+app.get('/api/v1/tasks/requests/:id/files/:file',authenticate,taskRequestRoute(req => taskRequests.file(req.auth,req.params.id,req.params.file)));
+app.post('/api/v1/tasks/requests/:id/files',authenticate,express.raw({type:'application/octet-stream',limit:'5mb'}),
+  taskRequestRoute(req => taskRequests.attach(req.auth,req.params.id,req.query,req.body)));
 
 const taskWorkflowStore = createTaskWorkflowStore({ sql, run: withTenantContext, excludeFixtures: isProduction });
 app.route('/api/v1/tasks/:id/workflow').all(authenticate).get(wrap(taskWorkflowEndpoint(false))).post(wrap(taskWorkflowEndpoint(true)));

@@ -2,13 +2,14 @@ import { useCallback, useState } from 'react';
 import { useDataQuery } from '../../hooks/useDataProvider';
 import { toLatinDigits } from '../../lib/digits';
 import { getActiveDataProvider } from '../../services/dataProvider';
-import { requestKinds, requestPriorities, type RequestPriority, type TaskRequestInput, type TaskRequestKind } from '../../services/taskRequests';
+import { requestKinds, requestPriorities, type RequestPriority, type TaskRequestInput, type TaskRequestKind, type TaskRequestRecord } from '../../services/taskRequests';
 import type { Account } from '../../types';
 import { BottomSheet } from '../ui/BottomSheet';
 import { Button } from '../ui/Button';
 import { CustomDatePicker } from '../ui/CustomDatePicker';
 import { Input, Textarea } from '../ui/Input';
 import { SearchableSelect } from '../ui/SearchableSelect';
+import { RequestFilePicker, type QueuedRequestFile } from './TaskRequestFiles';
 
 type Option = {value:string;label:string};
 
@@ -56,13 +57,15 @@ function ResourceControl({type,accountId,value,chosenLabel,onSelect,label}:{
 }
 
 export function QuickTaskRequest({open,viewer,accounts,onClose,onSaved,initial,submitRevision}:{
-  open:boolean;viewer:string;accounts:Account[];onClose:()=>void;onSaved:(id:string)=>void;initial?:Partial<TaskRequestInput>;
+  open:boolean;viewer:string;accounts:Account[];onClose:()=>void;onSaved:(id:string,record:TaskRequestRecord)=>void;initial?:Partial<TaskRequestInput>;
   submitRevision?:(input:TaskRequestInput)=>Promise<void>;
 }) {
   const empty=():TaskRequestInput=>({requestId:crypto.randomUUID(),kind:'GENERAL',title:'',description:'',priority:'NORMAL',
     accountId:null,assigneeId:viewer,dueDate:null,confidential:false,watchers:[],links:[],priceItems:[],...initial});
   const [draft,setDraft]=useState<TaskRequestInput>(empty);
   const [orderLabel,setOrderLabel]=useState('');
+  const [files,setFiles]=useState<QueuedRequestFile[]>([]);
+  const [savedRequest,setSavedRequest]=useState<TaskRequestRecord|null>(null);
   const [busy,setBusy]=useState(false);
   const [error,setError]=useState('');
   const [more,setMore]=useState(Boolean(initial?.watchers?.length || initial?.dueDate || initial?.confidential));
@@ -88,15 +91,30 @@ export function QuickTaskRequest({open,viewer,accounts,onClose,onSaved,initial,s
       if (submitRevision) {
         await submitRevision(draft);
       } else {
-        const saved=await getActiveDataProvider().submitTaskRequest(draft);
+        const provider=getActiveDataProvider();
+        const saved=savedRequest ?? await provider.submitTaskRequest(draft);
         if (!saved.task?.id) throw new Error('سرور ثبت درخواست را تأیید نکرد.');
-        setDraft(empty());
-        onSaved(saved.task.id);
+        setSavedRequest(saved);
+        for (const item of files) {
+          await provider.uploadTaskRequestFile(saved.task.id,item.file,item.id);
+          setFiles(current=>current.filter(file=>file.id!==item.id));
+        }
+        setDraft(empty());setSavedRequest(null);
+        onSaved(saved.task.id,saved);
       }
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'ثبت درخواست انجام نشد.');
     } finally {setBusy(false);}
   }
+
+  if (savedRequest) return <BottomSheet isOpen={open} title="مدارک درخواست ثبت‌شده" onClose={()=>{if (!busy) onClose();}}>
+    <div className="space-y-2">
+      <p className="text-sm">درخواست در سرور ثبت شد. پیوست‌های باقی‌مانده را بررسی کنید.</p>
+      <RequestFilePicker files={files} setFiles={setFiles} disabled={busy}/>
+      {error && <p role="alert" className="text-caption text-danger">{error}</p>}
+      <Button type="button" disabled={busy} onClick={()=>void submit()}>{busy?'در حال ارسال…':files.length?'تلاش برای ارسال پیوست‌ها':'باز کردن درخواست'}</Button>
+    </div>
+  </BottomSheet>;
 
   return <BottomSheet isOpen={open} onClose={()=>{if(!busy)onClose();}} title={locked ? 'بازبینی نسخهٔ درخواست' : 'درخواست جدید'}
     subtitle={locked ? 'تصمیم‌ها برای نسخهٔ جدید دوباره بررسی می‌شوند.' : undefined}>
@@ -139,6 +157,7 @@ export function QuickTaskRequest({open,viewer,accounts,onClose,onSaved,initial,s
         <label className="flex min-h-11 items-center gap-2 text-sm"><input type="checkbox" checked={draft.confidential}
           onChange={event=>set('confidential',event.target.checked)} /> محرمانگی ویژه</label>
       </div>}
+      {!locked && <RequestFilePicker files={files} setFiles={setFiles} disabled={busy}/>}
       {error && <p role="alert" className="text-sm text-danger">{error}</p>}
       <Button type="submit" disabled={busy}>{busy ? 'در حال ثبت…' : locked ? 'ثبت نسخهٔ جدید' : 'ثبت و ارجاع'}</Button>
     </form>

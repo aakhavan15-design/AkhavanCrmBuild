@@ -16,6 +16,7 @@ import { EmptyState } from '../ui/EmptyState';
 import { Input, Textarea } from '../ui/Input';
 import { LoadingState } from '../ui/LoadingState';
 import { SearchableSelect } from '../ui/SearchableSelect';
+import { TaskRequestFiles } from './TaskRequestFiles';
 import { QuickTaskRequest, RequestPeople } from './QuickTaskRequest';
 
 const views = [
@@ -193,6 +194,8 @@ export function TaskRequestSheet({id,viewer,accounts,onClose,onChanged}:{
             <li key={item.productId} className="py-2">{item.title || 'کالا'} · {formatDecimalString(item.quantity)} {item.unit} · فی {formatDecimalString(item.price)} ریال</li>)}</ul>
           {req.authorization && <p className="text-caption">اعتبار تا {formatAppDate(req.authorization.expiresOn)} · سقف {formatCount(req.authorization.maxUses)} بار</p>}
         </details>}
+        {record.permissions.canFiles && <TaskRequestFiles id={id} canUpload={Boolean(record.permissions.canUpload)}
+          onChanged={()=>{onChanged();void refetch();}}/>}
         <section aria-label="تاریخچهٔ درخواست">
           <h3 className="mb-1 text-sm font-bold">گفت‌وگو و گردش درخواست</h3>
           <ol className="divide-y divide-border">

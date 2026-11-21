@@ -43,13 +43,15 @@ WITH actors AS (
  JOIN core.AppUser lead ON lead.TenantId=@TenantId AND lead.UserId=parent.ManagerUserId AND lead.IsActive=1
  WHERE parent.depth<15 AND lead.UserId<>parent.UserId
 )
-SELECT grants.isCreator,grants.isAssignee,grants.isManager,grants.isWatcher,grants.canAct,grants.canDecide,grants.canWatch,grants.canNote,grants.canFiles
+SELECT grants.isCreator,grants.isAssignee,grants.isManager,grants.isWatcher,grants.canAct,grants.canDecide,grants.canWatch,grants.canNote,grants.canFiles,grants.canUpload
 FROM actors x JOIN core.AppUser viewer ON viewer.TenantId=@TenantId AND viewer.UserId=@Viewer AND viewer.IsActive=1
 LEFT JOIN crm.Account a ON a.TenantId=@TenantId AND a.AccountId=x.accountId
 LEFT JOIN core.AppUser assignee ON assignee.TenantId=@TenantId AND assignee.UserId=x.assignee
 CROSS APPLY (VALUES (
- COALESCE(a.OwnerUserId,x.assignee),COALESCE(a.BranchId,assignee.BranchId),
- COALESCE(a.TerritoryId,assignee.TerritoryId),COALESCE(a.TeamId,assignee.TeamId)
+ CASE WHEN a.AccountId IS NULL THEN x.assignee ELSE a.OwnerUserId END,
+ CASE WHEN a.AccountId IS NULL THEN assignee.BranchId ELSE a.BranchId END,
+ CASE WHEN a.AccountId IS NULL THEN assignee.TerritoryId ELSE a.TerritoryId END,
+ CASE WHEN a.AccountId IS NULL THEN assignee.TeamId ELSE a.TeamId END
 )) scope(ownerId,branchId,territoryId,teamId)
 CROSS APPLY (SELECT
  CAST(CASE WHEN x.creator=@Viewer THEN 1 ELSE 0 END AS bit) AS isCreator,
@@ -74,7 +76,9 @@ CROSS APPLY (SELECT
  CAST(CASE WHEN EXISTS(SELECT 1 FROM security.fn_TaskRequestGrant(@TenantId,@Viewer,N'tasks.request.note',scope.ownerId,scope.branchId,scope.territoryId,scope.teamId,1))
   THEN 1 ELSE 0 END AS bit) AS canNote,
  CAST(CASE WHEN EXISTS(SELECT 1 FROM security.fn_TaskRequestGrant(@TenantId,@Viewer,N'tasks.request.attachments',scope.ownerId,scope.branchId,scope.territoryId,scope.teamId,0))
-  THEN 1 ELSE 0 END AS bit) AS canFiles
+  THEN 1 ELSE 0 END AS bit) AS canFiles,
+ CAST(CASE WHEN EXISTS(SELECT 1 FROM security.fn_TaskRequestGrant(@TenantId,@Viewer,N'tasks.request.attachments',scope.ownerId,scope.branchId,scope.territoryId,scope.teamId,1))
+  THEN 1 ELSE 0 END AS bit) AS canUpload
 ) grants
 WHERE x.kind IN('GENERAL','PRICE_INQUIRY','PRICE_PERMISSION','ORDER_APPROVAL','FINANCE','COLLECTION','COMMERCE','HR')
  AND (x.accountId IS NULL OR (a.AccountId IS NOT NULL AND EXISTS(

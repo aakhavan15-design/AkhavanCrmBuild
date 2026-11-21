@@ -211,12 +211,21 @@ export function createTaskRequests({sql,run}) {
     const member = actorId(auth);
     const step = task.managedRequest.policy?.steps[task.managedRequest.step];
     return { task:{...task,managedRequest:record},version:row.version,
-      permissions:{ canFiles:row.canFiles,canWatch:row.canWatch,isWatcher:row.isWatcher,isManager:row.isManager,
+      permissions:{ canFiles:row.canFiles,canUpload:row.canUpload,canWatch:row.canWatch,isWatcher:row.isWatcher,isManager:row.isManager,
         actions:availableActions(task,row,member) },
       assignee:row.assigneeName,creator:row.creatorName,
       approval:step ? {index:task.managedRequest.step+1,total:task.managedRequest.policy.steps.length,required:step.required,
         received:task.managedRequest.decisions.filter(x => x.step===task.managedRequest.step).length} : null };
   }
+
+  const attachmentName = name => typeof name==='string' && name.trim().length>0 && name.length<=180 &&
+    !/[\u0000-\u001f\u007f/\\]/.test(name) ? name.trim() : null;
+  const contentTypes = {
+    'image/png': bytes => bytes.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10])),
+    'image/jpeg': bytes => bytes.subarray(0,3).equals(Buffer.from([255,216,255])),
+    'image/webp': bytes => bytes.toString('ascii',0,4)==='RIFF' && bytes.toString('ascii',8,12)==='WEBP',
+    'application/pdf': bytes => bytes.toString('ascii',0,5)==='%PDF-',
+  };
 
   return {
     async create(auth,body) {
@@ -348,6 +357,71 @@ export function createTaskRequests({sql,run}) {
         const result=await input(tx,auth).input('target',sql.UniqueIdentifier,null).input('search',sql.NVarChar(80),search.trim()||null)
           .query(`SELECT TOP(60) d.id,d.name FROM (${activeUsersSql}) d WHERE d.canAssign=1 ORDER BY d.name,d.id;`);
         return {items:result.recordset};
+      });
+    },
+
+    files: (auth,id) => run(auth,async tx => {
+      const task=await get(tx,auth,id);
+      if (!task.canFiles) throw forbidden();
+      const result=await requestById(tx,auth,id).query(`SELECT TOP(8) EntityId AS id,JSON_VALUE(JsonDoc,'$.fileName') AS name,
+        JSON_VALUE(JsonDoc,'$.mimeType') AS type,TRY_CONVERT(int,JSON_VALUE(JsonDoc,'$.size')) AS size
+        FROM sync.EntityStore WHERE TenantId=@tenantId AND CollectionName=N'attachments' AND IsDeleted=0
+         AND EntityId LIKE N'request-file-%' AND JSON_VALUE(JsonDoc,'$.entityId')=@id
+        ORDER BY CreatedAtUtc,EntityId;`);
+      return {items:result.recordset};
+    }),
+
+    file: (auth,id,attachmentId) => run(auth,async tx => {
+      const task=await get(tx,auth,id);
+      if (!task.canFiles) throw forbidden();
+      if (typeof attachmentId!=='string' || !attachmentId.startsWith('request-file-') || !uuid(attachmentId.slice(13))) throw missing();
+      const saved=(await requestById(tx,auth,id).input('file',sql.NVarChar(120),attachmentId).query(`
+        SELECT JsonDoc FROM sync.EntityStore WHERE TenantId=@tenantId AND CollectionName=N'attachments'
+          AND EntityId=@file AND IsDeleted=0 AND JSON_VALUE(JsonDoc,'$.entityId')=@id;`)).recordset[0];
+      if (!saved) throw missing();
+      const doc=JSON.parse(saved.JsonDoc);
+      return { id:attachmentId,name:doc.fileName,type:doc.mimeType,size:doc.size,data:doc.data };
+    }),
+
+    attach: (auth,id,query,bytes) => {
+      const name=attachmentName(query.name), type=query.type;
+      if (!uuid(query.uploadId) || !name || !Buffer.isBuffer(bytes) || !bytes.length || bytes.length>5*1024*1024
+         || typeof type!=='string' || !Object.hasOwn(contentTypes,type) || !contentTypes[type](bytes)) {
+        throw invalid('فایل باید PDF، JPEG، PNG یا WebP معتبر و حداکثر ۵ مگابایت باشد.');
+      }
+      const attachmentId=`request-file-${query.uploadId.toLowerCase()}`;
+      return run(auth,async tx => {
+        const current=await get(tx,auth,id,true);
+        const actor=actorId(auth);
+        if (!current.canUpload || !(current.isCreator || current.canAct ||
+          (current.canDecide && current.task.managedRequest.activeApprovers.includes(actor)))) throw forbidden();
+        const checksum=createHash('sha256').update(bytes).digest('hex');
+        const file={id:attachmentId,entityId:id,entityType:'TASK_REQUEST',fileName:name,mimeType:type,size:bytes.length,
+          data:bytes.toString('base64'),sha256:checksum,uploadedBy:actor};
+        const existing=(await requestById(tx,auth,id).input('file',sql.NVarChar(120),attachmentId).query(`
+          SELECT JSON_VALUE(JsonDoc,'$.sha256') AS checksum,JSON_VALUE(JsonDoc,'$.entityId') AS taskId,
+            JSON_VALUE(JsonDoc,'$.fileName') AS name,JSON_VALUE(JsonDoc,'$.mimeType') AS type,IsDeleted
+          FROM sync.EntityStore WITH(UPDLOCK,HOLDLOCK)
+          WHERE TenantId=@tenantId AND CollectionName=N'attachments' AND EntityId=@file;`)).recordset[0];
+        const metadata={id:attachmentId,name,type,size:bytes.length};
+        if (existing) {
+          if (existing.IsDeleted || existing.taskId!==id || existing.checksum!==checksum || existing.name!==name || existing.type!==type) throw conflict();
+          return {...metadata,replayed:true};
+        }
+        const found=(await requestById(tx,auth,id).query(`SELECT COUNT(*) AS amount FROM sync.EntityStore
+          WHERE TenantId=@tenantId AND CollectionName=N'attachments' AND EntityId LIKE N'request-file-%'
+            AND IsDeleted=0 AND JSON_VALUE(JsonDoc,'$.entityId')=@id;`)).recordset[0]?.amount ?? 0;
+        if (found>=8) throw invalid('حداکثر ۸ پیوست برای هر درخواست مجاز است.');
+        const task=appendTaskActivity(current.task,{ id:query.uploadId.toLowerCase(),action:'ATTACHED',actorId:actor,
+          summary:'مدرک دارای دسترسی ثبت شد' });
+        await requestById(tx,auth,id).input('file',sql.NVarChar(120),attachmentId)
+          .input('document',sql.NVarChar(sql.MAX),JSON.stringify(file)).input('task',sql.NVarChar(sql.MAX),JSON.stringify(task)).query(`
+            INSERT sync.EntityStore(TenantId,CollectionName,EntityId,JsonDoc,UpdatedByUserId) VALUES(@tenantId,N'attachments',@file,@document,@actor);
+            UPDATE sync.EntityStore SET JsonDoc=@task,Version=Version+1,UpdatedAtUtc=SYSUTCDATETIME(),UpdatedByUserId=@actor
+              WHERE TenantId=@tenantId AND CollectionName=N'tasks' AND EntityId=@id;`);
+        await writeAudit(tx,auth,id,query.uploadId,'TASK_REQUEST_ATTACHMENT',checksum,{attachmentId,name,type,size:bytes.length});
+        await notify(tx,auth,task,query.uploadId);
+        return {...metadata,replayed:false};
       });
     },
 

@@ -1,4 +1,4 @@
-import type { TaskRequestApprovalPolicy, TaskRequestCommand, TaskRequestInput, TaskRequestPolicyKind,
+import type { TaskRequestApprovalPolicy, TaskRequestCommand, TaskRequestFile, TaskRequestInput, TaskRequestPolicyKind,
   TaskRequestRecord, TaskRequestSummary, TaskRequestView } from './taskRequests';
 import type { 
   AppState, 
@@ -281,6 +281,9 @@ export interface DataProvider {
   updateTask(id: string, patch: Partial<Task>): Promise<Task>;
   getTaskWorkflow(id: string): Promise<TaskWorkflowRecord>;
   listTaskRequests(view:TaskRequestView,search:string,page:number): Promise<{items:TaskRequestSummary[];hasMore:boolean}>;
+  listTaskRequestFiles(id:string): Promise<{items:TaskRequestFile[]}>;
+  getTaskRequestFile(id:string,fileId:string): Promise<TaskRequestFile & {data:string}>;
+  uploadTaskRequestFile(id:string,file:File,uploadId:string): Promise<TaskRequestFile>;
   getTaskRequest(id:string): Promise<TaskRequestRecord>;
   submitTaskRequest(input:TaskRequestInput): Promise<TaskRequestRecord>;
   changeTaskRequest(id:string,input:TaskRequestCommand): Promise<TaskRequestRecord | {task:null;version:string}>;
@@ -546,6 +549,9 @@ export class ClientStorageDataProvider implements DataProvider {
   }
 
   async listTaskRequests(): Promise<{items:TaskRequestSummary[];hasMore:boolean}> { return {items:[],hasMore:false}; }
+  async listTaskRequestFiles(): Promise<{items:TaskRequestFile[]}> { return {items:[]}; }
+  async getTaskRequestFile(): Promise<TaskRequestFile & {data:string}> { throw new Error('دریافت مدرک به سرور نیاز دارد.'); }
+  async uploadTaskRequestFile(): Promise<TaskRequestFile> { throw new Error('ثبت مدرک به سرور نیاز دارد.'); }
   async getTaskRequest(): Promise<TaskRequestRecord> { throw new Error('پروندهٔ درخواست به اتصال سرور نیاز دارد.'); }
   async submitTaskRequest(): Promise<TaskRequestRecord> { throw new Error('ثبت درخواست به اتصال سرور نیاز دارد.'); }
   async changeTaskRequest(): Promise<TaskRequestRecord> { throw new Error('گردش درخواست به اتصال سرور نیاز دارد.'); }
@@ -1024,6 +1030,15 @@ export class HttpBackendDataProvider implements DataProvider {
 
   async listTaskRequests(view:TaskRequestView,search:string,page:number): Promise<{items:TaskRequestSummary[];hasMore:boolean}> {
     return this.request(`/tasks/requests?${new URLSearchParams({view,search,page:String(page)})}`);
+  }
+  async listTaskRequestFiles(id:string): Promise<{items:TaskRequestFile[]}> { return this.request(`/tasks/requests/${encodeURIComponent(id)}/files`); }
+  async getTaskRequestFile(id:string,fileId:string): Promise<TaskRequestFile & {data:string}> {
+    return this.request(`/tasks/requests/${encodeURIComponent(id)}/files/${encodeURIComponent(fileId)}`);
+  }
+  async uploadTaskRequestFile(id:string,file:File,uploadId:string): Promise<TaskRequestFile> {
+    const params=new URLSearchParams({name:file.name,type:file.type,uploadId});
+    return this.request(`/tasks/requests/${encodeURIComponent(id)}/files?${params}`,{method:'POST',
+      headers:{'Content-Type':'application/octet-stream'},body:file});
   }
   async getTaskRequest(id:string): Promise<TaskRequestRecord> {
     return this.request(`/tasks/requests/${encodeURIComponent(id)}`);

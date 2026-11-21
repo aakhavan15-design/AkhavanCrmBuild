@@ -172,7 +172,7 @@ function AppContent() {
       const routeMap: Record<string, string> = {
         home: '/',
         accounts: '/accounts',
-        tasks: '/tasks',
+        tasks: /^taskreq-[0-9a-f-]{36}$/i.test(n.requestId ?? '') ? `/tasks?request=${encodeURIComponent(n.requestId!)}` : '/tasks',
         quotes: '/quotes',
         finance: '/finance',
         internal_automation: '/internal_automation',
