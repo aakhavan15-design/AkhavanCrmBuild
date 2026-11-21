@@ -26,6 +26,7 @@ import { useDataQuery } from '../hooks/useDataProvider';
 import { useDataSyncStatus } from '../services/dataSyncController';
 import { isDemoContext } from '../lib/dataTrust';
 import { reconcileReceivables, resolveCustomerBalanceView } from '../lib/receivableReconciliation';
+import { CreditorBalanceReview } from './reports/CreditorBalanceReview';
 import { ReceivablesLifoPanel } from './reports/ReceivablesLifoPanel';
 import { ProfitLossWidget } from './finance/ProfitLossWidget';
 import { CashFlowPanel } from './finance/CashFlowPanel';
@@ -525,7 +526,7 @@ function LedgerReceivablesReport({ state, accounts, canViewPayments }: {
 }) {
   const navigate = useNavigate();
   const { serverVersion } = useDataSyncStatus();
-  const ledger = useDataQuery(provider => provider.getDetailSubsidiaryBalances(), [state.currentUserId, serverVersion]);
+  const ledger = useDataQuery(provider => provider.getDetailSubsidiaryBalances({ byPeriod: true }), [state.currentUserId, serverVersion]);
   const creditNotes = useDataQuery(provider => provider.getCreditNoteEvidence(), [state.currentUserId, serverVersion]);
   const allocations = useDataQuery(
     provider => canViewPayments ? provider.getPaymentAllocations() : Promise.resolve(null),
@@ -581,6 +582,9 @@ function LedgerReceivablesReport({ state, accounts, canViewPayments }: {
             />
           </>
         ) : <p role="status" className="text-xs text-text-secondary">ماندهٔ دفتری قابل‌محاسبه‌ای برای مشتریان قابل مشاهده وجود ندارد.</p>
+      )}
+      {!ledger.loading && !ledger.error && result && result.status !== 'UNAVAILABLE' && (
+        <CreditorBalanceReview accounts={accounts} ledger={result} locale={state.settings?.locale} />
       )}
       {canViewPayments && (
         <div className="rounded-xl border border-border bg-surface p-3 text-xs text-text-secondary">

@@ -8,6 +8,7 @@ import { formatCount, formatMoney, formatNumber } from '../../lib/format';
 import { formatAppDate } from '../../lib/utils';
 import type { FilterGroup } from '../../lib/tableEngine';
 import { DataTable, DetailField, DetailGroup, type DataTableColumn } from '../ui/DataTable';
+import { SubsidiaryBalanceDetails } from '../shared/SubsidiaryBalancesPanel';
 import { Button } from '../ui/Button';
 import { BatchCollectionFollowUp } from './BatchCollectionFollowUp';
 
@@ -117,15 +118,8 @@ export function CollectionWorkbench({ state, accounts, profiles, balances, aging
           {row.balance.kind === 'OK' ? <>
             {row.balance.incomplete && <p role="status" className="text-caption text-warning">بخشی از گردش فاقد نگاشت معین است.</p>}
             <DetailField label="تفصیلی"><bdi>{row.balance.detailKey}</bdi></DetailField>
-            <ul className="space-y-2">
-              {row.balance.subsidiaries.map((line, index) => <li key={index} className="rounded-lg bg-canvas p-2 text-caption">
-                <div className="flex flex-wrap justify-between gap-x-3">
-                  <span>معین <bdi>{line.subsidiaryCode || 'فاقد نگاشت'}</bdi> · دوره <bdi>{line.periodCode || unknown}</bdi></span>
-                  <strong>{formatMoney(Math.abs(line.balance))} · {line.nature === 'DEBIT' ? 'بدهکار' : line.nature === 'CREDIT' ? 'بستانکار' : 'تسویه'}</strong>
-                </div>
-                <p className="mt-1 text-text-secondary">بدهکار {formatMoney(line.debit)} · بستانکار {formatMoney(line.credit)}</p>
-              </li>)}
-            </ul>
+            <SubsidiaryBalanceDetails detailKey={row.balance.detailKey} rows={row.balance.subsidiaries}
+              byPeriod locale={state.settings?.locale} />
           </> : <p className="text-caption text-text-secondary">ماندهٔ قابل استناد برای این حساب در دسترس نیست.</p>}
         </DetailGroup>
         <DetailGroup title="تعهدهای باز مشتری">
