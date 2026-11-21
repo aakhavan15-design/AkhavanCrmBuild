@@ -202,7 +202,12 @@ export function MoneyIntelligencePanel() {
           </div>)}
         </div>
         <Card padding="md" className="space-y-2 text-caption text-text-secondary">
-          <p>ماندهٔ دفتری بر اساس اسناد ثبت‌شدهٔ ERP است. ماندهٔ تطبیق‌شدهٔ بانک {money(ready.bank.closing)} · مبلغ اسناد بانکی تطبیق‌نشده {money(ready.bank.unmatched)}.</p>
+          <p>ماندهٔ اعلام‌شدهٔ بانک {money(ready.bank.closing)} · مبلغ ناخالص اسناد بانکی تطبیق‌نشده {money(ready.bank.unmatched)}.</p>
+          {ready.bank.status === 'NOT_VERIFIED' ? <p>برای این تاریخ شاهد معتبر بانک در دسترس نیست.</p> : <>
+            <p>{ready.bank.status === 'VERIFIED' ? 'کنترل مانده و اسناد بانک کامل است.' : ready.bank.status === 'MISMATCH' ? 'تطبیق بانک اختلاف یا سند باز دارد.' : 'پوشش کنترل‌های بانکی ناقص است.'}
+              {ready.bank.updatedAt && <> · آخرین ورود صورت‌حساب {formatAppDate(ready.bank.updatedAt)}</>}</p>
+            <Button type="button" size="sm" variant="outline" onClick={() => open({ title: 'مدرک تطبیق بانک', mode: 'bank' })}>مدرک تطبیق بانک</Button>
+          </>}
           <p>پوشش تأییدشدهٔ دفتر از {formatAppDate(ready.openingDate)} تا {formatAppDate(ready.verifiedThrough)}
             {ready.updatedAt && <> · آخرین همگام‌سازی سند {formatAppDate(ready.updatedAt)}</>}</p>
           {ready.status === 'PARTIAL' && <p role="status" className="text-warning">پوشش گزارش یا تفکیک گردش کامل نیست. دریافت و پرداختِ نمایش‌داده‌شده از اسناد قابل‌تفکیک است.</p>}

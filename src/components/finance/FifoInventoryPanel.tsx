@@ -11,7 +11,8 @@ import type { FifoValuationRow } from '../../services/dataProvider';
 
 const layerKindLabels: Record<string, string> = {
   OPENING: 'افتتاحیه', RECEIPT: 'رسید انبار', ADJUSTMENT_IN: 'اصلاح افزایشی',
-  SALE_RETURN: 'برگشت فروش', TRANSFER: 'انتقال بین انبارها',
+  SALE_RETURN: 'برگشت فروش', TRANSFER: 'انتقال بین انبارها', SALE: 'فروش',
+  PURCHASE_RETURN: 'برگشت خرید', ISSUE: 'حوالهٔ خروج', ADJUSTMENT_OUT: 'اصلاح کاهشی',
 };
 
 export function FifoInventoryPanel({ userId, locale }: {
@@ -30,7 +31,7 @@ export function FifoInventoryPanel({ userId, locale }: {
       </header>
       {loading ? <p role="status" className="text-sm text-text-secondary">در حال دریافت لایه‌های منتشرشده…</p>
         : data?.status === 'RESTRICTED' ? <p role="status" className="text-sm text-text-secondary">مجوز مشاهدهٔ ارزش‌گذاری سازمانی را ندارید.</p>
-        : error || !data || data.status === 'UNAVAILABLE' ? (
+        : error || !result || result.status === 'UNAVAILABLE' ? (
           <div role="alert" className="flex flex-wrap items-center gap-2 text-sm text-text-secondary">
             <span>منبع ارزش‌گذاری در دسترس نیست.</span>
             <Button type="button" variant="outline" size="sm" onClick={() => void refetch()}>بازخوانی ارزش‌گذاری</Button>
@@ -68,15 +69,17 @@ export function FifoLayerDialog({ run, locale, onClose }: {
   onClose: () => void;
 }) {
   const [pages, setPages] = useState([0]);
+  const [activity, setActivity] = useState<'inbound' | 'withdrawals'>('inbound');
   const after = pages.at(-1) ?? 0;
   const { data, loading, error, refetch } = useDataQuery(
-    provider => provider.getFifoLayers(run.runId, run.warehouseId, after),
-    [run.runId, run.warehouseId, after],
+    async provider => ({ activity, after, page: await provider.getFifoLayers(run.runId, run.warehouseId, after, activity) }),
+    [run.runId, run.warehouseId, after, activity],
   );
-  const next = data?.next ?? null;
+  const result = data?.activity === activity && data.after === after ? data.page : null;
+  const next = result?.next ?? null;
 
   return (
-    <Modal isOpen onClose={onClose} title="ریز لایه‌های موجودی" subtitle={`کالا ${run.productId} · انبار ${run.warehouseId}`} size="xl"
+    <Modal isOpen onClose={onClose} title="ریز گردش و لایه‌های موجودی" subtitle={`کالا ${run.productId} · انبار ${run.warehouseId}`} size="xl"
       footer={<nav aria-label="صفحه‌بندی ریز لایه‌ها" className="flex w-full flex-wrap items-center justify-between gap-2">
         <Button type="button" variant="outline" disabled={loading || pages.length <= 1}
           onClick={() => setPages(current => current.slice(0, -1))}>صفحهٔ قبل</Button>
@@ -84,24 +87,31 @@ export function FifoLayerDialog({ run, locale, onClose }: {
         <Button type="button" variant="outline" disabled={loading || next === null}
           onClick={() => { if (next !== null) setPages(current => [...current, next]); }}>صفحهٔ بعد</Button>
       </nav>}>
-      {loading ? <p role="status">در حال دریافت ریز لایه‌ها…</p>
-        : data?.status === 'RESTRICTED' ? <p role="status">مجوز مشاهدهٔ ریز لایه‌ها را ندارید.</p>
-        : error || !data || data.status === 'UNAVAILABLE' ? <div role="alert" className="space-y-2">
+      <div role="group" aria-label="نوع گردش موجودی" className="mb-2 flex flex-wrap gap-1">
+        <Button type="button" size="sm" variant={activity === 'inbound' ? 'soft' : 'ghost'} aria-pressed={activity === 'inbound'}
+          onClick={() => { setActivity('inbound'); setPages([0]); }}>ورود و لایه‌ها</Button>
+        <Button type="button" size="sm" variant={activity === 'withdrawals' ? 'soft' : 'ghost'} aria-pressed={activity === 'withdrawals'}
+          onClick={() => { setActivity('withdrawals'); setPages([0]); }}>خروج و مصرف لایه‌ها</Button>
+      </div>
+      {loading || (data && !result && !error) ? <p role="status">در حال دریافت ریز گردش…</p>
+        : result?.status === 'RESTRICTED' ? <p role="status">مجوز مشاهدهٔ ریز لایه‌ها را ندارید.</p>
+        : error || !result || result.status === 'UNAVAILABLE' ? <div role="alert" className="space-y-2">
           <p>دریافت ریز لایه‌ها انجام نشد.</p>
           <Button type="button" variant="outline" onClick={() => void refetch()}>تلاش مجدد</Button>
-        </div> : data.status === 'EMPTY' ? <p role="status">لایه‌ای در این محدوده ثبت نشده است.</p> : (
+        </div> : result.status === 'EMPTY' ? <p role="status">گردشی از این نوع در این محدوده ثبت نشده است.</p> : (
           <ul className="divide-y divide-border">
-            {data.items.map(layer => (
-              <li key={layer.layerNo} className="grid gap-2 py-3 sm:grid-cols-[minmax(0,1fr)_auto]">
+            {result.items.map(layer => (
+              <li key={layer.consumptionNo ?? layer.layerNo} className="grid gap-2 py-3 sm:grid-cols-[minmax(0,1fr)_auto]">
                 <div className="min-w-0 space-y-1 text-xs text-text-secondary">
                   <p className="font-semibold text-text-main">لایهٔ {toPersianDigits(layer.layerNo)} · {layerKindLabels[layer.kind] ?? 'نوع نامشخص'}</p>
                   <p className="wrap-break-word">سند <bdi>{layer.documentId}</bdi> · ردیف <bdi>{layer.lineId}</bdi></p>
-                  <p>{formatAppDate(layer.effectiveAt, locale)}{layer.originConsumptionNo === null ? '' : ` · برداشت مرجع ${toPersianDigits(layer.originConsumptionNo)}`}</p>
+                  <p>{formatAppDate(layer.effectiveAt, locale)}{layer.originConsumptionNo == null ? '' : ` · برداشت مرجع ${toPersianDigits(layer.originConsumptionNo)}`}</p>
+                  {layer.layerDocumentId && <p className="wrap-break-word">سند لایهٔ مبدأ <bdi>{layer.layerDocumentId}</bdi></p>}
                 </div>
                 <dl className="grid grid-cols-3 gap-3 text-xs text-text-secondary">
-                  <div><dt>مقدار اولیه</dt><dd className="tabular-nums text-text-main">{formatDecimalString(layer.quantity)}</dd></div>
-                  <div><dt>ماندهٔ لایه</dt><dd className="tabular-nums text-text-main">{formatDecimalString(layer.remaining)}</dd></div>
-                  <div><dt>بهای واحد</dt><dd className="tabular-nums text-text-main">{formatDecimalString(layer.unitCost)}</dd></div>
+                  <div><dt>{layer.consumptionNo ? 'مقدار برداشت' : 'مقدار اولیه'}</dt><dd className="tabular-nums text-text-main">{formatDecimalString(layer.quantity)}</dd></div>
+                  <div><dt>{layer.consumptionNo ? 'مقدار برگشت' : 'ماندهٔ لایه'}</dt><dd className="tabular-nums text-text-main">{formatDecimalString(layer.consumptionNo ? layer.returned : layer.remaining)}</dd></div>
+                  <div><dt>{layer.consumptionNo ? 'بهای برداشت' : 'بهای واحد'}</dt><dd className="tabular-nums text-text-main">{formatDecimalString(layer.consumptionNo ? layer.totalCost : layer.unitCost)}</dd></div>
                 </dl>
               </li>
             ))}

@@ -32,23 +32,24 @@ export function MoneyEvidenceSheet({ selection, period, onClose }: {
   }), [requestKey]);
   const result = data?.requestKey === requestKey ? data.result : null;
   const fifo = selection.mode === 'fifo';
+  const showBank = selection.mode === 'bank';
 
   if (fifoRun) return <FifoLayerDialog run={fifoRun} onClose={() => setFifoRun(null)} />;
   return (
-    <BottomSheet isOpen onClose={onClose} title={selection.title} subtitle="ریز اسناد و ردیف‌های منبع" footer={
+    <BottomSheet isOpen onClose={onClose} title={selection.title} subtitle={showBank ? 'کنترل‌های ثبت‌شدهٔ تطبیق بانکی' : 'ریز اسناد و ردیف‌های منبع'} footer={!showBank &&
       <nav className="flex w-full flex-wrap items-center justify-between gap-2" aria-label="صفحه‌بندی اسناد">
         <Button type="button" variant="outline" disabled={page <= 1 || loading} onClick={() => setPage(page - 1)}>قبلی</Button>
         <span className="text-caption">صفحهٔ {formatCount(page)}</span>
         <Button type="button" variant="outline" disabled={!result?.hasMore || loading} onClick={() => setPage(page + 1)}>بعدی</Button>
       </nav>
     }>
-      <form className="mb-3 flex items-end gap-2" onSubmit={event => { event.preventDefault(); setPage(1); setSearch(draft.trim()); }}>
+      {!showBank && <form className="mb-3 flex items-end gap-2" onSubmit={event => { event.preventDefault(); setPage(1); setSearch(draft.trim()); }}>
         <div className="min-w-0 flex-1">
           <Input label={fifo ? 'شناسهٔ کالا یا انبار' : 'شمارهٔ سند، فاکتور یا کد حساب'}
             type="search" maxLength={100} value={draft} onChange={event => setDraft(event.target.value)} />
         </div>
         <Button type="submit" variant="outline">جست‌وجو</Button>
-      </form>
+      </form>}
       {loading ? <LoadingState label="در حال دریافت ریز اسناد" /> : error ? (
         <EmptyState surface="finance_money_evidence" title="دریافت ریز اسناد ممکن نیست" actionLabel="تلاش دوباره" onAction={() => void refetch()} />
       ) : !result?.items.length ? (
@@ -62,6 +63,13 @@ export function MoneyEvidenceSheet({ selection, period, onClose }: {
               <p className="wrap-break-word text-text-secondary">تاریخ ارزش‌گذاری {formatAppDate(row.date)} · مرجع <bdi>{row.sourceProof}</bdi></p>
             </div>
             <Button type="button" variant="outline" size="sm" onClick={() => setFifoRun(row)}>لایه‌ها و اسناد</Button>
+          </li>
+        ) : 'controlId' in row ? (
+          <li key={row.controlId} className="space-y-1 py-3 text-caption">
+            <p className="font-bold">{row.metric === 'BANK_CLOSING_IRR' ? 'ماندهٔ اعلام‌شدهٔ بانک' : 'مبلغ ناخالص اسناد تطبیق‌نشده'}</p>
+            <p>مبلغ منبع {formatDecimalString(row.amount)} ریال · مبلغ مقایسه {formatDecimalString(row.comparisonAmount)} ریال</p>
+            <p>{row.result === 'MATCHED' ? 'منطبق' : row.result === 'MISMATCH' ? 'دارای اختلاف' : 'نامشخص'}</p>
+            <p className="wrap-break-word text-text-secondary">ورود داده <bdi>{row.batchId}</bdi> · کنترل <bdi>{row.controlId}</bdi> · {formatAppDate(row.finishedAt)}</p>
           </li>
         ) : (
           <li key={row.lineId ?? row.journalId} className="grid gap-2 py-3 text-caption sm:grid-cols-[minmax(0,1fr)_auto]">

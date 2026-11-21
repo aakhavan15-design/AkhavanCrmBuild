@@ -2,7 +2,7 @@ import { FIFO_COST_METHOD } from './fifoInventory.mjs';
 
 const DAY = 86_400_000;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
-const modes = new Set(['cash', 'outflow', 'expense', 'role', 'balance', 'opening', 'review', 'fifo', 'profit']);
+const modes = new Set(['cash', 'outflow', 'expense', 'role', 'balance', 'opening', 'review', 'fifo', 'profit', 'bank']);
 
 function dateValue(value) {
   if (typeof value !== 'string' || !DATE.test(value) || value < '1900-01-01') return null;
@@ -33,7 +33,7 @@ export function parseMoneyReportQuery(query) {
 // Use one authorized, explicitly approved ERP history. No historical + opening-document double count.
 const profileSql = `
 SET NOCOUNT ON;
-SELECT s.SourceSystemCode,s.OpeningDate,s.OpeningDocumentTypeCode,s.ClosingDocumentTypes,s.VerifiedThrough,s.ApprovedAtUtc,s.FifoSnapshotUnitsVerified
+SELECT s.SourceSystemCode,s.OpeningDate,s.OpeningDocumentTypeCode,s.ClosingDocumentTypes,s.VerifiedThrough,s.ApprovedAtUtc,s.FifoSnapshotUnitsVerified,s.BankConnectorId
 INTO #profile
 FROM analytics.MoneyReportSource s
 JOIN core.AppUser approver ON approver.TenantId=s.TenantId AND approver.UserId=s.ApprovedBy
@@ -279,6 +279,41 @@ WHERE f.side=@key AND (@search='' OR CHARINDEX(@search,f.ProductExternalId)>0 OR
 ORDER BY f.ProductExternalId,f.WarehouseExternalId,f.RunId
 OFFSET @offset ROWS FETCH NEXT 26 ROWS ONLY;`;
 
+// Only a complete, independently configured bank import may assert a bank balance.
+// The latest run on this exact reporting date supersedes older runs, including failed or incomplete runs.
+const bankSql = `
+WITH latestBatch AS (
+  SELECT TOP (1) b.TenantId,b.SourceSystemCode,b.SyncBatchId,b.StatusCode,b.FinishedAtUtc,b.RejectedCount
+  FROM #profile p
+  JOIN integration.Connector c ON c.TenantId=@tenantId AND c.ConnectorId=p.BankConnectorId
+    AND c.DirectionCode IN ('INBOUND','BIDIRECTIONAL') AND c.IsEnabled=1
+  JOIN integration.SyncBatch b ON b.TenantId=c.TenantId AND b.ConnectorId=c.ConnectorId AND b.SourceSystemCode=c.SystemCode
+    AND b.EntityType=N'BANK_STATEMENT_IRR' AND b.ModeCode='FULL'
+    AND b.WindowToUtc>=CONVERT(datetime2(3),@to) AND b.WindowToUtc<DATEADD(day,1,CONVERT(datetime2(3),@to))
+  ORDER BY b.StartedAtUtc DESC,b.SyncBatchId DESC
+), controls AS (
+  SELECT b.SourceSystemCode AS sourceSystem,CONVERT(varchar(22),b.SyncBatchId) AS batchId,b.FinishedAtUtc AS finishedAt,
+    r.MetricCode AS metric,r.StatusCode AS result,CONVERT(varchar(48),r.SourceValue) AS amount,
+    CONVERT(varchar(48),r.CrmValue) AS comparisonAmount,CONVERT(varchar(22),r.ReconciliationRunId) AS controlId,
+    ROW_NUMBER() OVER(PARTITION BY r.MetricCode ORDER BY r.CreatedAtUtc DESC,r.ReconciliationRunId DESC) AS position
+  FROM latestBatch b JOIN integration.ReconciliationRun r ON r.TenantId=b.TenantId
+    AND r.SyncBatchId=b.SyncBatchId AND r.SourceSystemCode=b.SourceSystemCode AND r.AsOfDate=@to
+    AND r.MetricCode IN ('BANK_CLOSING_IRR','BANK_UNMATCHED_GROSS_IRR')
+  WHERE b.StatusCode='SUCCEEDED' AND b.FinishedAtUtc IS NOT NULL AND b.RejectedCount=0
+)
+SELECT sourceSystem,batchId,finishedAt,metric,result,amount,comparisonAmount,controlId FROM controls WHERE position=1;`;
+
+function bankReport(controls) {
+  const documented = control => control && ['MATCHED', 'MISMATCH'].includes(control.result) && control.amount !== null;
+  const closing = controls.find(control => control.metric === 'BANK_CLOSING_IRR');
+  const unmatched = controls.find(control => control.metric === 'BANK_UNMATCHED_GROSS_IRR');
+  if (!documented(closing)) return { status: 'NOT_VERIFIED', closing: null, unmatched: null };
+  const unmatchedAmount = documented(unmatched) && parseAmount(unmatched.amount) >= 0n ? unmatched.amount : null;
+  const status = closing.result === 'MISMATCH' || (unmatchedAmount !== null && parseAmount(unmatchedAmount) > 0n)
+    ? 'MISMATCH' : unmatchedAmount === null || unmatched.result !== 'MATCHED' ? 'PARTIAL' : 'VERIFIED';
+  return { status, closing: closing.amount, unmatched: unmatchedAmount, sourceSystem: closing.sourceSystem, updatedAt: closing.finishedAt };
+}
+
 const SCALE = 14;
 const denominator = 10n ** BigInt(SCALE);
 const parseAmount = value => {
@@ -308,15 +343,16 @@ function expenseCalendar(filter) {
 const profitRoles = new Set(['PNL_INCOME', 'PNL_EXPENSE', 'PNL_NONCASH']);
 
 export function projectMoneyReport(result, filter) {
-  const [metadataRows, trend, balances, grouped, unallocatedRows, fifoRows] = result;
+  const [metadataRows, trend, balances, grouped, unallocatedRows, fifoRows, bankRows = []] = result;
   const meta = metadataRows[0];
   if (!meta) return { status: 'UNAVAILABLE', reason: 'منبع دفتر کل و پوشش تأییدشده برای این گزارش تنظیم نشده است.' };
 
   const observed = trend.length > 0;
-  const openingKnown = filter.from >= meta.openingDate && filter.from <= meta.verifiedThrough &&
+  const precedingDay = new Date(Date.parse(filter.from) - DAY).toISOString().slice(0, 10);
+  const openingKnown = filter.from >= meta.openingDate && precedingDay <= meta.verifiedThrough &&
     Number(meta.openingDocuments) > 0 && Number(meta.excludedOpening) === 0;
   const periodCovered = filter.from >= meta.openingDate && filter.to <= meta.verifiedThrough && Number(meta.excludedPeriod) === 0;
-  const priorCovered = filter.priorStart >= meta.openingDate && filter.from <= meta.verifiedThrough && Number(meta.excludedPrior) === 0;
+  const priorCovered = filter.priorStart >= meta.openingDate && precedingDay <= meta.verifiedThrough && Number(meta.excludedPrior) === 0;
   const roles = new Map(balances.map(row => [row.role,row]));
   const fifo = Object.fromEntries(fifoRows.map(row => [row.side,row]));
   const movement = field => observed || periodCovered ? decimal(sum(trend, field)) : null;
@@ -340,7 +376,7 @@ export function projectMoneyReport(result, filter) {
     updatedAt: meta.updatedAt, periodCovered, priorCovered,
     excludedDocuments: Number(meta.excludedPeriod), mixedDocuments: mixed,
     // Bank statements and transaction matches are distinct evidence. Journal certification never verifies them.
-    bank: { status: 'NOT_VERIFIED', closing: null, unmatched: null },
+    bank: bankReport(bankRows),
     cash: {
       opening: openingKnown ? cash?.opening ?? '0' : null,
       closing: closingKnown ? cash?.closing ?? '0' : null,
@@ -378,6 +414,10 @@ export function createMoneyIntelligenceReader({ sql, run }) {
       .input('dimension', sql.VarChar(12), filter.dimension || 'category')
       .input('fifoMethod', sql.VarChar(25), FIFO_COST_METHOD)
       .input('months', sql.NVarChar(sql.MAX), expenseCalendar(filter));
+    if (filter.mode === 'bank') {
+      const result = await request.query(`${profileSql}${bankSql}`);
+      return { items: result.recordset, hasMore: false };
+    }
     if (filter.mode) {
       request.input('mode', sql.VarChar(12), filter.mode)
         .input('key', sql.NVarChar(120), filter.key)
@@ -388,7 +428,7 @@ export function createMoneyIntelligenceReader({ sql, run }) {
         : `${profileSql}${prepare}${evidence}`);
       return { items: result.recordset.slice(0, 25), hasMore: filter.page < 1000 && result.recordset.length > 25 };
     }
-    const result = await request.query(`${profileSql}${prepare}${metadata}${totals}${fifoPrepare}SELECT side,amount FROM #fifoTotal;`);
+    const result = await request.query(`${profileSql}${prepare}${metadata}${totals}${fifoPrepare}SELECT side,amount FROM #fifoTotal;${bankSql}`);
     return projectMoneyReport(result.recordsets, filter);
   });
 }

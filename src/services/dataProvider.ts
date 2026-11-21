@@ -74,14 +74,18 @@ export interface FifoValuations {
 
 export interface FifoLayerRow {
   layerNo: number;
+  consumptionNo?: number;
+  returned?: string;
+  totalCost?: string;
+  layerDocumentId?: string;
   documentId: string;
   lineId: string;
   effectiveAt: string;
   kind: string;
   quantity: string;
-  remaining: string;
-  unitCost: string;
-  originConsumptionNo: number | null;
+  remaining?: string;
+  unitCost?: string;
+  originConsumptionNo?: number | null;
 }
 
 export interface FifoLayerPage {
@@ -305,7 +309,7 @@ export interface DataProvider {
   getPaymentAllocations(): Promise<PaymentAllocation[]>;
   getCreditNoteEvidence(): Promise<CreditNoteEvidence>;
   getFifoValuations(): Promise<FifoValuations>;
-  getFifoLayers(runId: string, warehouseId: string, after?: number): Promise<FifoLayerPage>;
+  getFifoLayers(runId: string, warehouseId: string, after?: number, activity?: 'inbound' | 'withdrawals'): Promise<FifoLayerPage>;
   getInvoiceFifoEvidence(invoiceId: string): Promise<InvoiceFifoEvidence>;
   getFifoSaleEvidence(documentId: string, source: string, periodStart: string): Promise<FifoSaleEvidence>;
   
@@ -786,9 +790,9 @@ export class HttpBackendDataProvider implements DataProvider {
     }
     return { status: 'UNAVAILABLE', coverage: 'UNVERIFIED', items: [], hasMore: false };
   }
-  async getFifoLayers(runId: string, warehouseId: string, after = 0): Promise<FifoLayerPage> {
+  async getFifoLayers(runId: string, warehouseId: string, after = 0, activity: 'inbound' | 'withdrawals' = 'inbound'): Promise<FifoLayerPage> {
     try {
-      const query = new URLSearchParams({ runId, warehouseId, after: String(after) });
+      const query = new URLSearchParams({ runId, warehouseId, after: String(after), activity });
       const data = await this.request<FifoLayerPage>(`/inventory/fifo/layers?${query}`);
       if ((data?.status === 'AVAILABLE' || data?.status === 'EMPTY') && Array.isArray(data.items)
         && (data.next === null || (Number.isInteger(data.next) && data.next > after))) return data;

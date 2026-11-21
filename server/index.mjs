@@ -556,18 +556,28 @@ app.get('/api/v1/inventory/fifo/valuation', authenticate, requirePermission('fin
 
 app.get('/api/v1/inventory/fifo/layers', authenticate, requirePermission('finance.view', { organizationWide: true }), wrap(async (req, res) => {
   if (entityDriverKind !== 'mssql') return bad(req, res, 503, 'FIFO_SOURCE_UNAVAILABLE', 'ریز لایه‌های موجودی در دسترس نیست.');
-  const { runId, warehouseId, after = '0' } = req.query;
-  if (typeof runId !== 'string' || !/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(runId) ||
+  const { runId, warehouseId, after = '0', activity = 'inbound' } = req.query;
+  if (!['inbound', 'withdrawals'].includes(activity) || typeof runId !== 'string' || !/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(runId) ||
       typeof warehouseId !== 'string' || !warehouseId.trim() || warehouseId.length > 200 ||
       typeof after !== 'string' || !/^\d{1,10}$/.test(after) || Number(after) > 2147483647) {
     return bad(req, res, 400, 'INVALID_FIFO_FILTER', 'محدودهٔ لایه‌های موجودی معتبر نیست.');
   }
+  const withdrawals = activity === 'withdrawals';
   const result = await withTenantContext(req.auth, transaction => new sql.Request(transaction)
     .input('tenantId', sql.UniqueIdentifier, req.auth.tenantId)
     .input('runId', sql.UniqueIdentifier, runId)
     .input('warehouseId', sql.NVarChar(200), warehouseId)
     .input('after', sql.Int, Number(after))
-    .query(`SELECT TOP (51) l.LayerNo AS layerNo,l.DocumentId AS documentId,l.LineId AS lineId,
+    .query(withdrawals ? `SELECT TOP (51) c.ConsumptionNo AS consumptionNo,l.LayerNo AS layerNo,
+      c.DocumentId AS documentId,c.LineId AS lineId,c.EffectiveAtUtc AS effectiveAt,c.KindCode AS kind,
+      CONVERT(varchar(40),c.Quantity) AS quantity,CONVERT(varchar(40),c.ReturnedQuantity) AS returned,
+      CONVERT(varchar(48),c.TotalCost) AS totalCost,l.DocumentId AS layerDocumentId
+      FROM analytics.FifoConsumption c
+      JOIN analytics.FifoLayer l ON l.TenantId=c.TenantId AND l.RunId=c.RunId AND l.LayerNo=c.LayerNo
+      JOIN analytics.FifoValuation v ON v.TenantId=l.TenantId AND v.RunId=l.RunId AND v.WarehouseExternalId=l.WarehouseExternalId
+      WHERE c.TenantId=@tenantId AND c.RunId=@runId AND l.WarehouseExternalId=@warehouseId AND c.ConsumptionNo>@after
+        AND EXISTS (SELECT 1 FROM security.fn_RecordReadScope(@tenantId,N'finance.view',NULL,NULL,NULL,NULL))
+      ORDER BY c.ConsumptionNo` : `SELECT TOP (51) l.LayerNo AS layerNo,l.DocumentId AS documentId,l.LineId AS lineId,
       l.EffectiveAtUtc AS effectiveAt,l.KindCode AS kind,
       CONVERT(varchar(40),l.InitialQuantity) AS quantity, CONVERT(varchar(40),l.RemainingQuantity) AS remaining,
       CONVERT(varchar(40),l.UnitCost) AS unitCost,l.OriginConsumptionNo AS originConsumptionNo
@@ -578,7 +588,7 @@ app.get('/api/v1/inventory/fifo/layers', authenticate, requirePermission('financ
       ORDER BY l.LayerNo`));
   const items = result.recordset.slice(0, 50);
   res.json({ status: items.length ? 'AVAILABLE' : 'EMPTY', items,
-    next: result.recordset.length > items.length ? items.at(-1).layerNo : null });
+    next: result.recordset.length > items.length ? (withdrawals ? items.at(-1).consumptionNo : items.at(-1).layerNo) : null });
 }));
 
 app.get('/api/v1/inventory/fifo/sales/:documentId/cogs', authenticate, requirePermission('finance.view', { organizationWide: true }), wrap(async (req, res) => {

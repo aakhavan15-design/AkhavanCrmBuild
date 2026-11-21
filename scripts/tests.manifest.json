@@ -18,6 +18,10 @@
     "flags": []
   },
   {
+    "file": "tests/moneyIntelligenceContracts.test.mjs",
+    "flags": []
+  },
+  {
     "file": "tests/dataQueryRaceContracts.test.mjs",
     "flags": []
   },

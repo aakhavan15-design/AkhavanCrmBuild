@@ -3,7 +3,7 @@ type Amount = string | null;
 export type MoneyDimension = 'category' | 'center' | 'party' | 'month';
 export interface MoneyPeriod { from: string; to: string; dimension: MoneyDimension }
 export interface MoneyEvidenceFilter {
-  mode: 'cash' | 'outflow' | 'expense' | 'role' | 'balance' | 'opening' | 'review' | 'fifo' | 'profit';
+  mode: 'cash' | 'outflow' | 'expense' | 'role' | 'balance' | 'opening' | 'review' | 'fifo' | 'profit' | 'bank';
   key?: string;
   page: number;
   search?: string;
@@ -43,7 +43,13 @@ export type MoneyReport = {
   priorCovered: boolean;
   excludedDocuments: number;
   mixedDocuments: number;
-  bank: { status: 'NOT_VERIFIED'; closing: Amount; unmatched: Amount };
+  bank: {
+    status: 'NOT_VERIFIED' | 'PARTIAL' | 'VERIFIED' | 'MISMATCH';
+    closing: Amount;
+    unmatched: Amount;
+    sourceSystem?: string;
+    updatedAt?: string;
+  };
   cash: MoneyPosition & { inflow: Amount; outflow: Amount; transfers: Amount; unresolved: Amount; net: Amount };
   trend: MoneyCashRow[];
   netProfit: Amount;
@@ -86,7 +92,17 @@ export interface MoneyInventoryPosition {
   date: string;
   sourceProof: string;
 }
+export interface MoneyBankControl {
+  controlId: string;
+  batchId: string;
+  sourceSystem: string;
+  finishedAt: string;
+  metric: 'BANK_CLOSING_IRR' | 'BANK_UNMATCHED_GROSS_IRR';
+  result: 'MATCHED' | 'MISMATCH' | 'SOURCE_UNAVAILABLE' | 'NOT_COMPARABLE';
+  amount: Amount;
+  comparisonAmount: Amount;
+}
 export interface MoneyEvidencePage {
-  items: (MoneyJournalLine | MoneyInventoryPosition)[];
+  items: (MoneyJournalLine | MoneyInventoryPosition | MoneyBankControl)[];
   hasMore: boolean;
 }
