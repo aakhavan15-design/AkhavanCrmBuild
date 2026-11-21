@@ -138,6 +138,8 @@ export interface InvoiceFifoEvidence {
   invoice?: { id: string; number: string; date: string; currency: string; source: string };
   rows: InvoiceFifoRow[];
   hasMore?: boolean;
+  margin?: {status:'AVAILABLE';net:string;cost:string;profit:string;percent:string|null} |
+    {status:'RETURN_REVIEW'|'INCOMPLETE'|'NET_MISMATCH'};
 }
 
 export interface ErpSyncConnectorOverview {
