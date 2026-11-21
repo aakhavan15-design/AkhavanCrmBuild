@@ -69,3 +69,29 @@ test('action-specific inputs cannot change an unrelated command or terminate par
   assert.equal(command('COMMENT',{priority:'URGENT'}).priority,undefined);
   assert.equal(command('REFER',{assigneeId:{id:manager}}),null);
 });
+
+test('a deadline update requires a changed or removed date and preserves approval history',()=>{
+  const task={...basis,dueDate:'2026-11-25'};
+  assert.equal(command('DUE_DATE',{dueDate:'2026-02-30'}),null);
+  assert.equal(applyRequestCommand(task,{isWatcher:true},command('DUE_DATE',{dueDate:null}),second,now).ok,false);
+  assert.equal(applyRequestCommand(task,{isCreator:true},command('DUE_DATE',{dueDate:task.dueDate}),creator,now).ok,false);
+  const updated=applyRequestCommand(task,{isCreator:true},command('DUE_DATE',{dueDate:null}),creator,now).task;
+  assert.equal(updated.dueDate,null);
+  assert.equal(updated.managedRequest.contentRevision,2);
+  assert.equal(updated.status,'PENDING_APPROVAL');
+});
+
+test('information goes back to the requester and an authorized assignee can close or decline routine pricing',()=>{
+  const inquiry={...basis,status:'OPEN',managedRequest:{...basis.managedRequest,kind:'PRICE_INQUIRY',policy:null,activeApprovers:[]}};
+  const waiting=applyRequestCommand(inquiry,{canAct:true},command('ASK_INFO'),finance,now).task;
+  assert.equal(waiting.status,'NEEDS_INFO');
+  assert.match(waiting.nextAction,/درخواست‌کننده/);
+  const ready=applyRequestCommand(waiting,{isCreator:true},command('REPLY'),creator,now).task;
+  assert.equal(ready.status,'OPEN');
+  assert.equal(applyRequestCommand(ready,{isWatcher:true},command('DECLINE_INQUIRY'),second,now).ok,false);
+  assert.equal(applyRequestCommand(ready,{canAct:true},command('DECLINE_INQUIRY'),finance,now).task.status,'REJECTED');
+  const replied=applyRequestCommand(ready,{canAct:true},command('REPLY',{priceClass:'RETAIL'}),finance,now).task;
+  assert.equal(replied.status,'COMPLETED');
+  assert.equal(replied.managedRequest.guidance.priceClass,'RETAIL');
+  assert.equal(replied.managedRequest.authorization,undefined);
+});

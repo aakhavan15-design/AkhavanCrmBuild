@@ -21,16 +21,17 @@ import { TaskRequestFiles } from './TaskRequestFiles';
 import { QuickTaskRequest, RequestPeople } from './QuickTaskRequest';
 
 const views = [
-  {value:'ALL',label:'همهٔ درخواست‌های مجاز'}, {value:'MINE',label:'اقدام یا تصمیم من'},
+  {value:'ALL',label:'همهٔ درخواست‌های مجاز'}, {value:'MINE',label:'اقدام من'}, {value:'DECISION',label:'نیازمند تصمیم من'},
   {value:'CREATED',label:'ارجاع‌شده توسط من'}, {value:'WATCHING',label:'تحت نظارت من'},
   {value:'TEAM',label:'نظارت مدیریتی'}, {value:'WAITING',label:'منتظر پاسخ یا تأیید'},
-  {value:'OVERDUE',label:'تأخیردار'}, {value:'CLOSED',label:'پایان‌یافته'},
+  {value:'OVERDUE',label:'تأخیردار'}, {value:'UNSEEN',label:'مشاهده‌نشده توسط مسئول'}, {value:'BLOCKED',label:'دارای مانع'}, {value:'CLOSED',label:'پایان‌یافته'},
 ];
 const actionLabels:Record<string,string> = {
   COMMENT:'یادداشت',START:'شروع رسیدگی',BLOCK:'ثبت مانع',UNBLOCK:'رفع مانع',COMPLETE:'تکمیل با ثبت نتیجه',
   REOPEN:'بازگشایی',RECORD_RESULT:'ثبت نتیجه',REPLY:'پاسخ',ASK_INFO:'درخواست اطلاعات بیشتر',REFER:'ارجاع',
   PRIORITY:'تغییر اهمیت',WATCHERS:'مدیریت ناظران',APPROVE:'تأیید',REJECT:'رد با توضیح',CONDITION:'ثبت شرط',
   SATISFY:'تأیید مستقل اجرای شرط',ERP_INVOICE:'تطبیق فاکتور رسمی',CANCEL:'لغو',REVISE:'بازبینی نسخه',
+  DUE_DATE:'تغییر یا برداشتن مهلت',DECLINE_INQUIRY:'رد استعلام با توضیح',
 };
 const kindLabel=(kind:string)=>requestKinds.find(item=>item.value===kind)?.label ?? 'درخواست کاری';
 const time = new Intl.DateTimeFormat('fa-IR',{timeZone:'Asia/Tehran',hour:'2-digit',minute:'2-digit'});
@@ -133,6 +134,7 @@ export function TaskRequestSheet({id,viewer,accounts,onClose,onChanged}:{
   const [validUntil,setValidUntil]=useState('');
   const [maxUses,setMaxUses]=useState('1');
   const [paymentTerms,setPaymentTerms]=useState('');
+  const [adjustedDueDate,setAdjustedDueDate]=useState('');
   const [priceClass,setPriceClass]=useState('');
   const [nextAction,setNextAction]=useState('');
   const [rates,setRates]=useState<Record<string,string>>({});
@@ -162,6 +164,7 @@ export function TaskRequestSheet({id,viewer,accounts,onClose,onChanged}:{
     if (revision) command.revision=revision;
     if (action==='REFER') command.assigneeId=assignee[0];
     if (action==='PRIORITY') command.priority=priority;
+    if (action==='DUE_DATE') command.dueDate=adjustedDueDate || null;
     if (action==='WATCHERS') command.watchers=watchers;
     if (action==='CONDITION') command.condition=condition;
     if (action==='REPLY' && req?.kind==='PRICE_INQUIRY' && task.status!=='NEEDS_INFO') command.priceClass=priceClass;
@@ -201,6 +204,7 @@ export function TaskRequestSheet({id,viewer,accounts,onClose,onChanged}:{
 
   const choose=(value:string)=>{
     setAction(value);setActionError('');setPriority(task?.priority ?? 'NORMAL');setWatchers(req?.watchers ?? []);
+    setAdjustedDueDate(task?.dueDate ?? '');
   };
   const available=record?.permissions.actions.filter(value=>!record.stale || !['APPROVE','CONDITION','SATISFY'].includes(value)) ?? [];
   return <BottomSheet isOpen onClose={()=>{if(!busy)onClose();}} title={task?.title ?? 'پروندهٔ درخواست'}
@@ -219,6 +223,7 @@ export function TaskRequestSheet({id,viewer,accounts,onClose,onChanged}:{
           {task.nextAction && <p className="font-semibold">اقدام بعدی {task.nextAction}</p>}
         </Card>
         {task.description && <p className="whitespace-pre-wrap wrap-break-word text-sm leading-7">{task.description}</p>}
+        {req.guidance?.priceClass && <p className="text-sm">کلاس قیمت پیشنهادی <bdi>{req.guidance.priceClass}</bdi></p>}
         {req.condition && <Card padding="sm" className="space-y-1"><p className="text-sm font-semibold">شرط ثبت‌شده</p>
           <p className="wrap-break-word text-sm">{req.condition.text}</p>
           <p className="text-caption">{req.condition.evidence || 'در انتظار شاهد و بررسی مستقل'}</p></Card>}
@@ -271,6 +276,10 @@ export function TaskRequestSheet({id,viewer,accounts,onClose,onChanged}:{
           {action==='REFER' && <RequestPeople viewer={viewer} label="مسئول جدید" values={assignee} onChange={setAssignee}/>}
           {action==='PRIORITY' && <SearchableSelect label="اهمیت جدید" value={priority} options={requestPriorities.map(item=>({...item}))}
             onChange={value=>setPriority(value as RequestPriority)}/>}
+          {action==='DUE_DATE' && <fieldset className="space-y-1"><legend className="text-caption">مهلت جدید</legend>
+            <CustomDatePicker value={adjustedDueDate} onChange={setAdjustedDueDate}/>
+            {adjustedDueDate && <Button type="button" variant="ghost" size="sm" onClick={()=>setAdjustedDueDate('')}>برداشتن مهلت</Button>}
+          </fieldset>}
           {action==='WATCHERS' && <RequestPeople viewer={viewer} label="ناظران مجاز" values={watchers} multiple onChange={setWatchers}/>}
           {action==='CONDITION' && <Textarea label="شرط اجرایی موردنیاز" rows={2} required maxLength={600} value={condition} onChange={event=>setCondition(event.target.value)}/>}
           {((action==='REPLY' && req.kind==='PRICE_INQUIRY' && task.status!=='NEEDS_INFO') || finalPrice) &&

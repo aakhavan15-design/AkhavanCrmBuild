@@ -8,7 +8,7 @@ const forbidden = () => failure(403,'REQUEST_PERMISSION_DENIED','مجوز این
 const missing = () => failure(404,'REQUEST_NOT_FOUND','درخواست در دسترس نیست.');
 const invalid = message => failure(400,'REQUEST_INVALID',message);
 const conflict = (message='درخواست تغییر کرده است. نسخهٔ تازه را دریافت کنید.') => failure(409,'REQUEST_VERSION_CONFLICT',message);
-const modes = new Set(['ALL','MINE','CREATED','WATCHING','TEAM','WAITING','OVERDUE','CLOSED']);
+const modes = new Set(['ALL','MINE','DECISION','CREATED','WATCHING','TEAM','WAITING','OVERDUE','UNSEEN','BLOCKED','CLOSED']);
 const decisionGrant = 'quotes.approve';
 
 const activeUsersSql = `
@@ -29,6 +29,11 @@ CROSS APPLY security.fn_TaskRequestAccess(task.TenantId,@actor,task.JsonDoc) a
 LEFT JOIN core.AppUser employee ON employee.TenantId=task.TenantId AND employee.UserId=TRY_CONVERT(uniqueidentifier,JSON_VALUE(task.JsonDoc,'$.assigneeId'))
 LEFT JOIN core.AppUser creator ON creator.TenantId=task.TenantId AND creator.UserId=TRY_CONVERT(uniqueidentifier,JSON_VALUE(task.JsonDoc,'$.createdBy'))
 WHERE task.TenantId=@tenantId AND task.CollectionName=N'tasks' AND task.IsDeleted=0 AND task.EntityId LIKE N'taskreq-%'`;
+
+const decisionWaitingSql = `a.canDecide=1 AND JSON_VALUE(task.JsonDoc,'$.status')='PENDING_APPROVAL'
+  AND EXISTS(SELECT 1 FROM OPENJSON(task.JsonDoc,'$.managedRequest.activeApprovers') p WHERE TRY_CONVERT(uniqueidentifier,p.value)=@actor)
+  AND NOT EXISTS(SELECT 1 FROM OPENJSON(task.JsonDoc,'$.managedRequest.decisions')
+    WITH(actor uniqueidentifier,step int) d WHERE d.actor=@actor AND d.step=TRY_CONVERT(int,JSON_VALUE(task.JsonDoc,'$.managedRequest.step')))`;
 
 const accountSql = `
 SELECT a.AccountId AS id,a.Name AS name,
@@ -501,10 +506,16 @@ export function createTaskRequests({sql,run}) {
           .input('today',sql.Date,new Date(today))
           .input('offset',sql.Int,(page-1)*25).query(`${rowsSql}
             AND (@search=N'' OR CHARINDEX(@search,JSON_VALUE(task.JsonDoc,'$.title'))>0)
-            AND (@view='ALL' OR (@view='MINE' AND (a.isAssignee=1 OR (a.canDecide=1 AND EXISTS(
-                  SELECT 1 FROM OPENJSON(task.JsonDoc,'$.managedRequest.activeApprovers') ap WHERE TRY_CONVERT(uniqueidentifier,ap.value)=@actor))))
+            AND (@view='ALL' OR (@view='DECISION' AND ${decisionWaitingSql})
+               OR (@view='MINE' AND (
+                 (a.isAssignee=1 AND a.canAct=1 AND JSON_VALUE(task.JsonDoc,'$.status') NOT IN('NEEDS_INFO','COMPLETED','REJECTED','CANCELLED'))
+                 OR (a.isCreator=1 AND JSON_VALUE(task.JsonDoc,'$.status')='NEEDS_INFO') OR (${decisionWaitingSql})))
                OR (@view='WATCHING' AND a.isWatcher=1) OR (@view='CREATED' AND a.isCreator=1)
                OR (@view='TEAM' AND a.isManager=1) OR (@view='WAITING' AND JSON_VALUE(task.JsonDoc,'$.status') IN('NEEDS_INFO','PENDING_APPROVAL','CONDITIONAL'))
+               OR (@view='BLOCKED' AND JSON_VALUE(task.JsonDoc,'$.status')='BLOCKED')
+               OR (@view='UNSEEN' AND JSON_VALUE(task.JsonDoc,'$.status') NOT IN('COMPLETED','REJECTED','CANCELLED')
+                 AND NOT EXISTS(SELECT 1 FROM OPENJSON(task.JsonDoc,'$.managedRequest.seenBy') s
+                   WHERE TRY_CONVERT(uniqueidentifier,s.value)=TRY_CONVERT(uniqueidentifier,JSON_VALUE(task.JsonDoc,'$.assigneeId'))))
                OR (@view='CLOSED' AND JSON_VALUE(task.JsonDoc,'$.status') IN('COMPLETED','REJECTED','CANCELLED'))
                OR (@view='OVERDUE' AND JSON_VALUE(task.JsonDoc,'$.status') NOT IN('COMPLETED','REJECTED','CANCELLED')
                  AND TRY_CONVERT(date,JSON_VALUE(task.JsonDoc,'$.dueDate'))<@today))
@@ -611,7 +622,8 @@ export function createTaskRequests({sql,run}) {
         if (!write.recordset[0]) throw conflict();
         await writeAudit(tx,auth,id,command.commandId,'TASK_REQUEST_ACTION',fingerprint,
           {action:command.action,before:current.task.status,after:task.status,note:command.note,contentRevision:task.managedRequest.contentRevision,
-            beforeOwner:current.task.assigneeId,afterOwner:task.assigneeId,priority:task.priority});
+            beforeOwner:current.task.assigneeId,afterOwner:task.assigneeId,priority:task.priority,
+            ...(command.action==='DUE_DATE' ? {beforeDueDate:current.task.dueDate ?? null,afterDueDate:task.dueDate} : {})});
         if (!['VIEW','COMMENT'].includes(command.action)) await notify(tx,auth,task,command.commandId);
         const rights=await access(tx,auth,task);
         return rights ? {...present({...current,...rights,task,version:write.recordset[0].version,assigneeName:task.managedRequest.assigneeName},auth),replayed:false}

@@ -1,6 +1,6 @@
 export type TaskRequestKind = 'GENERAL' | 'PRICE_INQUIRY' | 'PRICE_PERMISSION' | 'ORDER_APPROVAL' | 'FINANCE' | 'COLLECTION' | 'COMMERCE' | 'HR';
 export type RequestPriority = 'NORMAL' | 'HIGH' | 'URGENT';
-export type TaskRequestView = 'ALL' | 'MINE' | 'CREATED' | 'WATCHING' | 'TEAM' | 'WAITING' | 'OVERDUE' | 'CLOSED';
+export type TaskRequestView = 'ALL' | 'MINE' | 'DECISION' | 'CREATED' | 'WATCHING' | 'TEAM' | 'WAITING' | 'OVERDUE' | 'UNSEEN' | 'BLOCKED' | 'CLOSED';
 export interface TaskRequestLink { type: 'ORDER' | 'INVOICE' | 'CHEQUE'; id: string }
 export type TaskFinancialReference = Exclude<TaskRequestLink['type'], 'ORDER'>;
 export type TaskRequestResource = TaskRequestLink['type'] | 'PRODUCT' | 'PRICE_AUTHORIZATION';
@@ -31,7 +31,7 @@ export interface TaskRequestRecord {
     activityHistory: {id:string; actorId:string; at:string; summary:string; details?:string}[];
     managedRequest: {
       kind: TaskRequestKind; contentRevision: number; confidential: boolean; watchers:string[]; links:TaskRequestLink[];
-      seenBy:string[]; priceAuthorizationId?:string|null; priceItems:TaskPriceItem[]; activeApprovers:string[];
+      seenBy:string[]; priceAuthorizationId?:string|null; priceItems:TaskPriceItem[]; activeApprovers:string[];guidance?:{note:string;priceClass:string|null};
       assignedAt:string; invoice?:{id:string;number:string;date:string;source:string}; condition?: {text:string; evidence?:string | null}; authorization?: {expiresOn:string;maxUses:number;usedOrders?:string[];items:TaskPriceItem[]};
     };
   };
@@ -49,7 +49,7 @@ export interface TaskRequestRecord {
 }
 export interface TaskRequestCommand {
   commandId:string; version:string; action:string; note:string; nextAction?:string; assigneeId?:string;
-  priority?:RequestPriority; watchers?:string[]; condition?:string; revision?:TaskRequestInput;
+  priority?:RequestPriority; dueDate?:string|null; watchers?:string[]; condition?:string; revision?:TaskRequestInput;
   priceClass?:string; paymentTerms?:string; expiresOn?:string; maxUses?:number;
   priceItems?:{productId:string;price:string}[];
 }

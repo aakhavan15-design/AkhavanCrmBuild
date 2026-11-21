@@ -57,6 +57,7 @@ const actions = {
   COMMENT:['NOTE_ADDED','یادداشت ثبت شد'], VIEW:['VIEWED','درخواست مشاهده شد'], REPLY:['REPLIED','پاسخ ثبت شد'],
   ASK_INFO:['INFORMATION_REQUESTED','اطلاعات بیشتر خواسته شد'], REFER:['REASSIGNED','درخواست ارجاع شد'],
   PRIORITY:['PRIORITY_CHANGED','اهمیت تغییر کرد'], WATCHERS:['WATCHERS_CHANGED','ناظران به‌روز شدند'],
+  DUE_DATE:['DUE_DATE_CHANGED','مهلت پیگیری تغییر کرد'], DECLINE_INQUIRY:['INQUIRY_DECLINED','استعلام قیمت رد شد'],
   APPROVE:['APPROVED','تصمیم تأیید ثبت شد'], REJECT:['REJECTED','درخواست رد شد'], CONDITION:['CONDITION_SET','شرط ثبت شد'],
   SATISFY:['CONDITION_SATISFIED','شاهد انجام شرط ثبت شد'], CANCEL:['CANCELLED','درخواست لغو شد'],
   REVISE:['REVISED','نسخهٔ جدید درخواست ثبت شد'], ERP_INVOICE:['ERP_INVOICE_LINKED','فاکتور رسمی ERP با سفارش تطبیق داده شد'],
@@ -68,6 +69,7 @@ export function commandInput(body) {
   if (note===null || nextAction===null || (!note && !['VIEW','START'].includes(body.action))) return null;
   if (body.action==='REFER' && !uuid(body.assigneeId)) return null;
   if (body.action==='PRIORITY' && !priorities.has(body.priority)) return null;
+  if (body.action==='DUE_DATE' && !(body.dueDate===null || date(body.dueDate))) return null;
   const watchers = body.action==='WATCHERS' ? users(body.watchers,8) : null;
   if (body.action==='WATCHERS' && !watchers) return null;
   const condition = body.action==='CONDITION' ? str(body.condition,600) : null;
@@ -83,7 +85,7 @@ export function commandInput(body) {
     || (body.maxUses!=null && (!Number.isInteger(body.maxUses) || body.maxUses<1 || body.maxUses>1000))) return null;
   return {commandId:body.commandId.toLowerCase(),version:body.version,action:body.action,note,nextAction,
     assigneeId:body.action==='REFER' ? body.assigneeId.toLowerCase() : undefined,
-    priority:body.action==='PRIORITY' ? body.priority : undefined,watchers,condition,revision,
+    priority:body.action==='PRIORITY' ? body.priority : undefined,dueDate:body.action==='DUE_DATE' ? body.dueDate : undefined,watchers,condition,revision,
     priceClass,paymentTerms,expiresOn:body.expiresOn ?? null,maxUses:body.maxUses ?? null,
     priceItems:priceItems?.map(x => ({productId:x.productId.toLowerCase(),price:x.price})) ?? null};
 }
@@ -96,7 +98,7 @@ export function availableActions(task, access, actor) {
   }
   const result = [];
   if (access.isCreator || access.isAssignee || (access.isWatcher && access.canNote) || (access.isManager && access.canNote)) result.push('COMMENT');
-  if (access.isCreator) result.push('CANCEL');
+  if (access.isCreator) result.push('CANCEL','DUE_DATE');
   if (access.canWatch && (access.isCreator || access.isAssignee || access.isManager)) result.push('WATCHERS');
   if (access.isCreator && ['NEEDS_INFO','BLOCKED','APPROVED','CONDITIONAL','PENDING_APPROVAL'].includes(task.status)) result.push('REVISE');
   if (access.canAct || access.isCreator) {
@@ -107,6 +109,7 @@ export function availableActions(task, access, actor) {
     if (task.status!=='APPROVED') result.push('REFER');
     if (['OPEN','IN_PROGRESS','BLOCKED'].includes(task.status) && !approvals.has(req.kind)) {
       result.push('ASK_INFO','REPLY','RECORD_RESULT');
+      if (req.kind==='PRICE_INQUIRY') result.push('DECLINE_INQUIRY');
       if (task.status==='OPEN') result.push('START');
       if (task.status==='BLOCKED') result.push('UNBLOCK');
       else result.push('BLOCK','COMPLETE');
@@ -137,35 +140,46 @@ export function applyRequestCommand(task, access, command, actor, now, context =
   switch (action) {
     case 'VIEW': data.seenBy = [...new Set([...req.seenBy,actor])]; break;
     case 'PRIORITY': next.priority=command.priority; break;
+    case 'DUE_DATE':
+      if ((task.dueDate ?? null)===command.dueDate) return fail('برای ثبت، مهلت را تغییر دهید.');
+      next.dueDate=command.dueDate; break;
     case 'WATCHERS': data.watchers=command.watchers; break;
-    case 'REFER': next.assigneeId=command.assigneeId; next.assignedTo=command.assigneeId; data.assignedAt=now; data.seenBy=[]; break;
-    case 'ASK_INFO': next.status='NEEDS_INFO'; data.responseFrom=actor; break;
+    case 'REFER':
+      next.assigneeId=command.assigneeId; next.assignedTo=command.assigneeId; next.ownerId=command.assigneeId;
+      data.assignedAt=now; data.seenBy=[]; break;
+    case 'ASK_INFO':
+      next.status='NEEDS_INFO'; next.nextAction='در انتظار پاسخ درخواست‌کننده'; data.responseFrom=actor; break;
     case 'REPLY':
-      if (task.status==='NEEDS_INFO') next.status=approvals.has(req.kind) ? 'PENDING_APPROVAL' : 'OPEN';
+      if (task.status==='NEEDS_INFO') {
+        const needsDecision=approvals.has(req.kind);
+        next.status=needsDecision ? 'PENDING_APPROVAL' : 'OPEN';
+        next.nextAction=needsDecision ? 'بررسی پاسخ و تصمیم مرحلهٔ جاری' : 'بررسی پاسخ و ادامهٔ رسیدگی';
+      }
       else if (req.kind==='PRICE_INQUIRY') {
         data.guidance={ note,priceClass:command.priceClass || null };
-        next.status='COMPLETED'; next.completedAt=now; next.result=note;
+        next.status='COMPLETED'; next.completedAt=now; next.result=note; next.nextAction=null;
       } else next.result=note;
       break;
+    case 'DECLINE_INQUIRY': next.status='REJECTED'; next.completedAt=now; next.result=note; next.nextAction=null; break;
     case 'ERP_INVOICE':
       if (!context.invoice) return fail('سند فاکتور رسمی به‌طور یکتا به سفارش متصل نشده است.');
       data.invoice=context.invoice;
       next.status='COMPLETED';next.completedAt=now;next.nextAction='فاکتور رسمی در ERP تطبیق داده شد';
       break;
-    case 'CANCEL': next.status='CANCELLED'; next.completedAt=now; data.authorization=null; break;
+    case 'CANCEL': next.status='CANCELLED'; next.completedAt=now; next.nextAction=null; data.authorization=null; break;
     case 'REVISE':
       next={...next,...context.revised};
       break;
     case 'CONDITION':
       data.condition={ text:command.condition,actor,at:now,revision:req.contentRevision,evidence:null };
-      next.status='CONDITIONAL'; break;
+      next.status='CONDITIONAL'; next.nextAction='ثبت شاهد و تأیید مستقل شرط'; break;
     case 'SATISFY':
       if (req.condition?.revision!==req.contentRevision) return fail('شرط به نسخهٔ فعلی مرتبط نیست.');
       data.condition={...req.condition,evidence:note,verifiedBy:actor,verifiedAt:now};
-      next.status='PENDING_APPROVAL'; break;
+      next.status='PENDING_APPROVAL'; next.nextAction='تصمیم نهایی با بررسی شاهد شرط'; break;
     case 'REJECT':
       data.decisions=[...req.decisions,{ step:req.step,actor,decision:'REJECTED',at:now,revision:req.contentRevision,note }];
-      next.status='REJECTED'; data.activeApprovers=[]; data.authorization=null; next.completedAt=now; break;
+      next.status='REJECTED'; data.activeApprovers=[]; data.authorization=null; next.completedAt=now; next.nextAction=null; break;
     case 'APPROVE': {
       if (!step) return fail('مرحلهٔ تأیید معتبر نیست.');
       if (req.condition && !req.condition.evidence) return fail('ابتدا شاهد اجرای شرط لازم است.');
@@ -189,10 +203,11 @@ export function applyRequestCommand(task, access, command, actor, now, context =
         if (last) {
           data.authorization=authorization;
           next.status='APPROVED';
+          next.nextAction=null;
           if (req.kind==='ORDER_APPROVAL') {
             if (req.priceAuthorizationId && context.priceAuthorizationChecked!==true) return fail('مصرف مجوز قیمت به‌طور معتبر کنترل نشده است.');
             if (!req.policy.accountingUserId || !context.accountingName) return fail('مسئول مالی معتبر برای تحویل سفارش مشخص نیست.');
-            next.assigneeId=req.policy.accountingUserId;next.assignedTo=req.policy.accountingUserId;
+            next.assigneeId=req.policy.accountingUserId;next.assignedTo=req.policy.accountingUserId;next.ownerId=req.policy.accountingUserId;
             data.assigneeName=context.accountingName;data.assignedAt=now;data.seenBy=[];
             next.nextAction='پیگیری صدور ERP و تطبیق فاکتور رسمی';
           }
@@ -201,7 +216,7 @@ export function applyRequestCommand(task, access, command, actor, now, context =
       break;
     }
   }
-  if (command.nextAction) next.nextAction=command.nextAction;
+  if (command.nextAction && !terminal.has(next.status)) next.nextAction=command.nextAction;
   if (!Object.hasOwn(actions,action)) return fail('اقدام ناشناخته است.');
   const [event,summary] = actions[action];
   return { ok:true,task:appendTaskActivity(next,{id:command.commandId,action:event,actorId:actor,at:now,summary,details:note || command.condition || undefined}) };
