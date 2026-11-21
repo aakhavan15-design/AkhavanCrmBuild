@@ -44,6 +44,7 @@ import { ChartCard } from './charts/ChartCard';
 import { DonutChart } from './charts/DonutChart';
 import { formatMoney, formatMoneyCompact } from '../lib/format';
 import { LineChart } from './charts/LineChart';
+import { InvoiceFifoSheet } from './finance/InvoiceFifoSheet';
 import { CollectionWorkbench } from './finance/CollectionWorkbench';
 import { CollectionActionDialog } from './finance/CollectionActionDialog';
 import { ProfitLossWidget } from './finance/ProfitLossWidget';
@@ -71,6 +72,7 @@ export function FinanceWorkspace({ state, updateState }: FinanceWorkspaceProps) 
   const activeArea = areaOf(FINANCE_AREAS, activeTab);
   const [notice, setNotice] = useState<string | null>(null);
 
+  const [costInvoice, setCostInvoice] = useState<Invoice | null>(null);
   const [collectionAction, setCollectionAction] = useState<{ kind: 'PROMISE' | 'FOLLOW_UP'; profile: CustomerCollectionProfile } | null>(null);
 
   const [showPaymentModal, setShowPaymentModal] = useState(false);
@@ -459,7 +461,7 @@ export function FinanceWorkspace({ state, updateState }: FinanceWorkspaceProps) 
             const acc = (state.accounts || []).find(a => a.id === (inv as Invoice & { accountId?: string }).accountId || a.id === inv.customerId);
             const outstanding = invoiceRemaining.get(inv.id) ?? null;
             return (
-              <div key={inv.id} className="p-3 bg-surface border border-border rounded-xl flex justify-between items-center">
+              <div key={inv.id} className="p-3 bg-surface border border-border rounded-xl flex flex-wrap justify-between items-center gap-2">
                 <div>
                   <div className="text-xs font-bold text-text-main font-mono">{inv.invoiceNumber}</div>
                   {acc && <div className="text-caption text-text-secondary mt-0.5">{acc.name}</div>}
@@ -469,12 +471,17 @@ export function FinanceWorkspace({ state, updateState }: FinanceWorkspaceProps) 
                   <div className="text-xs font-bold text-text-main">{inv.totalAmount.toLocaleString('fa-IR')} ریال</div>
                   <div className="text-micro text-text-secondary mt-0.5">مانده (تخمینی): {outstanding === null ? 'نامشخص' : outstanding.toLocaleString('fa-IR')}</div>
                 </div>
+                {/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(inv.id) &&
+                  <Button type="button" variant="ghost" size="sm" onClick={() => setCostInvoice(inv)}>شواهد بها</Button>}
               </div>
             );
           })}
           {invoices.length === 0 && <div className="text-center text-xs text-text-secondary py-8 bg-surface rounded-xl border border-border">فاکتوری یافت نشد.</div>}
         </div>
       )}
+
+      {costInvoice && <InvoiceFifoSheet key={costInvoice.id} invoiceId={costInvoice.id}
+        invoiceNumber={costInvoice.invoiceNumber} locale={state.settings?.locale} onClose={() => setCostInvoice(null)} />}
 
       {/* دریافتی‌ها و خزانه‌داری */}
       {(activeTab === 'payments' || activeTab === 'treasury') && (

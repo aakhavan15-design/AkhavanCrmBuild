@@ -111,6 +111,25 @@ export interface FifoSaleEvidence {
   hasMore: boolean;
 }
 
+export interface InvoiceFifoRow {
+  lineId: string;
+  productId: string | null;
+  name: string;
+  unit: string | null;
+  quantity: string;
+  revenue: string;
+  coverage: 'MATCHED' | 'UNMAPPED_LINE' | 'NO_CONSUMPTION' | 'OVERLAP' | 'QUANTITY_MISMATCH' | 'RETURN_REVIEW' | 'COST_UNAVAILABLE';
+  cost: string | null;
+  grossProfit: string | null;
+  through: string | null;
+}
+export interface InvoiceFifoEvidence {
+  status: 'AVAILABLE' | 'EMPTY' | 'UNMAPPED' | 'AMBIGUOUS' | 'RESTRICTED' | 'UNAVAILABLE';
+  invoice?: { id: string; number: string; date: string; currency: string; source: string };
+  rows: InvoiceFifoRow[];
+  hasMore?: boolean;
+}
+
 export interface ErpSyncConnectorOverview {
   id: string;
   displayName: string;
@@ -280,6 +299,7 @@ export interface DataProvider {
   getCreditNoteEvidence(): Promise<CreditNoteEvidence>;
   getFifoValuations(): Promise<FifoValuations>;
   getFifoLayers(runId: string, warehouseId: string, after?: number): Promise<FifoLayerPage>;
+  getInvoiceFifoEvidence(invoiceId: string): Promise<InvoiceFifoEvidence>;
   getFifoSaleEvidence(documentId: string, source: string, periodStart: string): Promise<FifoSaleEvidence>;
   
   // Financial Intelligence & Approval Center (Approval Intelligence / Financial 360 / Smart Accounting Classification)
@@ -322,6 +342,9 @@ export class ClientStorageDataProvider implements DataProvider {
   }
   async submitPublicApplication(): Promise<PublicApplicationReceipt> {
     throw new Error('درخواست ارسال نشد. اتصال سرور را بررسی کنید.');
+  }
+  async getInvoiceFifoEvidence(): Promise<InvoiceFifoEvidence> {
+    return { status: 'UNAVAILABLE', rows: [] };
   }
   async getFifoSaleEvidence(): Promise<FifoSaleEvidence> {
     return { status: 'UNAVAILABLE', coverage: 'UNVERIFIED', items: [], hasMore: false };
@@ -728,6 +751,14 @@ export class HttpBackendDataProvider implements DataProvider {
       throw new Error('رسید معتبر از سرور دریافت نشد. دوباره تلاش کنید.');
     }
     return receipt;
+  }
+  async getInvoiceFifoEvidence(invoiceId: string): Promise<InvoiceFifoEvidence> {
+    try {
+      return await this.request(`/finance/invoices/${encodeURIComponent(invoiceId)}/fifo`);
+    } catch (error) {
+      const denied = error instanceof Error && 'status' in error && error.status === 403;
+      return { status: denied ? 'RESTRICTED' : 'UNAVAILABLE', rows: [] };
+    }
   }
   async getFifoSaleEvidence(documentId: string, source: string, periodStart: string): Promise<FifoSaleEvidence> {
     try {

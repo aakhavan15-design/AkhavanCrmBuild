@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 import fs from 'node:fs';
 import { createEntityService, FileEntityDriver, MssqlEntityDriver, MemoryEntityDriver } from './entityStore.mjs';
 import { createAccountDirectory } from './accountDirectory.mjs';
+import { createInvoiceFifoEvidence } from './invoiceFifoEvidence.mjs';
 import { createCollectionReceiptEvidence } from './collectionReceiptEvidence.mjs';
 import { createTreasuryFlowReader } from './treasuryFlow.mjs';
 import { createCollectionActions } from './collectionActions.mjs';
@@ -608,6 +609,15 @@ app.get('/api/v1/inventory/fifo/sales/:documentId/cogs', authenticate, requirePe
   const items = result.recordset.slice(0, 100);
   res.json({ status: items.length ? 'AVAILABLE' : 'EMPTY', coverage: 'UNVERIFIED', items, hasMore: result.recordset.length > items.length });
 }));
+
+const readInvoiceFifoEvidence = createInvoiceFifoEvidence({ sql, run: withTenantContext });
+app.get('/api/v1/finance/invoices/:id/fifo', authenticate, requirePermission('finance.view', { organizationWide: true }),
+  wrap(async (req, res) => {
+    if (!/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(req.params.id)) {
+      return bad(req, res, 400, 'INVALID_INVOICE', 'شناسهٔ فاکتور معتبر نیست.');
+    }
+    res.json(await readInvoiceFifoEvidence(req.auth, req.params.id));
+  }));
 
 // F0-14: tenant-scoped, permission-protected SQL ledger projection; no local fallback.
 app.get('/api/v1/ledger/balances', authenticate, requirePermission('finance.VIEW'), wrap(async (req, res) => {
