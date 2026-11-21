@@ -18,6 +18,7 @@ import { createMoneyIntelligenceReader, parseMoneyReportQuery } from './moneyInt
 import { createJournalCoverageReader, createJournalCoverageFollowUp, createJournalFollowUpEvidenceReader, coverageFilter } from './journalCoverage.mjs';
 import { createCollectionActions } from './collectionActions.mjs';
 import { createPublicRecruitment } from './publicRecruitment.mjs';
+import { createPersonnelService, parseAdvanceRequest } from './personnelProfile.mjs';
 import { buildReportStatus } from './reportStatus.mjs';
 import { getVapidPublicKey, saveSubscription, removeSubscription, sendPushToUser, initPushModule } from './pushStore.mjs';
 import { recordId } from '../src/lib/stateModel.mjs';
@@ -25,6 +26,7 @@ import { projectLedgerBalances } from './ledgerBalances.mjs';
 import { parseJournalQuery } from './ledgerJournalQuery.mjs';
 import { createOfficialLedgerReader, parseLedgerSource } from './officialLedgerReads.mjs';
 import { createTaskRequests } from './taskRequests.mjs';
+import { uuid } from './taskRequestContract.mjs';
 import { createTaskWorkflowStore, parseTaskWorkflowInput, TaskWorkflowError } from './taskWorkflowStore.mjs';
 import { creditNoteEvidenceSql, projectCreditNoteEvidence, CREDIT_NOTE_EVIDENCE_LIMIT } from './creditNoteEvidence.mjs';
 
@@ -766,6 +768,35 @@ app.get('/api/v1/integrations/erp/sync-overview', authenticate,
     res.json({ status: result.recordset.length ? 'AVAILABLE' : 'EMPTY', items: result.recordset });
   }),
 );
+
+const personnel = createPersonnelService({sql,run:withTenantContext});
+const personnelEndpoint = handler => wrap(async(req,res)=>{
+  res.set('Cache-Control','private, no-store');
+  if (entityDriverKind!=='mssql') return bad(req,res,503,'PERSONNEL_SOURCE_UNAVAILABLE','پروندهٔ پرسنلی به پایگاه مرکزی نیاز دارد.');
+  await handler(req,res);
+});
+app.get('/api/v1/personnel/me',authenticate,requireSignedSession,personnelEndpoint(async(req,res)=>{
+  const result=await personnel.self(req.auth);
+  if (!result) return bad(req,res,404,'PERSONNEL_USER_UNAVAILABLE','حساب فعال پیدا نشد.');
+  res.json(result);
+}));
+app.get('/api/v1/personnel/linked-user/:id',authenticate,requireSignedSession,requirePermission('users.manage',{organizationWide:true}),
+  personnelEndpoint(async(req,res)=>{
+    const {id}=req.params;
+    if (!uuid(id)) return bad(req,res,400,'PERSONNEL_USER_INVALID','شناسهٔ کاربر معتبر نیست.');
+    const result=await personnel.linkedUser(req.auth,id);
+    if (!result) return bad(req,res,404,'PERSONNEL_USER_UNAVAILABLE','حساب فعال در سازمان پیدا نشد.');
+    res.json(result);
+  }));
+app.post('/api/v1/personnel/me/advances',authenticate,requireSignedSession,personnelEndpoint(async(req,res)=>{
+  const input=parseAdvanceRequest(req.body);
+  if (!input) return bad(req,res,400,'ADVANCE_INVALID','شناسه، مبلغ یا علت درخواست معتبر نیست.');
+  const result=await personnel.requestAdvance(req.auth,input,req.correlationId);
+  if (result.outcome==='NO_EMPLOYMENT') return bad(req,res,403,'ADVANCE_EMPLOYMENT_REQUIRED','برای ثبت مساعده باید یک پروندهٔ استخدامی فعال به حساب شما مرتبط باشد.');
+  if (result.outcome==='CONFLICT') return bad(req,res,409,'ADVANCE_CONFLICT','شناسهٔ درخواست قبلاً استفاده شده است.');
+  const replayed=result.outcome==='REPLAY';
+  res.status(replayed ? 200 : 201).json({id:input.id,number:result.number,replayed});
+}));
 
 const publicRecruitment = createPublicRecruitment({
   sql, run: withTenantContext, tenantId: process.env.PUBLIC_RECRUITMENT_TENANT_ID,

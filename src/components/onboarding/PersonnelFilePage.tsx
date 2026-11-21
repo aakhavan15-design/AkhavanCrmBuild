@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import type { AppState, AdvanceRequest, Attachment } from '../../types';
 import { Textarea } from '../ui';
 import { DynamicFormRenderer } from '../shared/DynamicFormRenderer';
@@ -9,6 +9,14 @@ import { generateId, formatCurrency } from '../../lib/utils';
 import { Button } from '../ui/Button';
 import { CheckCircle2, CircleAlert, Wallet, FileText, ArrowUpRight, Plus, HelpCircle } from 'lucide-react';
 import { InputControl } from '../ui/Input';
+import { Card } from '../ui/Card';
+import { Modal } from '../ui/Modal';
+import { EmptyState } from '../ui/EmptyState';
+import { EmploymentDetails } from './EmploymentDetails';
+import { useDataQuery } from '../../hooks/useDataProvider';
+import { getActiveDataProvider } from '../../services/dataProvider';
+import { toLatinDigits, toPersianDigits } from '../../lib/digits';
+import { formatDecimalString } from '../../lib/format';
 
 type Step = 'identity' | 'documents' | 'bank' | 'address' | 'payroll';
 const STEPS: { id: Step; label: string }[] = [
@@ -18,6 +26,7 @@ const STEPS: { id: Step; label: string }[] = [
   { id: 'address', label: 'نشانی' },
   { id: 'payroll', label: 'حقوق و مساعده' }
 ];
+const advanceStatuses:Record<string,string>={REQUESTED:'در انتظار بررسی',APPROVED:'تأییدشده',REJECTED:'ردشده',SETTLED:'تسویه‌شده',CANCELLED:'لغوشده'};
 
 export function PersonnelFilePage({ state, updateState }: { state: AppState; updateState: (u: (d: AppState) => AppState | void) => void }) {
   const me = state.currentUserId || ''; 
@@ -27,6 +36,14 @@ export function PersonnelFilePage({ state, updateState }: { state: AppState; upd
   const [advanceAmount, setAdvanceAmount] = useState('');
   const [advanceReason, setAdvanceReason] = useState('');
   const [showAdvanceModal, setShowAdvanceModal] = useState(false);
+  const [advanceError,setAdvanceError]=useState('');
+  const [advanceBusy,setAdvanceBusy]=useState(false);
+  const advanceInFlight=useRef(false);
+  const advanceAttempt=useRef<{key:string;id:string}|null>(null);
+  const remote=getActiveDataProvider().name==='SQLSERVER_BACKEND';
+  const employmentQuery=useDataQuery(async provider=>remote && me ? {viewer:me,profile:await provider.getOwnPersonnelProfile()} : null,[me,remote]);
+  const profile=employmentQuery.data?.viewer===me && !employmentQuery.error ? employmentQuery.data.profile : null;
+  const eligible=profile?.employment && ['ACTIVE','PROBATION'].includes(profile.employment.employmentStatus);
 
   const file = (state.personnelFiles as PersonnelFile[] | undefined)?.find(item => item.userId === me);
   const eff: Pick<PersonnelFile, 'identity' | 'bank' | 'address' | 'documents' | 'status' | 'reviewNote'> = file ?? {
@@ -75,14 +92,38 @@ export function PersonnelFilePage({ state, updateState }: { state: AppState; upd
       ensurePersonnelFile(d, me, new Date()); 
       r = submitPersonnelFile(d, me, new Date()); 
     }); 
-    flash(r.ok ? 'پرونده برای بررسی مدیر ارسال شد.' : `موارد ناقص: ${r.missing.map(item => item.label).join('، ')}`);
+    flash(r.ok ? (remote ? 'پرونده در صف همگام‌سازی برای بررسی قرار گرفت.' : 'درخواست بررسی در دادهٔ محلی ذخیره شد.')
+      : `موارد ناقص: ${r.missing.map(item => item.label).join('، ')}`);
   };
 
-  const handleRequestAdvance = (e: React.FormEvent) => {
+  const handleRequestAdvance = async (e: React.FormEvent) => {
     e.preventDefault();
-    const amount = Number(advanceAmount);
-    if (!Number.isFinite(amount) || amount <= 0 || !advanceReason.trim()) {
-      flash('مبلغ مثبت و علت مساعده الزامی است.');
+    if (advanceInFlight.current) return;
+    setAdvanceError('');
+    const digits = toLatinDigits(advanceAmount).replace(/[٬,\s]/g,'');
+    const reason=advanceReason.trim();
+    if (!/^[1-9]\d{0,14}$/.test(digits) || !reason || reason.length>500) {
+      setAdvanceError('مبلغ صحیح مثبت و علت حداکثر ۵۰۰ نویسه الزامی است.');
+      return;
+    }
+    if (remote) {
+      const key=JSON.stringify([me,digits,reason]);
+      const id=advanceAttempt.current?.key===key ? advanceAttempt.current.id : crypto.randomUUID();
+      advanceAttempt.current={key,id};
+      advanceInFlight.current=true;
+      setAdvanceBusy(true);
+      try {
+        const receipt=await getActiveDataProvider().requestPersonnelAdvance({id,amount:digits,reason});
+        if (receipt.id!==id || !receipt.number) throw new Error('رسید ثبت درخواست از سرور دریافت نشد.');
+        advanceAttempt.current=null;
+        setShowAdvanceModal(false);setAdvanceAmount('');setAdvanceReason('');
+        flash('درخواست در سرور ثبت شد و در انتظار بررسی است.');
+        await employmentQuery.refetch();
+      } catch (error) {
+        setAdvanceError(error instanceof Error ? error.message : 'ثبت درخواست مساعده ممکن نشد.');
+      } finally {
+        advanceInFlight.current=false;setAdvanceBusy(false);
+      }
       return;
     }
 
@@ -91,8 +132,8 @@ export function PersonnelFilePage({ state, updateState }: { state: AppState; upd
       id: generateId(),
       requestNumber: `ADV-${Date.now().toString().slice(-4)}`,
       userId: me,
-      requestedAmountRials: amount,
-      reason: advanceReason.trim(),
+      requestedAmountRials: Number(digits),
+      reason,
       targetMonth: currentMonth,
       status: 'REQUESTED',
       createdAt: new Date().toISOString()
@@ -106,7 +147,7 @@ export function PersonnelFilePage({ state, updateState }: { state: AppState; upd
     setShowAdvanceModal(false);
     setAdvanceAmount('');
     setAdvanceReason('');
-    flash('درخواست مساعده برای بررسی مدیر ثبت شد.');
+    flash('درخواست مساعده در دادهٔ محلی ذخیره شد.');
   };
 
   return (
@@ -118,6 +159,12 @@ export function PersonnelFilePage({ state, updateState }: { state: AppState; upd
           {missing.length > 0 && ` · ${missing.length.toLocaleString('fa-IR')} مورد نیازمند تکمیل`}
         </p>
       </header>
+      {remote && <Card padding="sm" className="space-y-2">
+        <h2 className="text-sm font-bold">هویت و وضعیت استخدام</h2>
+        {employmentQuery.error ? <EmptyState surface="personnel_profile" title="دریافت پرونده از سرور ممکن نیست"
+          compact actionLabel="تلاش دوباره" onAction={()=>void employmentQuery.refetch()}/> : profile ? <EmploymentDetails profile={profile}/>
+          : <p role="status" className="text-caption">در حال دریافت پرونده…</p>}
+      </Card>}
 
       {eff.status === 'NEEDS_CORRECTION' && eff.reviewNote && (
         <p role="alert" className="rounded-xl bg-danger-soft p-2.5 text-xs text-danger font-medium">
@@ -185,7 +232,28 @@ export function PersonnelFilePage({ state, updateState }: { state: AppState; upd
           </div>
         )}
 
-        {step === 'payroll' && (
+        {step==='payroll' && remote && <div className="space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h3 className="text-sm font-bold">سوابق حقوق و مساعده</h3>
+            <Button type="button" size="sm" variant="soft" disabled={!eligible} onClick={()=>{setAdvanceError('');setShowAdvanceModal(true);}}>درخواست مساعده</Button>
+          </div>
+          {!profile ? <p className="text-caption">سوابق فیش و مساعده در دسترس نیست.</p> : <>
+            {profile.payslips.length ? <details open className="rounded-xl border border-border p-2">
+              <summary className="min-h-11 cursor-pointer py-2 text-sm font-semibold">فیش‌های حقوقی</summary>
+              <ul className="divide-y divide-border text-caption">{profile.payslips.map(slip=><li key={slip.id} className="space-y-1 py-2">
+                <p className="font-semibold">دورهٔ میلادی <bdi>{toPersianDigits(slip.period)}</bdi> · خالص فیش {formatDecimalString(slip.net)} ریال</p>
+                <p className="text-text-secondary">ناخالص {formatDecimalString(slip.gross)} · کسورات {formatDecimalString(slip.deductions)} ریال</p>
+              </li>)}</ul>
+            </details> : <p className="text-caption">فیش قابل نمایش در دفتر حقوق مشاهده نشد.</p>}
+            {profile.advances.length ? <ul aria-label="درخواست‌های مساعده" className="divide-y divide-border text-caption">
+              {profile.advances.map(advance=><li key={advance.id} className="space-y-1 py-2">
+                <p className="font-semibold">{formatDecimalString(advance.requested)} ریال · {advanceStatuses[advance.status] ?? 'وضعیت نامشخص'}</p>
+                <p className="text-text-secondary"><bdi>{advance.number}</bdi>{advance.approved!==null && <> · مبلغ مصوب {formatDecimalString(advance.approved)} ریال</>}</p>
+              </li>)}
+            </ul> : <p className="text-caption">درخواست مساعده‌ای در پایگاه مرکزی مشاهده نشد.</p>}
+          </>}
+        </div>}
+        {step === 'payroll' && !remote && (
           <div className="space-y-3 text-xs">
             <div className="flex justify-between items-center border-b border-border/60 pb-2">
               <span className="font-bold text-text-main flex items-center gap-1.5">
@@ -264,52 +332,22 @@ export function PersonnelFilePage({ state, updateState }: { state: AppState; upd
         </Button>
       )}
 
-      {/* مودال ثبت درخواست مساعده */}
-      {showAdvanceModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-black/40 backdrop-blur-xs font-sans" dir="rtl">
-          <div className="w-full max-w-md bg-surface border border-border rounded-2xl p-4 shadow-xl space-y-3">
-            <h3 className="text-sm font-bold text-text-main">ثبت درخواست مساعده مالی</h3>
-            <form id="personnel-form" onSubmit={handleRequestAdvance} className="space-y-3">
-              <div>
-                <label className="block text-xs font-semibold text-text-secondary mb-1">مبلغ درخواستی (ریال) *</label>
-                <InputControl 
-                  type="number"
-                  required
-                  value={advanceAmount}
-                  onChange={e => setAdvanceAmount(e.target.value)}
-                  placeholder="مثال: ۳۰,۰۰۰,۰۰۰"
-                  className="font-mono"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-text-secondary mb-1">علت و ضرورت درخواست *</label>
-                <Textarea 
-                  required
-                  rows={2}
-                  value={advanceReason}
-                  onChange={e => setAdvanceReason(e.target.value)}
-                  placeholder="شرح مختصر دلیل درخواست مساعده..."
-                  
-                />
-              </div>
-
-              <div className="flex justify-end gap-2 pt-2 border-t border-border">
-                <button
-                  type="button"
-                  onClick={() => setShowAdvanceModal(false)}
-                  className="px-3 py-1.5 text-xs text-text-secondary hover:text-text-main cursor-pointer"
-                >
-                  انصراف
-                </button>
-                <Button type="submit" variant="primary" size="sm">
-                  ثبت درخواست
-                </Button>
-              </div>
-            </form>
+      <Modal isOpen={showAdvanceModal} size="sm" title="درخواست مساعده"
+        onClose={()=>{if (!advanceBusy) setShowAdvanceModal(false);}}>
+        <form id="personnel-form" onSubmit={handleRequestAdvance} className="space-y-3">
+          <label className="block space-y-1 text-caption">مبلغ درخواستی به ریال
+            <InputControl type="text" inputMode="numeric" required maxLength={24} disabled={advanceBusy}
+              value={advanceAmount} onChange={event=>setAdvanceAmount(event.target.value)} />
+          </label>
+          <Textarea label="علت درخواست" required rows={3} maxLength={500} disabled={advanceBusy}
+            value={advanceReason} onChange={event=>setAdvanceReason(event.target.value)} />
+          {advanceError && <p role="alert" className="text-sm text-danger">{advanceError}</p>}
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button type="button" variant="ghost" disabled={advanceBusy} onClick={()=>setShowAdvanceModal(false)}>انصراف</Button>
+            <Button type="submit" loading={advanceBusy}>ثبت درخواست</Button>
           </div>
-        </div>
-      )}
+        </form>
+      </Modal>
     </div>
   );
 }

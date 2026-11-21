@@ -5,10 +5,12 @@ import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
 import { Textarea } from '../ui/Input';
 import { SearchableSelect } from '../ui/SearchableSelect';
+import { EmploymentDetails } from '../onboarding/EmploymentDetails';
 
 export function ReportingLineSettings() {
   const {data,loading,error,refetch}=useDataQuery(provider=>provider.getReportingLines());
   const [userId,setUserId]=useState('');
+  const employment=useDataQuery(async provider=>userId ? {userId,profile:await provider.getLinkedPersonnelProfile(userId)} : null,[userId,data]);
   const [managerChoice,setManagerChoice]=useState<string|null>(null);
   const [reason,setReason]=useState('');
   const [saving,setSaving]=useState(false);
@@ -62,5 +64,10 @@ export function ReportingLineSettings() {
       {error && <Button type="button" variant="ghost" size="sm" onClick={()=>void refetch()}>تلاش دوباره</Button>}
       {changed && <Button type="submit" disabled={saving || loading || !reason.trim()}>{saving ? 'در حال ثبت…' : 'ثبت تغییر سرپرستی'}</Button>}
     </form>
+    {selected && <section className="space-y-2 border-t border-border pt-2" aria-label="پروندهٔ استخدامی مرتبط">
+      {employment.error ? <p role="status" className="text-caption text-warning">دریافت پروندهٔ استخدامی ممکن نیست.</p>
+        : employment.data?.userId===userId && !employment.loading ? <EmploymentDetails profile={employment.data.profile}/>
+          : <p role="status" className="text-caption">در حال دریافت پروندهٔ استخدامی…</p>}
+    </section>}
   </Card>;
 }
