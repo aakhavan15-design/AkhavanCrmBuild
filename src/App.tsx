@@ -176,6 +176,7 @@ function AppContent() {
         quotes: '/quotes',
         finance: '/finance',
         internal_automation: '/internal_automation',
+        'personnel-file': n.entityId ? `/personnel-file?advance=${encodeURIComponent(n.entityId)}` : '/personnel-file',
         groups: n.conversationId ? `/groups?c=${encodeURIComponent(n.conversationId)}` : '/groups'
       };
       navigate(routeMap[n.linkTab] || `/${n.linkTab}`, { replace });

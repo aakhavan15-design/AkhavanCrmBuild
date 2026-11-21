@@ -1,4 +1,5 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import type { AppState, AdvanceRequest, Attachment } from '../../types';
 import { Textarea } from '../ui';
 import { DynamicFormRenderer } from '../shared/DynamicFormRenderer';
@@ -13,6 +14,7 @@ import { Card } from '../ui/Card';
 import { Modal } from '../ui/Modal';
 import { EmptyState } from '../ui/EmptyState';
 import { EmploymentDetails } from './EmploymentDetails';
+import { AdvanceReview } from './AdvanceReview';
 import { useDataQuery } from '../../hooks/useDataProvider';
 import { getActiveDataProvider } from '../../services/dataProvider';
 import { toLatinDigits, toPersianDigits } from '../../lib/digits';
@@ -31,7 +33,10 @@ const advanceStatuses:Record<string,string>={REQUESTED:'در انتظار برر
 export function PersonnelFilePage({ state, updateState }: { state: AppState; updateState: (u: (d: AppState) => AppState | void) => void }) {
   const me = state.currentUserId || ''; 
   const cfg = getOnboardingConfig(state); 
-  const [step, setStep] = useState<Step>('identity'); 
+  const [params]=useSearchParams();
+  const advanceLink=params.get('advance')?.toLowerCase() ?? null;
+  const [step, setStep] = useState<Step>(advanceLink ? 'payroll' : 'identity');
+  useEffect(()=>{if (advanceLink) setStep('payroll');},[advanceLink]);
   const [msg, setMsg] = useState('');
   const [advanceAmount, setAdvanceAmount] = useState('');
   const [advanceReason, setAdvanceReason] = useState('');
@@ -246,11 +251,13 @@ export function PersonnelFilePage({ state, updateState }: { state: AppState; upd
               </li>)}</ul>
             </details> : <p className="text-caption">فیش قابل نمایش در دفتر حقوق مشاهده نشد.</p>}
             {profile.advances.length ? <ul aria-label="درخواست‌های مساعده" className="divide-y divide-border text-caption">
-              {profile.advances.map(advance=><li key={advance.id} className="space-y-1 py-2">
+              {profile.advances.map(advance=><li key={advance.id} className={`space-y-1 rounded-lg py-2 ${advance.id.toLowerCase()===advanceLink ? 'bg-primary-soft px-2' : ''}`}>
                 <p className="font-semibold">{formatDecimalString(advance.requested)} ریال · {advanceStatuses[advance.status] ?? 'وضعیت نامشخص'}</p>
                 <p className="text-text-secondary"><bdi>{advance.number}</bdi>{advance.approved!==null && <> · مبلغ مصوب {formatDecimalString(advance.approved)} ریال</>}</p>
+                {advance.managerNotes && <p className="whitespace-pre-wrap wrap-break-word text-text-secondary">{advance.managerNotes}</p>}
               </li>)}
             </ul> : <p className="text-caption">درخواست مساعده‌ای در پایگاه مرکزی مشاهده نشد.</p>}
+            <AdvanceReview entries={profile.advanceReview} highlight={advanceLink} onChanged={employmentQuery.refetch}/>
           </>}
         </div>}
         {step === 'payroll' && !remote && (

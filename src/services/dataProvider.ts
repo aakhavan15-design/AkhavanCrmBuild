@@ -1,7 +1,7 @@
 import type { ReportingLine, ReportingLineChange, TaskRequestApprovalPolicy, TaskRequestCommand, TaskRequestFile, TaskRequestInput, TaskRequestPolicyKind,
   TaskRequestRecord, TaskRequestPage, TaskRequestView, TaskRequestResource } from './taskRequests';
 import type { PurchaseCycleResult, PurchaseCycleView, PurchaseProductResult } from './purchaseCycle';
-import type { EmploymentProfile, OwnPersonnelProfile, PersonnelAdvanceInput, PersonnelAdvanceReceipt } from './personnelProfile';
+import type { AdvanceDecisionInput, EmploymentProfile, OwnPersonnelProfile, PersonnelAdvanceInput, PersonnelAdvanceReceipt } from './personnelProfile';
 import type { 
   AppState, 
   Account, 
@@ -297,6 +297,7 @@ export interface DataProvider {
   getOwnPersonnelProfile():Promise<OwnPersonnelProfile>;
   getLinkedPersonnelProfile(userId:string):Promise<EmploymentProfile>;
   requestPersonnelAdvance(input:PersonnelAdvanceInput):Promise<PersonnelAdvanceReceipt>;
+  decidePersonnelAdvance(id:string,input:AdvanceDecisionInput):Promise<{id:string;replayed:boolean}>;
   changeReportingLine(userId:string,input:ReportingLineChange): Promise<{changed:boolean;replayed:boolean}>;
   getTaskRequestPolicies(): Promise<{items:(TaskRequestApprovalPolicy & {kind:TaskRequestPolicyKind})[]}>;
   saveTaskRequestPolicy(kind:TaskRequestPolicyKind,policy:TaskRequestApprovalPolicy): Promise<TaskRequestApprovalPolicy>;
@@ -372,6 +373,7 @@ export class ClientStorageDataProvider implements DataProvider {
   async getOwnPersonnelProfile():Promise<OwnPersonnelProfile> { throw new Error('پروندهٔ پرسنلی به پایگاه مرکزی نیاز دارد.'); }
   async getLinkedPersonnelProfile():Promise<EmploymentProfile> { throw new Error('پروندهٔ پرسنلی به پایگاه مرکزی نیاز دارد.'); }
   async requestPersonnelAdvance():Promise<PersonnelAdvanceReceipt> { throw new Error('درخواست مساعده به پایگاه مرکزی نیاز دارد.'); }
+  async decidePersonnelAdvance():Promise<{id:string;replayed:boolean}> { throw new Error('تصمیم مساعده به پایگاه مرکزی نیاز دارد.'); }
   async getPurchaseCycle(): Promise<PurchaseCycleResult> { throw new Error('آینهٔ ERP برای گزارش چرخهٔ خرید در دسترس نیست.'); }
   async getPurchaseProductHints(): Promise<PurchaseProductResult> { throw new Error('ردیف فاکتورهای ERP در دسترس نیست.'); }
   async searchAccountDirectory(): Promise<null> { return null; }
@@ -808,6 +810,9 @@ export class HttpBackendDataProvider implements DataProvider {
   async getLinkedPersonnelProfile(userId:string):Promise<EmploymentProfile> { return this.request(`/personnel/linked-user/${encodeURIComponent(userId)}`); }
   async requestPersonnelAdvance(input:PersonnelAdvanceInput):Promise<PersonnelAdvanceReceipt> {
     return this.request('/personnel/me/advances',{method:'POST',body:JSON.stringify(input)});
+  }
+  async decidePersonnelAdvance(id:string,input:AdvanceDecisionInput):Promise<{id:string;replayed:boolean}> {
+    return this.request(`/personnel/advances/${encodeURIComponent(id)}/decision`,{method:'POST',body:JSON.stringify(input)});
   }
   async getPurchaseCycle(search:string,view:PurchaseCycleView,page:number): Promise<PurchaseCycleResult> {
     const params=new URLSearchParams({search,view,page:String(page)});

@@ -18,7 +18,7 @@ import { createMoneyIntelligenceReader, parseMoneyReportQuery } from './moneyInt
 import { createJournalCoverageReader, createJournalCoverageFollowUp, createJournalFollowUpEvidenceReader, coverageFilter } from './journalCoverage.mjs';
 import { createCollectionActions } from './collectionActions.mjs';
 import { createPublicRecruitment } from './publicRecruitment.mjs';
-import { createPersonnelService, parseAdvanceRequest } from './personnelProfile.mjs';
+import { createPersonnelService, parseAdvanceDecision, parseAdvanceRequest } from './personnelProfile.mjs';
 import { buildReportStatus } from './reportStatus.mjs';
 import { getVapidPublicKey, saveSubscription, removeSubscription, sendPushToUser, initPushModule } from './pushStore.mjs';
 import { recordId } from '../src/lib/stateModel.mjs';
@@ -796,6 +796,16 @@ app.post('/api/v1/personnel/me/advances',authenticate,requireSignedSession,perso
   if (result.outcome==='CONFLICT') return bad(req,res,409,'ADVANCE_CONFLICT','شناسهٔ درخواست قبلاً استفاده شده است.');
   const replayed=result.outcome==='REPLAY';
   res.status(replayed ? 200 : 201).json({id:input.id,number:result.number,replayed});
+}));
+app.post('/api/v1/personnel/advances/:id/decision',authenticate,requireSignedSession,personnelEndpoint(async(req,res)=>{
+  const input=parseAdvanceDecision(req.body);
+  const {id}=req.params;
+  if (!uuid(id) || !input) return bad(req,res,400,'ADVANCE_DECISION_INVALID','مبلغ یا توضیح تصمیم معتبر نیست.');
+  const outcome=await personnel.decideAdvance(req.auth,id,input);
+  if (outcome==='UNAVAILABLE') return bad(req,res,404,'ADVANCE_NOT_AVAILABLE','درخواست برای بررسی در دسترس نیست.');
+  if (outcome==='CONFLICT') return bad(req,res,409,'ADVANCE_ALREADY_DECIDED','این درخواست قبلاً بررسی شده است.');
+  if (outcome==='AMOUNT') return bad(req,res,422,'ADVANCE_AMOUNT_OUT_OF_RANGE','مبلغ مصوب باید مثبت و حداکثر برابر مبلغ درخواستی باشد.');
+  res.json({id:id.toLowerCase(),replayed:outcome==='REPLAY'});
 }));
 
 const publicRecruitment = createPublicRecruitment({
