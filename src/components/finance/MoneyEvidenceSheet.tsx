@@ -26,10 +26,10 @@ export function MoneyEvidenceSheet({ selection, period, onClose, onSelect }: {
   const [draft, setDraft] = useState('');
   const [search, setSearch] = useState('');
   const [fifoRun, setFifoRun] = useState<MoneyInventoryPosition | null>(null);
-  const requestKey = JSON.stringify([period, selection.mode, selection.key, selection.detail, page, search]);
+  const requestKey = JSON.stringify([period, selection.mode, selection.key, selection.detail, selection.signal, page, search]);
   const { data, loading, error, refetch } = useDataQuery(async provider => ({
     requestKey,
-    result: await provider.getMoneyEvidence(period, { mode: selection.mode, key: selection.key, selection.detail, page, search }),
+    result: await provider.getMoneyEvidence(period, { mode: selection.mode, key: selection.key, detail: selection.detail, signal: selection.signal, page, search }),
   }), [requestKey]);
   const result = data?.requestKey === requestKey ? data.result : null;
   const fifo = selection.mode === 'fifo';
@@ -47,6 +47,10 @@ export function MoneyEvidenceSheet({ selection, period, onClose, onSelect }: {
     }>
       {selection.mode === 'cash-account' && <Button type="button" size="sm" variant="ghost"
         onClick={() => onSelect({ title: 'حساب‌های نقدی و بانکی', mode: 'cash-accounts' })}>بازگشت به حساب‌ها</Button>}
+      {selection.signal && <p className="mb-2 text-caption text-text-secondary">
+        {selection.signal === 'unusual' ? 'مبلغ سند نسبت به توزیع مبالغ دورهٔ قبل بالاست. برای بررسی، شرح، طرف‌حساب و مرکز هزینه را تطبیق دهید.'
+          : 'چند سند با مبلغ برابر برای یک طرف‌حساب مشاهده شده است. شمارهٔ مرجع و سررسید را بررسی کنید تا اقساط یا پرداخت‌های مستقل از هم مشخص شوند.'}
+      </p>}
       {!showBank && <form className="mb-3 flex items-end gap-2" onSubmit={event => { event.preventDefault(); setPage(1); setSearch(draft.trim()); }}>
         <div className="min-w-0 flex-1">
           <Input label={fifo ? 'شناسهٔ کالا یا انبار' : accounts ? 'نام حساب یا کد معین و تفصیلی' : 'شمارهٔ سند، فاکتور یا کد حساب'}

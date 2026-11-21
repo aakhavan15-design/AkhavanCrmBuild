@@ -6,6 +6,7 @@ export interface MoneyEvidenceFilter {
   mode: 'cash' | 'outflow' | 'expense' | 'role' | 'balance' | 'opening' | 'review' | 'fifo' | 'profit' | 'bank' | 'cash-accounts' | 'cash-account';
   key?: string;
   detail?: string;
+  signal?: 'unusual' | 'repeat';
   page: number;
   search?: string;
 }

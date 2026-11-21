@@ -24,11 +24,15 @@ export function parseMoneyReportQuery(query) {
   const search = query.search ?? '';
   const detail = query.detail ?? '';
   const dimension = query.dimension ?? '';
+  const signal = query.signal ?? '';
   if ((mode !== null && !modes.has(mode)) || page < 1 || page > 1000 ||
       (key !== null && (typeof key !== 'string' || key.length > 120)) || typeof search !== 'string' || search.length > 100 ||
       typeof detail !== 'string' || detail.length > 120 || (mode === 'cash-account' && !key?.trim()) ||
-      !['', 'category', 'center', 'party', 'month'].includes(dimension)) return null;
-  return { from, to, mode, key, page, detail, search: search.trim(), dimension,
+      !['', 'category', 'center', 'party', 'month'].includes(dimension) ||
+      !['','unusual','repeat'].includes(signal) ||
+      (signal==='unusual' && (dimension==='month' || !['expense','outflow'].includes(mode))) ||
+      (signal==='repeat' && mode!=='outflow') || (signal && key===null)) return null;
+  return { from, to, mode, key, page, detail, search: search.trim(), dimension, signal,
     priorStart: new Date(start - span * DAY).toISOString().slice(0, 10) };
 }
 
@@ -155,6 +159,9 @@ SELECT l.role,
 FROM #lines l JOIN #journal j ON j.journalId=l.journalId AND j.issue IS NULL
 GROUP BY l.role;
 
+`;
+
+const groupEvidence = `
 WITH groupDocuments AS (
   SELECT a.groupCode,MAX(a.groupTitle) AS title,a.journalId,a.[date],t.kind,SUM(t.amount) AS amount
   FROM #analysis a
@@ -169,43 +176,55 @@ WITH groupDocuments AS (
   FROM groupDocuments WHERE [date]<@from
 ), baseline AS (
   SELECT DISTINCT groupCode,kind,q1,q3 FROM priorQuartiles WHERE sampleSize>=4
-), grouped AS (
-  SELECT a.groupCode,MAX(a.title) AS title,a.kind,
-    SUM(CASE WHEN a.[date]>=@from THEN a.amount ELSE 0 END) AS amount,
-    SUM(CASE WHEN a.[date]<@from THEN a.amount ELSE 0 END) AS priorAmount,
-    SUM(CASE WHEN a.[date]>=@from THEN 1 ELSE 0 END) AS documents,
-    SUM(CASE WHEN a.[date]<@from THEN 1 ELSE 0 END) AS priorDocuments,
-    SUM(CASE WHEN a.[date]>=@from AND ABS(a.amount)>b.q3+1.5*(b.q3-b.q1) THEN 1 ELSE 0 END) AS unusualDocuments
-  FROM groupDocuments a LEFT JOIN baseline b ON b.kind=a.kind AND
-    (b.groupCode=a.groupCode OR (b.groupCode IS NULL AND a.groupCode IS NULL))
-  GROUP BY a.groupCode,a.kind
 ), partyPayments AS (
   SELECT a.groupCode,a.journalId,party.partyKey,SUM(a.debit) AS amount
   FROM #analysis a
   CROSS APPLY (VALUES (COALESCE(CONVERT(nvarchar(36),a.partyId),NULLIF(a.detailCode,N'')))) party(partyKey)
   WHERE a.isAttributed=1 AND a.[date]>=@from AND party.partyKey IS NOT NULL
   GROUP BY a.groupCode,a.journalId,party.partyKey
-), repeats AS (
-  SELECT groupCode,MAX(repeats) AS repeatCount FROM (
-    SELECT groupCode,COUNT_BIG(*) AS repeats FROM partyPayments GROUP BY groupCode,partyKey,amount HAVING COUNT_BIG(*)>1
-  ) equalPayments GROUP BY groupCode
+), paymentCounts AS (
+  SELECT groupCode,journalId,COUNT_BIG(*) OVER(PARTITION BY groupCode,partyKey,amount) AS repeatCount
+  FROM partyPayments
+), repeatedDocuments AS (
+  SELECT groupCode,journalId,MAX(repeatCount) AS repeatCount
+  FROM paymentCounts WHERE repeatCount>1 GROUP BY groupCode,journalId
+)
+SELECT a.*,
+  CASE WHEN a.[date]>=@from AND b.q3 IS NOT NULL THEN
+    CASE WHEN ABS(a.amount)>b.q3+1.5*(b.q3-b.q1) THEN 1 ELSE 0 END END AS unusual,
+  ISNULL(r.repeatCount,0) AS repeatCount
+INTO #groupEvidence
+FROM groupDocuments a LEFT JOIN baseline b ON b.kind=a.kind AND
+  (b.groupCode=a.groupCode OR (b.groupCode IS NULL AND a.groupCode IS NULL))
+LEFT JOIN repeatedDocuments r ON a.kind='outflow' AND r.journalId=a.journalId AND
+  (r.groupCode=a.groupCode OR (r.groupCode IS NULL AND a.groupCode IS NULL));
+`;
+
+const groupTotals = `
+WITH grouped AS (
+  SELECT groupCode,MAX(title) AS title,kind,
+    SUM(CASE WHEN [date]>=@from THEN amount ELSE 0 END) AS amount,
+    SUM(CASE WHEN [date]<@from THEN amount ELSE 0 END) AS priorAmount,
+    COUNT_BIG(CASE WHEN [date]>=@from THEN 1 END) AS documents,
+    COUNT_BIG(CASE WHEN [date]<@from THEN 1 END) AS priorDocuments,
+    SUM(unusual) AS unusualDocuments, MAX(repeatCount) AS repeatCount
+  FROM #groupEvidence GROUP BY groupCode,kind
 ), ranked AS (
   SELECT *,ROW_NUMBER() OVER(PARTITION BY kind ORDER BY ABS(amount) DESC, groupCode) AS rowNumber,
     COUNT(*) OVER(PARTITION BY kind) AS groupCount
   FROM grouped
 )
 SELECT ranked.kind,ranked.groupCode,title,CONVERT(varchar(48),amount) AS amount,CONVERT(varchar(48),priorAmount) AS priorAmount,
-  documents,priorDocuments,groupCount,unusualDocuments,ISNULL(r.repeatCount,0) AS repeatCount,
+  documents,priorDocuments,groupCount,unusualDocuments,repeatCount,
   CONVERT(varchar(48),CAST(amount AS decimal(32,4))-CAST(priorAmount AS decimal(32,4))) AS difference
-FROM ranked LEFT JOIN repeats r ON ranked.kind='outflow' AND
-  (r.groupCode=ranked.groupCode OR (r.groupCode IS NULL AND ranked.groupCode IS NULL))
+FROM ranked
 WHERE rowNumber<=20 ORDER BY ranked.kind,rowNumber;
 
 SELECT COUNT_BIG(*) AS documents,
   CONVERT(varchar(48),SUM(c.cashCredit)) AS amount
 FROM #cash c WHERE c.[date]>=@from AND c.movement='OUT' AND c.otherCredits>0;`;
 
-const evidence = `
+const evidence = signal => `
 SELECT d.journalId,d.DocumentNumber AS documentNumber,d.DocumentTypeCode AS documentType,
   d.ExternalJournalId AS externalJournalId,CONVERT(char(10),d.[date],126) AS [date],j.issue,
   l.lineId,l.accountCode,l.accountTitle,l.detailCode,l.partyId,l.partyTitle,l.centerTitle,l.categoryTitle,l.role,l.refType,l.refId,
@@ -227,6 +246,10 @@ WHERE ((@mode IN ('balance','opening') AND j.issue IS NULL AND l.role=@key
      OR (@mode='expense' AND a.isExpense=1 AND (@key IS NULL OR COALESCE(a.groupCode,N'')=@key)))))
   AND (@search='' OR CHARINDEX(@search,d.DocumentNumber)>0 OR CHARINDEX(@search,d.ExternalJournalId)>0
     OR CHARINDEX(@search,l.accountCode)>0 OR CHARINDEX(@search,l.detailCode)>0 OR CHARINDEX(@search,l.refId)>0)
+  ${signal ? `AND EXISTS(SELECT 1 FROM #groupEvidence e WHERE e.journalId=d.journalId AND e.kind=@mode
+    AND COALESCE(e.groupCode,N'')=@key AND ((@signal='unusual' AND e.unusual=1) OR (@signal='repeat' AND e.repeatCount>1)))
+  AND (@signal<>'unusual' OR (EXISTS (SELECT 1 FROM #profile WHERE OpeningDate<=@priorStart AND VerifiedThrough>=@to)
+    AND NOT EXISTS(SELECT 1 FROM #journal invalid WHERE invalid.[date]>=@priorStart AND invalid.issue IS NOT NULL)))` : ''}
 ORDER BY d.[date] DESC,d.journalId,l.lineId
 OFFSET @offset ROWS FETCH NEXT 26 ROWS ONLY;`;
 
@@ -418,7 +441,7 @@ export function projectMoneyReport(result, filter) {
     })),
     grouped: grouped.map(row => ({ ...row, priorAmount: priorCovered && filter.dimension !== 'month' ? row.priorAmount : null,
       difference: periodCovered && priorCovered && filter.dimension !== 'month' ? row.difference : null,
-      unusualDocuments: periodCovered && priorCovered && filter.dimension !== 'month' ? Number(row.unusualDocuments) : null,
+      unusualDocuments: periodCovered && priorCovered && filter.dimension !== 'month' && row.unusualDocuments!=null ? Number(row.unusualDocuments) : null,
       repeatCount: Number(row.repeatCount) })),
     unallocated: unallocatedRows[0]?.amount ?? (periodCovered ? '0' : null),
     unallocatedDocuments: Number(unallocatedRows[0]?.documents ?? 0),
@@ -454,6 +477,7 @@ export function createMoneyIntelligenceReader({ sql, run }) {
         .input('key', sql.NVarChar(120), filter.key)
         .input('detail', sql.NVarChar(120), filter.detail)
         .input('search', sql.NVarChar(100), filter.search)
+        .input('signal', sql.VarChar(10), filter.signal || '')
         .input('offset', sql.Int, (filter.page - 1) * 25);
       if (filter.mode === 'cash-accounts') {
         const result = await request.query(`${profileSql}${prepare}${metadata}${cashAccountsSql}`);
@@ -465,10 +489,10 @@ export function createMoneyIntelligenceReader({ sql, run }) {
       }
       const result = await request.query(filter.mode === 'fifo'
         ? `${profileSql}${fifoPrepare}${fifoEvidence}`
-        : `${profileSql}${prepare}${evidence}`);
+        : `${profileSql}${prepare}${filter.signal ? groupEvidence : ''}${evidence(filter.signal)}`);
       return { items: result.recordset.slice(0, 25), hasMore: filter.page < 1000 && result.recordset.length > 25 };
     }
-    const result = await request.query(`${profileSql}${prepare}${metadata}${totals}${fifoPrepare}SELECT side,amount FROM #fifoTotal;${bankSql}`);
+    const result = await request.query(`${profileSql}${prepare}${metadata}${totals}${groupEvidence}${groupTotals}${fifoPrepare}SELECT side,amount FROM #fifoTotal;${bankSql}`);
     return projectMoneyReport(result.recordsets, filter);
   });
 }

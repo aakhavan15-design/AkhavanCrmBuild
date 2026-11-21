@@ -1195,6 +1195,7 @@ export class HttpBackendDataProvider implements DataProvider {
     const params = new URLSearchParams({ ...period, mode: filter.mode, page: String(filter.page) });
     if (filter.key !== undefined) params.set('key', filter.key);
     if (filter.detail !== undefined) params.set('detail', filter.detail);
+    if (filter.signal) params.set('signal', filter.signal);
     if (filter.search) params.set('search', filter.search);
     return this.request<MoneyEvidencePage>(`/finance/money-intelligence?${params}`);
   }

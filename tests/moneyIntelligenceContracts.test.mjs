@@ -22,6 +22,16 @@ test('dates, report modes and evidence pagination reject invalid input', () => {
   assert.equal(parseMoneyReportQuery({ from: '2026-10-01', to: '2026-11-10', mode: 'unrecognized' }), null);
 });
 
+test('flagged evidence requires the same group and an eligible report mode', () => {
+  const input = { from: '2026-11-01', to: '2026-11-10', mode: 'expense', dimension: 'category' };
+  assert.equal(parseMoneyReportQuery({ ...input, signal: 'repeat', key: 'FREIGHT' }), null);
+  assert.equal(parseMoneyReportQuery({ ...input, signal: 'unusual' }), null);
+  assert.equal(parseMoneyReportQuery({ ...input, signal: 'unusual', dimension: 'month', key: '1405-08' }), null);
+  assert.equal(parseMoneyReportQuery({ ...input, signal: 'unusual', key: '' }).signal, 'unusual');
+  const report = projectMoneyReport([[metadata], trend, balances, [{ unusualDocuments: null, repeatCount: 0 }], [], []], filter);
+  assert.equal(report.grouped[0].unusualDocuments, null);
+});
+
 test('internal transfer is disclosed but stays out of net cash and profit reconciliation', () => {
   const report = projectMoneyReport([[metadata], trend, balances, [], [], []], filter);
   assert.equal(report.cash.transfers, '250.00000000000000');

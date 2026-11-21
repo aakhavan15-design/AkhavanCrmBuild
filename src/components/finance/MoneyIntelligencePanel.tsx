@@ -100,11 +100,15 @@ function MoneyGroups({ rows, dimension, open }: {
               {row.difference !== null && <> · تغییر نسبت به دورهٔ قبل {money(row.difference)}</>}
               {row.priorAmount !== null && <> · دورهٔ قبل {money(row.priorAmount)} در {formatCount(row.priorDocuments)} سند</>}
             </span>
-            {((row.unusualDocuments ?? 0) > 0 || row.repeatCount > 1) && <span className="w-full text-caption text-warning">
-              {(row.unusualDocuments ?? 0) > 0 && <span className="me-3">{formatCount(row.unusualDocuments)} سند بالاتر از دامنهٔ معمول دورهٔ قبل</span>}
-              {row.repeatCount > 1 && <span>{formatCount(row.repeatCount)} پرداخت هم‌مبلغ به یک طرف‌حساب</span>}
-            </span>}
           </button>
+          {((row.unusualDocuments ?? 0)>0 || row.repeatCount>1) && <div className="flex flex-wrap gap-1 px-2 pb-2">
+            {(row.unusualDocuments ?? 0)>0 && <Button type="button" size="sm" variant="outline" onClick={()=>
+              open({title:`اسناد با مبلغ نامتعارف · ${groupLabel(row)}`,mode:kind,key:row.groupCode ?? '',signal:'unusual'})}>
+              {formatCount(row.unusualDocuments)} سند با مبلغ نامتعارف</Button>}
+            {row.repeatCount>1 && <Button type="button" size="sm" variant="outline" onClick={()=>
+              open({title:`اسناد هم‌مبلغ یک طرف‌حساب · ${groupLabel(row)}`,mode:kind,key:row.groupCode ?? '',signal:'repeat'})}>
+              بررسی اسناد هم‌مبلغ</Button>}
+          </div>}
         </li>)}
       </ul>}
     <div className="flex flex-wrap items-center gap-2">
