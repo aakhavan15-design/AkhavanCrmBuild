@@ -31,11 +31,11 @@ function Movements({ detailKey, row, locale }: { detailKey: string; row: Subsidi
     }, { page, pageSize: 20 }),
     [detailKey, row.subsidiaryCode, row.periodCode, page],
   );
-  if (loading || (data && data.page !== page)) return <p role="status" className="py-2 text-xs text-text-secondary">در حال دریافت گردش…</p>;
   if (error) return <div role="alert" className="flex flex-wrap items-center gap-2 py-2 text-caption text-danger">
     <span>گردش در دسترس نیست.</span>
     <Button type="button" variant="ghost" size="sm" onClick={() => void refetch()}>تلاش مجدد</Button>
   </div>;
+  if (loading || (data && data.page !== page)) return <p role="status" className="py-2 text-xs text-text-secondary">در حال دریافت گردش…</p>;
   const items = data?.items || [];
   if (!items.length) return <p className="py-2 text-caption text-text-secondary">گردشی در این محدوده یافت نشد.</p>;
   const money = (value: unknown) => {

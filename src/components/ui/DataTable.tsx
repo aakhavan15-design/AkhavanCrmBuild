@@ -268,7 +268,10 @@ export function DataTable<T>(props: DataTableProps<T>) {
   const closeDetail = useCallback(() => { setOpenId(null); window.setTimeout(() => triggerRef.current?.focus(), 0); }, []);
   useEffect(() => {
     if (!openRow) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') closeDetail(); };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || event.defaultPrevented || document.querySelector('[aria-modal="true"]')) return;
+      closeDetail();
+    };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
   }, [openRow, closeDetail]);

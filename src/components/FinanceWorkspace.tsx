@@ -153,10 +153,16 @@ export function FinanceWorkspace({ state, updateState }: FinanceWorkspaceProps) 
   const canSeeLedger = can('finance', 'VIEW');
   const ledgerAccounts = (state.accounts || []).filter(account => canOn('finance', 'VIEW', getFinanceRecordScope({ accountId: account.id })));
   const ledgerLineCount = Array.isArray(state.journalLines) ? state.journalLines.length : 0;
-  const { data: ledgerBalances, error: ledgerError, loading: ledgerLoading, refetch: refreshLedgerBalances } = useDataQuery(
-    async provider => (canSeeLedger ? provider.getDetailSubsidiaryBalances({ byPeriod: activeTab === 'collection' }) : null),
-    [canSeeLedger, ledgerLineCount, activeTab === 'collection']
+  const ledgerByPeriod = activeTab === 'collection';
+  const { data: ledgerSnapshot, error: ledgerError, loading: ledgerLoading, refetch: refreshLedgerBalances } = useDataQuery(
+    async provider => canSeeLedger ? {
+      viewer: state.currentUserId, byPeriod: ledgerByPeriod,
+      balances: await provider.getDetailSubsidiaryBalances({ byPeriod: ledgerByPeriod }),
+    } : null,
+    [canSeeLedger, state.currentUserId, ledgerLineCount, ledgerByPeriod],
   );
+  const ledgerBalances = canSeeLedger && ledgerSnapshot?.viewer === state.currentUserId && ledgerSnapshot?.byPeriod === ledgerByPeriod
+    ? ledgerSnapshot.balances : null;
   // F0-14: a failed provider request is UNAVAILABLE, never a perpetual LOADING state.
   const ledgerResult = canSeeLedger
     ? (ledgerError ? { status: 'UNAVAILABLE' as const, source: getActiveDataProvider().name, balances: [], reason: ledgerError.message } : ledgerBalances)

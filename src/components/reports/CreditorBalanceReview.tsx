@@ -26,15 +26,21 @@ export function CreditorBalanceReview({ accounts, ledger, locale }: {
   ledger: DetailBalancesResult;
   locale?: unknown;
 }) {
-  const rows = accounts.flatMap((account): Row[] => {
-    const view = resolveCustomerBalanceView(ledger, account);
-    if (view.kind !== 'OK') return [];
+  const mapped = accounts.map(account => ({ account, view: resolveCustomerBalanceView(ledger, account) }));
+  const matches = new Map<string, number>();
+  for (const { view } of mapped) if (view.kind === 'OK') matches.set(view.detailKey, (matches.get(view.detailKey) || 0) + 1);
+  const ambiguous = [...matches.values()].filter(count => count > 1).length;
+  const rows = mapped.flatMap(({ account, view }): Row[] => {
+    if (view.kind !== 'OK' || matches.get(view.detailKey) !== 1) return [];
     const balances = view.subsidiaries.filter(row => row.subsidiaryCode && row.balance < 0);
     if (!balances.length) return [];
     return [{ accountId: account.id, name: account.name, detailKey: view.detailKey, balances,
       amount: balances.reduce((sum, row) => sum + Math.abs(row.balance), 0) }];
   });
-  return (
+  return (<>
+    {ambiguous > 0 && <p role="status" className="rounded-xl bg-warning-soft p-3 text-sm text-warning">
+      {formatCount(ambiguous)} کد تفصیلی به چند مشتری مرتبط است. تا اصلاح نگاشت، این موارد رتبه‌بندی نمی‌شوند.
+    </p>}
     <DataTable tableId="ledger-creditor-review" title="پایش مانده‌های بستانکار مشتریان"
       subtitle="مانده‌های بستانکار هر معین و دوره جداگانه بررسی می‌شوند. تشخیص علت به سند مرتبط نیاز دارد."
       rows={rows} getRowId={row => row.accountId} columns={columns}
@@ -46,5 +52,5 @@ export function CreditorBalanceReview({ accounts, ledger, locale }: {
         <SubsidiaryBalanceDetails detailKey={row.detailKey} rows={row.balances} byPeriod locale={locale} />
       </DetailGroup>}
       detailTitle={row => row.name} />
-  );
+  </>);
 }
