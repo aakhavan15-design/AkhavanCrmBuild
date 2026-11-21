@@ -29,8 +29,10 @@ const SUPPLEMENTAL_LABELS: Record<string, string> = {
 
 export function getPersianStatusLabel(value: unknown): string {
   if (value === undefined || value === null || value === '') return '—';
-  const key = String(value).trim().toUpperCase();
-  return STATUS_LABELS[key] || SUPPLEMENTAL_LABELS[key] || String(value);
+  const text = String(value).trim();
+  if (!text) return '—';
+  const key = text.toUpperCase();
+  return STATUS_LABELS[key] || SUPPLEMENTAL_LABELS[key] || (/[آ-ی]/u.test(text) ? text : 'وضعیت نامشخص');
 }
 
 /** عنوان فارسی رویدادهای کسب‌وکار (برای هر نمایش احتمالی در خط زمانی/گزارش). کد فنی رویداد بدون تغییر می‌ماند. */

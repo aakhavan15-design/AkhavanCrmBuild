@@ -2,7 +2,7 @@ name: CRM UX quality
 on:
   pull_request:
   push:
-    branches: [main, codex/unified-ux-quality-gate]
+    branches: [main]
   workflow_dispatch:
 
 permissions:

@@ -58,6 +58,9 @@ const GroupsWorkspace = lazy(() => import('./components/GroupsWorkspace').then(m
 const CalendarWorkspace = lazy(() => import('./components/CalendarWorkspace').then(m => ({ default: m.CalendarWorkspace })));
 const ProfileWorkspace = lazy(() => import('./workspaces/ProfileWorkspace').then(m => ({ default: m.ProfileWorkspace })));
 const OnboardingAdminWorkspace = lazy(() => import('./components/onboarding/OnboardingAdminWorkspace').then(m => ({ default: m.OnboardingAdminWorkspace })));
+const DesignSystemWorkspace = import.meta.env.DEV
+  ? lazy(() => import('./components/DesignSystemWorkspace').then(module => ({ default: module.DesignSystemWorkspace })))
+  : null;
 
 function AppContent() {
   const { state, updateState, error } = useAppStore();
@@ -252,6 +255,7 @@ function AppContent() {
         <Suspense fallback={<LoadingState label="در حال بارگذاری صفحه" />}>
         <Routes>
           <Route path="/workspace/:moduleId" element={<ModuleLandingWorkspace state={state} />} />
+          {DesignSystemWorkspace && <Route path="/design-system" element={guardAny(rbac.hasPermission('settings.manage'), <DesignSystemWorkspace />)} />}
           <Route path="/planned" element={<PlannedModulePage state={state} />} />
           <Route path="/" element={<HomeWorkspace state={state} />} />
           <Route path="/command" element={guardAny(rbac.hasPermission('accounts.view') || rbac.hasPermission('internal.view'), <CommandCenterWorkspace state={state} updateState={updateState} />)} />

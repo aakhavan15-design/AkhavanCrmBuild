@@ -60,6 +60,7 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
   const [visibleLimit, setVisibleLimit] = useState(maxResults);
   const [lastSelected, setLastSelected] = useState<SelectOption | null>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const selectedOption = options.find(option => option.value === value) || (lastSelected?.value === value ? lastSelected : undefined);
 
@@ -90,34 +91,50 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
     return smartSearch(enabled, q, o => [{ text: o.label, weight: 3 }, { text: o.subLabel || '', weight: 2 }, o.keywords, o.value]).map(r => r.item);
   }, [options, debounced, minQueryLength]);
   const filteredOptions = matches.slice(0, visibleLimit);
+  const optionId = (index: number) => `${controlId}-option-${index}`;
+  const currentIndex = Math.min(activeIndex, Math.max(0, filteredOptions.length - 1));
+
+  const closePicker = () => {
+    setSearch('');
+    setIsOpen(false);
+    triggerRef.current?.focus({ preventScroll: true });
+  };
 
   const choose = (option: SelectOption) => {
     if (option.disabled) return;
     setLastSelected(option);
     onChange(option.value);
-    setSearch('');
-    setIsOpen(false);
+    closePicker();
   };
 
   const openPicker = () => {
     if (disabled) return;
+    if (isOpen) { closePicker(); return; }
     setIsOpen(true);
     setActiveIndex(0);
     requestAnimationFrame(() => inputRef.current?.focus());
   };
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
-    if (event.key === 'Escape') { event.preventDefault(); setIsOpen(false); return; }
-    if (event.key === 'ArrowDown') { event.preventDefault(); setActiveIndex(index => Math.min(index + 1, Math.max(0, filteredOptions.length - 1))); return; }
-    if (event.key === 'ArrowUp') { event.preventDefault(); setActiveIndex(index => Math.max(0, index - 1)); return; }
-    if (event.key === 'Enter' && filteredOptions[activeIndex]) { event.preventDefault(); choose(filteredOptions[activeIndex]); }
+    if (event.key === 'Escape') { event.preventDefault(); closePicker(); return; }
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      const next = Math.min(Math.max(0, currentIndex + (event.key === 'ArrowDown' ? 1 : -1)), Math.max(0, filteredOptions.length - 1));
+      setActiveIndex(next);
+      document.getElementById(optionId(next))?.scrollIntoView({ block: 'nearest' });
+    }
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      const option = filteredOptions[currentIndex];
+      if (!event.nativeEvent.isComposing && option && search === debounced && !loading) choose(option);
+    }
   };
 
   return (
     <div className={cn('relative min-w-0', className)} ref={wrapperRef} dir="rtl">
-      {label && <label htmlFor={controlId} className="mb-1 flex items-center gap-1 text-caption font-semibold text-text-main"><span>{label}</span>{required && <span className="text-danger">*</span>}</label>}
+      {label && <label htmlFor={`${controlId}-trigger`} className="mb-1 flex items-center gap-1 text-caption font-semibold text-text-main"><span>{label}</span>{required && <span className="text-danger">*</span>}</label>}
       <div className="flex min-w-0 items-center gap-1">
-        <button type="button" disabled={disabled} onClick={openPicker} aria-haspopup="listbox" aria-expanded={isOpen} aria-label={ariaLabel}
+        <button ref={triggerRef} id={`${controlId}-trigger`} type="button" disabled={disabled} onClick={openPicker} aria-haspopup="listbox" aria-expanded={isOpen} aria-label={ariaLabel}
           className="flex min-h-(--size-input) min-w-0 flex-1 items-center gap-2 rounded-lg border border-border bg-surface px-2.5 text-right text-compact text-text-main outline-none transition-colors hover:border-primary/50 focus-visible:ring-2 focus-visible:ring-primary/30 disabled:cursor-not-allowed disabled:opacity-60">
           <span className={cn('min-w-0 flex-1 truncate', !selectedOption && 'text-text-secondary')}>{selectedOption ? selectedOption.label : placeholder}</span>
           {selectedOption?.subLabel && <span className="hidden max-w-(--pct-meta) truncate text-mini text-text-secondary sm:block">{selectedOption.subLabel}</span>}
@@ -130,7 +147,8 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
           <div className="flex items-center gap-2 px-3 py-2">
             {loading ? <Loader2 size={15} className="animate-spin text-primary"/> : <Search size={15} className="text-text-secondary"/>}
             <input ref={inputRef} id={controlId} value={search} onChange={event => { setSearch(event.target.value); setActiveIndex(0); setVisibleLimit(maxResults); }} onKeyDown={handleKeyDown}
-              placeholder={searchPlaceholder} aria-label={ariaLabel} aria-controls={`${controlId}-list`} aria-autocomplete="list" className="min-w-0 flex-1 bg-transparent py-1 text-compact text-text-main outline-none placeholder:text-text-secondary" />
+              placeholder={searchPlaceholder} role="combobox" aria-label={ariaLabel} aria-controls={`${controlId}-list`} aria-expanded="true"
+              aria-activedescendant={filteredOptions.length ? optionId(currentIndex) : undefined} aria-autocomplete="list" className="crm-text-field min-w-0 flex-1 bg-transparent py-1 text-compact text-text-main outline-none placeholder:text-text-secondary" />
             {search && <button type="button" onClick={() => { setSearch(''); setVisibleLimit(maxResults); }} aria-label="پاک کردن جست‌وجو" className="rounded p-1 text-text-secondary hover:bg-canvas"><X size={13}/></button>}
           </div>
           {debounced.trim() && !loading && <div className="px-3 pb-1 text-micro text-text-secondary" aria-live="polite">{matches.length.toLocaleString('fa-IR')} نتیجه</div>}
@@ -138,8 +156,8 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
             {error && <div className="px-3 py-2.5 text-center text-xs text-danger" role="alert">{error}</div>}
             {loading && filteredOptions.length === 0 && <div className="px-3 py-3 text-center text-xs text-text-secondary">در حال جست‌وجو...</div>}
             {!loading && !error && filteredOptions.length === 0 && <div className="px-3 py-3 text-center text-xs text-text-secondary">{emptyText}</div>}
-            {filteredOptions.map((option, index) => <button key={option.value} type="button" role="option" aria-selected={option.value === value} disabled={option.disabled} onMouseEnter={() => setActiveIndex(index)} onClick={() => choose(option)} className={cn('flex w-full items-start gap-2 rounded-lg px-2.5 py-1.5 text-right transition-colors disabled:opacity-50', index === activeIndex ? 'bg-primary-soft text-primary font-bold' : 'text-text-main hover:bg-canvas')}>
-              <span className="min-w-0 flex-1"><span className="block truncate text-compact"><Highlight text={option.label} query={debounced} /></span>{option.subLabel && <span className="mt-0.5 block truncate text-micro text-text-secondary">{option.subLabel}</span>}</span>
+            {filteredOptions.map((option, index) => <button key={option.value} id={optionId(index)} type="button" role="option" tabIndex={-1} aria-selected={option.value === value} disabled={option.disabled} onMouseEnter={() => setActiveIndex(index)} onClick={() => choose(option)} className={cn('flex w-full items-start gap-2 rounded-lg px-2.5 py-1.5 text-right transition-colors disabled:opacity-50', index === currentIndex ? 'bg-primary-soft text-primary font-bold' : 'text-text-main hover:bg-canvas')}>
+              <span className="min-w-0 flex-1"><span className="block wrap-break-word text-compact"><Highlight text={option.label} query={debounced} /></span>{option.subLabel && <span className="mt-0.5 block wrap-break-word text-micro text-text-secondary">{option.subLabel}</span>}</span>
               {option.value === value && <Check size={14} className="mt-0.5 shrink-0 text-primary"/>}
             </button>)}
           </div>

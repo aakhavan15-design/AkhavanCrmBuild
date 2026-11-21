@@ -1,6 +1,7 @@
 import React from 'react';
 import { cn } from '../../lib/utils';
 import { CheckCircle2, AlertTriangle, AlertCircle, Clock, Info } from 'lucide-react';
+import { getPersianStatusLabel } from '../../lib/labels';
 
 export interface BadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
   variant?: 'default' | 'primary' | 'success' | 'warning' | 'danger' | 'info' | 'neutral';
@@ -63,7 +64,7 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({ status, label, size = 
   const normalized = status.toUpperCase();
   let variant: BadgeProps['variant'] = 'neutral';
   let icon: React.ReactNode = null;
-  let text = label || status;
+  let text = label || getPersianStatusLabel(status);
 
   switch (normalized) {
     case 'ACTIVE': case 'APPROVED': case 'COMPLETED': case 'WON': case 'CLEARED':
