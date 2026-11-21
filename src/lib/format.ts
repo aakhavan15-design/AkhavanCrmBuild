@@ -9,11 +9,12 @@ const wholeDecimalFormatter = new Intl.NumberFormat(FA);
 
 /** Preserves the precision of decimal strings returned by SQL Server. */
 export function formatDecimalString(value: string | null | undefined): string {
-  const match = typeof value === 'string' && /^(\d+)(?:\.(\d+))?$/.exec(value);
+  const match = typeof value === 'string' && /^(-?)(\d+)(?:\.(\d+))?$/.exec(value);
   if (!match) return 'نامشخص';
-  const whole = wholeDecimalFormatter.format(BigInt(match[1]));
-  const fraction = match[2]?.replace(/0+$/, '');
-  return fraction ? `${whole}٫${toPersianDigits(fraction)}` : whole;
+  const whole = wholeDecimalFormatter.format(BigInt(match[2]));
+  const fraction = match[3]?.replace(/0+$/, '');
+  const sign = match[1] && (BigInt(match[2]) !== 0n || fraction) ? '−' : '';
+  return fraction ? `${sign}${whole}٫${toPersianDigits(fraction)}` : `${sign}${whole}`;
 }
 
 export function formatNumber(

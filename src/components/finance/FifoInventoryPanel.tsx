@@ -62,8 +62,8 @@ export function FifoInventoryPanel({ userId, locale }: {
   );
 }
 
-function FifoLayerDialog({ run, locale, onClose }: {
-  run: FifoValuationRow;
+export function FifoLayerDialog({ run, locale, onClose }: {
+  run: Pick<FifoValuationRow, 'runId' | 'warehouseId' | 'productId'>;
   locale?: Parameters<typeof formatAppDate>[1];
   onClose: () => void;
 }) {

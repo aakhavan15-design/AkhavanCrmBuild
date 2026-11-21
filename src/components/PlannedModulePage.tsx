@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowRight, CircleDashed, ExternalLink, ListChecks } from 'lucide-react';
 import { AppState } from '../types';
 import { RBACService } from '../lib/rbac';
@@ -8,7 +8,6 @@ import { MODULE_LANDINGS } from '../lib/moduleLanding';
 import { PLANNED_DELIVERABLES, getPlannedModule } from '../lib/plannedModules';
 import { EmptyState } from './ui/EmptyState';
 import { Button } from './ui/Button';
-import { CashFlowPanel } from './finance/CashFlowPanel';
 
 interface PlannedModulePageProps { state: AppState }
 
@@ -34,6 +33,7 @@ export function PlannedModulePage({ state }: PlannedModulePageProps) {
   if (!item || !canAccess(item.perm)) {
     return <EmptyState surface="planned_module_page" title="بخش پیدا نشد" description="این بخش وجود ندارد یا سطح دسترسی شما اجازه مشاهده آن را نمی‌دهد." actionLabel="بازگشت" onAction={() => navigate(-1)} />;
   }
+  if (item.id === 'fin-liquidity') return <Navigate to="/finance?tab=treasury" replace />;
   const Icon = tileIcon;
 
   return (
@@ -54,11 +54,9 @@ export function PlannedModulePage({ state }: PlannedModulePageProps) {
           </div>
         </div>
         <p role="status" className="mt-4 rounded-xl border border-warning/30 bg-warning/10 px-3 py-2 text-caption leading-6 text-text-main">
-          وضعیت: <strong>{item.id === 'fin-liquidity' ? 'پیش‌نمایش موتور نقدینگی — اتصال واقعی نیازمند راستی‌آزمایی' : 'در دست تکمیل — ساخته‌نشده'}</strong>. ورودی منو برای جایگاه نهایی این بخش ثبت شده است؛ تا پیاده‌سازی و آزمون واقعی، داده یا عملکردی نمایش داده نمی‌شود.
+          وضعیت: <strong>در دست تکمیل — ساخته‌نشده</strong>. ورودی منو برای جایگاه نهایی این بخش ثبت شده است؛ تا پیاده‌سازی و آزمون واقعی، داده یا عملکردی نمایش داده نمی‌شود.
         </p>
       </section>
-
-      {item.id === 'fin-liquidity' && <section aria-label="جریان نقدینگی"><CashFlowPanel /></section>}
 
       <section className="rounded-3xl border border-border bg-surface px-4 py-4 sm:px-6" aria-label="نیازمندی‌ها">
         <h2 className="flex items-center gap-2 text-sm font-extrabold text-text-main"><ListChecks size={16} aria-hidden="true" /> نیازمندی‌های این بخش</h2>

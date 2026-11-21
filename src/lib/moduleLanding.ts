@@ -235,7 +235,7 @@ export const MODULE_LANDINGS: ModuleLandingDefinition[] = [
         tiles: [
           tile('finance-overview', 'نمای کلی مالی', 'خلاصه مطالبات، سررسیدها و وضعیت مالی', '/finance?tab=overview', 'finance', Gauge),
           tile('treasury', 'خزانه‌داری', 'نمای تجمیعی گردش وجوه و حساب‌ها', '/finance?tab=treasury', 'finance', Landmark),
-          tile('fin-liquidity', 'نقدینگی و حساب‌های بانکی', 'مانده بانک، پیش‌بینی و گردش', '/planned?item=fin-liquidity', 'finance', Coins),
+          tile('fin-liquidity', 'نقدینگی و حساب‌های بانکی', 'مانده بانک، پیش‌بینی و گردش', '/finance?tab=treasury', 'finance', Coins),
           tile('fin-cashbox', 'مدیریت صندوق', 'مانده و گردش صندوق', '/planned?item=fin-cashbox', 'finance', Wallet),
         ],
       },

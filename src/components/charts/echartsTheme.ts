@@ -353,3 +353,42 @@ export function heatmapOption(
     ],
   };
 }
+
+/** Accounting waterfall with crossing-zero movements and explicit total bars. */
+export function financialWaterfallOption(steps: { label: string; amount: number; total?: boolean }[]): Record<string, unknown> {
+  const base = neoBaseOption();
+  let balance = 0;
+  const bars = steps.map((step, index) => {
+    const from = step.total ? 0 : balance;
+    const to = step.total ? step.amount : from + step.amount;
+    balance = to;
+    return [index, from, to, step.amount, step.total ? 1 : 0];
+  });
+  const colors = [cssVar('--c-danger', 'currentColor'), cssVar('--c-success', 'currentColor'), cssVar('--c-cobalt', 'currentColor')];
+  return {
+    ...base,
+    tooltip: { ...(base.tooltip as object), trigger: 'item', renderMode: 'richText',
+      formatter: (params: { data: number[] }) => `${steps[params.data[0]].label}\n${formatMoney(params.data[3])}` },
+    xAxis: { ...(base.categoryAxis as object), type: 'category', inverse: true, data: steps.map(step => step.label),
+      axisLabel: { ...(base.categoryAxis as { axisLabel?: object }).axisLabel, interval: 0, width: 62, overflow: 'truncate' } },
+    yAxis: { ...(base.valueAxis as object), type: 'value',
+      axisLabel: { ...(base.valueAxis as { axisLabel?: object }).axisLabel,
+        formatter: (value: number) => formatMoneyCompact(value, '') } },
+    dataZoom: [{ type: 'inside', zoomOnMouseWheel: 'ctrl', moveOnMouseWheel: false, endValue: 6 }],
+    series: [{
+      type: 'custom',
+      encode: { x: 0, y: [1, 2] },
+      data: bars,
+      renderItem: (_: unknown, api: { value: (index: number) => number; coord: (point: number[]) => number[]; size: (range: number[]) => number[] }) => {
+        const [x, from] = api.coord([api.value(0), api.value(1)]);
+        const [, to] = api.coord([api.value(0), api.value(2)]);
+        const width = Math.min(36, Math.abs(api.size([1, 0])[0]) * 0.55);
+        return {
+          type: 'rect',
+          shape: { x: x - width / 2, y: Math.min(from, to), width, height: Math.max(1, Math.abs(to - from)) },
+          style: { fill: colors[api.value(4) ? 2 : api.value(3) < 0 ? 0 : 1] },
+        };
+      },
+    }],
+  };
+}

@@ -13,6 +13,7 @@ import { createAccountDirectory } from './accountDirectory.mjs';
 import { createInvoiceFifoEvidence } from './invoiceFifoEvidence.mjs';
 import { createCollectionReceiptEvidence } from './collectionReceiptEvidence.mjs';
 import { createTreasuryFlowReader } from './treasuryFlow.mjs';
+import { createMoneyIntelligenceReader, parseMoneyReportQuery } from './moneyIntelligence.mjs';
 import { createCollectionActions } from './collectionActions.mjs';
 import { createPublicRecruitment } from './publicRecruitment.mjs';
 import { buildReportStatus } from './reportStatus.mjs';
@@ -785,6 +786,18 @@ app.post('/api/v1/accounts/search', authenticate, requirePermission('accounts.VI
 const readTreasuryFlow = createTreasuryFlowReader({ sql, run: withTenantContext });
 app.get('/api/v1/finance/cash-flow', authenticate, requirePermission('finance.VIEW', { organizationWide: true }),
   wrap(async (req, res) => res.json(await readTreasuryFlow(req.auth))));
+
+const readMoneyIntelligence = createMoneyIntelligenceReader({ sql, run: withTenantContext });
+app.get('/api/v1/finance/money-intelligence', authenticate, requirePermission('finance.VIEW', { organizationWide: true }),
+  wrap(async (req, res) => {
+    res.set('Cache-Control', 'private, no-store');
+    if (entityDriverKind !== 'mssql') {
+      return bad(req, res, 503, 'MONEY_SOURCE_UNAVAILABLE', 'آینهٔ مالی ERP در دسترس نیست.');
+    }
+    const filter = parseMoneyReportQuery(req.query);
+    if (!filter) return bad(req, res, 400, 'INVALID_MONEY_FILTER', 'بازه یا فیلتر گزارش معتبر نیست.');
+    res.json(await readMoneyIntelligence(req.auth, filter));
+  }));
 
 const collectionReceiptEvidence = createCollectionReceiptEvidence({ sql, run: withTenantContext });
 app.get('/api/v1/finance/collection-promises/:id/evidence', authenticate, wrap(async (req, res) => {

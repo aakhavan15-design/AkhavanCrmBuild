@@ -31,6 +31,7 @@ import { queryJournalLines, buildDetailBalancesResult, type JournalLineFilter, t
 import { journalQueryParams } from '../lib/ledgerQueryParams.mjs';
 import { readCustomerProposalReceipt, type CustomerProposalReceipt } from '../lib/customerProposal';
 import { applyTaskWorkflow, type TaskWorkflowInput } from './taskWorkflow';
+import type { MoneyEvidenceFilter, MoneyEvidencePage, MoneyPeriod, MoneyReport } from './moneyIntelligence';
 
 export type TaskWorkflowCommand = Omit<TaskWorkflowInput, 'actorId' | 'at'> & { version: string };
 export interface TaskWorkflowRecord { task: Task; version: string }
@@ -284,6 +285,8 @@ export interface DataProvider {
   getDetailSubsidiaryBalances(options?: { detailKey?: string; byPeriod?: boolean }): Promise<DetailBalancesResult>;
   getLedgerPnlData(filter?: Pick<JournalLineFilter, 'fromDate' | 'toDate' | 'periodCode'>): Promise<LedgerPnlDataResult>;
   getCashFlowData(): Promise<CashFlowDataResult>;
+  getMoneyReport(period: MoneyPeriod): Promise<MoneyReport>;
+  getMoneyEvidence(period: MoneyPeriod, filter: MoneyEvidenceFilter): Promise<MoneyEvidencePage>;
 
   // HR & Payroll
   getPayslips(userId?: string, month?: string): Promise<Payslip[]>;
@@ -613,6 +616,14 @@ export class ClientStorageDataProvider implements DataProvider {
       (d.advanceRequests || []).forEach(a => { if (settledAdvanceIds.includes(a.id)) a.status = 'SETTLED'; });
     });
     return run;
+  }
+
+  async getMoneyReport(): Promise<MoneyReport> {
+    return { status: 'UNAVAILABLE', reason: 'گزارش مالی فقط از آینهٔ مجاز ERP در سرور خوانده می‌شود.' };
+  }
+
+  async getMoneyEvidence(): Promise<MoneyEvidencePage> {
+    throw new Error('ریز اسناد فقط از سرور در دسترس است.');
   }
 
   async getCashFlowData(): Promise<CashFlowDataResult> {
@@ -1047,6 +1058,25 @@ export class HttpBackendDataProvider implements DataProvider {
       method: 'POST',
       body: JSON.stringify({ periodMonth: month, dailyBasis: basis })
     });
+  }
+
+  async getMoneyReport(period: MoneyPeriod): Promise<MoneyReport> {
+    try {
+      const params = new URLSearchParams({ ...period });
+      return await this.request<MoneyReport>(`/finance/money-intelligence?${params}`);
+    } catch (error) {
+      if (error instanceof Error && 'status' in error && error.status === 403) {
+        return { status: 'RESTRICTED', reason: 'مشاهدهٔ گزارش تلفیقی به مجوز مالی در سطح سازمان نیاز دارد.' };
+      }
+      throw error;
+    }
+  }
+
+  async getMoneyEvidence(period: MoneyPeriod, filter: MoneyEvidenceFilter): Promise<MoneyEvidencePage> {
+    const params = new URLSearchParams({ ...period, mode: filter.mode, page: String(filter.page) });
+    if (filter.key !== undefined) params.set('key', filter.key);
+    if (filter.search) params.set('search', filter.search);
+    return this.request<MoneyEvidencePage>(`/finance/money-intelligence?${params}`);
   }
 
   async getCashFlowData(): Promise<CashFlowDataResult> {

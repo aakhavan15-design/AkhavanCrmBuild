@@ -1,0 +1,88 @@
+import { useState } from 'react';
+import { useDataQuery } from '../../hooks/useDataProvider';
+import { formatCount, formatDecimalString } from '../../lib/format';
+import { formatAppDate } from '../../lib/utils';
+import type { MoneyEvidenceFilter, MoneyInventoryPosition, MoneyPeriod } from '../../services/moneyIntelligence';
+import { BottomSheet } from '../ui/BottomSheet';
+import { Button } from '../ui/Button';
+import { Input } from '../ui/Input';
+import { EmptyState } from '../ui/EmptyState';
+import { LoadingState } from '../ui/LoadingState';
+import { FifoLayerDialog } from './FifoInventoryPanel';
+
+export type MoneyEvidenceSelection = Omit<MoneyEvidenceFilter, 'page' | 'search'> & { title: string };
+const issueLabels: Record<string, string> = {
+  CURRENCY: 'ارز خارج از مبنای ریال', STATUS: 'وضعیت بدون نگاشت', NUMBER: 'بدون شمارهٔ معتبر',
+  LINES: 'بدون ردیف', UNBALANCED: 'سند نامتوازن', MAPPING: 'کدینگ ناقص یا مبهم', CLOSING_CASH: 'گردش نقدی در سند بستن حساب‌ها',
+};
+
+export function MoneyEvidenceSheet({ selection, period, onClose }: {
+  selection: MoneyEvidenceSelection;
+  period: MoneyPeriod;
+  onClose: () => void;
+}) {
+  const [page, setPage] = useState(1);
+  const [draft, setDraft] = useState('');
+  const [search, setSearch] = useState('');
+  const [fifoRun, setFifoRun] = useState<MoneyInventoryPosition | null>(null);
+  const requestKey = JSON.stringify([period, selection.mode, selection.key, page, search]);
+  const { data, loading, error, refetch } = useDataQuery(async provider => ({
+    requestKey,
+    result: await provider.getMoneyEvidence(period, { mode: selection.mode, key: selection.key, page, search }),
+  }), [requestKey]);
+  const result = data?.requestKey === requestKey ? data.result : null;
+  const fifo = selection.mode === 'fifo';
+
+  if (fifoRun) return <FifoLayerDialog run={fifoRun} onClose={() => setFifoRun(null)} />;
+  return (
+    <BottomSheet isOpen onClose={onClose} title={selection.title} subtitle="ریز اسناد و ردیف‌های منبع" footer={
+      <nav className="flex w-full flex-wrap items-center justify-between gap-2" aria-label="صفحه‌بندی اسناد">
+        <Button type="button" variant="outline" disabled={page <= 1 || loading} onClick={() => setPage(page - 1)}>قبلی</Button>
+        <span className="text-caption">صفحهٔ {formatCount(page)}</span>
+        <Button type="button" variant="outline" disabled={!result?.hasMore || loading} onClick={() => setPage(page + 1)}>بعدی</Button>
+      </nav>
+    }>
+      <form className="mb-3 flex items-end gap-2" onSubmit={event => { event.preventDefault(); setPage(1); setSearch(draft.trim()); }}>
+        <div className="min-w-0 flex-1">
+          <Input label={fifo ? 'شناسهٔ کالا یا انبار' : 'شمارهٔ سند، فاکتور یا کد حساب'}
+            type="search" maxLength={100} value={draft} onChange={event => setDraft(event.target.value)} />
+        </div>
+        <Button type="submit" variant="outline">جست‌وجو</Button>
+      </form>
+      {loading ? <LoadingState label="در حال دریافت ریز اسناد" /> : error ? (
+        <EmptyState surface="finance_money_evidence" title="دریافت ریز اسناد ممکن نیست" actionLabel="تلاش دوباره" onAction={() => void refetch()} />
+      ) : !result?.items.length ? (
+        <EmptyState surface="finance_money_evidence" title="ردیف منطبق با این فیلتر یافت نشد" compact />
+      ) : <ul className="divide-y divide-border">
+        {result.items.map(row => 'runId' in row ? (
+          <li key={`${row.runId}-${row.warehouseId}`} className="flex flex-wrap items-center justify-between gap-2 py-3">
+            <div className="min-w-0 space-y-1 text-caption">
+              <p className="wrap-break-word font-bold">کالا <bdi>{row.productId}</bdi> · انبار <bdi>{row.warehouseId}</bdi></p>
+              <p>ارزش {formatDecimalString(row.amount)} ریال · مقدار {formatDecimalString(row.quantity)} <bdi>{row.unitCode}</bdi></p>
+              <p className="wrap-break-word text-text-secondary">تاریخ ارزش‌گذاری {formatAppDate(row.date)} · مرجع <bdi>{row.sourceProof}</bdi></p>
+            </div>
+            <Button type="button" variant="outline" size="sm" onClick={() => setFifoRun(row)}>لایه‌ها و اسناد</Button>
+          </li>
+        ) : (
+          <li key={row.lineId ?? row.journalId} className="grid gap-2 py-3 text-caption sm:grid-cols-[minmax(0,1fr)_auto]">
+            <div className="min-w-0 space-y-1 wrap-break-word">
+              <p className="font-bold">سند <bdi>{row.documentNumber || row.externalJournalId}</bdi> · {formatAppDate(row.date)}</p>
+              <p className="text-text-secondary">شناسهٔ ERP <bdi>{row.externalJournalId}</bdi></p>
+              {row.issue && <p className="text-warning">{issueLabels[row.issue] ?? 'نیازمند بررسی'}</p>}
+              {row.accountCode && <p>{row.accountTitle || 'حساب'} <bdi>{row.accountCode}</bdi>
+                {row.detailCode && <> · تفصیلی <bdi>{row.detailCode}</bdi></>}
+                {row.partyTitle && <> · {row.partyTitle}</>}</p>}
+              {(row.categoryTitle || row.centerTitle) && <p className="text-text-secondary">{[row.categoryTitle, row.centerTitle].filter(Boolean).join(' · ')}</p>}
+              {row.refId && <p className="text-text-secondary">مرجع سند <bdi>{row.refId}</bdi>
+                {row.refType && <> · <bdi>{row.refType}</bdi></>}</p>}
+            </div>
+            {row.lineId && <dl className="flex flex-wrap gap-3 tabular-nums">
+              <div><dt className="text-text-secondary">بدهکار</dt><dd>{formatDecimalString(row.debit)}</dd></div>
+              <div><dt className="text-text-secondary">بستانکار</dt><dd>{formatDecimalString(row.credit)}</dd></div>
+            </dl>}
+          </li>
+        ))}
+      </ul>}
+    </BottomSheet>
+  );
+}

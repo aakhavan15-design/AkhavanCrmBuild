@@ -48,6 +48,8 @@ import { InvoiceFifoSheet } from './finance/InvoiceFifoSheet';
 import { CollectionWorkbench } from './finance/CollectionWorkbench';
 import { CollectionActionDialog } from './finance/CollectionActionDialog';
 import { ProfitLossWidget } from './finance/ProfitLossWidget';
+import { MoneyIntelligencePanel } from './finance/MoneyIntelligencePanel';
+import { CashFlowPanel } from './finance/CashFlowPanel';
 import { 
   evaluateAllCustomerCollections, 
   CustomerCollectionProfile 
@@ -482,6 +484,14 @@ export function FinanceWorkspace({ state, updateState }: FinanceWorkspaceProps) 
 
       {costInvoice && <InvoiceFifoSheet key={costInvoice.id} invoiceId={costInvoice.id}
         invoiceNumber={costInvoice.invoiceNumber} locale={state.settings?.locale} onClose={() => setCostInvoice(null)} />}
+
+      {activeTab === 'treasury' && <>
+        <MoneyIntelligencePanel />
+        <details className="rounded-2xl border border-border bg-surface p-3">
+          <summary className="min-h-11 cursor-pointer content-center text-sm font-bold text-text-main">پیش‌بینی و سررسیدهای نقدینگی</summary>
+          <CashFlowPanel />
+        </details>
+      </>}
 
       {/* دریافتی‌ها و خزانه‌داری */}
       {(activeTab === 'payments' || activeTab === 'treasury') && (
