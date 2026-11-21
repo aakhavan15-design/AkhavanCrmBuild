@@ -513,6 +513,24 @@ app.get('/api/v1/ledger/credit-notes', authenticate, requirePermission('finance.
   res.json(projectCreditNoteEvidence(result.recordset));
 }));
 
+app.get('/api/v1/inventory/fifo/valuation', authenticate, requirePermission('finance.view', { organizationWide: true }), wrap(async (req, res) => {
+  if (entityDriverKind !== 'mssql') return bad(req, res, 503, 'FIFO_SOURCE_UNAVAILABLE', 'ارزش‌گذاری FIFO در دسترس نیست.');
+  const result = await withTenantContext(req.auth, transaction => new sql.Request(transaction)
+    .input('tenantId', sql.UniqueIdentifier, req.auth.tenantId)
+    .query(`SELECT TOP (26) run.RunId AS runId, run.SourceSystemCode AS sourceSystemCode,
+      run.ProductExternalId AS productId, run.UnitCode AS unitCode, run.CurrencyCode AS currencyCode,
+      run.PeriodStartUtc AS periodStart, run.ThroughUtc AS through, run.MethodCode AS method,
+      valuation.WarehouseExternalId AS warehouseId, CONVERT(varchar(40),valuation.Quantity) AS quantity,
+      CONVERT(varchar(42),valuation.Amount) AS amount
+      FROM analytics.FifoRun AS run
+      JOIN analytics.FifoValuation AS valuation ON valuation.TenantId=run.TenantId AND valuation.RunId=run.RunId
+      WHERE run.TenantId=@tenantId AND run.IsCurrent=1
+        AND EXISTS (SELECT 1 FROM security.fn_RecordReadScope(@tenantId,N'finance.view',NULL,NULL,NULL,NULL))
+      ORDER BY run.ThroughUtc DESC,run.PeriodStartUtc DESC,run.RunId DESC,valuation.WarehouseExternalId`));
+  const items = result.recordset.slice(0, 25);
+  res.json({ status: items.length ? 'AVAILABLE' : 'EMPTY', items, hasMore: result.recordset.length > items.length });
+}));
+
 // F0-14: tenant-scoped, permission-protected SQL ledger projection; no local fallback.
 app.get('/api/v1/ledger/balances', authenticate, requirePermission('finance.VIEW'), wrap(async (req, res) => {
   const detailKey = req.query.detailKey == null ? null : String(req.query.detailKey);

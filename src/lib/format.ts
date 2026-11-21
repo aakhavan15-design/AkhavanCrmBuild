@@ -5,6 +5,16 @@
 import { toPersianDigits } from './digits';
 
 const FA = 'fa-IR';
+const wholeDecimalFormatter = new Intl.NumberFormat(FA);
+
+/** Preserves the precision of decimal strings returned by SQL Server. */
+export function formatDecimalString(value: string | null | undefined): string {
+  const match = typeof value === 'string' && /^(\d+)(?:\.(\d+))?$/.exec(value);
+  if (!match) return 'نامشخص';
+  const whole = wholeDecimalFormatter.format(BigInt(match[1]));
+  const fraction = match[2]?.replace(/0+$/, '');
+  return fraction ? `${whole}٫${toPersianDigits(fraction)}` : whole;
+}
 
 export function formatNumber(
   value: number | null | undefined,

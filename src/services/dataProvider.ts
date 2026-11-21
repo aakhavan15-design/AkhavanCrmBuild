@@ -51,6 +51,26 @@ export interface CreditNoteEvidence {
   hasMore: boolean;
 }
 
+export interface FifoValuationRow {
+  runId: string;
+  sourceSystemCode: string;
+  productId: string;
+  warehouseId: string;
+  unitCode: string;
+  currencyCode: string;
+  periodStart: string;
+  through: string;
+  method: string;
+  quantity: string;
+  amount: string;
+}
+
+export interface FifoValuations {
+  status: 'AVAILABLE' | 'EMPTY' | 'UNAVAILABLE' | 'RESTRICTED';
+  items: FifoValuationRow[];
+  hasMore: boolean;
+}
+
 export interface ErpSyncConnectorOverview {
   id: string;
   displayName: string;
@@ -161,6 +181,7 @@ export interface DataProvider {
   getZoneAssignments(): Promise<ZoneAssignment[]>;
   getPaymentAllocations(): Promise<PaymentAllocation[]>;
   getCreditNoteEvidence(): Promise<CreditNoteEvidence>;
+  getFifoValuations(): Promise<FifoValuations>;
   
   // Financial Intelligence & Approval Center (Approval Intelligence / Financial 360 / Smart Accounting Classification)
   getApprovalContext(ref: ApprovalRef, opts?: ContextOptions): Promise<ApprovalContext | null>;
@@ -187,6 +208,9 @@ const MAX_PNL_JOURNAL_PAGES = 100;
  * 1. پیاده‌سازی ارائه‌دهنده داده سمت کلاینت (IndexedDB / Local-first)
  */
 export class ClientStorageDataProvider implements DataProvider {
+  async getFifoValuations(): Promise<FifoValuations> {
+    return { status: 'UNAVAILABLE', items: [], hasMore: false };
+  }
   async getCreditNoteEvidence(): Promise<CreditNoteEvidence> {
     return { status: 'UNAVAILABLE', items: [], hasMore: false };
   }
@@ -546,6 +570,15 @@ export class ClientStorageDataProvider implements DataProvider {
  * 2. پیاده‌سازی ارائه‌دهنده داده مستقیم به Backend سرور و SQL Server
  */
 export class HttpBackendDataProvider implements DataProvider {
+  async getFifoValuations(): Promise<FifoValuations> {
+    try {
+      const data = await this.request<FifoValuations>('/inventory/fifo/valuation');
+      if ((data?.status === 'AVAILABLE' || data?.status === 'EMPTY') && Array.isArray(data.items) && typeof data.hasMore === 'boolean') return data;
+    } catch (error) {
+      if (error instanceof Error && 'status' in error && error.status === 403) return { status: 'RESTRICTED', items: [], hasMore: false };
+    }
+    return { status: 'UNAVAILABLE', items: [], hasMore: false };
+  }
   async getCreditNoteEvidence(): Promise<CreditNoteEvidence> {
     try {
       const data = await this.request<CreditNoteEvidence>('/ledger/credit-notes');

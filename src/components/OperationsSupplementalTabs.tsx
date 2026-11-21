@@ -3,6 +3,7 @@ import { generateSecureId } from '../lib/secureId';
 import { ShoppingCart, ShieldCheck, Gauge } from 'lucide-react';
 import { EmptyState } from './ui/EmptyState';
 import { Card } from './ui/Card';
+import { FifoInventoryPanel } from './finance/FifoInventoryPanel';
 import { Button } from './ui/Button';
 import { Badge, StatusBadge } from './ui/Badge';
 import { Input, Select } from './ui/Input';
@@ -49,6 +50,7 @@ const catalogPageSize = 25;
 const catalogBrand = (brand: unknown) => typeof brand === 'string' ? brand.trim() : '';
 
 export function InventoryTab({ state }: { state: AppState }) {
+  const { can } = useCan(state);
   const [query, setQuery] = useState('');
   const [brand, setBrand] = useState('');
   const [page, setPage] = useState(1);
@@ -64,6 +66,7 @@ export function InventoryTab({ state }: { state: AppState }) {
   const visibleProducts = filtered.slice((activePage - 1) * catalogPageSize, activePage * catalogPageSize);
 
   return (
+    <div className="space-y-4">
     <Card className="space-y-4">
       <div>
         <h2 className="font-black text-text-main">کاتالوگ و وضعیت موجودی</h2>
@@ -143,6 +146,8 @@ export function InventoryTab({ state }: { state: AppState }) {
         </nav>
       )}
     </Card>
+    {can('finance', 'VIEW') && <FifoInventoryPanel userId={state.currentUserId} locale={state.settings?.locale} />}
+    </div>
   );
 }
 
