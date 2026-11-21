@@ -1,5 +1,7 @@
-import React, { useState, useMemo } from 'react';
-import { ResponsiveContainer, LineChart as RechartsLineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend } from 'recharts';
+import React, { useEffect, useState, useMemo } from 'react';
+import { EChartCard } from '../charts/EChartCard';
+import { ledgerTrendOption } from '../charts/echartsTheme';
+import { useTheme } from '../../theme/ThemeProvider';
 import { TrendingUp, ShieldAlert } from 'lucide-react';
 import { Card } from '../ui/Card';
 import { AppState } from '../../types';
@@ -18,6 +20,7 @@ interface ProfitLossWidgetProps {
 }
 
 export function ProfitLossWidget({ state, height = 240 }: ProfitLossWidgetProps) {
+  const { theme } = useTheme();
   const [period, setPeriod] = useState<'monthly' | 'quarterly' | 'annual'>('monthly');
   const storeState = useAppStore(s => s.state);
   const effectiveState = state ?? storeState;
@@ -60,6 +63,15 @@ export function ProfitLossWidget({ state, height = 240 }: ProfitLossWidgetProps)
     return pnlSeriesByJalali(rawLines, accounts, DEFAULT_REPORT_BUCKETS, granularity, limit);
   }, [rawLines, accounts, period]);
 
+  const [chartOption, setChartOption] = useState<Record<string, unknown>>({});
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => setChartOption(ledgerTrendOption(chartData.map(row => row.label), [
+      { name: 'فروش خالص', colorToken: '--c-success', values: chartData.map(row => row.revenue) },
+      { name: 'هزینه‌های عملیاتی', colorToken: '--c-danger', values: chartData.map(row => row.expenses) },
+      { name: 'سود عملیاتی', colorToken: '--c-primary', values: chartData.map(row => row.profit) },
+    ])));
+    return () => cancelAnimationFrame(frame);
+  }, [chartData, theme]);
   const hasData = chartData.some(d => d.revenue !== null || d.expenses !== null || d.profit !== null);
   const sum = (key: 'revenue' | 'expenses' | 'profit'): number | null => {
     const vals = chartData.map(d => d[key]).filter((v): v is number => v !== null);
@@ -139,29 +151,8 @@ export function ProfitLossWidget({ state, height = 240 }: ProfitLossWidgetProps)
       ) : !hasData ? (
         <EmptyState surface="profit_loss_widget" title="هنوز سند حسابداری نگاشت‌شده‌ای برای محاسبهٔ سود و زیان وجود ندارد" description="پس از همگام‌سازی اسناد دفتر کل و نگاشت سرفصل‌ها به سطل‌های گزارش، روند اینجا نمایش داده می‌شود." />
       ) : (
-      <div className="pt-2 w-full" style={{ height: `${height}px` }}>
-        <ResponsiveContainer width="100%" height="100%">
-          <RechartsLineChart data={chartData} margin={{ top: 10, right: 10, left: 10, bottom: 5 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="var(--c-border)" opacity={0.5} />
-            <XAxis dataKey="label" stroke="var(--c-ink-secondary)" fontSize={11} />
-            <YAxis 
-              stroke="var(--c-ink-secondary)" 
-              fontSize={10} 
-              tickFormatter={(val) => `${(val / 1000000).toLocaleString('fa-IR')} م`} 
-            />
-            <RechartsTooltip
-              formatter={(val: unknown) => [val === null || val === undefined ? '—' : `${formatCurrency(Number(val))} ریال`]}
-              contentStyle={{ backgroundColor: 'var(--c-surface)', borderColor: 'var(--c-border)', borderRadius: 'var(--c-radius-md)', fontSize: 'var(--font-size-caption)', color: 'var(--c-ink-main)' }}
-            />
-            <Legend 
-              wrapperStyle={{ fontSize: 'var(--font-size-caption)', paddingTop: '8px' }} 
-            />
-            <Line type="monotone" dataKey="revenue" name="فروش خالص" stroke="var(--c-success)" strokeWidth={2} dot={{ r: 3 }} />
-            <Line type="monotone" dataKey="expenses" name="هزینه‌های عملیاتی" connectNulls={false} stroke="var(--c-danger)" strokeWidth={2} dot={{ r: 3 }} />
-            <Line type="monotone" dataKey="profit" name="سود عملیاتی" stroke="var(--c-primary)" strokeWidth={2.5} dot={{ r: 4 }} />
-          </RechartsLineChart>
-        </ResponsiveContainer>
-      </div>
+        <EChartCard title="روند دوره‌ای دفتر کل" periodLabel="مبالغ به ریال"
+          sourceLabel="اسناد و نگاشت معتبر دفتر کل" height={height} option={chartOption} />
       )}
     </Card>
   );

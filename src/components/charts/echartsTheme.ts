@@ -1,3 +1,5 @@
+import { formatMoney, formatMoneyCompact, formatNumber } from '../../lib/format';
+
 /**
  * تم Neo برای Apache ECharts — هویت: Neo-Slate + Electric Indigo
  * رنگ‌ها از توکن‌های CSS خوانده می‌شوند تا Light/Dark درست بماند.
@@ -104,6 +106,32 @@ export function sparkLineOption(values: number[], color?: string): Record<string
   };
 }
 
+export function ledgerTrendOption(labels: string[], series: readonly {
+  name: string; values: (number | null)[]; colorToken: string;
+}[]): Record<string, unknown> {
+  const base = lineChartOption(labels, []);
+  const ink = cssVar('--c-ink-main', 'currentColor');
+  return {
+    ...base,
+    grid: { left: 10, right: 10, top: 36, bottom: 26, containLabel: true },
+    tooltip: {
+      ...(base.tooltip as object), renderMode: 'richText',
+      valueFormatter: (value: number | null) => formatMoney(value),
+    },
+    legend: { type: 'scroll', top: 4, textStyle: { color: ink } },
+    yAxis: {
+      ...(base.yAxis as { axisLabel?: object }),
+      axisLabel: { ...(base.yAxis as { axisLabel?: object }).axisLabel,
+        formatter: (value: number) => formatMoneyCompact(value, '') },
+    },
+    series: series.map(item => {
+      const color = cssVar(item.colorToken, 'currentColor');
+      return { name: item.name, type: 'line', data: item.values, connectNulls: false,
+        smooth: true, symbol: 'circle', symbolSize: 5, lineStyle: { width: 2, color }, itemStyle: { color } };
+    }),
+  };
+}
+
 export function lineChartOption(
   labels: string[],
   values: number[],
@@ -116,7 +144,7 @@ export function lineChartOption(
     tooltip: {
       ...(base.tooltip as object),
       valueFormatter: (v: number) =>
-        typeof v === 'number' ? v.toLocaleString('fa-IR') : String(v ?? ''),
+        typeof v === 'number' ? formatNumber(v) : String(v ?? ''),
     },
     xAxis: {
       type: 'category',
@@ -130,7 +158,7 @@ export function lineChartOption(
       axisLabel: {
         color: cssVar('--c-ink-faint', 'currentColor'),
         fontSize: 10,
-        formatter: (v: number) => v.toLocaleString('fa-IR'),
+        formatter: (v: number) => formatNumber(v),
       },
       splitLine: {
         lineStyle: { color: cssVar('--c-border', 'currentColor'), type: 'dashed' },

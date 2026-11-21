@@ -4,8 +4,8 @@ import { fNum, fPct, Segment } from './fmt';
 import { useCountUp } from '../../hooks/useCountUp';
 
 /** دونات لوکس: گرادیان هر بخش، سایه رنگی نرم، قرص مرکزی شیشه‌ای، حباب عددی (مطابق مرجع). */
-export function DonutChart({ segments, centerValue, centerLabel, size = 168, thickness = 18, showLegend = true, activeSegment, onSegmentClick }:
-  { segments: Segment[]; centerValue?: string | number; centerLabel?: string; size?: number; thickness?: number; showLegend?: boolean; activeSegment?: string | null; onSegmentClick?: (segment: Segment) => void }) {
+export function DonutChart({ segments, centerValue, centerLabel, size = 168, thickness = 18, showLegend = true, activeSegment, onSegmentClick, formatValue = fNum }:
+  { segments: Segment[]; centerValue?: string | number; centerLabel?: string; size?: number; thickness?: number; showLegend?: boolean; activeSegment?: string | null; onSegmentClick?: (segment: Segment) => void; formatValue?: (value: number) => string }) {
   const uid = useId().replace(/:/g, '');
   const [hot, setHot] = useState<number | null>(null);
   const animatedCenterValue = useCountUp(typeof centerValue === 'number' ? centerValue : 0, 850);
@@ -14,12 +14,12 @@ export function DonutChart({ segments, centerValue, centerLabel, size = 168, thi
   let a = 0;
   const visible = segments.filter(s => s.value > 0);
   const hovered = hot === null ? null : segments[hot];
-  const centerText = String(hovered ? fNum(hovered.value) : typeof centerValue === 'number' ? fNum(Math.round(animatedCenterValue)) : (centerValue ?? fNum(total)));
+  const centerText = String(hovered ? formatValue(hovered.value) : typeof centerValue === 'number' ? formatValue(Math.round(animatedCenterValue)) : (centerValue ?? formatValue(total)));
   return (
     <div className="flex flex-wrap items-center justify-center gap-6">
       <div className="relative shrink-0" style={{ width: size, height: size }}>
         <svg viewBox="0 0 120 120" width={size} height={size} role="img" className="se-donut" data-active={hot !== null ? 'true' : 'false'} style={{ ['--th' as Record<string, unknown>]: thickness }} onMouseLeave={() => setHot(null)}
-             aria-label={segments.map(s => `${s.label}: ${fNum(s.value)}`).join('، ')}>
+             aria-label={segments.map(s => `${s.label}: ${formatValue(s.value)}`).join('، ')}>
           <defs>
             {segments.map((s, i) => (
               <linearGradient key={i} id={`${uid}g${i}`} x1="0" y1="0" x2="1" y2="1">
@@ -33,7 +33,7 @@ export function DonutChart({ segments, centerValue, centerLabel, size = 168, thi
             const gap = visible.length > 1 ? Math.min(3, span / 4) : 0;
             const d = arc(60, 60, r, a + gap / 2, a + span - gap / 2); a += span;
             return <path key={i} d={d} fill="none" stroke={`url(#${uid}g${i})`} strokeWidth={thickness}
-                         strokeLinecap={visible.length > 1 ? 'round' : 'butt'} data-on={hot === i || activeSegment === s.label ? 'true' : 'false'} tabIndex={onSegmentClick ? 0 : -1} role={onSegmentClick ? 'button' : undefined} aria-pressed={onSegmentClick ? activeSegment === s.label : undefined} aria-label={`${s.label}: ${fNum(s.value)}${onSegmentClick ? '، برای فیلتر انتخاب کنید' : ''}`}
+                         strokeLinecap={visible.length > 1 ? 'round' : 'butt'} data-on={hot === i || activeSegment === s.label ? 'true' : 'false'} tabIndex={onSegmentClick ? 0 : -1} role={onSegmentClick ? 'button' : undefined} aria-pressed={onSegmentClick ? activeSegment === s.label : undefined} aria-label={`${s.label}: ${formatValue(s.value)}${onSegmentClick ? '، برای فیلتر انتخاب کنید' : ''}`}
                          onMouseEnter={() => setHot(i)} onFocus={() => setHot(i)} onBlur={() => setHot(null)} onTouchStart={() => setHot(i)} onClick={() => onSegmentClick?.(s)} onKeyDown={e => { if (onSegmentClick && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); onSegmentClick(s); } }} style={{ opacity: (hot === null && !activeSegment) || hot === i || activeSegment === s.label ? 1 : .38, cursor: onSegmentClick ? 'pointer' : 'default', transition: 'opacity 300ms ease, stroke-width 300ms ease' }} />;
           })}
         </svg>
@@ -53,7 +53,7 @@ export function DonutChart({ segments, centerValue, centerLabel, size = 168, thi
             <li key={s.label} className={`flex items-center gap-2.5 rounded-lg transition-colors ${activeSegment === s.label ? 'bg-primary/8 ring-1 ring-primary/20 px-2 py-1' : ''}`}>
               <i className="h-3 w-3 shrink-0 rounded-full shadow-sm" style={{ background: `linear-gradient(135deg, ${lighten(s.color, 30)}, ${s.color})` }} />
               <span>{s.label}</span>
-              <span className="ms-auto ps-3 font-mono font-medium text-ink-soft">{fNum(s.value)} · {total ? fPct((s.value / total) * 100) : fPct(0)}</span>
+              <span className="ms-auto ps-3 font-mono font-medium text-ink-soft">{formatValue(s.value)} · {total ? fPct((s.value / total) * 100) : fPct(0)}</span>
             </li>))}
         </ul>
       )}

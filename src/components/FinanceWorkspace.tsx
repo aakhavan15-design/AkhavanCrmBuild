@@ -40,7 +40,9 @@ import { ProgressiveDisclosure } from './shared/ProgressiveDisclosure';
 import { IntentSurface } from './shared/IntentSurface';
 import { DemoTrustBanner, isAuthoritativeActionAllowed } from './shared/DemoTrustBanner';
 import { CustomDatePicker } from './ui/CustomDatePicker';
-import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip as RechartsTooltip } from 'recharts';
+import { ChartCard } from './charts/ChartCard';
+import { DonutChart } from './charts/DonutChart';
+import { formatMoney, formatMoneyCompact } from '../lib/format';
 import { LineChart } from './charts/LineChart';
 import { CollectionActionDialog } from './finance/CollectionActionDialog';
 import { ProfitLossWidget } from './finance/ProfitLossWidget';
@@ -540,65 +542,14 @@ export function FinanceWorkspace({ state, updateState }: FinanceWorkspaceProps) 
       {/* هزینه‌ها */}
       {activeTab === 'expenses' && (
         <div className="space-y-3.5">
-          <Card padding="md" className="rounded-xl border border-border bg-surface p-4">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 mb-3">
-              <div>
-                <h2 className="text-xs font-bold text-text-main flex items-center gap-1.5">
-                  سهم مراکز هزینه در بودجه کلی (Cost Center Breakdown)
-                </h2>
-                <span className="text-mini text-text-secondary mt-0.5 block">
-                  توزیع مخارج عملیاتی و سرمایه‌ای سازمان
-                </span>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
-              <div className="h-56 w-full flex items-center justify-center">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={expenseCenterData}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={48}
-                      outerRadius={80}
-                      paddingAngle={3}
-                      dataKey="value"
-                    >
-                      {expenseCenterData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.fill} />
-                      ))}
-                    </Pie>
-                    <RechartsTooltip 
-                      formatter={(val: unknown) => [`${formatCurrency(Number(val))} ریال`, 'مبلغ']}
-                      contentStyle={{ backgroundColor: 'var(--c-surface)', borderColor: 'var(--c-border)', borderRadius: 'var(--c-radius-md)', fontSize: 'var(--font-size-caption)' }}
-                    />
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
-
-              <div className="space-y-2">
-                {expenseCenterData.map((c, i) => {
-                  const sum = expenseCenterData.reduce((a, b) => a + b.value, 0);
-                  const pct = sum > 0 ? Math.round((c.value / sum) * 100) : 0;
-                  return (
-                    <div key={i} className="flex items-center justify-between text-xs p-2 rounded-lg bg-canvas border border-border/70">
-                      <div className="flex items-center gap-2">
-                        <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: c.fill }} />
-                        <span className="font-medium text-text-main">{c.name}</span>
-                      </div>
-                      <div className="flex items-center gap-2 font-mono">
-                        <span className="text-text-secondary">{formatCurrency(c.value)} ریال</span>
-                        <span className="font-bold text-primary text-micro bg-primary-soft/40 px-1.5 py-0.5 rounded">
-                          {pct}٪
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </Card>
+          <ChartCard title="ترکیب هزینه‌های ثبت‌شده" periodLabel="مبالغ به ریال"
+            sourceLabel="اسناد هزینهٔ قابل مشاهده" empty={!expenseCenterData.some(item => item.value > 0)}
+            emptyMessage="مبلغ هزینه‌ای برای این نمودار ثبت نشده است">
+            <DonutChart segments={expenseCenterData.filter(item => item.value > 0)
+              .map(item => ({ label: item.name, value: item.value, color: item.fill }))}
+              centerValue={formatMoneyCompact(expenseCenterData.reduce((sum, item) => sum + Math.max(0, item.value), 0), '')}
+              centerLabel="جمع هزینه‌ها (ریال)" formatValue={formatMoney} size={158} />
+          </ChartCard>
 
           {/* لیست هزینه‌ها */}
           <div className="space-y-2">

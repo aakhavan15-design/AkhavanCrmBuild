@@ -1,4 +1,6 @@
-import React from 'react';
+import { useId } from 'react';
+import { useReducedMotion } from 'motion/react';
+import { formatNumber } from '../../lib/format';
 import { AreaChart, Area, ResponsiveContainer, Tooltip } from 'recharts';
 
 interface MiniChartProps {
@@ -16,6 +18,8 @@ export function MiniChart({
   isPositive = true,
   showTooltip = false,
 }: MiniChartProps) {
+  const gradientId = useId().replace(/:/g, '');
+  const reducedMotion = useReducedMotion();
   if (!data || data.length === 0) return null;
 
   const chartData = data.map((d, index) => ({
@@ -24,7 +28,6 @@ export function MiniChart({
   }));
 
   const strokeColor = color || (isPositive ? 'var(--c-success)' : 'var(--c-danger)');
-  const gradientId = `miniChartGrad-${Math.random().toString(36).substring(2, 9)}`;
 
   return (
     <div className="w-full select-none" style={{ height }}>
@@ -43,7 +46,7 @@ export function MiniChart({
                 if (active && payload && payload.length) {
                   return (
                     <div className="rounded-lg border border-border/60 bg-surface/95 px-2 py-0.5 text-micro font-bold text-text-main shadow-md backdrop-blur-xs">
-                      {Number(payload[0].value).toLocaleString('fa-IR')}
+                      {formatNumber(Number(payload[0].value))}
                     </div>
                   );
                 }
@@ -58,8 +61,8 @@ export function MiniChart({
             stroke={strokeColor}
             strokeWidth={1.75}
             fill={`url(#${gradientId})`}
-            isAnimationActive={true}
-            animationDuration={800}
+            isAnimationActive={!reducedMotion}
+            animationDuration={350}
           />
         </AreaChart>
       </ResponsiveContainer>

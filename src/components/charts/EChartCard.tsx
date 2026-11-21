@@ -1,4 +1,5 @@
-import React, { useMemo } from 'react';
+import { useMemo } from 'react';
+import { useReducedMotion } from 'motion/react';
 import ReactECharts from 'echarts-for-react';
 import { ChartCard, type ChartCardProps } from './ChartCard';
 
@@ -23,13 +24,14 @@ export function EChartCard({
   loading,
   ...cardProps
 }: EChartCardProps) {
+  const reducedMotion = useReducedMotion();
   const h = sparkline ? Math.min(height, 48) : height;
 
   const chart = useMemo(() => {
     if (empty || loading) return null;
     return (
       <ReactECharts
-        option={option}
+        option={reducedMotion ? { ...option, animation: false } : option}
         style={{ height: h, width: '100%' }}
         opts={{ renderer: 'svg' }}
         notMerge
@@ -37,7 +39,7 @@ export function EChartCard({
         onEvents={onEvents}
       />
     );
-  }, [option, h, empty, loading, onEvents]);
+  }, [option, h, empty, loading, onEvents, reducedMotion]);
 
   return (
     <ChartCard {...cardProps} empty={empty} loading={loading} height={sparkline ? undefined : h + 56}>

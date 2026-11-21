@@ -1,5 +1,6 @@
 import { useId } from 'react';
 import { lighten } from './geometry';
+import { formatNumber } from '../../lib/format';
 import { fCompact } from './fmt';
 
 export interface Bar { label: string; value: number }
@@ -10,7 +11,7 @@ export function BarChart({ data, highlight, color = 'var(--color-chart-1)', rtl 
   const W = 300, top = 18, base = height - 24, max = Math.max(...data.map(d => d.value), 1);
   const slot = W / Math.max(data.length, 1), bw = Math.min(24, slot * 0.52);
   return (
-    <svg viewBox={`0 0 ${W} ${height}`} className="w-full" role="img" aria-label={data.map(d => `${d.label}: ${d.value}`).join('، ')}>
+    <svg viewBox={`0 0 ${W} ${height}`} className="w-full" role="img" aria-label={data.map(d => `${d.label}: ${formatNumber(d.value)}`).join('، ')}>
       <defs>
         <linearGradient id={`${id}n`} x1="0" y1="0" x2="0" y2="1"><stop offset="0" style={{ stopColor: lighten(color, 28) }} /><stop offset="1" style={{ stopColor: color }} /></linearGradient>
         <linearGradient id={`${id}h`} x1="0" y1="0" x2="0" y2="1"><stop offset="0" style={{ stopColor: lighten(color, 18) }} /><stop offset="1" stopColor={color} /></linearGradient>
@@ -18,7 +19,7 @@ export function BarChart({ data, highlight, color = 'var(--color-chart-1)', rtl 
       {[0, 1, 2, 3].map(i => { const y = top + ((base - top) * i) / 3;
         return <line key={i} x1="0" x2={W} y1={y} y2={y} stroke="var(--color-chart-grid)" strokeOpacity="1" strokeDasharray={i === 3 ? undefined : '2 5'} />; })}
       {data.map((d, k) => {
-        const i = rtl ? data.length - 1 - k : k, h = Math.max(((base - top) * d.value) / max, bw), x = i * slot + (slot - bw) / 2, cx = i * slot + slot / 2;
+        const i = rtl ? data.length - 1 - k : k, h = Math.max(0, ((base - top) * d.value) / max), x = i * slot + (slot - bw) / 2, cx = i * slot + slot / 2;
         return (
           <g key={d.label + k}>
             <rect x={x} y={base - h} width={bw} height={h} rx={Math.min(5, bw / 3)} fill={`url(#${id}${k === highlight ? 'h' : 'n'})`} />

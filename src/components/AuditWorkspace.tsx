@@ -1,13 +1,13 @@
 import React, { useMemo, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
-  AlertTriangle, ArrowRight, BarChart3, CheckCircle2, CircleHelp, Filter,
+  AlertTriangle, ArrowRight, CheckCircle2, CircleHelp, Filter,
   RefreshCw, SearchCheck, ShieldAlert, ShieldCheck, Sparkles
 } from 'lucide-react';
-import {
-  Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer,
-  Tooltip, XAxis, YAxis
-} from 'recharts';
+import { BarChart } from './charts/BarChart';
+import { ChartCard } from './charts/ChartCard';
+import { DonutChart } from './charts/DonutChart';
+import { formatCount } from '../lib/format';
 import type { AppState } from '../types';
 import { useCan } from '../hooks/useCan';
 import {
@@ -18,7 +18,7 @@ import { Card } from './ui/Card';
 import { getActiveDataProvider } from '../services/dataProvider';
 import { EmptyState } from './ui/EmptyState';
 
-const fa = (n: number) => n.toLocaleString('fa-IR');
+const fa = formatCount;
 const DOMAIN_META: Record<QualityDomain, { label: string; short: string }> = {
   CUSTOMER: { label: 'اطلاعات مشتریان', short: 'مشتریان' },
   ROUTE: { label: 'مسیر و زون مشتریان', short: 'مسیرها' },
@@ -209,40 +209,17 @@ export function AuditWorkspace({ state }: { state: AppState }) {
           </section>
 
           <section className="grid grid-cols-1 gap-3 lg:grid-cols-5">
-            <Card padding="md" className="min-w-0 lg:col-span-3">
-              <div className="mb-2 flex items-center justify-between gap-2">
-                <div><h2 className="text-sm font-black text-text-main">توزیع مغایرت بر اساس حوزه</h2><p className="text-micro text-text-muted">تعداد یافته‌های موتور کنترل</p></div>
-                <BarChart3 size={17} className="text-primary" />
-              </div>
-              <div className="h-52 w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={chartData} margin={{ top: 8, right: 4, left: 0, bottom: 4 }}>
-                    <CartesianGrid vertical={false} stroke="var(--c-border)" strokeDasharray="3 5" />
-                    <XAxis dataKey="name" tick={{ fill: 'var(--c-ink-muted)', fontSize: 11 }} axisLine={false} tickLine={false} />
-                    <YAxis allowDecimals={false} width={32} tick={{ fill: 'var(--c-ink-muted)', fontSize: 10 }} axisLine={false} tickLine={false} />
-                    <Tooltip cursor={{ fill: 'var(--c-sunken)' }} contentStyle={{ direction: 'rtl', borderRadius: 12, border: '1px solid var(--c-border)', background: 'var(--c-surface)', color: 'var(--c-text-primary)', fontSize: 12 }} />
-                    <Bar dataKey="count" name="تعداد" fill="var(--c-primary)" radius={[7,7,0,0]} maxBarSize={42} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </Card>
-            <Card padding="md" className="min-w-0 lg:col-span-2">
-              <div className="mb-2 flex items-center justify-between">
-                <div><h2 className="text-sm font-black text-text-main">ترکیب شدت مغایرت‌ها</h2><p className="text-micro text-text-muted">بر اساس یافته‌های قابل نمایش</p></div>
-                <ShieldAlert size={17} className="text-warning" />
-              </div>
-              {severityData.length ? <div className="relative h-52">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart><Pie data={severityData} dataKey="value" nameKey="name" innerRadius={54} outerRadius={78} paddingAngle={3}>
-                    {severityData.map(entry => <Cell key={entry.name} fill={entry.color} />)}
-                  </Pie><Tooltip contentStyle={{ direction: 'rtl', borderRadius: 12, border: '1px solid var(--c-border)', background: 'var(--c-surface)', color: 'var(--c-text-primary)', fontSize: 12 }} /></PieChart>
-                </ResponsiveContainer>
-                <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center"><strong className="text-2xl font-black tabular-nums text-text-main">{fa(high + medium + low)}</strong><span className="text-micro text-text-muted">یافته</span></div>
-              </div> : <div className="grid h-52 place-items-center text-xs text-text-muted">داده‌ای برای نمودار شدت وجود ندارد.</div>}
-              <div className="flex flex-wrap justify-center gap-3 text-micro text-text-secondary">
-                {severityData.map(x => <span key={x.name} className="inline-flex items-center gap-1.5"><i className="h-2 w-2 rounded-full" style={{ background: x.color }} />{x.name}: {fa(x.value)}</span>)}
-              </div>
-            </Card>
+            <ChartCard title="توزیع مغایرت بر اساس حوزه" periodLabel="تعداد یافته‌ها"
+              sourceLabel="موتور کنترل داده‌های قابل مشاهده" className="min-w-0 lg:col-span-3"
+              empty={!chartData.length}>
+              <BarChart data={chartData.map(item => ({ label: item.name, value: item.count }))} />
+            </ChartCard>
+            <ChartCard title="ترکیب شدت مغایرت‌ها" periodLabel="تعداد یافته‌ها به تفکیک شدت"
+              sourceLabel="موتور کنترل داده‌های قابل مشاهده" className="min-w-0 lg:col-span-2"
+              empty={!severityData.length} emptyMessage="یافته‌ای برای نمایش شدت وجود ندارد">
+              <DonutChart segments={severityData.map(item => ({ label: item.name, value: item.value, color: item.color }))}
+                centerLabel="یافته" formatValue={formatCount} size={152} />
+            </ChartCard>
           </section>
 
           {notEvaluated.length > 0 && <Card padding="md" className="border-warning/25 bg-warning/5">
