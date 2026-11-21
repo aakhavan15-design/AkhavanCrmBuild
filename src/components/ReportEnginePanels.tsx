@@ -29,6 +29,7 @@ import { DEFAULT_REPORT_BUCKETS } from '../lib/accountingMapping';
 import { negotiationEffectiveness } from '../lib/negotiationErpLifecycle';
 import { DonutChart, FunnelChart } from './charts';
 import { ReceivablesLifoPanel } from './reports/ReceivablesLifoPanel';
+import { PurchaseCycleFollowUp } from './reports/PurchaseCycleFollowUp';
 import { LineChart } from './charts/LineChart';
 import { ProfitWaterfallChart } from './charts/ProfitWaterfallChart';
 import { DrilldownSheet, DrilldownRow } from './shared/DrilldownSheet';
@@ -1127,6 +1128,7 @@ export function ReportEnginePanels({ state, visibleInvoices, visiblePayments, vi
 
         {selected === 4 && (
           <div className="space-y-4">
+            {canReport('quotes','VIEW') && <PurchaseCycleFollowUp viewer={state.currentUserId || ''} accounts={visibleAccounts} canCreate={canReport('tasks','CREATE')} />}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               <Metric label={lifecycleFilter ? `مشتریان ${lifecycleLabel(lifecycleFilter)}` : 'کل مشتریان خریدار'} value={nf(lifecycleCustomerRows.length)} />
               <Metric label="ارزش فروش فیلتر" value={`${formatCurrency(lifecycleCustomerRows.reduce((sum, r) => sum + r.amount, 0))} ریال`} />

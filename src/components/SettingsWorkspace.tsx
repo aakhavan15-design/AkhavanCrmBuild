@@ -223,7 +223,7 @@ export function SettingsWorkspace({ state, updateState }: SettingsWorkspaceProps
 
   const handleOrgNumber = (key: 'churnRiskDays' | 'churnRiskMinSales', raw: string) => {
     if (!can('settings', 'EDIT')) return denied('تغییر سیاست‌های سازمان');
-    const n = Number(raw.replace(/[^\d]/g, ''));
+    const n = Number(toLatinDigits(raw).replace(/[^\d]/g, ''));
     updateState(draft => {
       if (!draft.settings) draft.settings = {} as Record<string, unknown>;
       if (!(draft.settings as Record<string, unknown>).orgConfig) (draft.settings as Record<string, unknown>).orgConfig = {};
