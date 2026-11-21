@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { applyTaskWorkflow } from '../src/services/taskWorkflow.ts';
+import { isRequestId } from './taskRequestContract.mjs';
 import { isMarkedFixture } from '../src/lib/stateModel.mjs';
 
 export class TaskWorkflowError extends Error {
@@ -15,6 +16,7 @@ const conflict = () => new TaskWorkflowError(409, 'TASK_VERSION_CONFLICT', 'وظ
 
 export function createTaskWorkflowStore({ sql, run, excludeFixtures = false }) {
   async function read(tx, auth, id, forUpdate) {
+    if (typeof id==='string' && isRequestId(id.toLowerCase())) throw notFound();
     const result = await new sql.Request(tx)
       .input('tenantId', sql.UniqueIdentifier, auth.tenantId)
       .input('id', sql.NVarChar(200), id)

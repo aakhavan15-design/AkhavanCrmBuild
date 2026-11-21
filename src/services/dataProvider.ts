@@ -1,3 +1,5 @@
+import type { TaskRequestApprovalPolicy, TaskRequestCommand, TaskRequestInput, TaskRequestPolicyKind,
+  TaskRequestRecord, TaskRequestSummary, TaskRequestView } from './taskRequests';
 import type { 
   AppState, 
   Account, 
@@ -278,6 +280,15 @@ export interface DataProvider {
   createTask(task: Partial<Task>, idempotencyKey?: string): Promise<Task>;
   updateTask(id: string, patch: Partial<Task>): Promise<Task>;
   getTaskWorkflow(id: string): Promise<TaskWorkflowRecord>;
+  listTaskRequests(view:TaskRequestView,search:string,page:number): Promise<{items:TaskRequestSummary[];hasMore:boolean}>;
+  getTaskRequest(id:string): Promise<TaskRequestRecord>;
+  submitTaskRequest(input:TaskRequestInput): Promise<TaskRequestRecord>;
+  changeTaskRequest(id:string,input:TaskRequestCommand): Promise<TaskRequestRecord | {task:null;version:string}>;
+  getTaskRequestDirectory(search:string): Promise<{items:{id:string;name:string}[]}>;
+  getTaskRequestResources(type:'ORDER'|'PRODUCT',accountId:string,search:string): Promise<{items:{id:string;title:string;unit?:string;sku?:string}[]}>;
+  getTaskRequestPolicies(): Promise<{items:(TaskRequestApprovalPolicy & {kind:TaskRequestPolicyKind})[]}>;
+  saveTaskRequestPolicy(kind:TaskRequestPolicyKind,policy:TaskRequestApprovalPolicy): Promise<TaskRequestApprovalPolicy>;
+
   changeTaskWorkflow(id: string, command: TaskWorkflowCommand): Promise<TaskWorkflowRecord>;
   
   // Finance
@@ -533,6 +544,15 @@ export class ClientStorageDataProvider implements DataProvider {
   async getTaskById(id: string): Promise<Task | null> {
     return (this.getState().tasks || []).find(t => t.id === id) || null;
   }
+
+  async listTaskRequests(): Promise<{items:TaskRequestSummary[];hasMore:boolean}> { return {items:[],hasMore:false}; }
+  async getTaskRequest(): Promise<TaskRequestRecord> { throw new Error('پروندهٔ درخواست به اتصال سرور نیاز دارد.'); }
+  async submitTaskRequest(): Promise<TaskRequestRecord> { throw new Error('ثبت درخواست به اتصال سرور نیاز دارد.'); }
+  async changeTaskRequest(): Promise<TaskRequestRecord> { throw new Error('گردش درخواست به اتصال سرور نیاز دارد.'); }
+  async getTaskRequestDirectory(): Promise<{items:{id:string;name:string}[]}> { return {items:[]}; }
+  async getTaskRequestResources(): Promise<{items:{id:string;title:string;unit?:string;sku?:string}[]}> { return {items:[]}; }
+  async getTaskRequestPolicies(): Promise<{items:(TaskRequestApprovalPolicy & {kind:TaskRequestPolicyKind})[]}> { return {items:[]}; }
+  async saveTaskRequestPolicy(): Promise<TaskRequestApprovalPolicy> { throw new Error('ثبت سیاست تأیید به اتصال سرور نیاز دارد.'); }
 
   async getTaskWorkflow(id: string): Promise<TaskWorkflowRecord> {
     const task = await this.getTaskById(id);
@@ -1000,6 +1020,31 @@ export class HttpBackendDataProvider implements DataProvider {
 
   async getTaskById(id: string): Promise<Task | null> {
     return this.request<Task>(`/tasks/${id}`);
+  }
+
+  async listTaskRequests(view:TaskRequestView,search:string,page:number): Promise<{items:TaskRequestSummary[];hasMore:boolean}> {
+    return this.request(`/tasks/requests?${new URLSearchParams({view,search,page:String(page)})}`);
+  }
+  async getTaskRequest(id:string): Promise<TaskRequestRecord> {
+    return this.request(`/tasks/requests/${encodeURIComponent(id)}`);
+  }
+  async submitTaskRequest(input:TaskRequestInput): Promise<TaskRequestRecord> {
+    return this.request('/tasks/requests',{method:'POST',body:JSON.stringify(input)});
+  }
+  async changeTaskRequest(id:string,input:TaskRequestCommand): Promise<TaskRequestRecord | {task:null;version:string}> {
+    return this.request(`/tasks/requests/${encodeURIComponent(id)}/actions`,{method:'POST',body:JSON.stringify(input)});
+  }
+  async getTaskRequestDirectory(search:string): Promise<{items:{id:string;name:string}[]}> {
+    return this.request(`/tasks/request-directory?${new URLSearchParams({search})}`);
+  }
+  async getTaskRequestResources(type:'ORDER'|'PRODUCT',accountId:string,search:string): Promise<{items:{id:string;title:string;unit?:string;sku?:string}[]}> {
+    return this.request(`/tasks/request-resources?${new URLSearchParams({type,accountId,search})}`);
+  }
+  async getTaskRequestPolicies(): Promise<{items:(TaskRequestApprovalPolicy & {kind:TaskRequestPolicyKind})[]}> {
+    return this.request('/tasks/request-policies');
+  }
+  async saveTaskRequestPolicy(kind:TaskRequestPolicyKind,policy:TaskRequestApprovalPolicy): Promise<TaskRequestApprovalPolicy> {
+    return this.request(`/tasks/request-policies/${kind}`,{method:'PUT',body:JSON.stringify(policy)});
   }
 
   async getTaskWorkflow(id: string): Promise<TaskWorkflowRecord> {

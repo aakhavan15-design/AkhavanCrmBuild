@@ -23,6 +23,7 @@ import { recordId } from '../src/lib/stateModel.mjs';
 import { projectLedgerBalances } from './ledgerBalances.mjs';
 import { parseJournalQuery } from './ledgerJournalQuery.mjs';
 import { createOfficialLedgerReader, parseLedgerSource } from './officialLedgerReads.mjs';
+import { createTaskRequests } from './taskRequests.mjs';
 import { createTaskWorkflowStore, parseTaskWorkflowInput, TaskWorkflowError } from './taskWorkflowStore.mjs';
 import { creditNoteEvidenceSql, projectCreditNoteEvidence, CREDIT_NOTE_EVIDENCE_LIMIT } from './creditNoteEvidence.mjs';
 
@@ -875,6 +876,30 @@ app.post('/api/v1/state/bootstrap', authenticate, guardEntityDriver, wrap(async 
   if (!result.ok) return bad(req, res, 413, result.error, 'حجم داده بارگذاری از حد مجاز بیشتر است.', { limit: result.limit });
   res.json(result);
 }));
+
+const taskRequests = createTaskRequests({sql,run:withTenantContext});
+const taskRequestRoute = handler => wrap(async (req,res) => {
+  res.set('Cache-Control','private, no-store');
+  if (entityDriverKind!=='mssql') return bad(req,res,503,'REQUEST_BACKEND_REQUIRED','ثبت و پیگیری درخواست به سرور SQL نیاز دارد.');
+  try {
+    const result = await handler(req);
+    res.status(req.method==='POST' && !result.replayed ? 201 : 200).json(result);
+  } catch (error) {
+    if (typeof error.status!=='number' || !String(error.code).startsWith('REQUEST_') &&
+      !['APPROVAL_POLICY_UNAVAILABLE','WATCHER_NOT_ALLOWED'].includes(error.code)) throw error;
+    return bad(req,res,error.status,error.code,error.message);
+  }
+});
+app.get('/api/v1/tasks/requests',authenticate,taskRequestRoute(req => taskRequests.list(req.auth,req.query)));
+app.post('/api/v1/tasks/requests',authenticate,taskRequestRoute(req => taskRequests.create(req.auth,req.body)));
+app.get('/api/v1/tasks/request-directory',authenticate,requirePermission('tasks.VIEW'),taskRequestRoute(req => taskRequests.users(req.auth,req.query.search ?? '')));
+app.get('/api/v1/tasks/request-resources',authenticate,taskRequestRoute(req => taskRequests.resources(req.auth,req.query)));
+app.get('/api/v1/tasks/request-policies',authenticate,requirePermission('settings.manage',{organizationWide:true}),
+  taskRequestRoute(req => taskRequests.readPolicies(req.auth)));
+app.put('/api/v1/tasks/request-policies/:kind',authenticate,requirePermission('settings.manage',{organizationWide:true}),
+  taskRequestRoute(req => taskRequests.savePolicy(req.auth,req.params.kind,req.body)));
+app.get('/api/v1/tasks/requests/:id',authenticate,taskRequestRoute(req => taskRequests.read(req.auth,req.params.id)));
+app.post('/api/v1/tasks/requests/:id/actions',authenticate,taskRequestRoute(req => taskRequests.change(req.auth,req.params.id,req.body)));
 
 const taskWorkflowStore = createTaskWorkflowStore({ sql, run: withTenantContext, excludeFixtures: isProduction });
 app.route('/api/v1/tasks/:id/workflow').all(authenticate).get(wrap(taskWorkflowEndpoint(false))).post(wrap(taskWorkflowEndpoint(true)));

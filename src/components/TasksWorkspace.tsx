@@ -1,3 +1,6 @@
+import { TaskRequestPolicyEditor } from './tasks/TaskRequestPolicyEditor';
+import { QuickTaskRequest } from './tasks/QuickTaskRequest';
+import { TaskRequestsPanel,TaskRequestSheet } from './tasks/TaskRequestsPanel';
 import { JournalFollowUpTaskEvidence } from './finance/JournalCoveragePanel';
 import { useCan } from '../hooks/useCan';
 import { useDataQuery } from '../hooks/useDataProvider';
@@ -68,6 +71,16 @@ export function TasksWorkspace({ state, updateState }: TasksWorkspaceProps) {
   }, [searchParams]);
   
   const [showTaskModal, setShowTaskModal] = useState(false);
+  const [viewRequests,setViewRequests]=useState(true);
+  const [requestCreate,setRequestCreate]=useState(false);
+  const [policyOpen,setPolicyOpen]=useState(false);
+  const [requestId,setRequestId]=useState<string | null>(null);
+  const [requestRefresh,setRequestRefresh]=useState(0);
+  useEffect(()=>{
+    const id=searchParams.get('request');
+    if (id?.startsWith('taskreq-')) {setRequestId(id);setViewRequests(true);}
+  },[searchParams]);
+
   const [editingTask, setEditingTask] = useState<CustomerTask | null>(null);
   const [showAttachModalFor, setShowAttachModalFor] = useState<ID | null>(null);
   const [workflowTaskId, setWorkflowTaskId] = useState<ID | null>(null);
@@ -161,6 +174,7 @@ export function TasksWorkspace({ state, updateState }: TasksWorkspaceProps) {
   useDeepLinkCreate(() => openNewTaskModalRef.current());
   const openNewTaskModal = () => {
     if (!can('tasks', 'CREATE')) return denied('ایجاد وظیفه');
+    if (viewRequests) {setRequestCreate(true);return;}
     setEditingTask(null);
     setErrorMsg('');
     setShowTaskModal(true);
@@ -450,7 +464,16 @@ export function TasksWorkspace({ state, updateState }: TasksWorkspaceProps) {
       </div>
 
       <div id="task-list" data-tour-primary className="flex-1 overflow-y-auto min-h-0 px-2 sm:px-4 pb-28 pt-1">
-        {filteredTasks.length > 0 ? (
+        <div className="mb-2 flex flex-wrap gap-1" role="group" aria-label="نمای کارتابل مشترک">
+          <Button type="button" size="sm" variant={viewRequests ? 'soft' : 'ghost'} aria-pressed={viewRequests}
+            onClick={()=>setViewRequests(true)}>درخواست‌ها</Button>
+          <Button type="button" size="sm" variant={!viewRequests ? 'soft' : 'ghost'} aria-pressed={!viewRequests}
+            onClick={()=>setViewRequests(false)}>وظایف</Button>
+          {viewRequests && can('settings','EDIT') && <Button type="button" size="sm" variant="ghost"
+            onClick={()=>setPolicyOpen(true)}>سیاست تأیید</Button>}
+        </div>
+        {viewRequests ? <TaskRequestsPanel viewer={currentUserId} search={debouncedSearchQuery} refresh={requestRefresh} onOpen={setRequestId}/>
+          : filteredTasks.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
             {filteredTasks.map(task => {
               const acc = visibleAccounts.find(a => a.id === (task.accountId || task.customerId));
@@ -488,6 +511,14 @@ export function TasksWorkspace({ state, updateState }: TasksWorkspaceProps) {
           />
         )}
       </div>
+
+      {policyOpen && <TaskRequestPolicyEditor viewer={currentUserId} onClose={()=>setPolicyOpen(false)}/>}
+      <QuickTaskRequest key={currentUserId} open={requestCreate} viewer={currentUserId} accounts={visibleAccounts}
+        onClose={()=>setRequestCreate(false)} onSaved={id=>{
+          setRequestCreate(false);setRequestId(id);setViewRequests(true);setRequestRefresh(value=>value+1);
+        }}/>
+      {requestId && <TaskRequestSheet key={`${currentUserId}:${requestId}`} id={requestId} viewer={currentUserId} accounts={visibleAccounts}
+        onClose={()=>setRequestId(null)} onChanged={()=>setRequestRefresh(value=>value+1)}/>}
 
       <Modal
         isOpen={showTaskModal}

@@ -117,9 +117,9 @@ export class MssqlEntityDriver {
                 record.TenantId,LOWER(record.CollectionName),N'finance.view',record.JsonDoc
               )
             ))
-            AND (LOWER(record.CollectionName)<>N'tasks' OR EXISTS (
+            AND (LOWER(record.CollectionName)<>N'tasks' OR (record.EntityId NOT LIKE N'taskreq-%' AND EXISTS (
               SELECT 1 FROM security.fn_TaskEntityScope(record.TenantId,record.JsonDoc,'VIEW')
-            ))
+            )))
             AND (LOWER(record.CollectionName) NOT IN (N'groups',N'messages') OR EXISTS (
               SELECT 1 FROM sync.EntityStore AS conversation
               CROSS APPLY OPENJSON(conversation.JsonDoc,'$.memberIds') AS membership
@@ -128,6 +128,7 @@ export class MssqlEntityDriver {
                 AND conversation.EntityId=CASE WHEN record.CollectionName=N'groups' THEN record.EntityId ELSE JSON_VALUE(record.JsonDoc,'$.groupId') END
                 AND TRY_CONVERT(uniqueidentifier, membership.value)=TRY_CONVERT(uniqueidentifier,SESSION_CONTEXT(N'UserId'))
             ))
+            AND (LOWER(record.CollectionName)<>N'attachments' OR record.EntityId NOT LIKE N'request-file-%')
             AND (LOWER(record.CollectionName)<>N'attachments' OR
               ISNULL(JSON_VALUE(record.JsonDoc,'$.entityType'),N'')<>N'APPLICATION' OR EXISTS (
                 SELECT 1 FROM security.fn_RecordReadScope(record.TenantId,N'users.manage',NULL,NULL,NULL,NULL)
@@ -264,7 +265,9 @@ export class MssqlEntityDriver {
                   EntityId nvarchar(200) '$.i', JsonDoc nvarchar(max) '$.j', IsDelete bit '$.d') AS incoming
                 LEFT JOIN sync.EntityStore AS previous WITH (UPDLOCK,HOLDLOCK)
                   ON previous.TenantId=@tenantId AND previous.CollectionName=incoming.CollectionName AND previous.EntityId=incoming.EntityId
-                WHERE (
+                WHERE incoming.EntityId NOT LIKE N'taskreq-%'
+                  AND JSON_QUERY(incoming.JsonDoc,'$.managedRequest') IS NULL
+                  AND (
                   (previous.EntityId IS NULL AND incoming.IsDelete=0)
                   OR EXISTS (SELECT 1 FROM security.fn_TaskEntityScope(@tenantId,previous.JsonDoc,
                     CASE WHEN incoming.IsDelete=1 THEN 'DELETE' ELSE 'EDIT' END))
@@ -458,6 +461,12 @@ export function createEntityService({ driver, registry, hasPermission, excludeFi
       for (const rec of list) {
         const id = recordId(rec, name, registry);
         if (!id) { rejected.push({ collection: name, reason: 'MISSING_ID' }); continue; }
+        const scopeName=name.toLowerCase(), scopeId=String(id).toLowerCase();
+        if ((scopeName==='tasks' && (scopeId.startsWith('taskreq-') || rec.managedRequest!=null))
+          || (scopeName==='attachments' && (scopeId.startsWith('request-file-') || String(rec.entityType).toUpperCase()==='TASK_REQUEST'))) {
+          rejected.push({collection:name,id,reason:'TASK_REQUEST_REQUIRED'});
+          continue;
+        }
         if (excludeFixtures && isMarkedFixture(rec, id)) { rejected.push({ collection: name, id, reason: 'TEST_DATA_FORBIDDEN' }); continue; }
         if (bytes(rec) > LIMITS.maxRecordBytes) { rejected.push({ collection: name, id, reason: 'RECORD_TOO_LARGE' }); continue; }
         (upserts[name] ||= []).push({ __id: id, json: rec }); total++;
@@ -467,7 +476,13 @@ export function createEntityService({ driver, registry, hasPermission, excludeFi
       if (name.toLowerCase() === 'collectionpromises') { rejected.push({ collection: name, reason: 'FORBIDDEN_CONTRACT' }); continue; }
       if (!NAME_RE.test(name) || !canonical(name) || !Array.isArray(ids)) { rejected.push({ collection: name, reason: 'INVALID_COLLECTION' }); continue; }
       if (!(await canWrite(name))) { rejected.push({ collection: name, reason: 'FORBIDDEN', count: ids.length }); continue; }
-      deletes[name] = ids.filter((id) => typeof id === 'string' && id.length > 0 && id.length <= 200); total += deletes[name].length;
+      deletes[name] = ids.filter(id => {
+        if (typeof id!=='string' || !id.length || id.length>200) return false;
+        const reserved=(name.toLowerCase()==='tasks' && id.toLowerCase().startsWith('taskreq-'))
+          || (name.toLowerCase()==='attachments' && id.toLowerCase().startsWith('request-file-'));
+        if (reserved) rejected.push({collection:name,id,reason:'TASK_REQUEST_REQUIRED'});
+        return !reserved;
+      }); total+=deletes[name].length;
     }
     for (const [key, value] of Object.entries(change?.singletons || {})) {
       if (!NAME_RE.test(key) || privateNames.has(key.toLowerCase())) { rejected.push({ collection: key, reason: 'INVALID_SINGLETON' }); continue; }
