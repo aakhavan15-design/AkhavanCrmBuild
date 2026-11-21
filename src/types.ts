@@ -477,6 +477,7 @@ export interface Notification {
   recipientId?: string;
   dedupeKey?: string;
   entityId?: string;
+  taskReminder?: { stage: string; dueDate: string };
 }
 
 export interface BusinessEvent {

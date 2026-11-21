@@ -110,6 +110,14 @@ export class MssqlEntityDriver {
             AND (LOWER(record.CollectionName)<>N'tasks' OR EXISTS (
               SELECT 1 FROM security.fn_TaskEntityScope(record.TenantId,record.JsonDoc,'VIEW')
             ))
+            AND (LOWER(record.CollectionName)<>N'notifications' OR (
+              (LEN(JSON_VALUE(record.JsonDoc,'$.recipientId'))=36
+                AND TRY_CONVERT(uniqueidentifier,JSON_VALUE(record.JsonDoc,'$.recipientId'))=TRY_CONVERT(uniqueidentifier,SESSION_CONTEXT(N'UserId')))
+              OR (JSON_VALUE(record.JsonDoc,'$.recipientId') IS NULL
+                AND JSON_QUERY(record.JsonDoc,'$.taskReminder') IS NULL
+                AND NOT (ISNULL(JSON_VALUE(record.JsonDoc,'$.linkTab'),N'')=N'tasks'
+                  AND ISNULL(JSON_VALUE(record.JsonDoc,'$.dedupeKey'),N'') LIKE N'%|%|[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]%'))
+            ))
           ORDER BY CreatedAtUtc, EntityId`)).recordset;
       const version = (await new sql.Request(tx).input('tenantId', sql.UniqueIdentifier, tenantId)
         .query('SELECT ISNULL(MAX(Version),0) AS V FROM sync.EntityStore WHERE TenantId=@tenantId')).recordset[0]?.V || 0;
@@ -142,6 +150,51 @@ export class MssqlEntityDriver {
       for (const partition of partitions) {
         for (let at = 0; at < partition.length; at += 400) {
           let chunk = partition.slice(at, at + 400);
+          const reminders = chunk.flatMap((row, index) =>
+            row.c.toLowerCase() === 'notifications' && row.i.toLowerCase().startsWith('task-reminder-') ? [{ ...row, index }] : [],
+          );
+          if (reminders.length) {
+            const permission = await new sql.Request(tx)
+              .input('tenantId', sql.UniqueIdentifier, tenantId)
+              .input('userId', sql.UniqueIdentifier, userId)
+              .input('reminders', sql.NVarChar(sql.MAX), JSON.stringify(reminders))
+              .query(`SELECT incoming.RowIndex,
+                CASE WHEN previous.EntityId IS NOT NULL AND
+                  (JSON_VALUE(previous.JsonDoc,'$.read')=N'true' OR JSON_VALUE(incoming.JsonDoc,'$.read')<>N'true')
+                  THEN 1 ELSE 0 END AS Unchanged
+                FROM OPENJSON(@reminders) WITH (RowIndex int '$.index', CollectionName nvarchar(80) '$.c',
+                  EntityId nvarchar(200) '$.i', JsonDoc nvarchar(max) '$.j', IsDelete bit '$.d') AS incoming
+                LEFT JOIN sync.EntityStore AS previous WITH (UPDLOCK,HOLDLOCK)
+                  ON previous.TenantId=@tenantId AND previous.CollectionName=incoming.CollectionName AND previous.EntityId=incoming.EntityId
+                CROSS APPLY (VALUES(JSON_VALUE(incoming.JsonDoc,'$.recipientId'),JSON_VALUE(incoming.JsonDoc,'$.entityId'),
+                  JSON_VALUE(incoming.JsonDoc,'$.taskReminder.dueDate'))) AS reminder(RecipientId,TaskId,DueDate)
+                WHERE incoming.IsDelete=0 AND LEN(reminder.RecipientId)=36
+                  AND TRY_CONVERT(uniqueidentifier,reminder.RecipientId)=@userId
+                  AND JSON_VALUE(incoming.JsonDoc,'$.read') IN (N'true',N'false')
+                  AND (
+                    (previous.EntityId IS NOT NULL AND previous.IsDeleted=0
+                      AND JSON_VALUE(previous.JsonDoc,'$.recipientId')=reminder.RecipientId
+                      AND JSON_VALUE(previous.JsonDoc,'$.dedupeKey')=JSON_VALUE(incoming.JsonDoc,'$.dedupeKey')
+                      AND JSON_VALUE(previous.JsonDoc,'$.entityId')=reminder.TaskId)
+                    OR (previous.EntityId IS NULL AND EXISTS (
+                      SELECT 1 FROM sync.EntityStore AS task
+                      CROSS APPLY security.fn_TaskEntityScope(@tenantId,task.JsonDoc,'VIEW') AS visible
+                      WHERE task.TenantId=@tenantId AND task.CollectionName=N'tasks' AND task.EntityId=reminder.TaskId
+                        AND task.IsDeleted=0 AND ISNULL(JSON_VALUE(task.JsonDoc,'$.isDeleted'),N'false')<>N'true'
+                        AND NULLIF(JSON_VALUE(task.JsonDoc,'$.deletedAt'),N'') IS NULL
+                        AND LEFT(JSON_VALUE(task.JsonDoc,'$.dueDate'),10)=reminder.DueDate
+                        AND UPPER(ISNULL(JSON_VALUE(task.JsonDoc,'$.status'),N'')) NOT IN (N'COMPLETED',N'CANCELLED',N'CANCELED',N'VOID',N'DELETED')
+                    ))
+                  )`);
+            const allowed = new Map(permission.recordset.map(row => [row.RowIndex, row]));
+            const remove = new Set();
+            for (const reminder of reminders) {
+              const decision = allowed.get(reminder.index);
+              if (!decision) rejected.push({ collection: reminder.c, id: reminder.i, reason: 'FORBIDDEN_SCOPE' });
+              if (!decision || decision.Unchanged) remove.add(reminder.index);
+            }
+            chunk = chunk.filter((_, index) => !remove.has(index));
+          }
           const tasks = chunk.flatMap((row, index) => row.c.toLowerCase() === 'tasks' ? [{ ...row, index }] : []);
           if (tasks.length) {
             const permissions = await new sql.Request(tx)

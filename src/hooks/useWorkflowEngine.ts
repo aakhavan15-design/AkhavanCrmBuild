@@ -1,17 +1,18 @@
 import { useEffect, useRef } from 'react';
-import { AppState } from '../types';
+import type { AppState } from '../types';
 import { generateId } from '../lib/utils';
 import { processPendingJobs, evaluateAutomations } from '../lib/automation';
 import { triggerAgentHooks } from '../lib/agents';
 import { getHighValueQuoteThreshold } from '../lib/orgPolicy';
-import { computeTaskReminders, localDateStr, slaFromDue } from '../lib/reminders';
+import { computeTaskReminders, isReminderActive, localDateStr, slaFromDue, taskReminderId } from '../lib/reminders';
 
-export function useWorkflowEngine(state: AppState, updateState: unknown) {
+export function useWorkflowEngine(state: AppState, updateState: (updater: (draft: AppState) => AppState | void) => void) {
   const stateRef = useRef(state);
   stateRef.current = state;
 
   useEffect(() => {
     let timeoutId: number;
+    let cancelled = false;
 
     const runEngine = async () => {
       if (!stateRef.current) return;
@@ -36,16 +37,22 @@ export function useWorkflowEngine(state: AppState, updateState: unknown) {
 
       await processPendingJobs(stateRef.current, updateState);
 
+      const snapshot = stateRef.current;
+      const now = new Date();
+      const tz = (snapshot.settings as Record<string, unknown>)?.timeZone as string | undefined;
+      const reminderIds = new Map(await Promise.all(computeTaskReminders(snapshot, now, tz)
+        .filter(event => event.recipientId === snapshot.currentUserId)
+        .map(async event => [event.key, await taskReminderId(event.key)] as const)));
+      if (cancelled) return;
+
       updateState((draft: AppState) => {
         let stateChanged = false;
-        const tz = (draft.settings as Record<string, unknown>)?.timeZone as string | undefined;
-        const now = new Date();
         const today = localDateStr(now, tz);
 
         if (!draft.notifications) draft.notifications = [];
         if (!draft.tasks) draft.tasks = [];
 
-        draft.tasks.filter(t => t.status !== 'COMPLETED').forEach(task => {
+        draft.tasks.filter(isReminderActive).forEach(task => {
           const calculatedSla = slaFromDue(task.dueDate, today);
 
           if (task.slaStatus !== calculatedSla) {
@@ -54,16 +61,26 @@ export function useWorkflowEngine(state: AppState, updateState: unknown) {
           }
         });
 
-        // یادآوری‌های ۷/۲/۰ روز، معوق و Escalation — ضدتکرار با reminderLog؛ گیرنده واقعی روی اعلان ثبت می‌شود
-        if (!draft.reminderLog) draft.reminderLog = {};
-        computeTaskReminders(draft, now, tz).forEach(ev => {
-          draft.reminderLog![ev.key] = now.toISOString();
-          draft.notifications!.push({ id: generateId(), title: ev.title, message: ev.message, type: ev.type, read: false, createdAt: now.toISOString(), linkTab: 'tasks', recipientId: ev.recipientId, dedupeKey: ev.key, entityId: ev.taskId });
+        for (const event of computeTaskReminders(draft, now, tz)) {
+          const id = reminderIds.get(event.key);
+          if (!id || event.recipientId !== draft.currentUserId) continue;
+          draft.reminderLog ??= {};
+          draft.reminderLog[event.key] = now.toISOString();
+          draft.notifications.push({
+            id, title: event.title, message: event.message, type: event.type, read: false,
+            createdAt: now.toISOString(), linkTab: 'tasks', recipientId: event.recipientId,
+            dedupeKey: event.key, entityId: event.taskId, taskReminder: { stage: event.stage, dueDate: event.dueDate },
+          });
           stateChanged = true;
-        });
-        // لغو یادآوری‌های خوانده‌نشده برای وظایف تکمیل‌شده
-        const doneIds = new Set((draft.tasks || []).filter(t => t.status === 'COMPLETED').map(t => t.id));
-        draft.notifications!.forEach(n => { if (!n.read && n.dedupeKey && n.entityId && doneIds.has(n.entityId)) { n.read = true; stateChanged = true; } });
+        }
+        const closedIds = new Set(draft.tasks.filter(task => !isReminderActive(task)).map(task => task.id));
+        for (const notification of draft.notifications) {
+          if (notification.taskReminder && notification.recipientId === draft.currentUserId && !notification.read &&
+              notification.entityId && closedIds.has(notification.entityId)) {
+            notification.read = true;
+            stateChanged = true;
+          }
+        }
 
         const threshold = getHighValueQuoteThreshold(draft);
         (draft.quotes || []).filter(q => q.totalAmount > threshold && q.status === 'DRAFT').forEach(quote => {
@@ -82,7 +99,7 @@ export function useWorkflowEngine(state: AppState, updateState: unknown) {
           }
         });
 
-        return stateChanged ? draft : false;
+        if (stateChanged) return draft;
       });
 
       timeoutId = window.setTimeout(runEngine, 30000);
@@ -91,6 +108,7 @@ export function useWorkflowEngine(state: AppState, updateState: unknown) {
     timeoutId = window.setTimeout(runEngine, 5000);
 
     return () => {
+      cancelled = true;
       if (timeoutId) clearTimeout(timeoutId);
     };
   }, [updateState]);

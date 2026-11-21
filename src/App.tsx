@@ -116,7 +116,8 @@ function AppContent() {
   }, [state?.settings?.uiScale, state?.settings?.performanceMode]);
 
   const visibleNotifications = useMemo(() => (state?.notifications || []).filter(n =>
-    !n.recipientId || n.recipientId === state?.currentUserId
+    n.recipientId ? n.recipientId === state?.currentUserId
+      : !n.taskReminder && !(n.linkTab === 'tasks' && /\|(D7|D2|D0|OVERDUE|ESCALATION)\|\d{4}-\d{2}-\d{2}/.test(n.dedupeKey ?? ''))
   ), [state?.notifications, state?.currentUserId]);
 
   useEffect(() => {
