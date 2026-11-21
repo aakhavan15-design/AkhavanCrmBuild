@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 import fs from 'node:fs';
 import { createEntityService, FileEntityDriver, MssqlEntityDriver, MemoryEntityDriver } from './entityStore.mjs';
 import { createAccountDirectory } from './accountDirectory.mjs';
+import { createCollectionReceiptEvidence } from './collectionReceiptEvidence.mjs';
 import { createTreasuryFlowReader } from './treasuryFlow.mjs';
 import { createCollectionActions } from './collectionActions.mjs';
 import { createPublicRecruitment } from './publicRecruitment.mjs';
@@ -774,6 +775,18 @@ app.post('/api/v1/accounts/search', authenticate, requirePermission('accounts.VI
 const readTreasuryFlow = createTreasuryFlowReader({ sql, run: withTenantContext });
 app.get('/api/v1/finance/cash-flow', authenticate, requirePermission('finance.VIEW', { organizationWide: true }),
   wrap(async (req, res) => res.json(await readTreasuryFlow(req.auth))));
+
+const collectionReceiptEvidence = createCollectionReceiptEvidence({ sql, run: withTenantContext });
+app.get('/api/v1/finance/collection-promises/:id/evidence', authenticate, wrap(async (req, res) => {
+  const result = await collectionReceiptEvidence.list(req.auth, req.params.id, req.query.page);
+  if (!result.body) return bad(req, res, result.status, 'COLLECTION_EVIDENCE_UNAVAILABLE', result.message);
+  res.json(result.body);
+}));
+app.post('/api/v1/finance/collection-promises/:id/evidence', authenticate, wrap(async (req, res) => {
+  const result = await collectionReceiptEvidence.attach(req.auth, req.params.id, req.body?.paymentId, req.correlationId);
+  if (!result.body) return bad(req, res, result.status, 'COLLECTION_EVIDENCE_REJECTED', result.message);
+  res.json(result.body);
+}));
 
 const submitCollectionAction = createCollectionActions({ sql, run: withTenantContext });
 app.post('/api/v1/finance/collections/:accountId/actions', authenticate, wrap(async (req, res) => {

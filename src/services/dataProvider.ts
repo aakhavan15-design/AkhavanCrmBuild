@@ -190,6 +190,24 @@ export interface CollectionActionInput {
   followUp?: boolean;
 }
 
+export interface CollectionReceiptDocument {
+  id: string;
+  source: string;
+  reference: string;
+  externalId: string;
+  date: string;
+  amount: string;
+  syncedAt: string;
+}
+export interface CollectionReceiptPage {
+  promiseId: string;
+  current: CollectionReceiptDocument | null;
+  invalidated: boolean;
+  items: CollectionReceiptDocument[];
+  page: number;
+  hasMore: boolean;
+}
+
 export interface PublicRecruitmentConfig {
   company: string;
   requiredDocs: Array<{ key: string; label: string; required: boolean }>;
@@ -234,6 +252,8 @@ export interface DataProvider {
   changeTaskWorkflow(id: string, command: TaskWorkflowCommand): Promise<TaskWorkflowRecord>;
   
   // Finance
+  getCollectionReceiptEvidence(promiseId: string, page: number): Promise<CollectionReceiptPage>;
+  linkCollectionReceipt(promiseId: string, paymentId: string): Promise<CollectionReceiptDocument>;
   submitCollectionAction(accountId: string, input: CollectionActionInput): Promise<{ id: string }>;
   getInvoices(filter?: any, pagination?: PaginationParams): Promise<PaginatedResult<Invoice>>;
   getPayments(filter?: any, pagination?: PaginationParams): Promise<PaginatedResult<Payment>>;
@@ -288,6 +308,12 @@ const MAX_PNL_JOURNAL_PAGES = 100;
  */
 export class ClientStorageDataProvider implements DataProvider {
   async searchAccountDirectory(): Promise<null> { return null; }
+  async getCollectionReceiptEvidence(): Promise<CollectionReceiptPage> {
+    throw new Error('بررسی سند ERP نیازمند اتصال به سرور است.');
+  }
+  async linkCollectionReceipt(): Promise<CollectionReceiptDocument> {
+    throw new Error('ثبت مدرک وصول نیازمند اتصال به سرور است.');
+  }
   async submitCollectionAction(): Promise<{ id: string }> {
     throw new Error('ثبت پیگیری وصول نیازمند اتصال به سرور است.');
   }
@@ -667,6 +693,20 @@ export class ClientStorageDataProvider implements DataProvider {
 export class HttpBackendDataProvider implements DataProvider {
   async searchAccountDirectory(query: string, page: number): Promise<AccountDirectoryPage> {
     return this.request('/accounts/search', { method: 'POST', body: JSON.stringify({ query, page }) });
+  }
+  async getCollectionReceiptEvidence(promiseId: string, page: number): Promise<CollectionReceiptPage> {
+    return this.request(`/finance/collection-promises/${encodeURIComponent(promiseId)}/evidence?page=${page}`);
+  }
+  async linkCollectionReceipt(promiseId: string, paymentId: string): Promise<CollectionReceiptDocument> {
+    const result = await this.request<{ promiseId: string; status: string; payment: CollectionReceiptDocument }>(
+      `/finance/collection-promises/${encodeURIComponent(promiseId)}/evidence`, {
+        method: 'POST', body: JSON.stringify({ paymentId }),
+      });
+    if (result?.status !== 'RECORDED' || result.promiseId !== promiseId
+      || result.payment?.id?.toLowerCase() !== paymentId.toLowerCase()) {
+      throw new Error('تأیید معتبر ثبت مدرک از سرور دریافت نشد.');
+    }
+    return result.payment;
   }
   async submitCollectionAction(accountId: string, input: CollectionActionInput): Promise<{ id: string }> {
     const receipt = await this.request<{ id: string; status: string }>(`/finance/collections/${encodeURIComponent(accountId)}/actions`, {

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { Account, AppState } from '../../types';
-import type { CustomerCollectionProfile, RiskLevel } from '../../services/collectionEngine';
+import type { CollectionPromiseRecord, CustomerCollectionProfile, RiskLevel } from '../../services/collectionEngine';
 import type { LedgerAgingCustomer } from '../../services/agingBuckets';
 import type { CollectionActionInput } from '../../services/dataProvider';
 import { resolveCustomerBalanceView, type DetailBalancesResult } from '../../lib/receivableReconciliation';
@@ -10,6 +10,7 @@ import type { FilterGroup } from '../../lib/tableEngine';
 import { DataTable, DetailField, DetailGroup, type DataTableColumn } from '../ui/DataTable';
 import { SubsidiaryBalanceDetails } from '../shared/SubsidiaryBalancesPanel';
 import { Button } from '../ui/Button';
+import { CollectionReceiptSheet } from './CollectionReceiptSheet';
 import { BatchCollectionFollowUp } from './BatchCollectionFollowUp';
 
 const riskLabels: Record<RiskLevel, string> = { LOW: 'کم', MEDIUM: 'متوسط', HIGH: 'زیاد', CRITICAL: 'بحرانی' };
@@ -60,6 +61,14 @@ interface Props {
 
 export function CollectionWorkbench({ state, accounts, profiles, balances, aging, today, loading, onRetry,
   canPromise, canFollowUp, assignees, onAction, onNotice }: Props) {
+  const [receipt, setReceipt] = useState<CollectionPromiseRecord | null>(null);
+  const closedByAccount = new Map<string, CollectionPromiseRecord[]>();
+  const promises = (state as unknown as { collectionPromises?: CollectionPromiseRecord[] }).collectionPromises || [];
+  for (const promise of promises) if (promise.status === 'FULFILLED' && promise.receiptEvidence) {
+    const rows = closedByAccount.get(promise.accountId) || [];
+    rows.push(promise);
+    closedByAccount.set(promise.accountId, rows);
+  }
   const [batch, setBatch] = useState<CollectionRow[] | null>(null);
   const accountsById = new Map(accounts.map(account => [account.id, account]));
   const agingById = new Map(aging.map(row => [row.id, row]));
@@ -126,15 +135,28 @@ export function CollectionWorkbench({ state, accounts, profiles, balances, aging
           {!row.profile.activePromises.length ? <p className="text-caption text-text-secondary">تعهد بازی ثبت نشده است.</p>
             : <ul className="space-y-2">{row.profile.activePromises.map(promise => <li key={promise.id} className="rounded-lg bg-canvas p-2 text-caption">
               <p className="font-semibold">{formatMoney(promise.promisedAmount)} · {formatAppDate(promise.promisedDate, state.settings?.locale)}</p>
-              <p className="text-text-secondary">{promise.promisedDate < today ? 'سررسید گذشته؛ نیازمند بررسی' : 'در انتظار پیگیری'}</p>
+              <p className="text-text-secondary">{promise.receiptEvidence ? 'نیازمند راستی‌آزمایی مجدد سند'
+                : promise.promisedDate < today ? 'سررسید گذشته؛ نیازمند بررسی' : 'در انتظار پیگیری'}</p>
+              <Button type="button" variant="ghost" size="sm" onClick={() => setReceipt(promise)}>بررسی سند ERP</Button>
             </li>)}</ul>}
         </DetailGroup>
+        {(closedByAccount.get(row.profile.accountId) || []).length > 0 && <DetailGroup title="تعهدهای دارای مدرک ERP">
+          <ul className="space-y-2">{closedByAccount.get(row.profile.accountId)?.map(promise => <li key={promise.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-canvas p-2 text-caption">
+            <strong>{formatMoney(promise.promisedAmount)} · {formatAppDate(promise.promisedDate, state.settings?.locale)}</strong>
+            <Button type="button" variant="ghost" size="sm" onClick={() => setReceipt(promise)}>مشاهدهٔ مدرک</Button>
+          </li>)}</ul>
+        </DetailGroup>}
+
       </>}
       detailFooter={row => <div className="flex flex-wrap gap-2">
         {canPromise(row.profile.accountId) && <Button variant="soft" onClick={() => onAction('PROMISE', row.profile)}>ثبت تعهد</Button>}
         {canFollowUp && <Button variant="outline" onClick={() => onAction('FOLLOW_UP', row.profile)}>پیگیری در تقویم</Button>}
       </div>}
     />
+    {receipt && <CollectionReceiptSheet key={receipt.id} promise={receipt}
+      locale={state.settings?.locale} canEdit={canPromise(receipt.accountId)}
+      onClose={() => setReceipt(null)}
+      onRecorded={() => { onNotice('سند ERP ثبت و تعهد بسته شد. وضعیت واریز بانکی جداگانه بررسی می‌شود.'); setReceipt(null); }} />}
     {batch && <BatchCollectionFollowUp
       accounts={batch.map(row => ({ id: row.profile.accountId, name: row.profile.accountName }))}
       assignees={assignees} currentUserId={state.currentUserId || ''}

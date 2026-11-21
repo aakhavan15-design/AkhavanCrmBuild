@@ -3,6 +3,7 @@
 // data is always persisted, and `profile()` reports which typed columns the product actually needs next.
 // Drivers: memory (tests), file (local dev without SQL Server), mssql (production, RLS via SESSION_CONTEXT).
 import fs from 'node:fs';
+import { collectionReceiptMatchesSql } from './collectionReceiptEvidence.mjs';
 import { CHAT_COLLECTIONS, isConversationMember, canChangeConversation, canChangeConversationMessage } from './conversationScope.mjs';
 import path from 'node:path';
 import {
@@ -96,7 +97,15 @@ export class MssqlEntityDriver {
     const { sql } = this;
     return this.run({ tenantId, userId }, async (tx) => {
       const rows = (await new sql.Request(tx).input('tenantId', sql.UniqueIdentifier, tenantId)
-        .query(`SELECT CollectionName, EntityId, JsonDoc FROM sync.EntityStore AS record
+        .query(`SELECT record.CollectionName, record.EntityId,
+          CASE WHEN record.CollectionName=N'collectionPromises'
+            AND JSON_VALUE(record.JsonDoc,'$.receiptEvidence.id') IS NOT NULL
+            AND NOT EXISTS (SELECT 1 FROM crm.PaymentMirror AS payment
+              WHERE payment.PaymentMirrorId=TRY_CONVERT(uniqueidentifier,JSON_VALUE(record.JsonDoc,'$.receiptEvidence.id'))
+                AND ${collectionReceiptMatchesSql('record')})
+            THEN JSON_MODIFY(record.JsonDoc,'$.status','PENDING')
+            ELSE record.JsonDoc END AS JsonDoc
+          FROM sync.EntityStore AS record
           WHERE record.TenantId=@tenantId AND record.IsDeleted=0
             AND (LOWER(record.CollectionName) NOT IN (${sqlCollectionList(PARTY_COLLECTIONS)}) OR EXISTS (
               SELECT 1 FROM security.fn_EntityAccountScope(
