@@ -156,25 +156,51 @@ SELECT l.role,
 FROM #lines l JOIN #journal j ON j.journalId=l.journalId AND j.issue IS NULL
 GROUP BY l.role;
 
-WITH grouped AS (
-  SELECT a.groupCode,MAX(a.groupTitle) AS title, t.kind,
-    SUM(CASE WHEN a.[date]>=@from THEN t.amount ELSE 0 END) AS amount,
-    SUM(CASE WHEN a.[date]<@from THEN t.amount ELSE 0 END) AS priorAmount,
-    COUNT(DISTINCT CASE WHEN a.[date]>=@from THEN a.journalId END) AS documents,
-    COUNT(DISTINCT CASE WHEN a.[date]<@from THEN a.journalId END) AS priorDocuments
+WITH groupDocuments AS (
+  SELECT a.groupCode,MAX(a.groupTitle) AS title,a.journalId,a.[date],t.kind,SUM(t.amount) AS amount
   FROM #analysis a
   CROSS APPLY (VALUES ('outflow',a.isAttributed,a.debit),('expense',a.isExpense,a.debit-a.credit)) t(kind,included,amount)
   WHERE t.included=1
-  GROUP BY a.groupCode,t.kind
+  GROUP BY a.groupCode,a.journalId,a.[date],t.kind
+), priorQuartiles AS (
+  SELECT groupCode,kind,
+    PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY ABS(amount)) OVER (PARTITION BY groupCode,kind) AS q1,
+    PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY ABS(amount)) OVER (PARTITION BY groupCode,kind) AS q3,
+    COUNT_BIG(*) OVER (PARTITION BY groupCode,kind) AS sampleSize
+  FROM groupDocuments WHERE [date]<@from
+), baseline AS (
+  SELECT DISTINCT groupCode,kind,q1,q3 FROM priorQuartiles WHERE sampleSize>=4
+), grouped AS (
+  SELECT a.groupCode,MAX(a.title) AS title,a.kind,
+    SUM(CASE WHEN a.[date]>=@from THEN a.amount ELSE 0 END) AS amount,
+    SUM(CASE WHEN a.[date]<@from THEN a.amount ELSE 0 END) AS priorAmount,
+    SUM(CASE WHEN a.[date]>=@from THEN 1 ELSE 0 END) AS documents,
+    SUM(CASE WHEN a.[date]<@from THEN 1 ELSE 0 END) AS priorDocuments,
+    SUM(CASE WHEN a.[date]>=@from AND ABS(a.amount)>b.q3+1.5*(b.q3-b.q1) THEN 1 ELSE 0 END) AS unusualDocuments
+  FROM groupDocuments a LEFT JOIN baseline b ON b.kind=a.kind AND
+    (b.groupCode=a.groupCode OR (b.groupCode IS NULL AND a.groupCode IS NULL))
+  GROUP BY a.groupCode,a.kind
+), partyPayments AS (
+  SELECT a.groupCode,a.journalId,party.partyKey,SUM(a.debit) AS amount
+  FROM #analysis a
+  CROSS APPLY (VALUES (COALESCE(CONVERT(nvarchar(36),a.partyId),NULLIF(a.detailCode,N'')))) party(partyKey)
+  WHERE a.isAttributed=1 AND a.[date]>=@from AND party.partyKey IS NOT NULL
+  GROUP BY a.groupCode,a.journalId,party.partyKey
+), repeats AS (
+  SELECT groupCode,MAX(repeats) AS repeatCount FROM (
+    SELECT groupCode,COUNT_BIG(*) AS repeats FROM partyPayments GROUP BY groupCode,partyKey,amount HAVING COUNT_BIG(*)>1
+  ) equalPayments GROUP BY groupCode
 ), ranked AS (
   SELECT *,ROW_NUMBER() OVER(PARTITION BY kind ORDER BY ABS(amount) DESC, groupCode) AS rowNumber,
     COUNT(*) OVER(PARTITION BY kind) AS groupCount
   FROM grouped
 )
-SELECT kind,groupCode,title,CONVERT(varchar(48),amount) AS amount,CONVERT(varchar(48),priorAmount) AS priorAmount,
-  documents,priorDocuments,groupCount,
+SELECT ranked.kind,ranked.groupCode,title,CONVERT(varchar(48),amount) AS amount,CONVERT(varchar(48),priorAmount) AS priorAmount,
+  documents,priorDocuments,groupCount,unusualDocuments,ISNULL(r.repeatCount,0) AS repeatCount,
   CONVERT(varchar(48),CAST(amount AS decimal(32,4))-CAST(priorAmount AS decimal(32,4))) AS difference
-FROM ranked WHERE rowNumber<=20 ORDER BY kind,rowNumber;
+FROM ranked LEFT JOIN repeats r ON ranked.kind='outflow' AND
+  (r.groupCode=ranked.groupCode OR (r.groupCode IS NULL AND ranked.groupCode IS NULL))
+WHERE rowNumber<=20 ORDER BY ranked.kind,rowNumber;
 
 SELECT COUNT_BIG(*) AS documents,
   CONVERT(varchar(48),SUM(c.cashCredit)) AS amount
@@ -329,7 +355,9 @@ export function projectMoneyReport(result, filter) {
       role: row.role, opening: openingKnown ? row.opening : null, closing: closingKnown ? row.closing : null,
     })),
     grouped: grouped.map(row => ({ ...row, priorAmount: priorCovered && filter.dimension !== 'month' ? row.priorAmount : null,
-      difference: periodCovered && priorCovered && filter.dimension !== 'month' ? row.difference : null })),
+      difference: periodCovered && priorCovered && filter.dimension !== 'month' ? row.difference : null,
+      unusualDocuments: periodCovered && priorCovered && filter.dimension !== 'month' ? Number(row.unusualDocuments) : null,
+      repeatCount: Number(row.repeatCount) })),
     unallocated: unallocatedRows[0]?.amount ?? (periodCovered ? '0' : null),
     unallocatedDocuments: Number(unallocatedRows[0]?.documents ?? 0),
     fifo: { opening: fifo.opening?.amount ?? null, closing: fifo.closing?.amount ?? null },

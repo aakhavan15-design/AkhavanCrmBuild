@@ -98,6 +98,10 @@ function MoneyGroups({ rows, dimension, open }: {
               {row.difference !== null && <> · تغییر نسبت به دورهٔ قبل {money(row.difference)}</>}
               {row.priorAmount !== null && <> · دورهٔ قبل {money(row.priorAmount)} در {formatCount(row.priorDocuments)} سند</>}
             </span>
+            {((row.unusualDocuments ?? 0) > 0 || row.repeatCount > 1) && <span className="w-full text-caption text-warning">
+              {(row.unusualDocuments ?? 0) > 0 && <span className="me-3">{formatCount(row.unusualDocuments)} سند بالاتر از دامنهٔ معمول دورهٔ قبل</span>}
+              {row.repeatCount > 1 && <span>{formatCount(row.repeatCount)} پرداخت هم‌مبلغ به یک طرف‌حساب</span>}
+            </span>}
           </button>
         </li>)}
       </ul>}
@@ -248,7 +252,7 @@ export function MoneyIntelligencePanel() {
         <Card padding="md" className="space-y-3">
           <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,14rem)] sm:items-end">
             <div><h3 className="font-bold">پول کجا خرج شد؟</h3>
-              <p className="text-caption text-text-secondary">پرداخت و هزینهٔ حسابداری دو مبنای مستقل‌اند. شمار اسناد و مقایسهٔ دوره‌ها به یافتن مصرف پرتکرار یا رشد هزینه کمک می‌کند.</p></div>
+              <p className="text-caption text-text-secondary">پرداخت و هزینهٔ حسابداری دو مبنای مستقل‌اند. رشد مبلغ، موارد خارج از دامنهٔ دورهٔ قبل و پرداخت‌های هم‌مبلغ را از ریز اسناد بررسی کنید.</p></div>
             <SearchableSelect label="گروه‌بندی" value={dimension} options={dimensions}
               onChange={value => { if (dimensions.some(option => option.value === value)) changeFilter({ ...period, dimension: value as MoneyDimension }); }} />
           </div>

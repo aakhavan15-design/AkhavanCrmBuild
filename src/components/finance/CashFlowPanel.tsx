@@ -5,9 +5,9 @@ import { useDataSyncStatus } from '../../services/dataSyncController';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { SearchableSelect } from '../ui/SearchableSelect';
-import { ChartCard } from '../charts/ChartCard';
+import { EChartCard } from '../charts/EChartCard';
+import { ledgerTrendOption } from '../charts/echartsTheme';
 import { Card } from '../ui/Card';
-import { CashFlowChart } from '../charts';
 import { useAppStore } from '../../lib/storage';
 import { RBACService } from '../../lib/rbac';
 import { useDataQuery } from '../../hooks/useDataProvider';
@@ -19,11 +19,11 @@ import { buildCashFlowProjection, evaluatePayability } from '../../lib/cashFlowE
  * جریان نقدینگی خزانه (R8 / F6-04): ورودی/خروجی آتی از چک، فاکتور خرید و هزینهٔ سررسیددار + مانده خزانه.
  * داده فقط از DataProvider.getCashFlowData(؛ نه State). نبود داده/خطا/مجوز هرگز صفر نمایش داده نمی‌شود.
  */
-const HORIZONS = [7, 14, 30] as const;
+const HORIZONS = [7, 30, 90] as const;
 const money = (value: number | null) => value === null ? 'نامشخص' : formatMoney(value);
 const SOURCE_LABELS: Record<string, string> = {
   cheques: 'چک‌ها', supplierBills: 'فاکتور خرید', expenses: 'هزینه‌های سررسیددار',
-  treasuryAccounts: 'حساب خزانه', treasuryTransactions: 'گردش خزانه',
+  treasuryAccounts: 'حساب خزانه', treasuryTransactions: 'گردش خزانه', receivableSchedule: 'سررسید معتبر مطالبات بدون چک',
 };
 const REASONS: Record<string, string> = {
   NO_DUE_DATE: 'بدون تاریخ سررسید', BAD_DUE_DATE: 'تاریخ سررسید نامعتبر', BAD_AMOUNT: 'مبلغ نامعتبر',
@@ -35,8 +35,9 @@ export function CashFlowPanel() {
   const canView = useMemo(() => new RBACService(state).can('finance', 'VIEW'), [state]);
   const { serverVersion } = useDataSyncStatus();
   const [scenario, setScenario] = useState<'BASE' | 'NO_RECEIPTS'>('BASE');
-  const [horizon, setHorizon] = useState<number>(14);
+  const [horizon, setHorizon] = useState<number>(30);
   const [amountText, setAmountText] = useState('');
+  const [dueLimit, setDueLimit] = useState(10);
   const [reserveText, setReserveText] = useState('');
   const [payDate, setPayDate] = useState('');
 
@@ -45,8 +46,8 @@ export function CashFlowPanel() {
     [canView, state.currentUserId, serverVersion]);
   const data = snapshot?.viewer === state.currentUserId ? snapshot?.data : null;
 
-  const asOf = toLocalDateISO();
-  const projection = useMemo(() => data && (data.status === 'LIVE' || data.status === 'PARTIAL')
+  const asOf = data?.asOf ?? toLocalDateISO();
+  const projection = useMemo(() => data?.source === 'SQLSERVER_BACKEND' && (data.status === 'LIVE' || data.status === 'PARTIAL')
     ? buildCashFlowProjection({ asOf, horizonDays: horizon, ...data, includeIncoming: scenario === 'BASE' })
     : null, [data, asOf, horizon, scenario]);
 
@@ -65,7 +66,7 @@ export function CashFlowPanel() {
 
   if (!canView) return <Card padding="md" className="text-sm text-text-secondary">دسترسی مشاهده جریان نقدینگی ندارید.</Card>;
   if ((!data || loading) && !error) return <Card padding="md" className="text-sm text-text-secondary">در حال دریافت داده نقدینگی…</Card>;
-  if (error || data?.status === 'UNAVAILABLE') {
+  if (error || data?.status === 'UNAVAILABLE' || data?.source === 'CLIENT_INDEXEDDB') {
     return (
       <Card padding="md" className="space-y-2 border-danger-border bg-danger-soft">
         <p className="text-sm font-bold text-danger">داده نقدینگی در دسترس نیست؛ این به‌معنای صفر بودن نیست.</p>
@@ -81,6 +82,18 @@ export function CashFlowPanel() {
 
   const op = projection.opening;
   const short = projection.firstShortfallDate;
+  const periodSize = horizon === 7 ? 1 : 7;
+  const periods: Array<{ date: string; inflow: number; outflow: number }> = [];
+  projection.days.forEach((day, index) => {
+    if (index % periodSize === 0) periods.push({ date: day.date, inflow: 0, outflow: 0 });
+    const period = periods[periods.length - 1];
+    period.inflow += day.inflow;
+    period.outflow += day.outflow;
+  });
+  const trend = ledgerTrendOption(periods.map(period => formatAppDate(period.date, state.settings?.locale)), [
+    { name: 'دریافت برنامه‌ریزی‌شده', values: periods.map(period => period.inflow), colorToken: '--c-forest' },
+    { name: 'پرداخت برنامه‌ریزی‌شده', values: periods.map(period => period.outflow), colorToken: '--c-burgundy' },
+  ]);
   return (
     <div className="space-y-3" dir="rtl">
       {data?.missingSources.length ? <Card padding="md" className="border-warning/40 bg-warning/10 text-xs text-text-main">هشدار: برخی منابع نقدینگی خوانده نشده‌اند؛ نتایج ناقص‌اند و امکان‌سنجی پرداخت غیرفعال است. منابع: {data.missingSources.map(key => SOURCE_LABELS[key] || 'منبع نامشخص').join('، ')}</Card> : null}
@@ -89,7 +102,7 @@ export function CashFlowPanel() {
           <h3 className="text-sm font-black text-text-main">جریان نقدینگی {formatCount(horizon)} روز آینده</h3>
           <div className="flex gap-1" role="group" aria-label="افق پیش‌بینی">
             {HORIZONS.map(h => (
-              <button key={h} type="button" aria-pressed={horizon === h} onClick={() => setHorizon(h)}
+              <button key={h} type="button" aria-pressed={horizon === h} onClick={() => { setHorizon(h); setDueLimit(10); }}
                 className={`min-h-11 rounded-lg border px-3 py-1 text-xs ${horizon === h ? 'border-primary bg-primary-soft text-primary' : 'border-border text-text-secondary'}`}>{formatCount(h)} روز</button>
             ))}
           </div>
@@ -101,14 +114,24 @@ export function CashFlowPanel() {
             onClick={() => setScenario('NO_RECEIPTS')}>بدون وصول پیش‌بینی‌شده</Button>
           {data?.updatedAt && <span className="text-caption text-text-secondary">آخرین ثبت در دادهٔ خزانه {formatAppDate(data.updatedAt, state.settings?.locale)}</span>}
         </div>
+        <p className="text-caption text-text-secondary">
+          {data?.chequeEvidence === 'ERP_MIRROR' ? 'چک‌ها از آینهٔ ERP با وضعیت نگاشت‌شده خوانده شده‌اند.' : 'چک‌های برنامهٔ خزانه هنوز با آینهٔ ERP تطبیق داده نشده‌اند.'}
+        </p>
+        {(data?.unverifiedCheques ?? 0) > 0 && <p className="text-caption text-warning">
+          {formatCount(data?.unverifiedCheques)} چک با مبلغ یا وضعیت تأییدنشده در برآورد لحاظ نشده است.
+        </p>}
+        {(data?.overlappingBills ?? 0) > 0 && <p className="text-caption text-warning">
+          {formatCount(data?.overlappingBills)} فاکتور خرید تا زمان تطبیق با چک‌های پرداختنی ERP از جمع پیش‌بینی کنار گذاشته شده است.
+        </p>}
+        <p className="text-caption text-text-secondary">این ارقام برآورد بر اساس سررسیدهای ثبت‌شده‌اند. وضعیت تطبیق بانک مستقل از این پیش‌بینی است.</p>
         <div className="grid grid-cols-2 gap-2 text-xs">
           <div className="rounded-xl border border-border p-3"><div className="text-text-secondary">ماندهٔ ثبت‌شدهٔ خزانه</div><div className="mt-1 font-bold tabular-nums">{money(op.status === 'KNOWN' ? op.balance : null)}</div>
             {op.status !== 'KNOWN' && <div className="mt-1 text-warning">{op.status === 'UNKNOWN' ? 'مانده افتتاحیه حساب‌ها ثبت نشده' : `${formatCount(op.unknownAccounts)} حساب بدون مانده معتبر`}</div>}</div>
-          <div className="rounded-xl border border-border p-3"><div className="text-text-secondary">خالص دوره</div><div className="mt-1 font-bold tabular-nums">{money(projection.totals.net)}</div></div>
-          <div className="rounded-xl border border-border p-3"><div className="text-text-secondary">ورودی / خروجی برنامه‌ریزی‌شده</div><div className="mt-1 tabular-nums">{money(projection.totals.inflow)} / {money(projection.totals.outflow)}</div></div>
-          <div className="rounded-xl border border-border p-3"><div className="text-text-secondary">کمترین مانده پیش‌بینی‌شده</div><div className="mt-1 font-bold tabular-nums">{projection.lowest ? `${money(projection.lowest.balance)} · ${formatAppDate(projection.lowest.date, state.settings?.locale)}` : 'نامشخص'}</div></div>
+          <div className="rounded-xl border border-border p-3"><div className="text-text-secondary">خالص سررسیدهای خوانده‌شده</div><div className="mt-1 font-bold tabular-nums">{money(projection.items.length || !data?.missingSources.length ? projection.totals.net : null)}</div></div>
+          <div className="rounded-xl border border-border p-3"><div className="text-text-secondary">ورودی / خروجی برنامه‌ریزی‌شده</div><div className="mt-1 tabular-nums">{money(projection.totals.inflow || (!data?.missingSources.length || scenario === 'NO_RECEIPTS') ? projection.totals.inflow : null)} / {money(projection.totals.outflow || !data?.missingSources.length ? projection.totals.outflow : null)}</div></div>
+          <div className="rounded-xl border border-border p-3"><div className="text-text-secondary">کمترین مانده پیش‌بینی‌شده</div><div className="mt-1 font-bold tabular-nums">{canAssess && projection.lowest ? `${money(projection.lowest.balance)} · ${formatAppDate(projection.lowest.date, state.settings?.locale)}` : 'نامشخص'}</div></div>
         </div>
-        {projection.lowest && !data?.missingSources.length && (
+        {canAssess && projection.lowest && (
           <div className={`flex items-start gap-2 rounded-xl border p-3 text-xs ${short ? 'border-danger-border bg-danger-soft text-danger' : 'border-border bg-canvas text-text-main'}`}>
             {short ? <AlertTriangle size={16} /> : <CheckCircle2 size={16} />}
             <span>{short ? `مانده پیش‌بینی‌شده از ${formatAppDate(short, state.settings?.locale)} منفی می‌شود.` : 'در این افق، مانده پیش‌بینی‌شده منفی نمی‌شود.'}</span>
@@ -117,11 +140,11 @@ export function CashFlowPanel() {
         {(projection.overdue.inflow > 0 || projection.overdue.outflow > 0) && (
           <p className="text-xs text-warning">سررسیدگذشته: دریافتنی {money(projection.overdue.inflow)} (وصول‌نشده فرض می‌شود) و پرداختنی {money(projection.overdue.outflow)} (روز اول پرداخت فرض می‌شود).</p>
         )}
-        <ChartCard title="ورودی و خروجی برنامه‌ریزی‌شده" periodLabel="مبالغ به ریال"
-          sourceLabel={data?.source === 'SQLSERVER_BACKEND' ? 'اقلام خوانده‌شدهٔ خزانه از سرور' : 'دادهٔ محلی؛ فاقد تأیید بانک'} freshnessLabel="برآورد؛ تطبیق بانکی لازم است">
-          <CashFlowChart days={projection.days.slice(0, 14)} />
-        </ChartCard>
-        {projection.days.length > 14 && <p className="text-micro text-text-secondary">نمودار ۱۴ روز اول را نشان می‌دهد؛ جمع‌ها برای کل افق است.</p>}
+        <EChartCard title="ورودی و خروجی برنامه‌ریزی‌شده"
+          periodLabel={periodSize === 1 ? 'مبالغ روزانه به ریال' : 'مبالغ هفتگی به ریال'}
+          option={{ ...trend, xAxis: { ...(trend.xAxis as object), inverse: true } }}
+          empty={projection.items.length === 0} emptyMessage="سررسید منطبق در افق انتخابی ثبت نشده است"
+          sourceLabel="اقلام خزانه از سرور" freshnessLabel="برآورد؛ تطبیق بانکی لازم است" />
       </Card>
 
       <Card padding="md" className="space-y-2">
@@ -147,12 +170,14 @@ export function CashFlowPanel() {
       <Card padding="md" className="space-y-2">
         <h3 className="text-sm font-black text-text-main">تقویم سررسیدها</h3>
         {projection.items.length === 0 && <p className="text-xs text-text-secondary">سررسیدی در این افق ثبت نشده است.</p>}
-        {projection.items.map(i => (
+        {projection.items.slice(0, dueLimit).map(i => (
           <div key={`${i.kind}-${i.id}`} className="flex items-center justify-between gap-2 border-b border-border py-1.5 text-xs last:border-0">
             <span className="min-w-0 wrap-break-word">{i.label} <span className="text-text-secondary">· {formatAppDate(i.dueDate, state.settings?.locale)}</span></span>
             <span className={`shrink-0 font-bold tabular-nums ${i.direction === 'IN' ? 'text-success' : 'text-danger'}`}>{i.direction === 'IN' ? '+' : '−'}{money(i.amount)}</span>
           </div>
         ))}
+        {projection.items.length > dueLimit && <Button type="button" size="sm" variant="outline"
+          onClick={() => setDueLimit(current => current + 10)}>سررسیدهای بیشتر</Button>}
         {projection.excluded.length > 0 && (
           <details className="text-xs text-text-secondary">
             <summary>{formatCount(projection.excluded.length)} ردیف از محاسبه خارج شد</summary>

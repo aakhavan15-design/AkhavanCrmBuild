@@ -374,7 +374,7 @@ export function financialWaterfallOption(steps: { label: string; amount: number;
     yAxis: { ...(base.valueAxis as object), type: 'value',
       axisLabel: { ...(base.valueAxis as { axisLabel?: object }).axisLabel,
         formatter: (value: number) => formatMoneyCompact(value, '') } },
-    dataZoom: [{ type: 'inside', zoomOnMouseWheel: 'ctrl', moveOnMouseWheel: false, endValue: 6 }],
+    dataZoom: [{ type: 'inside', zoomOnMouseWheel: 'ctrl', moveOnMouseWheel: false }],
     series: [{
       type: 'custom',
       encode: { x: 0, y: [1, 2] },

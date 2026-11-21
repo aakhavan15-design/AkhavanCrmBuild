@@ -26,6 +26,8 @@ export interface MoneyGroup {
   documents: number;
   priorDocuments: number;
   groupCount: number;
+  unusualDocuments: number | null;
+  repeatCount: number;
 }
 export interface MoneyPosition { opening: Amount; closing: Amount }
 export type MoneyReport = {

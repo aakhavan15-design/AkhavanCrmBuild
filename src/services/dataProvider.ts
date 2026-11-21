@@ -193,6 +193,10 @@ export interface CashFlowDataResult {
   reason?: string;
   updatedAt?: string | null;
   bankVerification?: 'VERIFIED' | 'NOT_VERIFIED';
+  asOf?: string;
+  chequeEvidence?: 'ERP_MIRROR' | 'CRM_PLAN';
+  unverifiedCheques?: number;
+  overlappingBills?: number;
 }
 
 export interface AccountDirectoryPage { items: Account[]; page: number; pageSize: number; hasMore: boolean }
