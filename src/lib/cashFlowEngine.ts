@@ -24,6 +24,7 @@ export interface CashFlowInput {
    * FIRST_DAY: همه به روز اول منتقل می‌شوند (سازگار با نمای فرماندهی قدیمی)
    */
   overdueTreatment?: 'SEPARATE' | 'FIRST_DAY';
+  includeIncoming?: boolean;
 }
 
 export interface CashItem {
@@ -91,12 +92,15 @@ export function addDaysIso(iso: string, days: number): string {
 
 /** عدد معتبر و متناهی؛ در غیر این صورت null (نه صفر) */
 function numOrNull(v: unknown): number | null {
-  if (v === null || v === undefined || v === '') return null;
+  if (typeof v !== 'number' && (typeof v !== 'string' || !v.trim())) return null;
   const n = typeof v === 'number' ? v : Number(v);
   return Number.isFinite(n) ? n : null;
 }
 
 const str = (v: unknown): string => (typeof v === 'string' ? v : v === null || v === undefined ? '' : String(v));
+const isVoided = (row: Record<string, unknown>) => row.isVoided === true || row.isDeleted === true || Boolean(row.deletedAt)
+  || ['VOID', 'VOIDED', 'CANCELLED', 'CANCELED', 'REVERSED'].includes(str(row.status).toUpperCase());
+const isRial = (row: Record<string, unknown>) => !row.currencyCode || str(row.currencyCode).toUpperCase() === 'IRR';
 
 /** مانده هر حساب خزانه = افتتاحیه + Σورودی − Σخروجی تا asOf؛ بدون افتتاحیه، فقط currentBalance معتبر (و گرنه نامشخص) */
 export function computeTreasuryOpening(
@@ -105,24 +109,52 @@ export function computeTreasuryOpening(
   asOf: string
 ): CashFlowProjection['opening'] {
   let sum = 0, known = 0, unknown = 0;
-  for (const a of accounts) {
-    if (a.isActive === false) continue;
-    const id = str(a.id);
-    const opening = numOrNull(a.openingBalance);
-    if (opening !== null) {
-      let bal = opening;
-      for (const t of txs) {
-        if (str(t.accountId) !== id) continue;
-        const d = normalizeIsoDate(t.date);
-        const amt = numOrNull(t.amount);
-        if (d === null || d > asOf || amt === null) continue;
-        bal += t.direction === 'IN' ? amt : t.direction === 'OUT' ? -amt : 0;
-      }
-      sum += bal; known++;
+  const active = accounts.filter(account => account.isActive !== false && !isVoided(account));
+  const accountIds = new Set(active.map(account => str(account.id)).filter(Boolean));
+  const seenAccounts = new Set<string>();
+  const perAccount = new Map<string, Array<Record<string, unknown>>>();
+  for (const row of txs) {
+    if (isVoided(row) || ['DRAFT', 'PENDING'].includes(str(row.status).toUpperCase())) continue;
+    const accountId = str(row.accountId);
+    if (!accountIds.has(accountId)) { unknown++; continue; }
+    const rows = perAccount.get(accountId) || [];
+    rows.push(row);
+    perAccount.set(accountId, rows);
+  }
+  for (const account of active) {
+    const id = str(account.id);
+    if (!id || seenAccounts.has(id) || !isRial(account)) { unknown++; continue; }
+    seenAccounts.add(id);
+    const opening = numOrNull(account.openingBalance);
+    const opened = normalizeIsoDate(account.openingDate);
+    if (account.openingDate && (!opened || opened > asOf)) { unknown++; continue; }
+    const records = perAccount.get(id) || [];
+    if (opening === null) {
+      const current = numOrNull(account.currentBalance);
+      const currentDate = normalizeIsoDate(account.balanceDate);
+      if (current !== null && !records.length && (!account.balanceDate || currentDate === asOf)) {
+        sum += current; known++;
+      } else unknown++;
       continue;
     }
-    const current = numOrNull(a.currentBalance);
-    if (current !== null && !txs.some(t => str(t.accountId) === id)) { sum += current; known++; } else unknown++;
+    let balance = opening;
+    let valid = true;
+    const seen = new Set<string>();
+    for (const row of records) {
+      const date = normalizeIsoDate(row.date);
+      if (date && (date > asOf || (opened && date < opened))) continue;
+      const amount = numOrNull(row.amount);
+      const key = str(row.id);
+      const direction = str(row.direction).toUpperCase();
+      if (!date || amount === null || amount <= 0 || !isRial(row) || (key && seen.has(key))
+        || (direction !== 'IN' && direction !== 'OUT')) {
+        valid = false;
+        break;
+      }
+      if (key) seen.add(key);
+      balance += direction === 'IN' ? amount : -amount;
+    }
+    if (valid) { sum += balance; known++; } else unknown++;
   }
   const status: OpeningBalanceStatus = known === 0 ? 'UNKNOWN' : unknown > 0 ? 'PARTIAL' : 'KNOWN';
   return { status, balance: known === 0 ? null : sum, knownAccounts: known, unknownAccounts: unknown };
@@ -147,20 +179,24 @@ export function buildCashFlowProjection(input: CashFlowInput): CashFlowProjectio
 
   /* چک‌ها */
   const cheques = input.cheques || [];
-  const payableBillIds = new Set<string>();
+  const payableBillAmounts = new Map<string, number>();
   for (const c of cheques) {
     const id = str(c.id);
     const isOut = c.direction === 'PAYABLE';
     const status = str(c.status).toUpperCase();
     if (c.isGuarantee === true) { excluded.push({ id, source: 'cheques', reason: 'GUARANTEE' }); continue; }
-    if (c.isVoided === true) { excluded.push({ id, source: 'cheques', reason: 'VOIDED' }); continue; }
+    if (isVoided(c)) { excluded.push({ id, source: 'cheques', reason: 'VOIDED' }); continue; }
     if (SETTLED_CHEQUE.has(status)) { excluded.push({ id, source: 'cheques', reason: 'SETTLED' }); continue; }
     const amount = numOrNull(c.amount);
-    if (amount === null || amount <= 0) { excluded.push({ id, source: 'cheques', reason: 'BAD_AMOUNT' }); continue; }
+    if (!isRial(c) || amount === null || amount <= 0 || !['PAYABLE', 'RECEIVABLE'].includes(str(c.direction))) { excluded.push({ id, source: 'cheques', reason: 'BAD_AMOUNT' }); continue; }
     if (c.dueDate === undefined || c.dueDate === null || c.dueDate === '') { excluded.push({ id, source: 'cheques', reason: 'NO_DUE_DATE' }); continue; }
     const due = normalizeIsoDate(c.dueDate);
     if (!due) { excluded.push({ id, source: 'cheques', reason: 'BAD_DUE_DATE' }); continue; }
-    if (isOut && c.billId) payableBillIds.add(str(c.billId));
+    if (isOut && c.billId) {
+      const billId = str(c.billId);
+      payableBillAmounts.set(billId, (payableBillAmounts.get(billId) || 0) + amount);
+    }
+    if (!isOut && input.includeIncoming === false) continue;
     push({
       id, kind: isOut ? 'CHEQUE_OUT' : 'CHEQUE_IN', direction: isOut ? 'OUT' : 'IN', dueDate: due, amount,
       label: `${isOut ? 'چک پرداختنی' : 'چک دریافتنی'} ${str(c.chequeNumber)}`.trim()
@@ -171,12 +207,14 @@ export function buildCashFlowProjection(input: CashFlowInput): CashFlowProjectio
   for (const b of input.supplierBills || []) {
     const id = str(b.id);
     if (str(b.status).toUpperCase() === 'PAID') { excluded.push({ id, source: 'supplierBills', reason: 'SETTLED' }); continue; }
-    if (payableBillIds.has(id)) { excluded.push({ id, source: 'supplierBills', reason: 'LINKED_TO_BILL' }); continue; }
+    if (isVoided(b)) { excluded.push({ id, source: 'supplierBills', reason: 'VOIDED' }); continue; }
     const total = numOrNull(b.amount);
-    const paid = b.paidAmount === undefined || b.paidAmount === null ? 0 : numOrNull(b.paidAmount);
-    if (total === null || paid === null) { excluded.push({ id, source: 'supplierBills', reason: 'BAD_AMOUNT' }); continue; }
-    const remaining = total - paid;
-    if (remaining <= 0) { excluded.push({ id, source: 'supplierBills', reason: 'SETTLED' }); continue; }
+    const paid = numOrNull(b.paidAmount);
+    if (!isRial(b) || total === null || paid === null || paid < 0) { excluded.push({ id, source: 'supplierBills', reason: 'BAD_AMOUNT' }); continue; }
+    const outstanding = total - paid;
+    if (outstanding <= 0) { excluded.push({ id, source: 'supplierBills', reason: 'SETTLED' }); continue; }
+    const remaining = outstanding - (payableBillAmounts.get(id) || 0);
+    if (remaining <= 0) { excluded.push({ id, source: 'supplierBills', reason: 'LINKED_TO_BILL' }); continue; }
     if (b.dueDate === undefined || b.dueDate === null || b.dueDate === '') { excluded.push({ id, source: 'supplierBills', reason: 'NO_DUE_DATE' }); continue; }
     const due = normalizeIsoDate(b.dueDate);
     if (!due) { excluded.push({ id, source: 'supplierBills', reason: 'BAD_DUE_DATE' }); continue; }
@@ -187,8 +225,9 @@ export function buildCashFlowProjection(input: CashFlowInput): CashFlowProjectio
   for (const e of input.expenses || []) {
     if (str(e.status).toUpperCase() !== 'DUE') continue;
     const id = str(e.id);
+    if (isVoided(e)) { excluded.push({ id, source: 'expenses', reason: 'VOIDED' }); continue; }
     const amount = numOrNull(e.amount);
-    if (amount === null || amount <= 0) { excluded.push({ id, source: 'expenses', reason: 'BAD_AMOUNT' }); continue; }
+    if (!isRial(e) || amount === null || amount <= 0) { excluded.push({ id, source: 'expenses', reason: 'BAD_AMOUNT' }); continue; }
     if (e.dueDate === undefined || e.dueDate === null || e.dueDate === '') { excluded.push({ id, source: 'expenses', reason: 'NO_DUE_DATE' }); continue; }
     const due = normalizeIsoDate(e.dueDate);
     if (!due) { excluded.push({ id, source: 'expenses', reason: 'BAD_DUE_DATE' }); continue; }
@@ -206,7 +245,7 @@ export function buildCashFlowProjection(input: CashFlowInput): CashFlowProjectio
 
   /* ردیف روزانه */
   const days: CashDayRow[] = [];
-  let running: number | null = opening.balance;
+  let running: number | null = opening.status === 'KNOWN' ? opening.balance : null;
   // سناریوی محافظه‌کارانه برای مانده: تعهدات پرداختنی سررسیدگذشته روز اول پرداخت می‌شود؛ مطالبات سررسیدگذشته وصول‌شده فرض نمی‌شود.
   if (running !== null && !firstDayMode) running -= overdue.outflow;
   for (let i = 0; i < horizon; i++) {
@@ -259,7 +298,7 @@ export interface PayabilityResult {
   projectedBefore: number | null;
   projectedAfter: number | null;
   shortfall: number | null;
-  reason?: 'OPENING_UNKNOWN' | 'DATE_OUT_OF_HORIZON';
+  reason?: 'OPENING_UNKNOWN' | 'DATE_OUT_OF_HORIZON' | 'INCOMPLETE_INPUT' | 'INVALID_AMOUNT';
 }
 
 /**
@@ -267,10 +306,16 @@ export interface PayabilityResult {
  * پرداخت در پایان آن روز اعمال و مانده روزهای بعد نیز بررسی می‌شود؛ حداقل ذخیره از تنظیمات می‌آید (هاردکد نیست).
  */
 export function evaluatePayability(p: CashFlowProjection, date: string, amount: number, minReserve: number): PayabilityResult {
+  if (!Number.isSafeInteger(amount) || amount <= 0 || !Number.isSafeInteger(minReserve) || minReserve < 0) {
+    return { feasible: null, date, projectedBefore: null, projectedAfter: null, shortfall: null, reason: 'INVALID_AMOUNT' };
+  }
+  if (p.excluded.some(row => ['NO_DUE_DATE', 'BAD_DUE_DATE', 'BAD_AMOUNT'].includes(row.reason))) {
+    return { feasible: null, date, projectedBefore: null, projectedAfter: null, shortfall: null, reason: 'INCOMPLETE_INPUT' };
+  }
   const d = normalizeIsoDate(date);
   const idx = d ? p.days.findIndex(x => x.date === d) : -1;
   if (!d || idx < 0) return { feasible: null, date: date, projectedBefore: null, projectedAfter: null, shortfall: null, reason: 'DATE_OUT_OF_HORIZON' };
-  if (p.opening.balance === null || p.days[idx].projectedBalance === null) {
+  if (p.opening.status !== 'KNOWN' || p.opening.balance === null || p.days[idx].projectedBalance === null) {
     return { feasible: null, date: d, projectedBefore: null, projectedAfter: null, shortfall: null, reason: 'OPENING_UNKNOWN' };
   }
   const before = p.days[idx].projectedBalance as number;

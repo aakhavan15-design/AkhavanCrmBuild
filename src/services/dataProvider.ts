@@ -171,6 +171,8 @@ export interface CashFlowDataResult {
   treasuryTransactions: Array<Record<string, unknown>>;
   missingSources: string[];
   reason?: string;
+  updatedAt?: string | null;
+  bankVerification?: 'VERIFIED' | 'NOT_VERIFIED';
 }
 
 export interface AccountDirectoryPage { items: Account[]; page: number; pageSize: number; hasMore: boolean }
@@ -979,19 +981,13 @@ export class HttpBackendDataProvider implements DataProvider {
   async getCashFlowData(): Promise<CashFlowDataResult> {
     const empty = { cheques: [], supplierBills: [], expenses: [], treasuryAccounts: [], treasuryTransactions: [] };
     try {
-      const snap = await this.getStateSnapshot();
-      const hidden = Array.isArray(snap.hiddenCollections) ? snap.hiddenCollections : [];
-      const missingSources: string[] = [];
-      const collections: Record<string, Array<Record<string, unknown>>> = {};
-      for (const key of CASH_FLOW_SOURCES) {
-        const value = snap.collections?.[key];
-        if (hidden.includes(key) || !Array.isArray(value)) { missingSources.push(key); collections[key] = []; }
-        else collections[key] = value as Array<Record<string, unknown>>;
-      }
-      const status = missingSources.length === CASH_FLOW_SOURCES.length ? 'UNAVAILABLE' : missingSources.length ? 'PARTIAL' : CASH_FLOW_SOURCES.every(k => collections[k].length === 0) ? 'EMPTY' : 'LIVE';
-      return { ...empty, ...collections, status, source: this.name, missingSources, reason: status === 'UNAVAILABLE' ? 'منابع نقدینگی از سرور در دسترس نیستند.' : undefined };
-    } catch (e) {
-      return { ...empty, status: 'UNAVAILABLE', source: this.name, missingSources: [...CASH_FLOW_SOURCES], reason: e instanceof Error ? e.message : 'خطای خواندن منابع نقدینگی' };
+      return await this.request<CashFlowDataResult>('/finance/cash-flow');
+    } catch (error) {
+      const restricted = error instanceof Error && 'status' in error && error.status === 403;
+      return { ...empty, status: restricted ? 'RESTRICTED' : 'UNAVAILABLE', source: this.name,
+        missingSources: [...CASH_FLOW_SOURCES], bankVerification: 'NOT_VERIFIED',
+        reason: restricted ? 'پیش‌بینی خزانه به مجوز مالی در سطح سازمان نیاز دارد.'
+          : 'داده‌های خزانه از سرور در دسترس نیست.' };
     }
   }
 

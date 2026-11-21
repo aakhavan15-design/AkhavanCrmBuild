@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 import fs from 'node:fs';
 import { createEntityService, FileEntityDriver, MssqlEntityDriver, MemoryEntityDriver } from './entityStore.mjs';
 import { createAccountDirectory } from './accountDirectory.mjs';
+import { createTreasuryFlowReader } from './treasuryFlow.mjs';
 import { createCollectionActions } from './collectionActions.mjs';
 import { createPublicRecruitment } from './publicRecruitment.mjs';
 import { buildReportStatus } from './reportStatus.mjs';
@@ -769,6 +770,10 @@ const searchAccountDirectory = createAccountDirectory({ sql, run: withTenantCont
 app.post('/api/v1/accounts/search', authenticate, requirePermission('accounts.VIEW'), wrap(async (req, res) => {
   res.json(await searchAccountDirectory(req.auth, req.body?.query, req.body?.page));
 }));
+
+const readTreasuryFlow = createTreasuryFlowReader({ sql, run: withTenantContext });
+app.get('/api/v1/finance/cash-flow', authenticate, requirePermission('finance.VIEW', { organizationWide: true }),
+  wrap(async (req, res) => res.json(await readTreasuryFlow(req.auth))));
 
 const submitCollectionAction = createCollectionActions({ sql, run: withTenantContext });
 app.post('/api/v1/finance/collections/:accountId/actions', authenticate, wrap(async (req, res) => {

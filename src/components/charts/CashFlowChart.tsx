@@ -1,5 +1,6 @@
 import { useId } from 'react';
 import { lighten } from './geometry';
+import { formatCount } from '../../lib/format';
 import { fCompact } from './fmt';
 
 export interface CashFlowDay { date: string; inflow: number; outflow: number }
@@ -13,7 +14,7 @@ export function CashFlowChart({ days, dangerDays = 3, height = 190 }: { days: Ca
   const day = new Intl.DateTimeFormat('fa-IR-u-ca-persian', { day: 'numeric' }), mon = new Intl.DateTimeFormat('fa-IR-u-ca-persian', { month: 'short' });
   const grad = (c: string, k: string) => <linearGradient id={`${id}${k}`} x1="0" y1="0" x2="0" y2="1"><stop offset="0" style={{ stopColor: lighten(c, 28) }} /><stop offset="1" style={{ stopColor: c }} /></linearGradient>;
   return (
-    <svg viewBox={`0 0 ${W} ${height}`} className="w-full" role="img" aria-label="پیش‌بینی ورودی و خروجی نقدینگی ۱۴ روز آینده">
+    <svg viewBox={`0 0 ${W} ${height}`} className="w-full" role="img" aria-label={`پیش‌بینی ورودی و خروجی نقدینگی ${formatCount(days.length)} روز`}>
       <defs>{grad('var(--color-chart-1)', 'i')}{grad('var(--color-chart-2)', 'o')}
         <pattern id={`${id}p`} width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="3" height="6" fill="var(--c-danger)" opacity=".10" /></pattern></defs>
       {[0, 1, 2, 3].map(i => { const y = top + ((base - top) * i) / 3; return <line key={i} x1="0" x2={W} y1={y} y2={y} stroke="var(--color-chart-grid)" strokeOpacity="1" strokeDasharray={i === 3 ? undefined : '2 5'} />; })}
