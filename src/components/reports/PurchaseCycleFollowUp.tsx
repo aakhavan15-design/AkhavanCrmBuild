@@ -4,7 +4,7 @@ import { useDataQuery } from '../../hooks/useDataProvider';
 import { formatCount, formatDecimalString } from '../../lib/format';
 import { formatAppDate } from '../../lib/utils';
 import { useDataSyncStatus } from '../../services/dataSyncController';
-import type { PurchaseCycleRow, PurchaseCycleView, PurchaseProductHint } from '../../services/purchaseCycle';
+import type { PurchaseCoverageScope, PurchaseCycleRow, PurchaseCycleView, PurchaseProductHint } from '../../services/purchaseCycle';
 import type { Account } from '../../types';
 import { QuickTaskRequest } from '../tasks/QuickTaskRequest';
 import { Button } from '../ui/Button';
@@ -42,13 +42,15 @@ export function PurchaseCycleFollowUp({viewer,accounts,canCreate}:{viewer:string
   const [search,setSearch]=useState('');
   const [activeSearch,setActiveSearch]=useState('');
   const [page,setPage]=useState(1);
+  const [scope,setScope]=useState<PurchaseCoverageScope>();
+  const [coverageOpen,setCoverageOpen]=useState(false);
   const [selection,setSelection]=useState<{row:PurchaseCycleRow; product?:PurchaseProductHint}|null>(null);
   const selected=selection?.row;
   const navigate=useNavigate();
   const {serverVersion}=useDataSyncStatus();
-  const requestKey=JSON.stringify([viewer,view,activeSearch,page,serverVersion]);
+  const requestKey=JSON.stringify([viewer,view,activeSearch,page,serverVersion,scope]);
   const {data,loading,error,refetch}=useDataQuery(async provider=>({requestKey,
-    report:await provider.getPurchaseCycle(activeSearch,view,page),
+    report:await provider.getPurchaseCycle(activeSearch,view,page,scope),
   }),[requestKey]);
   const report=data?.requestKey===requestKey ? data.report : null;
   const taskAccount=selected ? accounts.find(account=>account.id.toLowerCase()===selected.accountId.toLowerCase()) : null;
@@ -67,6 +69,23 @@ export function PurchaseCycleFollowUp({viewer,accounts,canCreate}:{viewer:string
       : loading || !report ? <LoadingState label="در حال خواندن فاکتورهای ERP" /> : <>
         {!report.configured && <p className="text-caption text-warning">اولویت پیگیری بعد از تنظیم حداقل فاصلهٔ خرید و حداقل فروش در سیاست سازمان مشخص می‌شود.</p>}
         <p className="text-caption text-text-secondary">تاریخ مبنا {formatAppDate(report.asOf)}</p>
+        {(report.coverage?.length ?? 0)>0 && <details open={coverageOpen} onToggle={event=>setCoverageOpen(event.currentTarget.open)} className="rounded-xl border border-border p-2">
+          <summary className="min-h-11 cursor-pointer py-2 text-sm font-semibold">پوشش ثبت ویزیت به تفکیک منطقه و مسئول</summary>
+          <p className="pb-1 text-caption text-text-secondary">برنامه‌های ۳۰ روز اخیرِ مشتریان دارای فاکتور مشاهده‌شده. پوشش، سهم برنامه‌های دارای ثبت ورود است.</p>
+          {scope && <Button type="button" variant="ghost" size="sm" onClick={()=>{setScope(undefined);setPage(1);}}>پاک‌کردن فیلتر منطقه و مسئول</Button>}
+          <ul className="divide-y divide-border">{report.coverage.map(entry=>{
+            const selectedGroup=scope?.territory===entry.territoryId && scope?.owner===entry.ownerId;
+            const percent=entry.planned ? new Intl.NumberFormat('fa-IR',{style:'percent',maximumFractionDigits:1}).format(entry.checkedIn/entry.planned) : null;
+            return <li key={`${entry.territoryId}:${entry.ownerId}`}>
+              <button type="button" className="min-h-11 w-full rounded-lg px-1.5 py-2 text-start hover:bg-hover" aria-pressed={selectedGroup}
+                onClick={()=>{setScope(selectedGroup ? undefined : {territory:entry.territoryId,owner:entry.ownerId});setPage(1);}}>
+                <span className="block text-sm font-semibold">{entry.territory || 'منطقهٔ نامشخص'} · {entry.owner}</span>
+                <span className="mt-1 block text-caption">{formatCount(entry.observedCustomers)} مشتری · {entry.needingFollowUp===null ? 'اولویت نامشخص' : `${formatCount(entry.needingFollowUp)} نیازمند پیگیری`}</span>
+                <span className="block text-caption text-text-secondary">{percent ? `${percent} پوشش، ${formatCount(entry.checkedIn)} ثبت ورود از ${formatCount(entry.planned)} برنامه` : 'برنامهٔ ثبت‌شده در دسترس نیست'}</span>
+              </button>
+            </li>;
+          })}</ul>
+        </details>}
         {!report.rows.length ? <EmptyState surface="purchase-follow-up" title="فاکتور منطبق در دادهٔ دریافت‌شده مشاهده نشد" compact /> :
           <ul className="divide-y divide-border">{report.rows.map(row=>{
             const canFollow=canCreate && accounts.some(account=>account.id.toLowerCase()===row.accountId.toLowerCase());

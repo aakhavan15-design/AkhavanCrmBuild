@@ -1,6 +1,6 @@
 import type { ReportingLine, ReportingLineChange, TaskRequestApprovalPolicy, TaskRequestCommand, TaskRequestFile, TaskRequestInput, TaskRequestPolicyKind,
   TaskRequestRecord, TaskRequestPage, TaskRequestView, TaskRequestResource } from './taskRequests';
-import type { PurchaseCycleResult, PurchaseCycleView, PurchaseProductResult } from './purchaseCycle';
+import type { PurchaseCoverageScope, PurchaseCycleResult, PurchaseCycleView, PurchaseProductResult } from './purchaseCycle';
 import type { AdvanceDecisionInput, EmploymentProfile, OwnPersonnelProfile, PersonnelAdvanceInput, PersonnelAdvanceReceipt } from './personnelProfile';
 import type { 
   AppState, 
@@ -320,7 +320,7 @@ export interface DataProvider {
   getDetailSubsidiaryBalances(options?: LedgerBalanceOptions): Promise<DetailBalancesResult>;
   getLedgerPnlData(filter?: Pick<JournalLineFilter, 'fromDate' | 'toDate' | 'periodCode' | 'source' | 'currency'>): Promise<LedgerPnlDataResult>;
   getCashFlowData(): Promise<CashFlowDataResult>;
-  getPurchaseCycle(search:string,view:PurchaseCycleView,page:number): Promise<PurchaseCycleResult>;
+  getPurchaseCycle(search:string,view:PurchaseCycleView,page:number,scope?:PurchaseCoverageScope): Promise<PurchaseCycleResult>;
   getPurchaseProductHints(account:string,source:string): Promise<PurchaseProductResult>;
   getMoneyReport(period: MoneyPeriod): Promise<MoneyReport>;
   getJournalCoverage(period: MoneyPeriod, filter: JournalCoverageFilter): Promise<JournalCoveragePage>;
@@ -814,8 +814,9 @@ export class HttpBackendDataProvider implements DataProvider {
   async decidePersonnelAdvance(id:string,input:AdvanceDecisionInput):Promise<{id:string;replayed:boolean}> {
     return this.request(`/personnel/advances/${encodeURIComponent(id)}/decision`,{method:'POST',body:JSON.stringify(input)});
   }
-  async getPurchaseCycle(search:string,view:PurchaseCycleView,page:number): Promise<PurchaseCycleResult> {
+  async getPurchaseCycle(search:string,view:PurchaseCycleView,page:number,scope?:PurchaseCoverageScope): Promise<PurchaseCycleResult> {
     const params=new URLSearchParams({search,view,page:String(page)});
+    if (scope) {params.set('territory',scope.territory);params.set('owner',scope.owner);}
     return this.request(`/analytics/purchase-cycle?${params}`);
   }
   async getPurchaseProductHints(account:string,source:string): Promise<PurchaseProductResult> {

@@ -1,3 +1,5 @@
+import { uuid } from './taskRequestContract.mjs';
+
 const tehranDate = new Intl.DateTimeFormat('sv-SE', {timeZone:'Asia/Tehran',year:'numeric',month:'2-digit',day:'2-digit'});
 
 const verifiedInvoiceStatus = `CROSS APPLY (
@@ -50,7 +52,7 @@ WITH visibleAccounts AS (
     SUM(snapshotSales) AS observedSales
   FROM statistics GROUP BY AccountId,SourceSystemCode
 ), ranked AS (
-  SELECT s.*,a.Name AS name,a.OwnerUserId AS ownerId,u.DisplayName AS owner,t.Name AS territory,
+  SELECT s.*,a.Name AS name,a.OwnerUserId AS ownerId,a.TerritoryId,u.DisplayName AS owner,t.Name AS territory,
     DATEDIFF(day,s.lastPurchase,@asOf) AS daysSince,
     CASE WHEN @minimumDays>0 AND @minimumSales>0 AND s.observedSales>=@minimumSales AND s.medianGap IS NOT NULL
       AND DATEDIFF(day,s.lastPurchase,@asOf)>=@minimumDays AND DATEDIFF(day,s.lastPurchase,@asOf)>s.medianGap
@@ -58,8 +60,12 @@ WITH visibleAccounts AS (
   FROM bySource s JOIN visibleAccounts a ON a.AccountId=s.AccountId
   LEFT JOIN core.AppUser u ON u.TenantId=@tenantId AND u.UserId=a.OwnerUserId AND u.IsActive=1
   LEFT JOIN core.Territory t ON t.TenantId=@tenantId AND t.TerritoryId=a.TerritoryId
-), pageRows AS (
-  SELECT * FROM ranked WHERE (@onlyRisk=0 OR followUp=1)
+)
+SELECT * INTO #rankedPurchase FROM ranked;
+
+WITH pageRows AS (
+  SELECT * FROM #rankedPurchase WHERE (@onlyRisk=0 OR followUp=1)
+    AND (@territory IS NULL OR TerritoryId=@territory) AND (@owner IS NULL OR ownerId=@owner)
   ORDER BY followUp DESC,observedSales DESC,AccountId,SourceSystemCode OFFSET @offset ROWS FETCH NEXT 21 ROWS ONLY
 )
 SELECT r.AccountId AS accountId,r.SourceSystemCode AS source,r.name,r.owner,r.territory,r.purchaseDays,r.daysSince,r.medianGap,
@@ -74,7 +80,26 @@ OUTER APPLY (
     MAX(CASE WHEN v.CheckInAtUtc<@nextDayUtc THEN v.CheckInAtUtc END) AS latestCheckIn
   FROM crm.Visit v WHERE v.TenantId=@tenantId AND v.AccountId=r.AccountId AND r.ownerId IS NOT NULL AND v.VisitorUserId=r.ownerId
 ) visits
-ORDER BY r.followUp DESC,r.observedSales DESC,r.AccountId,r.SourceSystemCode;`;
+ORDER BY r.followUp DESC,r.observedSales DESC,r.AccountId,r.SourceSystemCode;
+
+WITH accountsOnce AS (
+  SELECT AccountId,TerritoryId,ownerId,MAX(territory) AS territory,MAX(owner) AS owner,MAX(followUp) AS followUp
+  FROM #rankedPurchase WHERE TerritoryId IS NOT NULL AND ownerId IS NOT NULL AND owner IS NOT NULL
+  GROUP BY AccountId,TerritoryId,ownerId
+), visitsPerAccount AS (
+  SELECT a.*,visits.planned,visits.checkedIn
+  FROM accountsOnce a OUTER APPLY (
+    SELECT COUNT_BIG(*) AS planned,COUNT_BIG(CASE WHEN v.CheckInAtUtc<@nextDayUtc THEN 1 END) AS checkedIn
+    FROM crm.Visit v WHERE v.TenantId=@tenantId AND v.AccountId=a.AccountId AND v.VisitorUserId=a.ownerId
+      AND v.PlannedAtUtc>=DATEADD(day,-30,@nextDayUtc) AND v.PlannedAtUtc<@nextDayUtc
+  ) visits
+)
+SELECT TOP(12) TerritoryId AS territoryId,ownerId,MAX(territory) AS territory,MAX(owner) AS owner,
+  COUNT_BIG(*) AS observedCustomers,
+  CASE WHEN @minimumDays>0 AND @minimumSales>0 THEN SUM(CONVERT(bigint,followUp)) END AS needingFollowUp,
+  SUM(planned) AS planned,SUM(checkedIn) AS checkedIn
+FROM visitsPerAccount GROUP BY TerritoryId,ownerId
+ORDER BY needingFollowUp DESC,planned DESC,TerritoryId,ownerId;`;
 
 const productQuery = `
 WITH periodInvoices AS (
@@ -106,13 +131,15 @@ ORDER BY s.priorDays DESC,s.lastSeen DESC,p.ExternalProductId;`;
 
 export function parsePurchaseCycleQuery(params) {
   const search=params.search ?? '', view=params.view ?? 'follow-up', page=Number(params.page ?? 1);
+  const territory=params.territory ?? null, owner=params.owner ?? null;
   return typeof search==='string' && search.length<=100 && ['all','follow-up'].includes(view) &&
-    Number.isInteger(page) && page>=1 && page<=500 ? {search:search.trim(),view,page} : null;
+    Number.isInteger(page) && page>=1 && page<=500 && ((territory===null && owner===null) || (uuid(territory) && uuid(owner)))
+    ? {search:search.trim(),view,page,territory,owner} : null;
 }
 
 export function parsePurchaseProductQuery(params) {
   const {account,source}=params;
-  return typeof account==='string' && /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(account) &&
+  return uuid(account) &&
     typeof source==='string' && source.length<=40 && source.trim().length>0 ? {account,source} : null;
 }
 
@@ -131,11 +158,12 @@ export function createPurchaseCycleReader({sql,run}) {
     const asOf=tehranDate.format(new Date());
     const result=await new sql.Request(tx).input('tenantId',sql.UniqueIdentifier,auth.tenantId)
       .input('asOf',sql.Date,new Date(asOf)).input('search',sql.NVarChar(100),filter.search)
+      .input('territory',sql.UniqueIdentifier,filter.territory).input('owner',sql.UniqueIdentifier,filter.owner)
       .input('nextDayUtc',sql.DateTime2,new Date(`${asOf}T20:30:00Z`))
       .input('onlyRisk',sql.Bit,filter.view==='follow-up').input('offset',sql.Int,(filter.page-1)*20).query(query);
     const thresholds=result.recordsets[0][0];
     const rows=result.recordsets[1];
     return {asOf,configured:thresholds.minimumDays>0 && Number(thresholds.minimumSales)>0,
-      rows:rows.slice(0,20),hasMore:filter.page<500 && rows.length>20};
+      rows:rows.slice(0,20),hasMore:filter.page<500 && rows.length>20,coverage:result.recordsets[2]};
   });
 }

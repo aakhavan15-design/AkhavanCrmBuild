@@ -13,6 +13,12 @@ export interface PurchaseCycleResult {
   configured:boolean;
   rows:PurchaseCycleRow[];
   hasMore:boolean;
+  coverage:PurchaseCoverageRow[];
+}
+
+export interface PurchaseCoverageScope {territory:string;owner:string}
+export interface PurchaseCoverageRow {
+  territoryId:string;ownerId:string;territory:string;owner:string;observedCustomers:number;needingFollowUp:number|null;planned:number;checkedIn:number;
 }
 
 export interface PurchaseProductHint {
