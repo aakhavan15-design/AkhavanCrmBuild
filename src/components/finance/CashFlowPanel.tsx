@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { AlertTriangle, CheckCircle2, RefreshCw } from 'lucide-react';
 import { formatCount, formatMoney } from '../../lib/format';
 import { useDataSyncStatus } from '../../services/dataSyncController';
@@ -8,18 +9,24 @@ import { SearchableSelect } from '../ui/SearchableSelect';
 import { EChartCard } from '../charts/EChartCard';
 import { ledgerTrendOption } from '../charts/echartsTheme';
 import { Card } from '../ui/Card';
+import { QuickTaskRequest } from '../tasks/QuickTaskRequest';
 import { useAppStore } from '../../lib/storage';
 import { RBACService } from '../../lib/rbac';
 import { useDataQuery } from '../../hooks/useDataProvider';
 import { toLocalDateISO, formatAppDate } from '../../lib/utils';
 import { toLatinDigits } from '../../lib/digits';
-import { buildCashFlowProjection, evaluatePayability } from '../../lib/cashFlowEngine';
+import { buildCashFlowProjection, evaluatePayability, type CashItem } from '../../lib/cashFlowEngine';
 
 /**
  * جریان نقدینگی خزانه (R8 / F6-04): ورودی/خروجی آتی از چک، فاکتور خرید و هزینهٔ سررسیددار + مانده خزانه.
  * داده فقط از DataProvider.getCashFlowData(؛ نه State). نبود داده/خطا/مجوز هرگز صفر نمایش داده نمی‌شود.
  */
-const HORIZONS = [7, 30, 90] as const;
+const HORIZONS = [2, 7, 30, 90] as const;
+const SCENARIOS = [
+  {value:'BASE',label:'طبق سررسید',description:'وصول‌های پیش‌بینی‌شده طبق سررسید و تعهدات معوق از روز اول لحاظ می‌شوند.'},
+  {value:'NO_RECEIPTS',label:'محافظه‌کارانه',description:'تعهدات ثبت‌شده لحاظ می‌شوند و هیچ وصول پیش‌بینی‌شده‌ای منظور نمی‌شود.'},
+  {value:'OVERDUE_RECEIPTS',label:'خوش‌بینانه',description:'وصول مطالبات معوقِ ثبت‌شده نیز در روز اول فرض می‌شود.'},
+] as const;
 const money = (value: number | null) => value === null ? 'نامشخص' : formatMoney(value);
 const SOURCE_LABELS: Record<string, string> = {
   cheques: 'چک‌ها', supplierBills: 'فاکتور خرید', expenses: 'هزینه‌های سررسیددار',
@@ -32,14 +39,18 @@ const REASONS: Record<string, string> = {
 
 export function CashFlowPanel() {
   const state = useAppStore(s => s.state);
-  const canView = useMemo(() => new RBACService(state).can('finance', 'VIEW'), [state]);
+  const rbac = useMemo(() => new RBACService(state), [state]);
+  const canView = rbac.can('finance', 'VIEW');
+  const navigate=useNavigate();
   const { serverVersion } = useDataSyncStatus();
-  const [scenario, setScenario] = useState<'BASE' | 'NO_RECEIPTS'>('BASE');
+  const [scenario, setScenario] = useState<(typeof SCENARIOS)[number]['value']>('BASE');
+  const [followUp,setFollowUp]=useState<CashItem|null>(null);
   const [horizon, setHorizon] = useState<number>(30);
   const [amountText, setAmountText] = useState('');
   const [dueLimit, setDueLimit] = useState(10);
   const [reserveText, setReserveText] = useState('');
   const [payDate, setPayDate] = useState('');
+  const followUpAccount=followUp && state.accounts.find(account=>account.id.toLowerCase()===followUp.accountId?.toLowerCase());
 
   const { data: snapshot, loading, error, refetch } = useDataQuery(async provider =>
     canView ? { viewer: state.currentUserId, data: await provider.getCashFlowData() } : null,
@@ -48,7 +59,8 @@ export function CashFlowPanel() {
 
   const asOf = data?.asOf ?? toLocalDateISO();
   const projection = useMemo(() => data?.source === 'SQLSERVER_BACKEND' && (data.status === 'LIVE' || data.status === 'PARTIAL')
-    ? buildCashFlowProjection({ asOf, horizonDays: horizon, ...data, includeIncoming: scenario === 'BASE' })
+    ? buildCashFlowProjection({ ...data, asOf, horizonDays: horizon, includeIncoming: scenario !== 'NO_RECEIPTS',
+      overdueTreatment: scenario === 'OVERDUE_RECEIPTS' ? 'FIRST_DAY' : 'SEPARATE' })
     : null, [data, asOf, horizon, scenario]);
 
   const parse = (text: string): number | null => {
@@ -82,7 +94,7 @@ export function CashFlowPanel() {
 
   const op = projection.opening;
   const short = projection.firstShortfallDate;
-  const periodSize = horizon === 7 ? 1 : 7;
+  const periodSize = horizon <= 7 ? 1 : 7;
   const periods: Array<{ date: string; inflow: number; outflow: number }> = [];
   projection.days.forEach((day, index) => {
     if (index % periodSize === 0) periods.push({ date: day.date, inflow: 0, outflow: 0 });
@@ -108,12 +120,11 @@ export function CashFlowPanel() {
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2" role="group" aria-label="سناریوی نقدینگی">
-          <Button type="button" size="sm" variant={scenario === 'BASE' ? 'soft' : 'ghost'} aria-pressed={scenario === 'BASE'}
-            onClick={() => setScenario('BASE')}>برنامهٔ جاری</Button>
-          <Button type="button" size="sm" variant={scenario === 'NO_RECEIPTS' ? 'soft' : 'ghost'} aria-pressed={scenario === 'NO_RECEIPTS'}
-            onClick={() => setScenario('NO_RECEIPTS')}>بدون وصول پیش‌بینی‌شده</Button>
+          {SCENARIOS.map(item=><Button key={item.value} type="button" size="sm" variant={scenario===item.value ? 'soft' : 'ghost'}
+            aria-pressed={scenario===item.value} onClick={()=>setScenario(item.value)}>{item.label}</Button>)}
           {data?.updatedAt && <span className="text-caption text-text-secondary">آخرین ثبت در دادهٔ خزانه {formatAppDate(data.updatedAt, state.settings?.locale)}</span>}
         </div>
+        <p className="text-caption text-text-secondary">{SCENARIOS.find(item=>item.value===scenario)?.description}</p>
         <p className="text-caption text-text-secondary">
           {data?.chequeEvidence === 'ERP_MIRROR' ? 'چک‌ها از آینهٔ ERP با وضعیت نگاشت‌شده خوانده شده‌اند.' : 'چک‌های برنامهٔ خزانه هنوز با آینهٔ ERP تطبیق داده نشده‌اند.'}
         </p>
@@ -137,8 +148,11 @@ export function CashFlowPanel() {
             <span>{short ? `مانده پیش‌بینی‌شده از ${formatAppDate(short, state.settings?.locale)} منفی می‌شود.` : 'در این افق، مانده پیش‌بینی‌شده منفی نمی‌شود.'}</span>
           </div>
         )}
+        {!canAssess && short && <p className="rounded-xl border border-warning bg-warning-soft p-3 text-sm text-warning" role="status">
+          اقلام خوانده‌شده در سناریوی انتخابی از {formatAppDate(short, state.settings?.locale)} نشانهٔ کسری دارند. میزان وجه در دسترس و سررسیدها نیازمند تطبیق‌اند.
+        </p>}
         {(projection.overdue.inflow > 0 || projection.overdue.outflow > 0) && (
-          <p className="text-xs text-warning">سررسیدگذشته: دریافتنی {money(projection.overdue.inflow)} (وصول‌نشده فرض می‌شود) و پرداختنی {money(projection.overdue.outflow)} (روز اول پرداخت فرض می‌شود).</p>
+          <p className="text-xs text-warning">دریافتنی معوق {money(projection.overdue.inflow)} · پرداختنی معوق {money(projection.overdue.outflow)}</p>
         )}
         <EChartCard title="ورودی و خروجی برنامه‌ریزی‌شده"
           periodLabel={periodSize === 1 ? 'مبالغ روزانه به ریال' : 'مبالغ هفتگی به ریال'}
@@ -171,9 +185,12 @@ export function CashFlowPanel() {
         <h3 className="text-sm font-black text-text-main">تقویم سررسیدها</h3>
         {projection.items.length === 0 && <p className="text-xs text-text-secondary">سررسیدی در این افق ثبت نشده است.</p>}
         {projection.items.slice(0, dueLimit).map(i => (
-          <div key={`${i.kind}-${i.id}`} className="flex items-center justify-between gap-2 border-b border-border py-1.5 text-xs last:border-0">
+          <div key={`${i.kind}-${i.id}`} className="flex flex-wrap items-center justify-between gap-2 border-b border-border py-1.5 text-xs last:border-0">
             <span className="min-w-0 wrap-break-word">{i.label} <span className="text-text-secondary">· {formatAppDate(i.dueDate, state.settings?.locale)}</span></span>
             <span className={`shrink-0 font-bold tabular-nums ${i.direction === 'IN' ? 'text-success' : 'text-danger'}`}>{i.direction === 'IN' ? '+' : '−'}{money(i.amount)}</span>
+            {state.currentUserId && i.kind==='CHEQUE_OUT' && data?.chequeEvidence==='ERP_MIRROR' && rbac.can('tasks','CREATE') &&
+              state.accounts.some(account=>account.id.toLowerCase()===i.accountId?.toLowerCase()) && <Button type="button" variant="ghost" size="sm"
+              aria-label={`پیگیری ${i.label}`} onClick={()=>setFollowUp(i)}>پیگیری</Button>}
           </div>
         ))}
         {projection.items.length > dueLimit && <Button type="button" size="sm" variant="outline"
@@ -185,6 +202,12 @@ export function CashFlowPanel() {
           </details>
         )}
       </Card>
+      {followUp && followUpAccount && state.currentUserId && <QuickTaskRequest open viewer={state.currentUserId} accounts={[followUpAccount]} onClose={()=>setFollowUp(null)}
+        initial={{kind:'FINANCE',accountId:followUpAccount.id,links:[{type:'CHEQUE',id:followUp.id}],priority:'HIGH',
+          dueDate:followUp.dueDate,title:`بررسی پوشش ${followUp.label}`.slice(0,160),
+          description:`سررسید خوانده‌شده: ${formatAppDate(followUp.dueDate)}\nمبلغ ریالی ثبت‌شده: ${money(followUp.amount)}\nلطفاً سند منبع و وجه نقد در دسترس را بررسی و نتیجه را ثبت کنید.`}}
+        initialLinkLabels={{[`CHEQUE:${followUp.id}`]:followUp.label}}
+        onSaved={id=>navigate(`/tasks?request=${encodeURIComponent(id)}`)}/>}
     </div>
   );
 }

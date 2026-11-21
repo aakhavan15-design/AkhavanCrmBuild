@@ -788,7 +788,11 @@ app.post('/api/v1/accounts/search', authenticate, requirePermission('accounts.VI
 
 const readTreasuryFlow = createTreasuryFlowReader({ sql, run: withTenantContext });
 app.get('/api/v1/finance/cash-flow', authenticate, requirePermission('finance.VIEW', { organizationWide: true }),
-  wrap(async (req, res) => res.json(await readTreasuryFlow(req.auth))));
+  wrap(async (req, res) => {
+    res.set('Cache-Control','private, no-store');
+    if (entityDriverKind!=='mssql') return bad(req,res,503,'TREASURY_SOURCE_UNAVAILABLE','خواندن خزانه به SQL Server نیاز دارد.');
+    res.json(await readTreasuryFlow(req.auth));
+  }));
 
 const readMoneyIntelligence = createMoneyIntelligenceReader({ sql, run: withTenantContext });
 app.get('/api/v1/finance/money-intelligence', authenticate, requirePermission('finance.VIEW', { organizationWide: true }),

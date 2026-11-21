@@ -29,6 +29,7 @@ export interface CashFlowInput {
 
 export interface CashItem {
   id: string;
+  accountId?: string;
   kind: CashItemKind;
   direction: 'IN' | 'OUT';
   dueDate: string;
@@ -199,6 +200,7 @@ export function buildCashFlowProjection(input: CashFlowInput): CashFlowProjectio
     if (!isOut && input.includeIncoming === false) continue;
     push({
       id, kind: isOut ? 'CHEQUE_OUT' : 'CHEQUE_IN', direction: isOut ? 'OUT' : 'IN', dueDate: due, amount,
+      accountId: typeof c.accountId === 'string' && c.accountId ? c.accountId : undefined,
       label: `${isOut ? 'چک پرداختنی' : 'چک دریافتنی'} ${str(c.chequeNumber)}`.trim()
     });
   }
@@ -245,14 +247,22 @@ export function buildCashFlowProjection(input: CashFlowInput): CashFlowProjectio
 
   /* ردیف روزانه */
   const days: CashDayRow[] = [];
+  const scheduledByDay = new Map<string, { inflow:number; outflow:number }>();
+  for (const item of items) {
+    if (item.overdue) continue;
+    const daily = scheduledByDay.get(item.dueDate) ?? { inflow:0, outflow:0 };
+    if (item.direction === 'IN') daily.inflow += item.amount;
+    else daily.outflow += item.amount;
+    scheduledByDay.set(item.dueDate,daily);
+  }
   let running: number | null = opening.status === 'KNOWN' ? opening.balance : null;
   // سناریوی محافظه‌کارانه برای مانده: تعهدات پرداختنی سررسیدگذشته روز اول پرداخت می‌شود؛ مطالبات سررسیدگذشته وصول‌شده فرض نمی‌شود.
   if (running !== null && !firstDayMode) running -= overdue.outflow;
   for (let i = 0; i < horizon; i++) {
     const date = addDaysIso(asOf, i);
-    const today = items.filter(x => !x.overdue && x.dueDate === date);
-    let inflow = today.filter(x => x.direction === 'IN').reduce((s, x) => s + x.amount, 0);
-    let outflow = today.filter(x => x.direction === 'OUT').reduce((s, x) => s + x.amount, 0);
+    const today = scheduledByDay.get(date);
+    let inflow = today?.inflow ?? 0;
+    let outflow = today?.outflow ?? 0;
     if (i === 0 && firstDayMode) { inflow += overdue.inflow; outflow += overdue.outflow; }
     const net = inflow - outflow;
     if (running !== null) running += net;

@@ -11,7 +11,7 @@ WHERE s.TenantId=@tenantId AND s.ChequeRialVerifiedThrough IS NOT NULL
 
 SELECT c.ChequeMirrorId AS id,c.ExternalChequeId AS externalId,c.DirectionCode AS direction,c.ChequeNumber AS chequeNumber,
   c.AccountId AS accountId,CONVERT(char(10),c.DueDate,126) AS dueDate,
-  CONVERT(varchar(42),c.Amount) AS amount,c.SyncedAtUtc AS syncedAt,m.status
+  c.SourceSystemCode AS source,CONVERT(varchar(42),c.Amount) AS amount,c.SyncedAtUtc AS syncedAt,m.status
 FROM analytics.MoneyReportSource s
 JOIN core.AppUser approver ON approver.TenantId=s.TenantId AND approver.UserId=s.ApprovedBy
 JOIN crm.ChequeMirror c ON c.TenantId=s.TenantId AND c.SourceSystemCode=s.SourceSystemCode
@@ -58,15 +58,15 @@ export function createTreasuryFlowReader({ sql, run }) {
         .input('tenantId', sql.UniqueIdentifier, auth.tenantId)
         .input('asOf', sql.Date, new Date(asOf))
         .query(evidenceSql);
-      const coverage = evidence.recordsets[0][0];
-      if (coverage) {
+      const coveredSources = evidence.recordsets[0];
+      if (coveredSources.length) {
         const eligible = [];
         for (const row of evidence.recordsets[1]) {
           if (row.status !== 'OPEN') { unverifiedCheques++; continue; }
           const amount = Number(row.amount);
           if (!Number.isFinite(amount) || amount <= 0 || amount > Number.MAX_SAFE_INTEGER) { unverifiedCheques++; continue; }
           eligible.push({
-            id: row.id, externalId: row.externalId, direction: row.direction === 'ISSUED' ? 'PAYABLE' : 'RECEIVABLE',
+            id: row.id, externalId: row.externalId, sourceSystemCode:row.source, direction: row.direction === 'ISSUED' ? 'PAYABLE' : 'RECEIVABLE',
             chequeNumber: row.chequeNumber, accountId: row.accountId, dueDate: row.dueDate,
             amount, currencyCode: 'IRR', status: 'OPEN',
           });
@@ -75,7 +75,7 @@ export function createTreasuryFlowReader({ sql, run }) {
         }
         collections.cheques = eligible;
         chequeEvidence = 'ERP_MIRROR';
-        if (!unverifiedCheques && coverage.ChequeRialVerifiedThrough.toISOString().slice(0, 10) >= asOf) populated.add('cheques');
+        if (!unverifiedCheques && coveredSources.every(row => row.ChequeRialVerifiedThrough?.toISOString?.().slice(0, 10) >= asOf)) populated.add('cheques');
         else populated.delete('cheques');
       }
     }
