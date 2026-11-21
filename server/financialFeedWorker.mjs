@@ -180,3 +180,22 @@ export function createFinancialFeedWorker({ sql, run }) {
     });
   };
 }
+
+/** Load the approved company binding and last published feed cursor before a read-only extract. */
+export async function readFinancialFeedCheckpoint({ sql, run }, { tenantId, connectorId, feed }) {
+  if (!isFinancialUuid(tenantId) || !isFinancialUuid(connectorId) || ![JOURNAL_FEED,REFERENCE_FEED,FIFO_FEED].includes(feed)) {
+    throw failure('INVALID_FEED','اتصال، نوع خوراک یا مستأجر معتبر نیست.');
+  }
+  return run({tenantId},async transaction => {
+    const result = await new sql.Request(transaction).input('tenantId',sql.UniqueIdentifier,tenantId)
+      .input('connectorId',sql.UniqueIdentifier,connectorId).input('feed',sql.NVarChar(80),feed).query(`
+        SELECT c.FinancialCompanyKey AS company,c.FinancialBaseCurrency AS currency,c.SystemCode AS source,
+          cp.LastExternalId AS cursor,c.TimeoutMs AS timeoutMs
+        FROM integration.Connector c LEFT JOIN integration.SyncCheckpoint cp
+          ON cp.TenantId=c.TenantId AND cp.ConnectorId=c.ConnectorId AND cp.EntityType=@feed
+        WHERE c.TenantId=@tenantId AND c.ConnectorId=@connectorId AND c.IsEnabled=1
+          AND c.DirectionCode IN ('INBOUND','BIDIRECTIONAL') AND c.FinancialCompanyKey IS NOT NULL;`);
+    if (!result.recordset.length) throw failure('ILL_CONFIGURED_CONNECTOR','اتصال ورودی مالی فعال یافت نشد.');
+    return { ...result.recordset[0],feed };
+  });
+}

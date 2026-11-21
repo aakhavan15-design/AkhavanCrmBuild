@@ -31,3 +31,28 @@ test('retains arbitrary native hierarchy and rejects local numeric accounting as
   assert.equal(normalizeReferenceFeed(input).records[0].hierarchy, account.hierarchy);
   assert.equal(normalizeReferenceFeed({ ...input, records: [{ ...account, parent: account.code }] }).errors[0].ruleCode,'BAD_ACCOUNT');
 });
+
+test('read-only API adapter resumes from the published cursor and rejects redirects', async () => {
+  const { readFinancialApiFeed } = await import('../server/financialFeedExtract.mjs');
+  const checkpoint = { feed:JOURNAL_FEED,company:'company-42',cursor:'issued-after-45',timeoutMs:5000 };
+  const result = await readFinancialApiFeed({ url:'https://erp.example.invalid/read',checkpoint,
+    request:async (url,options) => {
+      assert.equal(url.searchParams.get('after'),'issued-after-45');
+      assert.equal(url.searchParams.get('company'),checkpoint.company);
+      assert.equal(options.method,'GET');
+      assert.equal(options.redirect,'error');
+      return new Response('{"feed":"FINANCIAL_JOURNAL"}',{headers:{'Content-Type':'application/json'}});
+    } });
+  assert.equal(JSON.parse(result).feed,JOURNAL_FEED);
+  await assert.rejects(readFinancialApiFeed({url:'http://erp.example.invalid/read',checkpoint,request:()=>assert.fail()}),
+    {code:'ERP_API_ENDPOINT'});
+});
+
+test('read-only SQL adapter rejects non-identifier views and ambiguous source cursor pages', async () => {
+  const { readFinancialSqlFeed } = await import('../server/financialFeedExtract.mjs');
+  const sql = { NVarChar:() => null, Int:null };
+  const pool = {request:() => ({input() { return this; },async query() { return {recordset:[{},{}]}; }})};
+  const checkpoint = {feed:JOURNAL_FEED,company:'company-42',cursor:null};
+  await assert.rejects(readFinancialSqlFeed({sql,pool,view:'erp.journal;DELETE',checkpoint}),{code:'ERP_SQL_VIEW'});
+  await assert.rejects(readFinancialSqlFeed({sql,pool,view:'erp.FinanceFeed',checkpoint}),{code:'ERP_SQL_CURSOR_AMBIGUOUS'});
+});
