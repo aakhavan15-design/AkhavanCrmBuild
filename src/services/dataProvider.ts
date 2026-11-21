@@ -135,7 +135,7 @@ export interface InvoiceFifoRow {
 }
 export interface InvoiceFifoEvidence {
   status: 'AVAILABLE' | 'EMPTY' | 'UNMAPPED' | 'AMBIGUOUS' | 'RESTRICTED' | 'UNAVAILABLE';
-  invoice?: { id: string; number: string; date: string; currency: string; source: string };
+  invoice?: { id: string; number: string; date: string; currency: string; source: string; accountId?:string|null };
   rows: InvoiceFifoRow[];
   hasMore?: boolean;
   margin?: {status:'AVAILABLE';net:string;cost:string;profit:string;percent:string|null} |

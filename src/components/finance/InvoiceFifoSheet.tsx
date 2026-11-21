@@ -1,3 +1,5 @@
+import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useDataQuery } from '../../hooks/useDataProvider';
 import { formatDecimalString } from '../../lib/format';
 import { formatAppDate } from '../../lib/utils';
@@ -6,6 +8,10 @@ import { BottomSheet } from '../ui/BottomSheet';
 import { DataTable, type DataTableColumn } from '../ui/DataTable';
 import { ErrorState, LoadingState } from '../ui';
 import { KpiCard } from '../charts/KpiCard';
+import { useAppStore } from '../../lib/storage';
+import { RBACService } from '../../lib/rbac';
+import { Button } from '../ui/Button';
+import { QuickTaskRequest } from '../tasks/QuickTaskRequest';
 
 const labels: Record<InvoiceFifoRow['coverage'], string> = {
   MATCHED: 'مقدار و بهای ردیف منطبق‌اند',
@@ -39,9 +45,25 @@ export function InvoiceFifoSheet({ invoiceId, invoiceNumber, locale, onClose }: 
   locale?: unknown;
   onClose: () => void;
 }) {
-  const { data, loading, error, refetch } = useDataQuery(provider => provider.getInvoiceFifoEvidence(invoiceId), [invoiceId]);
+  const state=useAppStore(store=>store.state);
+  const navigate=useNavigate();
+  const [followUp,setFollowUp]=useState(false);
+  const { data:snapshot, loading, error, refetch } = useDataQuery(async provider=>({invoiceId, viewer:state.currentUserId,
+    report:await provider.getInvoiceFifoEvidence(invoiceId)}), [invoiceId,state.currentUserId]);
+  const data=snapshot?.invoiceId===invoiceId && snapshot.viewer===state.currentUserId ? snapshot.report : null;
   const hasRows = data?.status === 'AVAILABLE';
   const summary=data?.margin;
+  const invoice=data?.invoice;
+  const account=invoice?.accountId ? state.accounts.find(row=>row.id.toLowerCase()===invoice.accountId?.toLowerCase()) : null;
+  const needsReview=summary && (summary.status==='AVAILABLE' ? summary.profit.startsWith('-') : summary.status==='RETURN_REVIEW' || summary.status==='NET_MISMATCH');
+  const canFollowUp=Boolean(invoice && account && state.currentUserId && new RBACService(state).can('tasks','CREATE'));
+  if (followUp && canFollowUp && needsReview && !loading && !error && invoice && account && state.currentUserId) {
+    return <QuickTaskRequest open viewer={state.currentUserId} accounts={[account]} onClose={()=>setFollowUp(false)}
+      initial={{kind:'FINANCE',title:`بررسی شواهد تجاری فاکتور ${invoice.number}`.slice(0,160),description:'شواهد ثبت‌شده و ردیف‌های فاکتور را تطبیق دهید و نتیجه را ثبت کنید.',
+        priority:'HIGH',accountId:account.id,links:[{type:'INVOICE',id:invoice.id}]}}
+      initialLinkLabels={{[`INVOICE:${invoice.id}`]:invoice.number}}
+      onSaved={id=>{onClose();navigate(`/tasks?request=${encodeURIComponent(id)}`);}}/>;
+  }
   return <BottomSheet isOpen onClose={onClose} title="شواهد بهای تمام‌شده" subtitle={invoiceNumber ? `فاکتور ${invoiceNumber}` : undefined}>
     {loading ? <LoadingState label="در حال دریافت شواهد فاکتور" />
       : error || !data || data.status === 'UNAVAILABLE' ? (
@@ -62,6 +84,7 @@ export function InvoiceFifoSheet({ invoiceId, invoiceNumber, locale, onClose }: 
           <KpiCard density="compact" label="حاشیهٔ سود تجاری" value={summary.percent===null ? 'نامشخص' : `${decimal(summary.percent)}٪`} />
         </div> : summary && <p role="status" className="mb-2 rounded-xl border border-warning/30 bg-warning-soft p-2 text-caption text-warning">سود کل فاکتور نامشخص است. {marginPending[summary.status]}</p>}
         <p className="mb-2 text-caption text-text-secondary">مبنای سود تجاری، فروش خالص و بهای معتبر کالاست. تحلیل هزینهٔ حمل و توزیع در گزارش هزینه‌های عملیاتی انجام می‌شود.</p>
+        {needsReview && canFollowUp && <Button type="button" variant="outline" size="sm" className="mb-2" onClick={()=>setFollowUp(true)}>ثبت پیگیری این فاکتور</Button>}
         {data.hasMore && <p role="status" className="mb-2 text-caption text-warning">نمایش به نخستین ۲۵۰ ردیف محدود است.</p>}
         <DataTable tableId="invoice-fifo-evidence" title="ردیف‌های فاکتور" rows={data.rows} columns={columns}
           getRowId={row => row.lineId} exportFileName="invoice_fifo_evidence"

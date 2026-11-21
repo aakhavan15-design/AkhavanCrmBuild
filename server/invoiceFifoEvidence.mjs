@@ -38,7 +38,7 @@ export function createInvoiceFifoEvidence({ sql, run }) {
     const { recordset: matches } = await request().input('localId', sql.UniqueIdentifier, localId)
       .query(`SELECT TOP (2) invoice.InvoiceMirrorId AS id, invoice.InvoiceNumber AS number,
           CONVERT(char(10),invoice.InvoiceDate,23) AS date, invoice.CurrencyCode AS currency,
-          invoice.SourceSystemCode AS source,CONVERT(varchar(42),invoice.NetAmount) AS net,
+          invoice.SourceSystemCode AS source,invoice.AccountId AS accountId,CONVERT(varchar(42),invoice.NetAmount) AS net,
           CONVERT(bit,CASE WHEN EXISTS(SELECT 1 FROM crm.SalesReturnMirror r WHERE r.TenantId=invoice.TenantId
             AND r.SourceSystemCode=invoice.SourceSystemCode AND r.InvoiceMirrorId=invoice.InvoiceMirrorId AND r.IsVoided=0) THEN 1 ELSE 0 END) AS hasLinkedReturn
         FROM crm.InvoiceMirror AS invoice
