@@ -47,6 +47,8 @@ export interface DataTableProps<T> {
   title: string;
   subtitle?: string;
   searchPlaceholder?: string;
+  /** Use when the parent has already searched and passed the filtered records. */
+  hideSearch?: boolean;
   filterGroups?: readonly FilterGroup<T>[];
   /** متنهای اضافه برای جستجو (مثلاً نام مخاطبین) */
   extraSearchText?: (row: T) => readonly (string | undefined | null)[];
@@ -321,7 +323,7 @@ export function DataTable<T>(props: DataTableProps<T>) {
   return (
     <div className={cn('space-y-4', className)} dir="rtl">
       {summary}
-      <PageToolbar title={title} subtitle={subtitle} search={query} onSearchChange={setQuery} searchPlaceholder={searchPlaceholder}
+      <PageToolbar title={title} subtitle={subtitle} search={query} onSearchChange={props.hideSearch ? undefined : setQuery} searchPlaceholder={searchPlaceholder}
         resultCount={sorted.length} activeFilters={activeFilters} onClearAll={clearAll} filters={filtersNode} actions={composedToolbarActions} className="mb-0" />
 
       <div role="status" aria-live="polite" className="sr-only">{notice ?? ''}</div>

@@ -1,6 +1,6 @@
 import { toast } from './ui/Toast';
 import { guard } from '../hooks/useCan';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { AppState, UserGroup, GroupMessage, Mention, ID, CustomerTask, UserAccount, Attachment } from '../types';
 import { generateId } from '../lib/utils';
@@ -20,6 +20,8 @@ import { useCan } from '../hooks/useCan';
 import { cn } from '../lib/utils';
 import { searchMentions, createMentionReference, MentionEntity } from '../services/mentionEngine';
 import { assignSla, proposeOverflow } from '../services/taskIntelligence';
+import { buildChatReferenceScope } from '../lib/chatReferenceScope';
+import { smartSearch } from '../lib/smartSearch';
 import { OPERATIONS_CONFIG } from '../config/operations';
 
 interface Props { state: AppState; updateState: (updater: (draft: AppState) => AppState | void) => void; setActiveTab?: (tab: Record<string, unknown>) => void }
@@ -33,7 +35,6 @@ type ConversationMessage = GroupMessage & {
   entityMentions?: MessageReference[];
   reactions?: Reaction[];
 };
-type ReferenceRecord = { id?: string; code?: string; erpId?: string; status?: string; dueDate?: string; accountName?: string; subtitle?: string };
 type LinkableRecord = { id: ID; name?: string; title?: string; subject?: string; number?: string; quoteNumber?: string };
 
 const MAX_FILE = 1.5 * 1024 * 1024;
@@ -50,6 +51,7 @@ export function GroupsWorkspace({ state, updateState }: Props) {
   const me = state.currentUserId || '';
   const rbac = useMemo(() => new RBACService(state), [state]);
   const { denied } = useCan(state, updateState);
+  const referenceScope = useMemo(() => buildChatReferenceScope(state, rbac), [state, rbac]);
   const canCreateGroup = rbac.can('groups', 'CREATE');
   const users = state.users || [];
   const userOf = (id?: string) => users.find(u => u.id === id);
@@ -76,14 +78,34 @@ export function GroupsWorkspace({ state, updateState }: Props) {
   const [newGroupDesc, setNewGroupDesc] = useState('');
   const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
   const [pickQuery, setPickQuery] = useState('');
-  const [visualViewportState, setVisualViewportState] = useState({ height: 0, offsetTop: 0 });
   const scrollRef = useRef<HTMLDivElement>(null);
+  const chatAnchor = useRef({ group: null as string | null, atEnd: true });
   const fileRef = useRef<HTMLInputElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const unreadAnchor = useRef<{ id: string; msgId: string | null } | null>(null);
 
   const activeId = params.get('c');
-  const openConv = (id: string | null) => { const n = new URLSearchParams(params); if (id) n.set('c', id); else n.delete('c'); setParams(n, { replace: false }); setSelectedMsg(null); setReplyTo(null); setEditing(null); setText(''); };
+  const attachmentSession = useRef(0);
+  const openConv = (id: string | null) => {
+    const next = new URLSearchParams(params);
+    if (id) next.set('c', id); else next.delete('c');
+    setParams(next, { replace: false });
+  };
+  useLayoutEffect(() => {
+    attachmentSession.current++;
+    setModal(null);
+    setTaskFrom(null);
+    setSelectedMsg(null);
+    setReplyTo(null);
+    setEditing(null);
+    setText('');
+    setFiles([]);
+    setFileError('');
+    setAttachedEntity(undefined);
+    setPendingMentions([]);
+    setPendingEntityMentions([]);
+    setMentionQuery(null);
+  }, [activeId]);
 
   // ---- مجموعه گفتگوهایی که کاربر اجازه دیدن دارد (پیام مستقیم فقط برای طرفین) ----
   const allGroups = state.groups || [];
@@ -130,28 +152,12 @@ export function GroupsWorkspace({ state, updateState }: Props) {
     if (!has) return;
     updateState((d: AppState) => { (d.messages || []).forEach(m => { if (m.groupId === activeId && !m.readBy?.includes(me)) { if (!m.readBy) m.readBy = []; m.readBy.push(me); } }); });
   }, [activeId, messages.length, me]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => {
-    if (typeof window === 'undefined' || !window.visualViewport) return;
-    const viewport = window.visualViewport;
-    let rafId: number;
-    const syncViewport = () => {
-      if (rafId) cancelAnimationFrame(rafId);
-      rafId = requestAnimationFrame(() => {
-        setVisualViewportState({ height: viewport.height, offsetTop: viewport.offsetTop });
-      });
-    };
-    syncViewport();
-    viewport.addEventListener('resize', syncViewport);
-    viewport.addEventListener('scroll', syncViewport);
-    window.addEventListener('orientationchange', syncViewport);
-    return () => {
-      viewport.removeEventListener('resize', syncViewport);
-      viewport.removeEventListener('scroll', syncViewport);
-      window.removeEventListener('orientationchange', syncViewport);
-      if (rafId) cancelAnimationFrame(rafId);
-    };
-  }, []);
-  useEffect(() => { const el = scrollRef.current; if (el) el.scrollTop = el.scrollHeight; }, [messages.length, activeId]);
+  useLayoutEffect(() => {
+    const area = scrollRef.current;
+    if (!area) return;
+    if (chatAnchor.current.group !== activeId) chatAnchor.current = { group: activeId, atEnd: true };
+    if (chatAnchor.current.atEnd) area.scrollTop = area.scrollHeight;
+  }, [messages.length, activeId]);
   useEffect(() => { const el = inputRef.current; if (el) { el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 140) + 'px'; } }, [text]);
 
   // ---- ارسال / ویرایش ----
@@ -161,7 +167,7 @@ export function GroupsWorkspace({ state, updateState }: Props) {
     setMentionQuery(m ? m[1] : null);
   };
   const mentionOptions = mentionQuery === null ? [] : members.filter(u => u.id !== me && ((u.name || '').toLowerCase().includes(mentionQuery.toLowerCase()) || (u.username || '').toLowerCase().includes(mentionQuery.toLowerCase()))).slice(0, 5);
-  const entityMentionOptions: MentionEntity[] = mentionQuery === null ? [] : searchMentions(state, mentionQuery, { maxResults: 8 }).filter(entity => entity.entityType !== 'STAFF').slice(0, 6);
+  const entityMentionOptions: MentionEntity[] = mentionQuery === null ? [] : searchMentions(referenceScope.state, mentionQuery, { maxResults: 8 }).filter(entity => entity.entityType !== 'STAFF').slice(0, 6);
   const pickEntityMention = (entity: MentionEntity) => {
     const el = inputRef.current; const caret = el?.selectionStart ?? text.length; const beforeText = text.slice(0, caret); const at = beforeText.lastIndexOf('@');
     if (at < 0) return; const before = text.slice(0, at); const after = text.slice(caret); const token = `@${entity.displayText}`;
@@ -177,17 +183,25 @@ export function GroupsWorkspace({ state, updateState }: Props) {
 
   const readFiles = (list: FileList | null) => {
     if (!list) return; setFileError('');
+    const session = attachmentSession.current;
     Array.from(list).slice(0, 4 - files.length).forEach(f => {
       if (f.size > MAX_FILE) { setFileError(`«${f.name}» بزرگ‌تر از ۱٫۵ مگابایت است و اضافه نشد.`); return; }
       const r = new FileReader();
-      r.onload = () => setFiles(p => (p.length >= 4 ? p : [...p, { id: generateId(), fileName: f.name, fileType: f.type, fileSize: f.size, base64Data: String(r.result) }]));
+      r.onload = () => {
+        if (session !== attachmentSession.current || typeof r.result !== 'string') return;
+        const base64Data = r.result;
+        setFiles(previous => previous.length >= 4 ? previous : [...previous, {
+          id: generateId(), fileName: f.name, fileType: f.type, fileSize: f.size, base64Data,
+        }]);
+      };
       r.readAsDataURL(f);
     });
     if (fileRef.current) fileRef.current.value = '';
   };
 
   const send = () => {
-    if (!activeGroup) return;
+    if (!activeGroup || !rbac.canActOnRecord('messages', 'CREATE', scopeOf(me))) return;
+    if (attachedEntity && !referenceScope.get(attachedEntity.type, attachedEntity.id)) return denied('پیوست رکورد خارج از محدوده');
     const content = text.trim();
     playMechanicalTick();
     if (editing) {
@@ -199,7 +213,7 @@ export function GroupsWorkspace({ state, updateState }: Props) {
     if (!content && !attachedEntity && files.length === 0) return;
     const mentions = pendingMentions.filter(p => content.includes(p.display) && activeGroup.memberIds.includes(p.id) && (userOf(p.id)?.isActive ?? userOf(p.id)?.active) !== false);
     const msg: ConversationMessage = {
-      id: generateId(), groupId: activeGroup.id, senderId: me, content, mentions, entityMentions: pendingEntityMentions.filter(ref => content.includes(`@${ref.displayText}`)), relatedEntity: attachedEntity,
+      id: generateId(), groupId: activeGroup.id, senderId: me, content, mentions, entityMentions: pendingEntityMentions.filter(ref => content.includes(`@${ref.displayText}`) && referenceScope.get(ref.entityType, ref.entityId)), relatedEntity: attachedEntity,
       attachments: files.length ? files : undefined, replyToId: replyTo?.id, createdAt: new Date().toISOString(), readBy: [me],
     };
     updateState(d => {
@@ -279,13 +293,14 @@ export function GroupsWorkspace({ state, updateState }: Props) {
   const scopeOf = (ownerId?: string) => ({ memberIds: activeGroup?.memberIds || [], managerId: activeGroup?.managerId, ownerId });
 
   const goEntity = (e: { type: string; id: ID }) => {
-    if (e.type === 'ACCOUNT' || e.type === 'CUSTOMER') { updateState(d => { d.activeContextAccountId = e.id; d.activeContextCustomerId = e.id; }); navigate(`/accounts/${e.id}`); return; }
+    if (!referenceScope.get(e.type, e.id)) return denied('مشاهدهٔ این رکورد');
+    if (e.type === 'ACCOUNT' || e.type === 'CUSTOMER') { updateState(d => { d.activeContextAccountId = e.id; d.activeContextCustomerId = e.id; }); navigate(`/accounts/${encodeURIComponent(e.id)}`); return; }
     const destination: Record<string, string> = { TASK: '/tasks', QUOTE: '/quotes', OPPORTUNITY: '/opportunities', CASE: '/cases', REQUEST: '/internal_automation', STAFF: '/personnel-file', CHECK: '/finance', INVOICE: '/finance', PRODUCT: '/command', WAREHOUSE: '/operations' };
     navigate(destination[e.type] || '/');
   };
 
   const recordOptions = useMemo(() => {
-    const s = state; const ql = pickQuery.trim().toLowerCase();
+    const s = referenceScope.state;
     const all: { type: EntityType; id: ID; display: string }[] = [
       ...(s.accounts || []).map((x: LinkableRecord) => ({ type: 'ACCOUNT' as const, id: x.id, display: `مشتری: ${x.name}` })),
       ...(s.tasks || []).map((x: LinkableRecord) => ({ type: 'TASK' as const, id: x.id, display: `وظیفه: ${x.title}` })),
@@ -293,8 +308,8 @@ export function GroupsWorkspace({ state, updateState }: Props) {
       ...(s.quotes || []).map((x: LinkableRecord) => ({ type: 'QUOTE' as const, id: x.id, display: `پیش‌فاکتور: ${x.number || x.quoteNumber || x.id}` })),
       ...(s.cases || []).map((x: LinkableRecord) => ({ type: 'CASE' as const, id: x.id, display: `پرونده: ${x.title || x.subject || x.id}` })),
     ];
-    return all.filter(o => !ql || o.display.toLowerCase().includes(ql)).slice(0, 30);
-  }, [state, pickQuery]);
+    return smartSearch(all, pickQuery, option => [option.display, option.id], { limit: 30 }).map(result => result.item);
+  }, [referenceScope, pickQuery]);
 
   // ---- نمایش متن پیام با هایلایت منشن ----
   const renderContent = (m: ConversationMessage, mine: boolean) => {
@@ -367,14 +382,14 @@ export function GroupsWorkspace({ state, updateState }: Props) {
       </section>
 
       {/* ---------------- Conversation ---------------- */}
-      <section id="chat-conversation" aria-label="گفتگو" className={cn('se-card min-h-0 flex-1 flex-col overflow-hidden', activeId ? 'fixed inset-x-0 z-(--z-modal) flex h-dvh w-full rounded-none border-0 md:static md:h-auto md:w-auto md:rounded-2xl md:border' : 'hidden md:flex')} style={activeId && visualViewportState.height ? { top: `${visualViewportState.offsetTop}px`, height: `${visualViewportState.height}px` } : undefined}>
+      <section id="chat-conversation" aria-label="گفتگو" className={cn('se-card min-h-0 flex-1 flex-col overflow-hidden', activeId ? 'fixed inset-x-0 top-(--app-viewport-offset-top) z-(--z-modal) flex h-(--app-viewport-height) w-full rounded-none border-0 md:static md:h-auto md:w-auto md:rounded-2xl md:border' : 'hidden md:flex')}>
         {activeGroup ? (
           <>
-            <header className="flex items-center gap-2.5 border-b border-border p-3">
+            <header className="flex shrink-0 items-center gap-2.5 border-b border-border px-3 pb-3 pt-[max(.75rem,var(--safe-top))] md:pt-3">
               <button onClick={() => openConv(null)} aria-label="بازگشت به صندوق" className="se-float-btn se-interactive se-pressable md:hidden"><ArrowRight size={18} /></button>
               {activeGroup.kind === 'DIRECT' ? <Avatar name={active!.name} src={userOf(activeGroup.memberIds.find((i: string) => i !== me))?.avatar} size="sm" /> : <span className="grid h-9 w-9 place-items-center rounded-full bg-primary/10 text-primary"><Users size={17} /></span>}
               <div className="min-w-0 flex-1">
-                <h2 className="truncate text-sm font-extrabold text-text-main">{active!.name}</h2>
+                <h2 className="wrap-break-word text-sm font-extrabold text-text-main">{active!.name}</h2>
                 <p className="truncate text-caption text-text-secondary">{activeGroup.kind === 'DIRECT' ? 'پیام مستقیم' : `${fa(activeGroup.memberIds.length)} عضو${activeGroup.description ? ' · ' + activeGroup.description : ''}`}</p>
               </div>
               <button onClick={() => toggleGroupFlag(activeGroup, 'mutedBy')} aria-label={active!.muted ? 'فعال‌کردن اعلان گفتگو' : 'بی‌صداکردن گفتگو'} title={active!.muted ? 'فعال‌کردن اعلان' : 'بی‌صداکردن'} className="se-float-btn se-interactive se-pressable">{active!.muted ? <BellOff size={17} /> : <Bell size={17} />}</button>
@@ -383,7 +398,11 @@ export function GroupsWorkspace({ state, updateState }: Props) {
               {activeGroup.kind !== 'DIRECT' && <button onClick={() => setModal('members')} aria-label="اعضا" title="اعضا" className="se-float-btn se-interactive se-pressable"><UserPlus size={17} /></button>}
             </header>
 
-            <div ref={scrollRef} className="flex-1 space-y-1.5 overflow-y-auto bg-canvas/60 p-3 sm:p-4" role="log" aria-live="polite" onClick={() => setSelectedMsg(null)}>
+            <div ref={scrollRef} className="min-h-0 flex-1 space-y-1.5 overflow-y-auto overscroll-contain bg-canvas/60 p-3 sm:p-4"
+              onScroll={event => {
+                const area = event.currentTarget;
+                chatAnchor.current.atEnd = area.scrollHeight - area.scrollTop - area.clientHeight < 48;
+              }} role="log" aria-live="polite" onClick={() => setSelectedMsg(null)}>
               {messages.length === 0 && (
                 <div className="flex h-full flex-col items-center justify-center gap-2 py-10 text-center text-xs text-text-secondary"><MessageCircle size={38} className="opacity-25" /><p className="font-semibold">هنوز پیامی ثبت نشده است.</p><p className="text-caption">اولین پیام را بنویسید؛ با @ همکاران را منشن کنید.</p></div>
               )}
@@ -415,17 +434,13 @@ export function GroupsWorkspace({ state, updateState }: Props) {
                                   {m.entityMentions.map(ref => {
                                     const entityType = String(ref.entityType || 'UNKNOWN');
                                     const Icon = ENTITY_ICON[entityType] || FileText;
-                                    const pools: Record<string, ReferenceRecord[]> = {
-                                      CUSTOMER: state.accounts || [], STAFF: state.users || [], CHECK: state.cheques || [],
-                                      INVOICE: state.invoices || [], PRODUCT: state.externalProducts || [],
-                                      TASK: state.tasks || [], QUOTE: state.quotes || [],
-                                    };
-                                    const record = (pools[entityType] || []).find(x => String(x.id ?? x.code ?? x.erpId ?? '') === String(ref.entityId));
-                                    const subtitle = record ? String(record.status || record.dueDate || record.accountName || record.subtitle || ref.source || 'رکورد محلی') : String(ref.source || 'مرجع ذخیره‌شده');
+                                    const reference = referenceScope.get(entityType, ref.entityId);
+                                    if (!reference) return null;
+                                    const subtitle = ref.source === 'ERP_MIRROR' ? 'آینهٔ سامانهٔ مالی' : 'پروندهٔ داخلی';
                                     return <button key={`${entityType}:${ref.entityId}`} type="button" onClick={e => { e.stopPropagation(); goEntity({ type: entityType, id: ref.entityId }); }} className={cn('flex min-h-touch w-full items-center gap-2 rounded-xl border p-2 text-start', mine ? 'border-white/30 bg-white/10 text-white hover:bg-white/15' : 'border-border bg-canvas text-text-main hover:bg-sand')} aria-label={`بازکردن ${ref.displayText || entityType}`}>
                                       <Icon size={15} className="shrink-0" />
-                                      <span className="min-w-0 flex-1"><b className="block truncate text-caption">{ref.displayText || ref.entityId}</b><span className="block truncate text-micro opacity-75">{entityType} · {subtitle}</span></span>
-                                      <span className="text-nano opacity-70">{ref.source === 'ERP_MIRROR' ? 'آینه سامانه مالی' : 'CRM'}</span>
+                                      <span className="min-w-0 flex-1"><b className="block truncate text-caption">{ref.displayText || ref.entityId}</b><span className="block truncate text-micro opacity-75">{reference.label} · {subtitle}</span></span>
+                                      <span className="text-nano opacity-70">{ref.source === 'ERP_MIRROR' ? 'آینهٔ سامانهٔ مالی' : 'سامانهٔ داخلی'}</span>
                                     </button>;
                                   })}
                                 </div>
@@ -435,7 +450,7 @@ export function GroupsWorkspace({ state, updateState }: Props) {
                               ) : (
                                 <a key={a.id} href={a.base64Data} download={a.fileName} onClick={e => e.stopPropagation()} className={cn('mt-1.5 flex min-h-control items-center gap-2 rounded-xl border px-2.5 py-1.5 text-caption font-bold', mine ? 'border-white/30 bg-white/10 text-white' : 'border-border bg-canvas text-text-main')}><Download size={14} /><span className="truncate" dir="ltr">{a.fileName}</span></a>
                               ))}
-                              {m.relatedEntity && (() => { const I = ENTITY_ICON[m.relatedEntity.type] || FileText; return (
+                              {m.relatedEntity && referenceScope.get(m.relatedEntity.type, m.relatedEntity.id) && (() => { const I = ENTITY_ICON[m.relatedEntity.type] || FileText; return (
                                 <button type="button" onClick={e => { e.stopPropagation(); goEntity(m.relatedEntity); }} className={cn('mt-1.5 flex min-h-control w-full cursor-pointer items-center gap-2 rounded-xl border p-2 text-start text-caption font-bold', mine ? 'border-white/30 bg-white/10 text-white' : 'border-border bg-canvas text-text-main hover:bg-sand')}><I size={14} className="shrink-0" /><span className="truncate">{m.relatedEntity.display}</span></button>); })()}
                               {m.taskId && <button type="button" onClick={e => { e.stopPropagation(); navigate('/tasks'); }} className="mt-1.5 inline-flex items-center gap-1 rounded-full bg-success-soft px-2 py-0.5 text-micro font-bold text-success"><CheckSquare size={11} />وظیفه ساخته شد</button>}
                             </>
@@ -444,7 +459,7 @@ export function GroupsWorkspace({ state, updateState }: Props) {
                         {Array.isArray(m.reactions) && m.reactions.some(r => (r.userIds || []).length) && <div className="mt-1 flex flex-wrap gap-1" aria-label="واکنش‌ها">{m.reactions.filter(r => (r.userIds || []).length).map(r => <button key={r.emoji} onClick={e => { e.stopPropagation(); toggleReaction(m, r.emoji); }} aria-pressed={(r.userIds || []).includes(me)} className={cn('rounded-full border px-2 py-0.5 text-caption', (r.userIds || []).includes(me) ? 'border-primary/40 bg-primary/10' : 'border-border bg-surface')}>{r.emoji} {fa(r.userIds.length)}</button>)}</div>}
                         <div className="mt-0.5 flex items-center gap-1.5 px-1 text-micro text-text-secondary">
                           <span>{timeOf(m.createdAt)}</span>{m.editedAt && <span>· ویرایش‌شده</span>}
-                          {mine && !m.deleted && (seen >= others.length && others.length > 0 ? <CheckCheck size={13} className="text-success" aria-label="دیده شد" /> : seen > 0 ? <span className="flex items-center gap-0.5"><CheckCheck size={13} aria-hidden />{fa(seen)}/{fa(others.length)}</span> : <Check size={13} aria-label="ارسال شد" />)}
+                          {mine && !m.deleted && (seen >= others.length && others.length > 0 ? <CheckCheck size={13} className="text-success" aria-label="دیده شد" /> : seen > 0 ? <span className="flex items-center gap-0.5"><CheckCheck size={13} aria-hidden />{fa(seen)}/{fa(others.length)}</span> : <Check size={13} aria-label="پیام ثبت‌شده در گفتگو" />)}
                         </div>
                         {sel && !m.deleted && (
                           <div className="se-panel-enter mt-1 flex flex-wrap items-center gap-1 rounded-2xl border border-border bg-surface p-1.5 shadow-card" onClick={e => e.stopPropagation()}>
@@ -464,10 +479,10 @@ export function GroupsWorkspace({ state, updateState }: Props) {
             </div>
 
             {/* Composer */}
-            <div id="chat-composer" className="relative space-y-2 border-t border-border bg-surface p-2.5 pb-[calc(env(safe-area-inset-bottom,0px)+10px)]">
+            <div id="chat-composer" className="relative shrink-0 space-y-2 border-t border-border bg-surface p-2.5 pb-[calc(env(safe-area-inset-bottom,0px)+10px)]">
               {entityMentionOptions.length > 0 && (
                 <ul role="listbox" aria-label="منشن موجودیت‌های سامانه" className="se-panel-enter absolute inset-x-3 bottom-full mb-1 max-h-64 overflow-y-auto rounded-2xl border border-border bg-surface shadow-raised">
-                  {entityMentionOptions.map(entity => <li key={`${entity.entityType}:${entity.entityId}`}><button role="option" aria-selected={false} onMouseDown={e => e.preventDefault()} onClick={() => pickEntityMention(entity)} className="flex min-h-touch w-full cursor-pointer items-center gap-2 px-3 text-start text-xs hover:bg-canvas"><span className="grid h-8 w-8 place-items-center rounded-full bg-primary/10 text-primary"><AtSign size={14} /></span><span className="min-w-0 flex-1"><b className="block truncate text-text-main">{entity.displayText}</b><span className="block truncate text-micro text-text-secondary">{entity.entityType} · {entity.subtitle || entity.entityId}</span></span><span className="text-micro text-text-secondary">{entity.source === 'ERP_MIRROR' ? 'نمایه سامانه مالی' : 'CRM'}</span></button></li>)}
+                  {entityMentionOptions.map(entity => <li key={`${entity.entityType}:${entity.entityId}`}><button role="option" aria-selected={false} onMouseDown={e => e.preventDefault()} onClick={() => pickEntityMention(entity)} className="flex min-h-touch w-full cursor-pointer items-center gap-2 px-3 text-start text-xs hover:bg-canvas"><span className="grid h-8 w-8 place-items-center rounded-full bg-primary/10 text-primary"><AtSign size={14} /></span><span className="min-w-0 flex-1"><b className="block truncate text-text-main">{entity.displayText}</b><span className="block truncate text-micro text-text-secondary">{referenceScope.get(entity.entityType, entity.entityId)?.label || 'رکورد'}</span></span><span className="text-micro text-text-secondary">{entity.source === 'ERP_MIRROR' ? 'نمایهٔ سامانهٔ مالی' : 'سامانهٔ داخلی'}</span></button></li>)}
                 </ul>
               )}
               {mentionOptions.length > 0 && (
@@ -497,7 +512,11 @@ export function GroupsWorkspace({ state, updateState }: Props) {
             </div>
           </>
         ) : (
-          <div className="hidden h-full flex-col items-center justify-center gap-3 p-8 text-center text-xs text-text-secondary md:flex"><MessageCircle size={44} className="opacity-20" /><p className="font-bold text-text-main">یک گفتگو را انتخاب کنید</p><p>یا با دکمه «پیام جدید» گفتگوی مستقیم شروع کنید.</p></div>
+          <div className={cn('h-full flex-col items-center justify-center gap-3 p-8 text-center text-xs text-text-secondary', activeId ? 'flex' : 'hidden md:flex')}>
+            <MessageCircle size={36} className="opacity-25" aria-hidden="true" />
+            <p className="font-semibold text-text-main">{activeId ? 'گفت‌وگو در دسترس نیست' : 'یک گفت‌وگو را انتخاب کنید'}</p>
+            {activeId && <Button type="button" variant="secondary" onClick={() => openConv(null)}>بازگشت به صندوق</Button>}
+          </div>
         )}
       </section>
 

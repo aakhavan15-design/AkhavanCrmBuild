@@ -1,7 +1,7 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { motion, useReducedMotion } from 'motion/react';
+import React, { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { motion } from 'motion/react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Building2, CheckCircle2, ChevronLeft, Phone, Plus, Search, ShieldAlert, Users, MapPin, Wallet, ArrowUpLeft } from 'lucide-react';
+import { CheckCircle2, ChevronLeft, Phone, Plus, Search, ShieldAlert, Users, MapPin, Wallet, ArrowUpLeft } from 'lucide-react';
 import { AppState, Account } from '../types';
 import { Customer360 } from './Customer360';
 import { EmptyState } from './ui/EmptyState';
@@ -16,7 +16,9 @@ import { resolveCustomerBalanceView } from '../lib/receivableReconciliation';
 import { useDataQuery } from '../hooks/useDataProvider';
 import { useDeepLinkCreate } from '../hooks/useDeepLinkCreate';
 import { requireActiveUser, useCan } from '../hooks/useCan';
-import { VerdictStrip } from './shared/VerdictStrip';
+import { getPersianStatusLabel } from '../lib/labels';
+import { smartSearch, SMART_SEARCH_DEBOUNCE_MS } from '../lib/smartSearch';
+import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { ProgressiveDisclosure } from './shared/ProgressiveDisclosure';
 import { IntentSurface } from './shared/IntentSurface';
 import { enqueueOptimisticMutation } from '../lib/optimisticMutation';
@@ -39,7 +41,7 @@ const extras = (a: Account) => a as Account & CustomerExtras;
 const primaryPhone = (a: Account) => (a.phone || a.contacts?.find(c => c.isPrimary)?.phone || a.contacts?.find(c => c.phone || c.mobile)?.phone || a.contacts?.find(c => c.mobile)?.mobile || '').trim();
 const hasReach = (a: Account) => Boolean(primaryPhone(a));
 const STATUS_LABELS: Record<string, string> = { ACTIVE: 'فعال', INACTIVE: 'غیرفعال', SUSPENDED: 'معلق', BLOCKED: 'مسدود' };
-const statusLabel = (s?: string) => (s ? STATUS_LABELS[s] ?? s : 'نامشخص');
+const statusLabel = (s?: string) => (s ? STATUS_LABELS[s] ?? getPersianStatusLabel(s) : 'نامشخص');
 const TYPE_LABELS: Record<string, string> = { LEGAL: 'حقوقی', INDIVIDUAL: 'حقیقی' };
 const fa = (n: number) => n.toLocaleString('fa-IR');
 
@@ -75,12 +77,35 @@ export function CustomersWorkspace({ state, updateState }: CustomersWorkspacePro
   ), [state.accounts, canOn]);
 
   const userName = useMemo(() => new Map((state.users || []).map(u => [u.id, u.name] as const)), [state.users]);
-  const pathParts = location.pathname.split('/').filter(Boolean);
-  const urlCustomerId = pathParts.length > 1 && ['accounts', 'customers'].includes(pathParts[0]) ? pathParts[1] : null;
-  const selectedCustomer = urlCustomerId ? visibleAccounts.find(a => a.id === urlCustomerId) : undefined;
+  const [rawCustomerId] = location.pathname.split('/').filter(Boolean).slice(1);
+  let urlCustomerId = rawCustomerId;
+  try { if (rawCustomerId) urlCustomerId = decodeURIComponent(rawCustomerId); } catch { /* keep malformed ids unavailable */ }
+  const selectedCustomer = urlCustomerId ? visibleAccounts.find(account => account.id === urlCustomerId) : undefined;
+  const listScroll = useRef<number | null>(null);
+  const triggerFocusId = useRef('');
+  const searchInputId = useId();
+  useLayoutEffect(() => {
+    const area = document.getElementById('main-scroll-container');
+    if (!area) return;
+    if (urlCustomerId) area.scrollTop = 0;
+    else if (listScroll.current !== null) {
+      area.scrollTop = listScroll.current;
+      listScroll.current = null;
+      (document.getElementById(triggerFocusId.current) ?? document.getElementById(searchInputId))?.focus({ preventScroll: true });
+      triggerFocusId.current = '';
+    }
+  }, [urlCustomerId, searchInputId]);
+
   const openCustomer = (account: Account) => {
+    listScroll.current = document.getElementById('main-scroll-container')?.scrollTop ?? 0;
+    triggerFocusId.current = document.activeElement?.id || '';
     updateState(draft => { draft.activeContextAccountId = account.id; draft.activeContextCustomerId = account.id; });
-    navigate(`/accounts/${account.id}`);
+    navigate(`/accounts/${encodeURIComponent(account.id)}`, { state: { returnToCustomerList: true } });
+  };
+  const goBackToCustomers = () => {
+    updateState(draft => { draft.activeContextAccountId = null; draft.activeContextCustomerId = null; });
+    if (location.state?.returnToCustomerList === true) navigate(-1);
+    else navigate('/accounts', { replace: true });
   };
 
   const handleDynamicFormSubmit = (formValues: Record<string, any>) => {
@@ -96,10 +121,14 @@ export function CustomersWorkspace({ state, updateState }: CustomersWorkspacePro
     const matches = matchExistingCustomers(state.accounts || [], { name: customerName, phone: formValues.phone, nationalCode: formValues.nationalCode, economicCode: formValues.economicCode });
     const hard = matches.find(m => m.hard);
     if (hard) {
-      setSuccessNotice(`این مشتری قبلاً ثبت شده است («${hard.account.name}»، تطبیق ${hard.reason === 'NATIONAL_CODE' ? 'کد ملی' : 'کد اقتصادی'}). پرونده موجود را باز کنید.`);
-      return;
+      const visibleMatch = visibleAccounts.find(account => account.id === hard.account.id);
+      setSuccessNotice(visibleMatch
+        ? `این مشتری قبلاً ثبت شده است («${visibleMatch.name}»). پروندهٔ موجود را باز کنید.`
+        : 'امکان ثبت پرونده با مشخصات واردشده وجود ندارد. اطلاعات را بازبینی کنید.');
+      return false;
     }
-    const softWarn = matches.length ? ` هشدار: ${matches.length.toLocaleString('fa-IR')} مشتری با تلفن/نام مشابه وجود دارد؛ پیش از ارسال به ERP بررسی شود.` : '';
+    const visibleMatches = matches.filter(match => visibleAccounts.some(account => account.id === match.account.id));
+    const softWarn = visibleMatches.length ? ` هشدار: ${visibleMatches.length.toLocaleString('fa-IR')} مشتری با تلفن/نام مشابه وجود دارد؛ پیش از ارسال به ERP بررسی شود.` : '';
     const newAccount: Account = {
       id: newId,
       name: customerName,
@@ -183,6 +212,9 @@ export function CustomersWorkspace({ state, updateState }: CustomersWorkspacePro
   const [viewMode, setViewMode] = useState<'minimal' | 'table'>('minimal');
   const [searchQuery, setSearchQuery] = useState('');
   const [searchFocused, setSearchFocused] = useState(false);
+  const [suggestionIndex, setSuggestionIndex] = useState(0);
+  const searchListId = useId();
+  const debouncedSearch = useDebouncedValue(searchQuery, SMART_SEARCH_DEBOUNCE_MS);
 
   const atRiskAccounts = useMemo(() => {
     return visibleAccounts.filter(a => {
@@ -193,29 +225,23 @@ export function CustomersWorkspace({ state, updateState }: CustomersWorkspacePro
   const atRiskCount = atRiskAccounts.length;
 
   const filteredAccounts = useMemo(() => {
-    let list = visibleAccounts;
-    if (activeChip === 'reach') list = list.filter(hasReach);
-    else if (activeChip === 'risk') list = atRiskAccounts;
+    const list = activeChip === 'reach' ? visibleAccounts.filter(hasReach) : activeChip === 'risk' ? atRiskAccounts : visibleAccounts;
+    if (!debouncedSearch.trim()) return list;
+    return smartSearch(list, debouncedSearch, account => [
+      { text: account.name, weight: 4 }, { text: account.code || '', weight: 3 },
+      primaryPhone(account), account.company, account.address, account.email,
+      ...(account.contacts || []).flatMap(contact => [contact.name, contact.phone, contact.mobile]),
+    ]).map(result => result.item);
+  }, [visibleAccounts, activeChip, atRiskAccounts, debouncedSearch]);
 
-    if (searchQuery.trim()) {
-      const q = searchQuery.trim().toLowerCase();
-      list = list.filter(a =>
-        a.name.toLowerCase().includes(q) ||
-        (a.code && a.code.toLowerCase().includes(q)) ||
-        primaryPhone(a).includes(q) ||
-        (a.company && a.company.toLowerCase().includes(q))
-      );
-    }
-    return list;
-  }, [visibleAccounts, activeChip, atRiskAccounts, searchQuery]);
-
-  const searchSuggestions = useMemo(() => {
-    const q = searchQuery.trim().toLocaleLowerCase('fa-IR');
-    if (q.length < 2) return [];
-    return visibleAccounts.filter(a => [a.name, a.company, a.code, primaryPhone(a), a.address, a.email].some(value => String(value || '').toLocaleLowerCase('fa-IR').includes(q))).slice(0, 6);
-  }, [visibleAccounts, searchQuery]);
-
-  const applyShortcutFilter = (g: string, v: string) => setSelection(prev => (prev[g]?.length === 1 && prev[g][0] === v ? { ...prev, [g]: [] } : { ...prev, [g]: [v] }));
+  const searchSuggestions = filteredAccounts.slice(0, 6);
+  const searchReady = searchQuery === debouncedSearch;
+  const suggestionsOpen = searchFocused && searchReady && searchQuery.trim().length >= 2 && searchSuggestions.length > 0;
+  const activeIndex = Math.min(suggestionIndex, Math.max(0, searchSuggestions.length - 1));
+  const openSuggestion = (account: Account) => {
+    setSearchFocused(false);
+    openCustomer(account);
+  };
 
   const getInitials = (name: string) => {
     const parts = name.trim().split(/\s+/);
@@ -223,63 +249,11 @@ export function CustomersWorkspace({ state, updateState }: CustomersWorkspacePro
     return name.slice(0, 2);
   };
 
-  const summary = (
-    <section id="acc-metrics" data-tour-primary data-tour-heading aria-label="خلاصهٔ بانک مشتریان" className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 mb-1.5">
-      {/* ۲ به ۱: کارت بزرگ هیرو زمردی */}
-      <button
-        type="button"
-        aria-pressed={activeChip === 'all'}
-        onClick={() => { setActiveChip('all'); setSelection({}); }}
-        className="sm:col-span-2 group relative overflow-hidden rounded-lg p-4 text-start transition-all duration-200 text-white shadow-xs cursor-pointer flex flex-col justify-between min-h-(--size-115)"
-        style={{
-          background: 'linear-gradient(160deg, var(--brand) 0%, var(--brand-strong) 100%)',
-          boxShadow: '0 8px 24px color-mix(in srgb, var(--brand) 25%, transparent)',
-        }}
-      >
-        <div className="flex items-center justify-between text-caption font-medium text-white/85">
-          <span>کل مشتریان و طرف‌های حساب</span>
-          <Building2 size={14} className="text-white/80" aria-hidden="true" />
-        </div>
-        <strong className="my-1 block text-kpi-lg font-bold tabular-nums tracking-tight leading-none">
-          {fa(total)}
-        </strong>
-        <div className="mt-2 flex items-center justify-between text-micro text-white/90">
-          <span>پرونده‌های فعال در محدوده دسترسی</span>
-          <span>{total ? 'بانک مشتریان' : 'بدون پرونده'}</span>
-        </div>
-      </button>
-
-      {/* ۱ بخش: کارت شنی پوشش ارتباطی */}
-      <button
-        type="button"
-        aria-pressed={activeChip === 'reach'}
-        onClick={() => { setActiveChip('reach'); applyShortcutFilter('reach', 'yes'); }}
-        className={`group relative overflow-hidden rounded-lg p-4 text-start transition-all duration-200 bg-surface border border-border shadow-xs cursor-pointer flex flex-col justify-between min-h-(--size-115) ${
-          activeChip === 'reach' ? 'border-primary ring-2 ring-primary/20' : ''
-        }`}
-      >
-        <div className="flex items-center justify-between text-caption font-medium text-text-secondary">
-          <span>پوشش تماس مستقیم</span>
-          <Phone size={13} className="text-primary" aria-hidden="true" />
-        </div>
-        <strong className="my-1 block text-kpi font-bold tabular-nums text-text-main leading-none">
-          {fa(withReach)}
-        </strong>
-        <span className="text-micro text-text-secondary leading-tight mt-0.5">
-          {total ? `${fa(Math.round((withReach / total) * 100))}٪ دارای شماره تماس ثبت‌شده` : 'ثبت نشده'}
-        </span>
-      </button>
-    </section>
-  );
-
   if (selectedCustomer) {
-    return <Customer360 customer={selectedCustomer} state={state} updateState={updateState} onBack={() => {
-      updateState(draft => { draft.activeContextAccountId = null; draft.activeContextCustomerId = null; });
-      navigate('/accounts');
-    }} />;
+    return <Customer360 customer={selectedCustomer} state={state} updateState={updateState} onBack={goBackToCustomers} />;
   }
   if (urlCustomerId && !selectedCustomer) {
-    return <div className="p-6" dir="rtl"><EmptyState surface="customers_workspace_1" icon={<ShieldAlert className="w-9 h-9 text-text-secondary" />} title="پرونده در دسترس نیست" description="این حساب وجود ندارد، غیرفعال شده یا خارج از محدوده دسترسی شماست." /></div>;
+    return <div className="p-6" dir="rtl"><EmptyState surface="customers_workspace_1" icon={<ShieldAlert className="w-9 h-9 text-text-secondary" />} title="پرونده در دسترس نیست" description="این حساب وجود ندارد، غیرفعال شده یا خارج از محدوده دسترسی شماست." actionLabel="بازگشت به فهرست" onAction={goBackToCustomers} /></div>;
   }
 
   const renderDetail = (a: Account) => {
@@ -327,45 +301,54 @@ export function CustomersWorkspace({ state, updateState }: CustomersWorkspacePro
     <main className="crm-page crm-page-customers w-full min-h-full space-y-3 px-2 py-1 pb-[calc(6rem+env(safe-area-inset-bottom))] font-sans sm:px-4" dir="rtl">
       {successNotice && <div role="status" className="se-rise-in flex items-start gap-2 rounded-xl border border-primary/20 bg-primary-soft px-3 py-2 text-xs font-semibold text-text-main shadow-xs"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden="true" /><span>{successNotice}</span></div>}
 
-      {/* نوار حکم ۸ ثانیه‌ای */}
-      <VerdictStrip
-        verdict={`${fa(total)} مشتری در محدوده دسترسی فعال؛ ${fa(atRiskCount)} مورد نیازمند پایش`}
-        magnitude={`${fa(withReach)} مشتری دارای شماره تماس`}
-        tone={atRiskCount > 0 ? 'warning' : 'neutral'}
-        actionLabel="مشاهده در معرض ریسک"
-        onAction={() => setActiveChip('risk')}
-      />
-
-      {/* نوار جستجوی کپسولی ۴۲ پیکسل */}
+      <h1 className="sr-only">فهرست مشتریان و طرف‌های حساب</h1>
       <div className="relative z-20 w-full">
-        <Search size={15} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
+        <Search size={15} className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 text-text-muted" aria-hidden="true" />
         <InputControl
+          id={searchInputId}
           type="search"
+          role="combobox"
+          aria-label="جست‌وجوی مشتریان در محدودهٔ دسترسی"
+          aria-autocomplete="list"
+          aria-expanded={suggestionsOpen}
+          aria-controls={suggestionsOpen ? searchListId : undefined}
+          aria-activedescendant={suggestionsOpen ? `${searchListId}-${activeIndex}` : undefined}
+          className="ps-9"
           value={searchQuery}
           onFocus={() => setSearchFocused(true)}
-          onBlur={() => window.setTimeout(() => setSearchFocused(false), 140)}
-          onChange={e => setSearchQuery(e.target.value)}
-          placeholder="جستجوی نام، کد مشتری، شماره موبایل یا نشانی..."
+          onBlur={() => setSearchFocused(false)}
+          onChange={event => { setSearchQuery(event.target.value); setSuggestionIndex(0); setSearchFocused(true); }}
+          onKeyDown={event => {
+            if (event.key === 'Escape' && suggestionsOpen) { event.preventDefault(); setSearchFocused(false); }
+            if (!suggestionsOpen) return;
+            if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+              event.preventDefault();
+              setSuggestionIndex(Math.max(0, Math.min(searchSuggestions.length - 1, activeIndex + (event.key === 'ArrowDown' ? 1 : -1))));
+            }
+            if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
+              event.preventDefault();
+              openSuggestion(searchSuggestions[activeIndex]);
+            }
+          }}
+          placeholder="نام، کد، شماره تماس یا نشانی"
         />
-        {searchFocused && searchQuery.trim().length >= 2 && (
-          <div role="listbox" aria-label="مشتریان مشابه" className="absolute inset-x-0 top-[calc(100%+6px)] overflow-hidden rounded-xl border border-border bg-surface shadow-xl">
-            {searchSuggestions.length ? searchSuggestions.map(account => (
-              <button key={account.id} type="button" role="option" aria-selected="false" onMouseDown={e => e.preventDefault()} onClick={() => { setSearchQuery(account.name); setSearchFocused(false); openCustomer(account); }} className="flex w-full items-center gap-3 border-b border-border/60 px-3 py-2.5 text-right last:border-0 hover:bg-canvas">
-                <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-primary/10 text-xs font-bold text-primary">{getInitials(account.name)}</span>
-                <span className="min-w-0 flex-1"><strong className="block truncate text-xs text-text-main">{account.name}</strong><span className="mt-0.5 block truncate text-micro text-text-secondary">{[primaryPhone(account), account.address].filter(Boolean).join(' · ') || account.code || 'پرونده مشتری'}</span></span>
-                <ArrowUpLeft size={14} className="text-text-muted"/>
+        {suggestionsOpen && (
+          <div id={searchListId} role="listbox" aria-label="نتایج جست‌وجوی مشتری" className="absolute inset-x-0 top-[calc(100%+6px)] max-h-56 overflow-y-auto rounded-xl border border-border bg-surface shadow-floating">
+            {searchSuggestions.map((account, index) => (
+              <button key={account.id} id={`${searchListId}-${index}`} type="button" role="option" tabIndex={-1} aria-selected={index === activeIndex}
+                onMouseDown={event => event.preventDefault()} onClick={() => openSuggestion(account)}
+                className={cn('flex w-full items-center gap-3 border-b border-border/60 px-3 py-2.5 text-start last:border-0 hover:bg-canvas', index === activeIndex && 'bg-primary-soft')}>
+                <span aria-hidden="true" className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-primary-soft text-xs font-bold text-primary">{getInitials(account.name)}</span>
+                <span className="min-w-0 flex-1"><strong className="block wrap-break-word text-xs text-text-main">{account.name}</strong><span className="mt-0.5 block wrap-break-word text-micro text-text-secondary">{account.code ? <bdi>{account.code}</bdi> : account.address || 'پروندهٔ مشتری'}</span></span>
+                <ArrowUpLeft size={14} className="shrink-0 text-text-muted" aria-hidden="true" />
               </button>
-            )) : <div className="px-3 py-3 text-xs text-text-secondary">مشتری مشابهی پیدا نشد.</div>}
+            ))}
           </div>
         )}
       </div>
 
-      {/* بخش خلاصه دو کارت هم‌ردیف */}
-      {summary}
-
-      {/* چیپ‌های فیلتر کپسولی ۳۰ پیکسلی با شمارنده */}
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex min-w-0 items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
+      <section id="acc-metrics" data-tour-primary data-tour-heading aria-label="خلاصه و فیلتر مشتریان در محدودهٔ دسترسی" className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-1.5">
         <FilterChip active={activeChip === 'all'} className="shrink-0" onClick={() => { setActiveChip('all'); setSelection({}); }} >
           <span>همه</span>
           <span className="opacity-80 font-mono text-micro">{fa(total)}</span>
@@ -381,8 +364,12 @@ export function CustomersWorkspace({ state, updateState }: CustomersWorkspacePro
           <span className="opacity-80 font-mono text-micro">{fa(atRiskCount)}</span>
         </FilterChip>
         </div>
-        {viewMode === 'minimal' && <RecordTaskAction state={state} updateState={updateState} accounts={visibleAccounts} />}
-      </div>
+        <div className="flex flex-wrap items-center gap-2" aria-label="نمای مشتریان">
+          <FilterChip active={viewMode === 'minimal'} label="فهرست" onClick={() => setViewMode('minimal')} />
+          <FilterChip active={viewMode === 'table'} label="جدول" onClick={() => setViewMode('table')} />
+          {viewMode === 'minimal' && <RecordTaskAction state={state} updateState={updateState} accounts={visibleAccounts} />}
+        </div>
+      </section>
 
       {/* فهرست ردیف‌های مینیمال ۶۰ پیکسلی مشتریان */}
       {viewMode === 'minimal' ? (
@@ -404,22 +391,23 @@ export function CustomersWorkspace({ state, updateState }: CustomersWorkspacePro
               return (
                 <motion.div
                   key={account.id}
+                  id={`customer-row-${account.id}`}
                   layoutId={`account-card-${account.id}`}
                   onClick={() => openCustomer(account)}
                   onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openCustomer(account); } }}
                   role="button" tabIndex={0} aria-label={`مشاهده پرونده ${account.name}`}
-                  className="h-(--size-60) px-3.5 flex items-center justify-between gap-3 hover:bg-canvas/60 active:bg-canvas cursor-pointer transition-colors se-pressable se-hover-lift"
+                  className="min-h-(--size-60) px-3.5 py-2 flex items-center justify-between gap-3 hover:bg-canvas/60 active:bg-canvas cursor-pointer transition-colors se-pressable se-hover-lift"
                 >
                   <div className="flex items-center gap-3 min-w-0">
                     <span className="w-9 h-9 rounded-full bg-primary/10 text-primary font-bold text-xs flex items-center justify-center border border-primary/20 shrink-0">
                       {initials}
                     </span>
                     <div className="min-w-0">
-                      <strong className="block text-body font-bold text-text-main truncate">
+                      <strong className="block wrap-break-word text-body font-bold text-text-main">
                         {account.name}
                       </strong>
                       <div className="mt-0.5 flex min-w-0 items-center gap-2 text-mini text-text-secondary">
-                        {reach && <span dir="ltr" className="font-mono">{reach}</span>}
+                        {reach && <bdi className="font-mono">{reach}</bdi>}
                         {account.address && <span className="flex min-w-0 items-center gap-1 truncate"><MapPin size={10}/><span className="truncate">{account.address}</span></span>}
                       </div>
                     </div>
@@ -445,10 +433,7 @@ export function CustomersWorkspace({ state, updateState }: CustomersWorkspacePro
         <div id="customer-table" data-tour-primary>
         <DataTable<Account>
           tableId="customers" title="مشتریان و پرونده‌های تجاری"
-          subtitle="جستجو، فیلتر و بررسی سریع مشتریان"
-          rows={visibleAccounts} columns={columns} getRowId={a => a.id}
-          searchPlaceholder="نام، کد مشتری، تلفن، مخاطب یا نشانی..."
-          extraSearchText={a => [a.email, a.address, a.company, ...(a.contacts || []).flatMap(c => [c.name, c.phone, c.mobile])]}
+          rows={filteredAccounts} columns={columns} getRowId={a => a.id} hideSearch
           filterGroups={filterGroups} selection={selection} onSelectionChange={setSelection}
           defaultSort={{ columnId: 'name', direction: 'asc' }} summary={null}
           exportFileName="customers" selectable renderDetail={renderDetail}
@@ -465,15 +450,6 @@ export function CustomersWorkspace({ state, updateState }: CustomersWorkspacePro
         />
         </div>
       )}
-
-      {/* نگهداشت جدول قرارداد جهت پوشش ۱۰۰٪ تست‌های قراردادی */}
-      <div className="hidden">
-        <DataTable<Account>
-          tableId="customers-contract" title=""
-          rows={visibleAccounts} columns={columns} getRowId={a => a.id}
-          selectable renderDetail={renderDetail}
-        />
-      </div>
 
       {showCreateModal && <Modal isOpen onClose={() => setShowCreateModal(false)} title="ثبت مشتری جدید" subtitle="پرونده مشتری در بانک اطلاعاتی سامانه ثبت می‌شود." size="2xl">
         <DynamicFormRenderer schema={CUSTOMER_FORM_SCHEMA} initialValues={{ customerType: 'LEGAL', creditLimit: '', paymentTermsDays: '30', sayadRequired: true }} onSubmit={handleDynamicFormSubmit} onCancel={() => setShowCreateModal(false)} submitLabel="ثبت مشتری" />

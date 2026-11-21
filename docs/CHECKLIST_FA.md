@@ -29,14 +29,14 @@
 | `/design-system` | مشاهدهٔ مؤلفه‌ها در روشن و تیره · DesignSystemWorkspace | فقط Build توسعه و کاربر دارای `settings.manage`؛ دادهٔ نمونهٔ مستقل از API | IMPLEMENTED — NOT TESTED |
 | `/`، `/workspace/:moduleId`، `/planned` | یافتن فضای کار · Home، Landing و Planned | رجیستری منو و RBAC و وضعیت ماژول | فهرست‌شده |
 | `/command`، `/dashboard` | اولویت و نمای مدیریت · CommandCenter، Dashboard | State و شاخص‌ها؛ دسترسی حساب/داخلی و داشبورد | فهرست‌شده |
-| `/accounts`، `/accounts/:id` | فهرست و پرونده · CustomersWorkspace | DataProvider و مدل خواندنی؛ مجوز حساب و رکورد | تصویر اولیهٔ فهرست دسکتاپ؛ پرونده باز |
+| `/accounts`، `/accounts/:id` | فهرست و پرونده · CustomersWorkspace | DataProvider و مدل خواندنی؛ مجوز حساب و رکورد | نمای فهرست/جدول و بازگشت از پرونده IMPLEMENTED — NOT TESTED |
 | `/leads`، `/opportunities`، `/quotes` | سرنخ، مذاکره و پیشنهاد · Leads، Negotiations، Quotes | State/Provider و نگهبان سرنخ یا پیشنهاد | فهرست‌شده |
 | `/activities`، `/tasks` | پیگیری و نتیجه · Activities، Tasks | State و API گردش وظیفه؛ مجوز فعالیت/وظیفه | فهرست‌شده |
 | `/finance` | مالی، وصول و دستور پرداخت · FinanceWorkspace | دفتر کل و مدل همگام‌شده؛ مجوز مالی و اقدام | Playwright دستور پرداخت، ۳ عرض |
 | `/operations`، `/geo-intelligence` | میز عملیات و پوشش · OperationsControl، GeoIntelligence | مدل خواندنی و Provider مالی/زون؛ مجوز بخش | فهرست‌شده |
 | `/cases`، `/marketing`، `/knowledge` | پرونده، کمپین، دانش · EnterpriseWorkspaces | State همگام‌شده؛ نگهبان هر ماژول | فهرست‌شده |
 | `/internal_automation`، `/calendar` | درخواست داخلی، گردش و تقویم · InternalAutomation، Calendar | State همگام‌شده؛ مجوز بخش و مسیر قدیمی جلسات | فهرست‌شده |
-| `/groups` | پیام و پیوست · GroupsWorkspace | مدل گفتگو و عضویت؛ مجوز حساب یا عملیات داخلی | فهرست‌شده؛ آزمون ACL و کیبورد باز |
+| `/groups` | پیام و پیوست · GroupsWorkspace | مدل گفتگو و عضویت؛ مرجع رکورد با RBAC رابط محدود شد | viewport، پیش‌نویس و پیوندهای محدود IMPLEMENTED — NOT TESTED؛ ACL کامل سرور و Cache باز |
 | `/reports` | تحلیل و شواهد · ReportsWorkspace | DataProvider مالی و شاخص‌های گزارش؛ مجوز گزارش | فهرست‌شده |
 | `/settings`، `/sync-center`، `/audit` | سیاست، همگام‌سازی و ممیزی | State و API مرکز داده؛ مجوز تنظیمات و ممیزی | فهرست‌شده |
 | `/onboarding`، `/personnel-file`، `/profile` | ورود به کار، پرونده و شخصی‌سازی | مدل هویت، تنظیمات و دادهٔ پرسنلی؛ ورود و مجوز اقدام | فهرست‌شده |
@@ -54,6 +54,8 @@
 | UX-06 | فرم خرید آزمایشی و رکورد `LOCAL_TEST` در میز عملیات تولید. `OperationsSupplementalTabs` | زیاد · فرم به توسعه محدود شد و فیلتر رکورد روی Build تولید با دو پاسخ کنترل‌شده آزموده شد |
 | UX-07 | رد اعتبارسنجی مالی می‌توانست پیش‌نویس فرم را پاک یا ثبت رسید صف‌شده را قطعی جلوه دهد. `DynamicFormRenderer` و `FinanceWorkspace` | زیاد · حفظ فرم در رد و خطا و نمایش «صف همگام‌سازی»؛ آزمون ثبت دستور، جلوگیری از تکرار و مسیر بدون مجوز گذشت |
 | UX-08 | نمایش کد وضعیت ناشناخته و از دست رفتن تمرکز پس از Escape یا انتخاب در جست‌وجوی ترکیبی | متوسط · برچسب فارسی، شناسهٔ گزینه و بازگشت تمرکز در `SearchableSelect` و `Badge` · IMPLEMENTED — NOT TESTED |
+| UX-09 | جست‌وجوی خام، خلاصهٔ تکراری و بازگشت فهرست از پروندهٔ مشتری | زیاد · استفاده از موتور جست‌وجوی فارسی، فعال‌سازی جدول اصلی، حفظ جست‌وجو/فیلتر و بازگرداندن اسکرول و فوکوس · IMPLEMENTED — NOT TESTED |
+| UX-10 | انتخاب و نمایش مرجع گفت‌وگو از مجموعهٔ خام و امکان ماندن پیوست در گفت‌وگوی بعدی | بحرانی · محدودهٔ رکورد برای کارت و انتخابگر، دفع پاسخ دیررس پیوست و پیام مناسب برای پیوند غیرقابل‌دسترسی · IMPLEMENTED — NOT TESTED؛ دیتابیس، API و Cache در F4-08 باز |
 
 **پذیرش بستهٔ اول:** Build، سه قرارداد هدر/منو و موبایل و Playwright فرم پرداخت در عرض ۳۲۰، ۳۹۰ و ۱۴۴۰ با API کنترل‌شده. اندازهٔ viewport در تست کوچک عمداً شبیه‌سازی شد. iOS/Android/PWA واقعی، صفحه‌خوان و پذیرش مسیرهای دیگر هنوز `NOT VERIFIED` هستند. شمارش فعلی فقط یافته‌های ثبت‌شده در همین جدول است. پوشش ۱۳ دسته و شمارش نهایی پس از آزمون بسته‌های بعدی به‌روز می‌شود.
 
