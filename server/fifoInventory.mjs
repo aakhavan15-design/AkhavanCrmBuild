@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 
 export const FIFO_COST_METHOD = 'FIFO-1';
+export const FIFO_RECEIPT_RETURN_METHOD = 'FIFO-2';
 const QUANTITY_SCALE = 6;
 const COST_SCALE = 8;
 const VALUE_SCALE = QUANTITY_SCALE + COST_SCALE;
@@ -104,7 +105,7 @@ export function rebuildFifo(input) {
       return {
         id, documentId, lineId, at, kind: raw.kind, sequence: BigInt(raw.sequence), quantity, unitCost,
         warehouseId: raw.warehouseId, destinationWarehouseId: raw.destinationWarehouseId ?? null,
-        originalSaleId: raw.originalSaleId ?? null,
+        originalSaleId: raw.originalSaleId ?? null, ...(raw.kind==='PURCHASE_RETURN' ? { originalReceiptId: raw.originalReceiptId ?? null } : {}),
       };
     }).sort((first, second) => orderText(first.at, second.at)
       || Number(second.kind === 'OPENING') - Number(first.kind === 'OPENING')
@@ -113,6 +114,7 @@ export function rebuildFifo(input) {
     const layers = [];
     const consumptions = [];
     const sales = new Map();
+    const receipts = new Map();
     const addLayer = (warehouseId, movement, quantity, unitCost, originConsumptionNo = null) => {
       valueOf(quantity, unitCost, movement.id);
       const warehouse = warehouses.get(warehouseId);
@@ -121,14 +123,18 @@ export function rebuildFifo(input) {
       warehouse.layers.push(layer);
       warehouse.quantity += quantity;
       if (warehouse.quantity >= 10n ** 28n) throw new FifoInputError('QUANTITY_OUT_OF_RANGE', movement.id);
+      return layer;
     };
-    const consume = (movement) => {
+    const consume = (movement, originalLayer) => {
       const warehouse = warehouses.get(movement.warehouseId);
       if (movement.quantity > warehouse.quantity) throw new FifoInputError('INSUFFICIENT_STOCK', movement.id);
+      if (originalLayer && (originalLayer.warehouseId!==movement.warehouseId || originalLayer.remaining<movement.quantity)) {
+        throw new FifoInputError('PURCHASE_RETURN_EXCEEDS_RECEIPT',movement.id);
+      }
       let remaining = movement.quantity;
       const slices = [];
       while (remaining > 0n) {
-        const layer = warehouse.layers[warehouse.cursor];
+        const layer = originalLayer ?? warehouse.layers[warehouse.cursor];
         const quantity = layer.remaining < remaining ? layer.remaining : remaining;
         const consumption = { consumptionNo: consumptions.length + 1, layer, movement, quantity, returned: 0n };
         valueOf(quantity, layer.unitCost, movement.id);
@@ -137,14 +143,15 @@ export function rebuildFifo(input) {
         layer.remaining -= quantity;
         warehouse.quantity -= quantity;
         remaining -= quantity;
-        if (layer.remaining === 0n) warehouse.cursor++;
+        while (warehouse.layers[warehouse.cursor]?.remaining === 0n) warehouse.cursor++;
       }
       return slices;
     };
 
     for (const movement of movements) {
       if (inbound.has(movement.kind)) {
-        addLayer(movement.warehouseId, movement, movement.quantity, movement.unitCost);
+        const layer = addLayer(movement.warehouseId, movement, movement.quantity, movement.unitCost);
+        if (movement.kind==='RECEIPT') receipts.set(movement.id,layer);
       } else if (movement.kind === 'SALE_RETURN') {
         const original = sales.get(identity(movement.originalSaleId, 200, movement.id));
         if (!original) throw new FifoInputError('ORIGINAL_SALE_REQUIRED', movement.id);
@@ -163,7 +170,11 @@ export function rebuildFifo(input) {
             (!warehouses.has(movement.destinationWarehouseId) || movement.warehouseId === movement.destinationWarehouseId)) {
           throw new FifoInputError('TRANSFER_DESTINATION_REQUIRED', movement.id);
         }
-        const slices = consume(movement);
+        const originalLayer = movement.kind==='PURCHASE_RETURN' ? receipts.get(movement.originalReceiptId) : null;
+        if (movement.kind==='PURCHASE_RETURN' && !originalLayer) {
+          throw new FifoInputError('ORIGINAL_RECEIPT_REQUIRED',movement.id);
+        }
+        const slices = consume(movement,originalLayer);
         if (movement.kind === 'SALE') sales.set(movement.id, slices);
         if (movement.kind === 'TRANSFER') {
           for (const slice of slices) {
@@ -180,11 +191,12 @@ export function rebuildFifo(input) {
     });
     const toJson = (_, value) => typeof value === 'bigint' ? value.toString() : value;
     const partition = { sourceSystemCode, productExternalId, unitCode, currencyCode, periodStartUtc, throughUtc, sourceProof, sourceRevision };
+    const method = movements.some(movement => movement.kind==='PURCHASE_RETURN') ? FIFO_RECEIPT_RETURN_METHOD : FIFO_COST_METHOD;
     const checksum = createHash('sha256').update(JSON.stringify({
-      method: FIFO_COST_METHOD, ...partition, openingWarehouses: [...warehouses.keys()].sort(orderText), movements,
+      method, ...partition, openingWarehouses: [...warehouses.keys()].sort(orderText), movements,
     }, toJson)).digest('hex');
     return {
-      status: 'CALCULATED', ...partition, method: FIFO_COST_METHOD, checksum, valuations,
+      status: 'CALCULATED', ...partition, method, checksum, valuations,
       layers: layers.map(layer => ({
         layerNo: layer.layerNo, warehouseId: layer.warehouseId, movementId: layer.movement.id,
         documentId: layer.movement.documentId, lineId: layer.movement.lineId, at: layer.movement.at,

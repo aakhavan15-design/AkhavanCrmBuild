@@ -1,4 +1,4 @@
-import { FIFO_COST_METHOD } from './fifoInventory.mjs';
+import { FIFO_COST_METHOD, FIFO_RECEIPT_RETURN_METHOD } from './fifoInventory.mjs';
 
 const DAY = 86_400_000;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -256,7 +256,10 @@ INTO #fifo
 FROM #profile p
 CROSS APPLY (VALUES ('opening',DATEADD(day,-1,@from)),('closing',@to)) dates(side,snapshotDate)
 JOIN analytics.FifoRun r ON r.TenantId=@tenantId AND r.IsCurrent=1 AND r.CurrencyCode='IRR'
-  AND r.MethodCode=@fifoMethod AND r.SourceSystemCode=p.SourceSystemCode COLLATE Latin1_General_100_BIN2
+  AND (r.MethodCode=@fifoReturnMethod OR (r.MethodCode=@fifoMethod AND NOT EXISTS(
+    SELECT 1 FROM analytics.FifoConsumption legacy WHERE legacy.TenantId=r.TenantId AND legacy.RunId=r.RunId
+    AND legacy.KindCode='PURCHASE_RETURN'
+  ))) AND r.SourceSystemCode=p.SourceSystemCode COLLATE Latin1_General_100_BIN2
   AND r.ThroughUtc=DATEADD(millisecond,-1,DATEADD(day,1,CONVERT(datetime2(3),dates.snapshotDate)))
 JOIN analytics.FifoValuation v ON v.TenantId=r.TenantId AND v.RunId=r.RunId
 WHERE p.FifoSnapshotUnitsVerified=1 AND dates.snapshotDate<=p.VerifiedThrough;
@@ -437,6 +440,7 @@ export function createMoneyIntelligenceReader({ sql, run }) {
       .input('priorStart', sql.Date, new Date(filter.priorStart))
       .input('dimension', sql.VarChar(12), filter.dimension || 'category')
       .input('fifoMethod', sql.VarChar(25), FIFO_COST_METHOD)
+      .input('fifoReturnMethod', sql.VarChar(25), FIFO_RECEIPT_RETURN_METHOD)
       .input('months', sql.NVarChar(sql.MAX), expenseCalendar(filter));
     if (filter.mode === 'bank') {
       const result = await request.query(`${profileSql}${bankSql}`);

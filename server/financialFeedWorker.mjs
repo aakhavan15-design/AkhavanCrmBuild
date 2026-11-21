@@ -1,6 +1,7 @@
-import { financialPayloadDigest, hashFinancialPayload, isFinancialUuid, JOURNAL_FEED, MAX_FEED_BYTES, normalizeJournalFeed, normalizeReferenceFeed, REFERENCE_FEED } from './financialFeedContract.mjs';
+import { financialPayloadDigest, hashFinancialPayload, isFinancialUuid, FIFO_FEED, JOURNAL_FEED, MAX_FEED_BYTES, normalizeFifoFeed, normalizeJournalFeed, normalizeReferenceFeed, REFERENCE_FEED } from './financialFeedContract.mjs';
 import { publishJournals, stageJournals } from './journalFeedSql.mjs';
 import { publishFinancialReference } from './financialReferenceSql.mjs';
+import { applyFifoFeed } from './fifoFeedWorker.mjs';
 
 const connectorSql = `
 SELECT c.SystemCode AS source,c.FinancialCompanyKey AS company,c.FinancialBaseCurrency AS currency
@@ -74,13 +75,13 @@ function dateParameter(value) {
 }
 
 /** A private, company-bound worker. Publishers use the CRM database and the existing integration transaction. */
-export function createFinancialFeedWorker({ sql, run }, additionalHandlers = {}) {
+export function createFinancialFeedWorker({ sql, run }) {
   const handlers = {
     [JOURNAL_FEED]: journalHandler,
     [REFERENCE_FEED]: { normalize: normalizeReferenceFeed, sql: publishFinancialReference, rows: result => result.records,
       controls: (control, received) => [{ metric: 'FINANCIAL_REFERENCE_RECORDS', actual: received, expected: control.records,
         result: received===control.records ? 'MATCHED' : 'MISMATCH' }] },
-    ...additionalHandlers,
+    [FIFO_FEED]: { normalize: normalizeFifoFeed, apply: applyFifoFeed, rows: result => result.products },
   };
   return async ({ tenantId, connectorId, raw }) => {
     if (!isFinancialUuid(tenantId) || !isFinancialUuid(connectorId) || typeof raw !== 'string' || Buffer.byteLength(raw)>MAX_FEED_BYTES) {
@@ -129,7 +130,11 @@ export function createFinancialFeedWorker({ sql, run }, additionalHandlers = {})
       let stats = { inserted: 0, updated: 0, stale: 0, identical: 0 };
       const batchScope = () => scoped().input('batchId',sql.BigInt,batchId);
       const rows = handler.rows(normalized);
-      if (!errors.length && rows.length) {
+      if (!errors.length && rows.length && handler.apply) {
+        const applied = await handler.apply({ sql, transaction, tenantId, source: connector.source, batchId, input, rows });
+        errors.push(...applied.errors);
+        if (!errors.length) stats = applied.stats;
+      } else if (!errors.length && rows.length) {
         const applied = await batchScope().input('source',sql.VarChar(40),connector.source)
           .input('currency',sql.Char(3),connector.currency)
           .input('revisionText',sql.VarChar(20),input.batchRevision)

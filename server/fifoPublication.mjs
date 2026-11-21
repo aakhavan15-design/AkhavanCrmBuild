@@ -5,8 +5,12 @@ export async function publishFifoInventory({ sql, run }, claims, input) {
   const result = rebuildFifo(input);
   if (result.status !== 'CALCULATED') return result;
 
-  const publication = await run(claims, tx => new sql.Request(tx)
-    .input('tenantId', sql.UniqueIdentifier, claims.tenantId)
+  return run(claims, tx => publishCalculatedFifo(sql, tx, claims.tenantId, result));
+}
+
+export async function publishCalculatedFifo(sql, tx, tenantId, result, batchId) {
+  const publication = await new sql.Request(tx)
+    .input('tenantId', sql.UniqueIdentifier, tenantId)
     .input('source', sql.VarChar(40), result.sourceSystemCode)
     .input('product', sql.NVarChar(200), result.productExternalId)
     .input('unit', sql.NVarChar(40), result.unitCode)
@@ -20,11 +24,16 @@ export async function publishFifoInventory({ sql, run }, claims, input) {
     .input('layers', sql.NVarChar(sql.MAX), JSON.stringify(result.layers))
     .input('consumptions', sql.NVarChar(sql.MAX), JSON.stringify(result.consumptions))
     .input('valuations', sql.NVarChar(sql.MAX), JSON.stringify(result.valuations))
-    .execute('analytics.usp_PublishFifoRun'));
+    .execute('analytics.usp_PublishFifoRun');
 
   const receipt = publication.recordset[0];
   if (!receipt?.RunId) {
     throw new Error('FIFO publication returned no run identifier.');
+  }
+  if (batchId && !receipt.Replayed) {
+    await new sql.Request(tx).input('tenantId',sql.UniqueIdentifier,tenantId)
+      .input('runId',sql.UniqueIdentifier,receipt.RunId).input('batchId',sql.BigInt,batchId)
+      .query('UPDATE analytics.FifoRun SET ImportedBatchId=@batchId WHERE TenantId=@tenantId AND RunId=@runId');
   }
   return { status: 'PUBLISHED', runId: receipt.RunId, replayed: receipt.Replayed, checksum: result.checksum };
 }

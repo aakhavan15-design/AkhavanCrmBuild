@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 
 export const JOURNAL_FEED = 'FINANCIAL_JOURNAL';
 export const REFERENCE_FEED = 'FINANCIAL_REFERENCE';
+export const FIFO_FEED = 'INVENTORY_FIFO';
 export const MAX_FEED_BYTES = 12 * 1024 * 1024;
 const uuid = /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i;
 const day = /^\d{4}-\d{2}-\d{2}$/;
@@ -50,7 +51,7 @@ const errorOf = (externalId, code, message) => ({ externalId, ruleCode: code, se
 const bounded = (value, length) => Array.isArray(value) && value.length <= length;
 
 function envelope(input) {
-  requireField(object(input) && [JOURNAL_FEED, REFERENCE_FEED].includes(input.feed) &&
+  requireField(object(input) && [JOURNAL_FEED, REFERENCE_FEED, FIFO_FEED].includes(input.feed) &&
     text(input.batchKey,160) && text(input.companyKey,120) && matches(input.currencyCode,currency)
     && matches(input.batchRevision,revision) && ['FULL','INCREMENTAL','REPLAY'].includes(input.mode),
   'BAD_ENVELOPE','شناسه، شرکت، ارز پایه یا نسخهٔ دستهٔ مالی معتبر نیست.');
@@ -236,4 +237,53 @@ export function normalizeReferenceFeed(input) {
     errors.push(errorOf(null,'CONTROL_TOTAL_MISMATCH','شمار کدینگ دریافتی با شمار کنترلی ERP همخوان نیست.'));
   }
   return { records, errors, received: input.records.length, control: input.control };
+}
+
+
+const stockQuantity = /^\d{1,22}(?:\.\d{1,6})?$/;
+export function normalizeFifoFeed(input) {
+  envelope(input);
+  requireField(input.feed===FIFO_FEED && input.mode!=='INCREMENTAL' && bounded(input.products,50),
+    'BAD_FIFO_BATCH','FIFO به تصویر کامل گردش همان کالا در پنجرهٔ مصوب نیاز دارد.');
+  const products = [], errors = [], known = new Set();
+  for (const product of input.products) {
+    const externalId = text(product?.productExternalId,200) ? product.productExternalId : null;
+    try {
+      requireField(object(product) && externalId && text(product.unitCode,40) && text(product.sourceProof,200)
+        && timestamp(product.periodStartUtc) && timestamp(product.throughUtc) && product.periodStartUtc<=product.throughUtc
+        && bounded(product.movements,50000) && bounded(product.openingWarehouses,1000) && product.openingWarehouses.length>0,
+      'BAD_FIFO_WINDOW','کالا، واحد، مرجع، پنجرهٔ اثر و گردش کامل FIFO الزامی‌اند.');
+      const key = JSON.stringify([product.productExternalId.toUpperCase(),product.unitCode.toUpperCase(),product.periodStartUtc]);
+      requireField(!known.has(key),'DUPLICATE_FIFO_PRODUCT','پارتیشن همان کالا و دوره در دسته تکرار شده است.');
+      const { control } = product;
+      requireField(object(control) && control.movementCount===product.movements.length &&
+        bounded(control.opening,1000) && bounded(control.closing,1000) &&
+        control.opening.length===product.openingWarehouses.length && control.closing.length===product.openingWarehouses.length,
+      'FIFO_CONTROL_MISSING','کنترل تعداد گردش و مقدار ابتدا و پایان برای همهٔ انبارها الزامی‌اند.');
+      const allowed = new Set(product.openingWarehouses);
+      for (const positions of [control.opening,control.closing]) {
+        const controlIds = new Set();
+        for (const position of positions) {
+          requireField(object(position) && allowed.has(position.warehouseId) && !controlIds.has(position.warehouseId)
+            && matches(position.quantity,stockQuantity),'BAD_FIFO_CONTROL','مقدار یا انبار کنترل موجودی معتبر نیست.');
+          controlIds.add(position.warehouseId);
+        }
+      }
+      const actualOpening = new Map();
+      for (const movement of product.movements) {
+        if (movement?.kind!=='OPENING') continue;
+        requireField(matches(movement.quantity,stockQuantity),'BAD_FIFO_CONTROL','مقدار لایهٔ افتتاحیه معتبر نیست.');
+        const current = actualOpening.get(movement.warehouseId) ?? 0n;
+        actualOpening.set(movement.warehouseId,current+fixedUnits(movement.quantity,6));
+      }
+      requireField(control.opening.every(row => fixedUnits(row.quantity,6)===(actualOpening.get(row.warehouseId) ?? 0n)),
+        'FIFO_OPENING_UNRECONCILED','لایه‌های افتتاحیه با مقدار مستقل ERP سازگار نیستند.');
+      known.add(key);
+      products.push(product);
+    } catch (error) {
+      if (!(error instanceof FeedContractError)) throw error;
+      errors.push(errorOf(externalId,error.code,error.message));
+    }
+  }
+  return { products, errors, received: input.products.length };
 }
