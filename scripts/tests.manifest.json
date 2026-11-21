@@ -1,5 +1,9 @@
 [
   {
+    "file": "tests/taskRequestWorkflowContracts.test.mjs",
+    "flags": ["--experimental-strip-types"]
+  },
+  {
     "file": "tests/conversationScope.test.mjs",
     "flags": []
   },

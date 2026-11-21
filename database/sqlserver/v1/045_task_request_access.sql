@@ -8,6 +8,7 @@ SELECT p.code,p.title FROM (VALUES
  (N'tasks.request.note',N'ثبت یادداشت مدیریتی درخواست'),
  (N'tasks.request.attachments',N'دریافت و ثبت مدارک درخواست'),
  (N'tasks.request.costs',N'مشاهدهٔ هزینه و سود در درخواست فروش'),
+ (N'tasks.request.condition.verify',N'تأیید مستقل شاهد اجرای شرط درخواست'),
  (N'tasks.request.confidential',N'دسترسی به درخواست دارای محرمانگی ویژه')
 ) p(code,title) WHERE NOT EXISTS(SELECT 1 FROM core.Permission x WHERE x.PermissionCode=p.code);
 GO
@@ -43,7 +44,7 @@ WITH actors AS (
  JOIN core.AppUser lead ON lead.TenantId=@TenantId AND lead.UserId=parent.ManagerUserId AND lead.IsActive=1
  WHERE parent.depth<15 AND lead.UserId<>parent.UserId
 )
-SELECT grants.isCreator,grants.isAssignee,grants.isManager,grants.isWatcher,grants.canAct,grants.canDecide,grants.canWatch,grants.canNote,grants.canFiles,grants.canUpload
+SELECT grants.isCreator,grants.isAssignee,grants.isManager,grants.isWatcher,grants.canAct,grants.canDecide,grants.canWatch,grants.canNote,grants.canFiles,grants.canUpload,grants.canVerify
 FROM actors x JOIN core.AppUser viewer ON viewer.TenantId=@TenantId AND viewer.UserId=@Viewer AND viewer.IsActive=1
 LEFT JOIN crm.Account a ON a.TenantId=@TenantId AND a.AccountId=x.accountId
 LEFT JOIN core.AppUser assignee ON assignee.TenantId=@TenantId AND assignee.UserId=x.assignee
@@ -78,7 +79,9 @@ CROSS APPLY (SELECT
  CAST(CASE WHEN EXISTS(SELECT 1 FROM security.fn_TaskRequestGrant(@TenantId,@Viewer,N'tasks.request.attachments',scope.ownerId,scope.branchId,scope.territoryId,scope.teamId,0))
   THEN 1 ELSE 0 END AS bit) AS canFiles,
  CAST(CASE WHEN EXISTS(SELECT 1 FROM security.fn_TaskRequestGrant(@TenantId,@Viewer,N'tasks.request.attachments',scope.ownerId,scope.branchId,scope.territoryId,scope.teamId,1))
-  THEN 1 ELSE 0 END AS bit) AS canUpload
+  THEN 1 ELSE 0 END AS bit) AS canUpload,
+ CAST(CASE WHEN EXISTS(SELECT 1 FROM security.fn_TaskRequestGrant(@TenantId,@Viewer,N'tasks.request.condition.verify',scope.ownerId,scope.branchId,scope.territoryId,scope.teamId,1))
+  THEN 1 ELSE 0 END AS bit) AS canVerify
 ) grants
 WHERE x.kind IN('GENERAL','PRICE_INQUIRY','PRICE_PERMISSION','ORDER_APPROVAL','FINANCE','COLLECTION','COMMERCE','HR')
  AND (x.accountId IS NULL OR (a.AccountId IS NOT NULL AND EXISTS(

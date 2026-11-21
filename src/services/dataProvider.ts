@@ -1,5 +1,5 @@
 import type { TaskRequestApprovalPolicy, TaskRequestCommand, TaskRequestFile, TaskRequestInput, TaskRequestPolicyKind,
-  TaskRequestRecord, TaskRequestSummary, TaskRequestView } from './taskRequests';
+  TaskRequestRecord, TaskRequestPage, TaskRequestView } from './taskRequests';
 import type { 
   AppState, 
   Account, 
@@ -280,7 +280,7 @@ export interface DataProvider {
   createTask(task: Partial<Task>, idempotencyKey?: string): Promise<Task>;
   updateTask(id: string, patch: Partial<Task>): Promise<Task>;
   getTaskWorkflow(id: string): Promise<TaskWorkflowRecord>;
-  listTaskRequests(view:TaskRequestView,search:string,page:number): Promise<{items:TaskRequestSummary[];hasMore:boolean}>;
+  listTaskRequests(view:TaskRequestView,search:string,page:number): Promise<TaskRequestPage>;
   listTaskRequestFiles(id:string): Promise<{items:TaskRequestFile[]}>;
   getTaskRequestFile(id:string,fileId:string): Promise<TaskRequestFile & {data:string}>;
   uploadTaskRequestFile(id:string,file:File,uploadId:string): Promise<TaskRequestFile>;
@@ -548,7 +548,7 @@ export class ClientStorageDataProvider implements DataProvider {
     return (this.getState().tasks || []).find(t => t.id === id) || null;
   }
 
-  async listTaskRequests(): Promise<{items:TaskRequestSummary[];hasMore:boolean}> { return {items:[],hasMore:false}; }
+  async listTaskRequests(): Promise<TaskRequestPage> { throw new Error('کارتابل درخواست‌ها به اتصال سرور نیاز دارد.'); }
   async listTaskRequestFiles(): Promise<{items:TaskRequestFile[]}> { return {items:[]}; }
   async getTaskRequestFile(): Promise<TaskRequestFile & {data:string}> { throw new Error('دریافت مدرک به سرور نیاز دارد.'); }
   async uploadTaskRequestFile(): Promise<TaskRequestFile> { throw new Error('ثبت مدرک به سرور نیاز دارد.'); }
@@ -1028,7 +1028,7 @@ export class HttpBackendDataProvider implements DataProvider {
     return this.request<Task>(`/tasks/${id}`);
   }
 
-  async listTaskRequests(view:TaskRequestView,search:string,page:number): Promise<{items:TaskRequestSummary[];hasMore:boolean}> {
+  async listTaskRequests(view:TaskRequestView,search:string,page:number): Promise<TaskRequestPage> {
     return this.request(`/tasks/requests?${new URLSearchParams({view,search,page:String(page)})}`);
   }
   async listTaskRequestFiles(id:string): Promise<{items:TaskRequestFile[]}> { return this.request(`/tasks/requests/${encodeURIComponent(id)}/files`); }

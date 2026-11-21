@@ -45,6 +45,8 @@ function PolicyForm({viewer,kind,saved,onSaved}:{
     </fieldset>)}
     <Button type="button" size="sm" variant="outline" disabled={draft.steps.length>=6}
       onClick={()=>setDraft(value=>({...value,steps:[...value.steps,{members:[],required:1}]}))}>افزودن مرحله</Button>
+    {kind==='ORDER_APPROVAL' && <RequestPeople label="مسئول حسابداری پس از تأیید" viewer={viewer}
+      values={draft.accountingUserId ? [draft.accountingUserId] : []} onChange={values=>setDraft({...draft,accountingUserId:values[0] ?? null})}/>}
     <label className="flex min-h-11 items-center gap-2 text-sm"><Checkbox checked={draft.enabled}
       onChange={event=>setDraft({...draft,enabled:event.target.checked})}/> سیاست فعال باشد</label>
     {feedback && <p role={feedback.ok ? 'status':'alert'} className={feedback.ok ? 'text-success':'text-danger'}>{feedback.text}</p>}

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useDataQuery } from '../../hooks/useDataProvider';
 import { formatCount, formatDecimalString } from '../../lib/format';
 import { formatAppDate } from '../../lib/utils';
+import { resolveCustomerBalanceView } from '../../lib/receivableReconciliation';
 import { toLatinDigits } from '../../lib/digits';
 import { getActiveDataProvider } from '../../services/dataProvider';
 import { requestKinds, requestPriorities, requestStatusLabels, type RequestPriority, type TaskRequestCommand,
@@ -29,9 +30,11 @@ const actionLabels:Record<string,string> = {
   COMMENT:'یادداشت',START:'شروع رسیدگی',BLOCK:'ثبت مانع',UNBLOCK:'رفع مانع',COMPLETE:'تکمیل با ثبت نتیجه',
   REOPEN:'بازگشایی',RECORD_RESULT:'ثبت نتیجه',REPLY:'پاسخ',ASK_INFO:'درخواست اطلاعات بیشتر',REFER:'ارجاع',
   PRIORITY:'تغییر اهمیت',WATCHERS:'مدیریت ناظران',APPROVE:'تأیید',REJECT:'رد با توضیح',CONDITION:'ثبت شرط',
-  SATISFY:'تأیید مستقل اجرای شرط',CANCEL:'لغو',REVISE:'بازبینی نسخه',
+  SATISFY:'تأیید مستقل اجرای شرط',ERP_INVOICE:'تطبیق فاکتور رسمی',CANCEL:'لغو',REVISE:'بازبینی نسخه',
 };
 const kindLabel=(kind:string)=>requestKinds.find(item=>item.value===kind)?.label ?? 'درخواست کاری';
+const time = new Intl.DateTimeFormat('fa-IR',{timeZone:'Asia/Tehran',hour:'2-digit',minute:'2-digit'});
+const eventDate=(at:string)=> Number.isFinite(Date.parse(at)) ? `${formatAppDate(at)} · ${time.format(new Date(at))}` : 'زمان نامشخص';
 const priorityLabel=(priority:string)=>requestPriorities.find(item=>item.value===priority)?.label ?? 'عادی';
 
 export function TaskRequestsPanel({viewer,search,refresh,onOpen}:{
@@ -50,6 +53,13 @@ export function TaskRequestsPanel({viewer,search,refresh,onOpen}:{
     <div className="max-w-sm"><SearchableSelect label="نمای کارتابل" value={view} options={views} onChange={value=>{
       setView(value as TaskRequestView);setPage(1);
     }}/></div>
+    {result?.metrics && <dl className="grid grid-cols-2 gap-2 rounded-xl border border-border bg-surface p-2 text-caption sm:grid-cols-4">
+      <div><dt className="text-text-secondary">باز</dt><dd className="font-bold">{formatCount(Number(result.metrics.openCount))}</dd></div>
+      <div><dt className="text-text-secondary">منتظر پاسخ یا تصمیم</dt><dd className="font-bold">{formatCount(Number(result.metrics.waitingCount))}</dd></div>
+      <div><dt className="text-text-secondary">تأخیر مهم</dt><dd className="font-bold">{formatCount(Number(result.metrics.importantLate))}</dd></div>
+      <div><dt className="text-text-secondary">میانگین رسیدگی</dt><dd className="font-bold">
+        {result.metrics.meanMinutes===null?'نامشخص':`${formatCount(result.metrics.meanMinutes)} دقیقه`}</dd></div>
+    </dl>}
     {error ? <EmptyState surface="task_requests" title="دریافت درخواست‌ها ممکن نیست" description={error.message}
       actionLabel="تلاش دوباره" onAction={()=>void refetch()} compact/> : loading || !result ? <LoadingState label="در حال دریافت درخواست‌ها" />
       : !result.items.length ? <EmptyState surface="task_requests" title="درخواستی در این نما یافت نشد" compact />
@@ -75,6 +85,40 @@ export function TaskRequestsPanel({viewer,search,refresh,onOpen}:{
       <Button type="button" variant="ghost" disabled={!result.hasMore || loading} onClick={()=>setPage(page+1)}>بعدی</Button>
     </nav>}
   </div>;
+}
+
+function CustomerRequestContext({record}: {record:TaskRequestRecord}) {
+  const [open,setOpen]=useState(false);
+  const context=record.customer;
+  const accountId=record.account?.id ?? '';
+  const source=record.order?.source ?? undefined;
+  const read=useDataQuery(async provider=>open && context?.finance && accountId ? {
+    accountId,source,result:await provider.getDetailSubsidiaryBalances({source,role:'RECEIVABLE'}),
+  } : null,[open,accountId,source,Boolean(context?.finance)]);
+  if (!context || !record.account) return null;
+  const current=read.data?.accountId===accountId && read.data.source===source ? read.data.result : null;
+  const ledger=resolveCustomerBalanceView(current,{id:accountId});
+  return <details className="rounded-xl border border-border p-2" onToggle={event=>setOpen(event.currentTarget.open)}>
+    <summary className="min-h-11 cursor-pointer content-center font-semibold">زمینهٔ تصمیم مشتری</summary>
+    {open && <div className="space-y-2 text-caption">
+      {context.finance && <dl className="grid grid-cols-2 gap-2">
+        <div><dt>سقف اعتبار ثبت‌شده</dt><dd>{context.finance.creditLimit===null?'نامشخص':
+          `${formatDecimalString(context.finance.creditLimit)} ${context.finance.currency==='IRR'?'ریال':context.finance.currency}`}</dd></div>
+        <div><dt>ماندهٔ دفتر مطالبات</dt><dd>{read.loading?'در حال دریافت…':ledger.kind==='OK' && !ledger.incomplete ?
+          `${formatDecimalString(String(ledger.total))} ریال`:'نامشخص'}</dd></div>
+      </dl>}
+      {context.orders.length>0 && <section><h4 className="font-bold">سفارش‌های اخیر</h4>
+        <ul>{context.orders.map(item=><li key={item.number}><bdi>{item.number}</bdi> · {formatAppDate(item.date)} · {formatDecimalString(item.amount)}
+          {' '}{item.currency==='IRR'?'ریال':item.currency}</li>)}</ul></section>}
+      {context.cheques.length>0 && <section><h4 className="font-bold">چک‌های دریافتی اخیر</h4>
+        <ul>{context.cheques.map((item,index)=><li key={`${item.number}:${index}`}>
+          <bdi>{item.number}</bdi> · سررسید {formatAppDate(item.dueDate)} · {item.bounced?'برگشتی':item.sourceState==='OPEN'?'باز در ERP':
+            item.sourceState==='CLOSED'?'بسته در ERP':'وضعیت نامشخص'}</li>)}</ul></section>}
+      {context.promises.length>0 && <section><h4 className="font-bold">وعده‌های ثبت‌شدهٔ پیگیری</h4>
+        <ul>{context.promises.map((item,index)=><li key={index}>{formatAppDate(item.dueDate ?? undefined)} · {item.status==='PENDING'?'در انتظار بررسی':'سابقهٔ پیگیری'}</li>)}</ul></section>}
+      {!context.finance && !context.orders.length && <p className="text-text-secondary">اطلاعات زمینه‌ای مجاز در دسترس نیست.</p>}
+    </div>}
+  </details>;
 }
 
 export function TaskRequestSheet({id,viewer,accounts,onClose,onChanged}:{
@@ -167,7 +211,9 @@ export function TaskRequestSheet({id,viewer,accounts,onClose,onChanged}:{
           <p>ارجاع آخر {formatAppDate(req.assignedAt)}{task.dueDate && ` · مهلت ${formatAppDate(task.dueDate)}`}</p>
           {record.account && <Link to={`/accounts/${encodeURIComponent(record.account.id)}`} className="inline-flex min-h-11 items-center text-primary">
             پروندهٔ مشتری {record.account.name}</Link>}
-          <p>{formatCount(req.watchers.length)} ناظر مجاز{record.permissions.isWatcher && ' · شما ناظر این درخواست هستید'}</p>
+          {req.watchers.length>0 && <p>ناظران {req.watchers.map(id=>record.participants?.[id] || 'ناظر').join('، ')}
+            {record.permissions.isWatcher && ' · شما ناظر این درخواست هستید'}</p>}
+          {req.activeApprovers.length>0 && <p>تصمیم‌گیران مرحلهٔ جاری {req.activeApprovers.map(id=>record.participants?.[id] || 'عضو مجاز').join('، ')}</p>}
           {task.nextAction && <p className="font-semibold">اقدام بعدی {task.nextAction}</p>}
         </Card>
         {task.description && <p className="whitespace-pre-wrap wrap-break-word text-sm leading-7">{task.description}</p>}
@@ -176,7 +222,8 @@ export function TaskRequestSheet({id,viewer,accounts,onClose,onChanged}:{
           <p className="text-caption">{req.condition.evidence || 'در انتظار شاهد و بررسی مستقل'}</p></Card>}
         {record.approval && <p className="text-caption">مرحلهٔ {formatCount(record.approval.index)} از {formatCount(record.approval.total)}
           {' · '}{formatCount(record.approval.received)} تصمیم از {formatCount(record.approval.required)} تصمیم لازم</p>}
-        {record.stale && <p role="status" className="rounded-xl bg-warning-soft p-2 text-caption text-warning">سفارش پس از ثبت این نسخه تغییر کرده است؛ تصمیم جدید به بازبینی نیاز دارد.</p>}
+        {req.invoice && <p className="text-caption">فاکتور رسمی ERP <bdi>{req.invoice.number}</bdi> · {formatAppDate(req.invoice.date)}</p>}
+        {record.stale && !req.invoice && <p role="status" className="rounded-xl bg-warning-soft p-2 text-caption text-warning">سفارش پس از ثبت این نسخه تغییر کرده است؛ تصمیم جدید به بازبینی نیاز دارد.</p>}
         {record.order && <details className="rounded-xl border border-border p-2">
           <summary className="min-h-11 cursor-pointer content-center font-semibold">سفارش {record.order.number} · {formatDecimalString(record.order.total)} {record.order.currency==='IRR' ? 'ریال' : record.order.currency}</summary>
           <ul className="divide-y divide-border text-caption">
@@ -194,13 +241,14 @@ export function TaskRequestSheet({id,viewer,accounts,onClose,onChanged}:{
             <li key={item.productId} className="py-2">{item.title || 'کالا'} · {formatDecimalString(item.quantity)} {item.unit} · فی {formatDecimalString(item.price)} ریال</li>)}</ul>
           {req.authorization && <p className="text-caption">اعتبار تا {formatAppDate(req.authorization.expiresOn)} · سقف {formatCount(req.authorization.maxUses)} بار</p>}
         </details>}
+        <CustomerRequestContext record={record}/>
         {record.permissions.canFiles && <TaskRequestFiles id={id} canUpload={Boolean(record.permissions.canUpload)}
           onChanged={()=>{onChanged();void refetch();}}/>}
         <section aria-label="تاریخچهٔ درخواست">
           <h3 className="mb-1 text-sm font-bold">گفت‌وگو و گردش درخواست</h3>
           <ol className="divide-y divide-border">
             {task.activityHistory.map(event=><li key={event.id} className="space-y-1 py-2 text-caption">
-              <p className="font-semibold">{event.summary} · {formatAppDate(event.at)} · {event.actorId===viewer ? 'شما' : event.actorId===task.createdBy ? record.creator : event.actorId===task.assigneeId ? record.assignee : 'مشارکت‌کننده'}</p>
+              <p className="font-semibold">{event.summary} · {eventDate(event.at)} · {event.actorId===viewer ? 'شما' : record.participants?.[event.actorId] || 'مشارکت‌کننده'}</p>
               {event.details && <p className="whitespace-pre-wrap wrap-break-word text-text-secondary">{event.details}</p>}
             </li>)}
           </ol>

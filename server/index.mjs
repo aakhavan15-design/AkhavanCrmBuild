@@ -1338,10 +1338,33 @@ process.on('unhandledRejection', (reason) => {
   console.error('[SERVER UNHANDLED REJECTION]', reason);
 });
 
+function startTaskRequestReminders() {
+  if (entityDriverKind!=='mssql') return;
+  const admins = {tenantId:process.env.TASK_REQUEST_REMINDER_TENANT_ID,userId:process.env.TASK_REQUEST_REMINDER_ACTOR_ID};
+  const validId=value=>typeof value==='string' && /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(value);
+  if (!validId(admins.tenantId) || !validId(admins.userId)) return;
+  let running=false;
+  const dates=new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Tehran',year:'numeric',month:'2-digit',day:'2-digit'});
+  const check=async()=>{
+    if (running) return;
+    running=true;
+    try {
+      if (await hasSqlPermission(admins,'settings.manage',{organizationWide:true})) {
+        await taskRequests.runReminders(admins,dates.format(new Date()));
+      }
+    } catch {
+      console.error(JSON.stringify({level:'error',event:'task_request_reminder_failed'}));
+    } finally {running=false;}
+  };
+  setInterval(()=>void check(),15*60*1000).unref();
+  void check();
+}
+
 const port = Number(process.env.PORT || process.env.API_PORT || (process.env.NODE_ENV === 'production' ? 3000 : 4000));
 if (process.env.NODE_ENV !== 'test') {
   const server = app.listen(port, '0.0.0.0', () => {
   console.log(JSON.stringify({ level: 'info', event: 'api_started', port }));
+  startTaskRequestReminders();
   initPushModule().then((r) => console.log(JSON.stringify({ level: 'info', event: 'push_init', ...r }))).catch(() => {});
 });
   server.on('error', (err) => {

@@ -91,7 +91,7 @@ export function createTaskRequests({sql,run}) {
   async function verifyWatchers(tx,auth,task) {
     const approverIds = task.managedRequest.policy?.steps.flatMap(step => step.members) ?? [];
     for (const watcher of task.managedRequest.watchers) {
-      if (watcher===task.assigneeId || approverIds.includes(watcher)) {
+      if (watcher===task.assigneeId || watcher===task.managedRequest.policy?.accountingUserId || approverIds.includes(watcher)) {
         throw invalid('مسئول یا تصمیم‌گیر همین درخواست نمی‌تواند ناظر آن باشد.');
       }
       const permissions = await access(tx,auth,task,watcher);
@@ -105,7 +105,9 @@ export function createTaskRequests({sql,run}) {
       SELECT WorkflowId AS id,Version AS version,DefinitionJson AS spec FROM crm.WorkflowDefinition
       WHERE TenantId=@tenantId AND WorkflowCode=@code AND TriggerCode='TASK_REQUEST' AND IsEnabled=1;`)).recordset[0];
     const policy = record ? policyInput(JSON.parse(record.spec)) : null;
-    if (!policy) throw failure(422,'APPROVAL_POLICY_UNAVAILABLE','سیاست تأیید معتبر برای این نوع درخواست در تنظیمات گردش‌کار ثبت نشده است.');
+    if (!policy || (kind==='ORDER_APPROVAL' && !policy.accountingUserId)) {
+      throw failure(422,'APPROVAL_POLICY_UNAVAILABLE','سیاست تأیید معتبر و مسئول مالی سفارش در تنظیمات گردش‌کار ثبت نشده است.');
+    }
     return {...policy,id:record.id,version:record.version};
   }
 
@@ -144,13 +146,85 @@ export function createTaskRequests({sql,run}) {
     }
     if (value.priceItems.length) {
       const result = await input(tx,auth).input('items',sql.NVarChar(sql.MAX),JSON.stringify(value.priceItems)).query(`
-        SELECT CONVERT(varchar(36),p.ExternalProductKey) AS id,p.ProductName AS title,p.BaseUnitCode AS unit
+        SELECT CONVERT(varchar(36),p.ExternalProductKey) AS id,p.ProductName AS title,p.BaseUnitCode AS unit,p.SourceSystemCode AS source
         FROM OPENJSON(@items) WITH(productId uniqueidentifier) item
         JOIN crm.ExternalProduct p ON p.TenantId=@tenantId AND p.ExternalProductKey=item.productId AND p.IsActive=1;`);
       if (result.recordset.length!==value.priceItems.length) throw invalid('یک کالا در کاتالوگ معتبر ERP یافت نشد.');
+      const sources=[...new Set(result.recordset.map(item => item.source))];
+      if (sources.length!==1) throw invalid('همهٔ اقلام یک مجوز باید به یک کاتالوگ ERP تعلق داشته باشند.');
+      task.managedRequest.priceSource=sources[0];
       const products = new Map(result.recordset.map(p => [p.id.toLowerCase(),p]));
       task.managedRequest.priceItems=value.priceItems.map(item => ({...item,title:products.get(item.productId).title,unit:products.get(item.productId).unit}));
     }
+  }
+
+  async function accountant(tx,auth,task,viewer) {
+    if (!viewer) return null;
+    const result=await input(tx,auth).input('viewer',sql.UniqueIdentifier,viewer).input('accountId',sql.UniqueIdentifier,task.accountId)
+      .input('request',sql.NVarChar(sql.MAX),JSON.stringify({...task,status:'APPROVED',assigneeId:viewer})).query(`
+        SELECT u.DisplayName AS name FROM core.AppUser u JOIN crm.Account a ON a.TenantId=u.TenantId AND a.AccountId=@accountId
+        CROSS APPLY security.fn_TaskRequestGrant(@tenantId,u.UserId,N'finance.manage',a.OwnerUserId,a.BranchId,a.TerritoryId,a.TeamId,1)
+        CROSS APPLY security.fn_TaskRequestAccess(@tenantId,u.UserId,@request)
+        WHERE u.TenantId=@tenantId AND u.UserId=@viewer AND u.IsActive=1;`);
+    return result.recordset[0]?.name ?? null;
+  }
+
+  async function invoiceEvidence(tx,auth,task) {
+    const order=await readOrder(tx,auth,task);
+    if (!order?.source || !order.externalId) return null;
+    const result=await input(tx,auth).input('source',sql.VarChar(40),order.source)
+      .input('externalOrder',sql.NVarChar(200),order.externalId).input('accountId',sql.UniqueIdentifier,task.accountId)
+      .query(`SELECT TOP(2) i.InvoiceMirrorId AS id,i.InvoiceNumber AS number,i.InvoiceDate AS [date],i.SourceSystemCode AS source
+        FROM crm.InvoiceMirror i JOIN crm.Account a ON a.TenantId=i.TenantId AND a.AccountId=i.AccountId
+        CROSS APPLY security.fn_TaskRequestGrant(@tenantId,@actor,N'finance.manage',a.OwnerUserId,a.BranchId,a.TerritoryId,a.TeamId,1)
+        CROSS APPLY (
+          SELECT MAX(m.StandardCode) AS status FROM integration.CodeMapping m
+          WHERE m.TenantId=@tenantId AND m.SourceSystemCode=i.SourceSystemCode AND m.MappingDomain='INVOICE_STATUS'
+            AND m.ExternalCode=i.StatusCode AND m.MapStatus='APPROVED' AND m.EffectiveFrom<=i.InvoiceDate
+            AND (m.EffectiveTo IS NULL OR m.EffectiveTo>=i.InvoiceDate)
+          HAVING COUNT_BIG(*)=1
+        ) state
+        WHERE i.TenantId=@tenantId AND i.SourceSystemCode=@source AND i.ExternalSourceOrderId=@externalOrder
+          AND i.AccountId=@accountId AND i.IsVoided=0 AND state.status IN('POSTED','FINAL');`);
+    return result.recordset.length===1 ? result.recordset[0] : null;
+  }
+
+  async function customerContext(tx,auth,task) {
+    if (!task.accountId) return null;
+    const result=await input(tx,auth).input('accountId',sql.UniqueIdentifier,task.accountId).query(`
+      SELECT CONVERT(varchar(48),a.CreditLimit) AS creditLimit,a.CurrencyCode AS currency
+      FROM crm.Account a
+      CROSS APPLY security.fn_TaskRequestGrant(@tenantId,@actor,N'finance.view',a.OwnerUserId,a.BranchId,a.TerritoryId,a.TeamId,0)
+      WHERE a.TenantId=@tenantId AND a.AccountId=@accountId;
+
+      SELECT TOP(5) o.OrderNumber AS number,CONVERT(char(10),o.OrderDate,126) AS [date],
+        o.CurrencyCode AS currency,CONVERT(varchar(48),o.NetAmount) AS amount
+      FROM crm.SalesOrder o JOIN crm.Account a ON a.TenantId=o.TenantId AND a.AccountId=o.AccountId
+      CROSS APPLY security.fn_TaskRequestGrant(@tenantId,@actor,N'quotes.view',a.OwnerUserId,a.BranchId,a.TerritoryId,a.TeamId,0)
+      WHERE o.TenantId=@tenantId AND o.AccountId=@accountId AND o.StatusCode NOT IN('DRAFT','CANCELLED')
+      ORDER BY o.OrderDate DESC,o.SalesOrderId;
+
+      SELECT TOP(5) c.ChequeNumber AS number,CONVERT(char(10),c.DueDate,126) AS dueDate,c.IsBounced AS bounced,
+        mapping.status AS sourceState
+      FROM crm.ChequeMirror c JOIN crm.Account a ON a.TenantId=c.TenantId AND a.AccountId=c.AccountId
+      CROSS APPLY security.fn_TaskRequestGrant(@tenantId,@actor,N'finance.view',a.OwnerUserId,a.BranchId,a.TerritoryId,a.TeamId,0)
+      OUTER APPLY(
+        SELECT MAX(m.StandardCode) AS status FROM integration.CodeMapping m
+        WHERE m.TenantId=c.TenantId AND m.SourceSystemCode=c.SourceSystemCode AND m.MappingDomain='CHEQUE_STATUS'
+          AND m.ExternalCode=c.StatusCode AND m.MapStatus='APPROVED' AND m.EffectiveFrom<=CONVERT(date,SYSUTCDATETIME())
+          AND (m.EffectiveTo IS NULL OR m.EffectiveTo>=CONVERT(date,SYSUTCDATETIME()))
+        HAVING COUNT_BIG(*)=1
+      ) mapping WHERE c.TenantId=@tenantId AND c.AccountId=@accountId AND c.DirectionCode='RECEIVED'
+        AND c.IsVoided=0 AND c.IsGuarantee=0 ORDER BY c.DueDate DESC,c.ChequeMirrorId;
+
+      SELECT TOP(5) TRY_CONVERT(date,JSON_VALUE(p.JsonDoc,'$.promisedDate')) AS dueDate,JSON_VALUE(p.JsonDoc,'$.status') AS status
+      FROM sync.EntityStore p JOIN crm.Account a ON a.TenantId=p.TenantId AND a.AccountId=@accountId
+      CROSS APPLY security.fn_TaskRequestGrant(@tenantId,@actor,N'finance.view',a.OwnerUserId,a.BranchId,a.TerritoryId,a.TeamId,0)
+      WHERE p.TenantId=@tenantId AND p.CollectionName=N'collectionPromises' AND p.IsDeleted=0
+        AND TRY_CONVERT(uniqueidentifier,JSON_VALUE(p.JsonDoc,'$.accountId'))=@accountId
+      ORDER BY TRY_CONVERT(date,JSON_VALUE(p.JsonDoc,'$.promisedDate')) DESC,p.EntityId;`);
+    return { finance:result.recordsets[0]?.[0] ?? null, orders:result.recordsets[1] ?? [],
+      cheques:result.recordsets[2] ?? [], promises:result.recordsets[3] ?? [] };
   }
 
   async function construct(tx,auth,value,now,previous) {
@@ -185,16 +259,17 @@ export function createTaskRequests({sql,run}) {
         VALUES(@tenantId,@actor,@command,@action,N'TASK',@id,'SUCCESS',@evidence);`);
   }
 
-  async function notify(tx,auth,task,commandId) {
-    const recipients = [...new Set([task.createdBy,task.assigneeId,...task.managedRequest.watchers,...task.managedRequest.activeApprovers])]
+  async function notify(tx,auth,task,commandId,extra=[],overdue=false) {
+    const recipients = [...new Set([task.createdBy,task.assigneeId,...task.managedRequest.watchers,...task.managedRequest.activeApprovers,...extra])]
       .filter(id => id && id!==actorId(auth));
     if (!recipients.length) return;
     await input(tx,auth).input('targets',sql.NVarChar(sql.MAX),JSON.stringify(recipients))
       .input('payload',sql.NVarChar(sql.MAX),JSON.stringify(task)).input('command',sql.NVarChar(100),commandId)
-      .input('taskId',sql.NVarChar(120),task.id).query(`
+      .input('taskId',sql.NVarChar(120),task.id)
+      .input('notice',sql.NVarChar(200),overdue ? 'مهلت یک درخواست کاری گذشته است' : 'درخواست کاری به‌روزرسانی شد').query(`
       INSERT sync.EntityStore(TenantId,CollectionName,EntityId,JsonDoc,UpdatedByUserId)
       SELECT @tenantId,N'notifications',notification.id,
-        (SELECT notification.id,N'درخواست کاری به‌روزرسانی شد' AS title,N'برای مشاهدهٔ جزئیات به کارتابل مراجعه کنید.' AS message,
+        (SELECT notification.id,@notice AS title,N'برای مشاهدهٔ جزئیات به کارتابل مراجعه کنید.' AS message,
           'INFO' AS type,CAST(0 AS bit) AS [read],CONVERT(varchar(33),SYSUTCDATETIME(),126)+'Z' AS createdAt,
           'tasks' AS linkTab,@taskId AS requestId,CONVERT(varchar(36),people.viewer) AS recipientId
           FOR JSON PATH,WITHOUT_ARRAY_WRAPPER),@actor
@@ -260,14 +335,55 @@ export function createTaskRequests({sql,run}) {
       const account = row.task.accountId ? (await input(tx,auth).input('accountId',sql.UniqueIdentifier,row.task.accountId).query(accountSql)).recordset[0] : null;
       const order=await readOrder(tx,auth,row.task,Boolean(account?.seesCost));
       const stale=row.task.managedRequest.kind==='ORDER_APPROVAL' && orderFingerprint(order)!==row.task.managedRequest.orderFingerprint;
-      return {...present(row,auth),account:account ? {id:account.id,name:account.name}:null,order,stale};
+      const request=row.task.managedRequest;
+      const identities=[row.task.createdBy,row.task.assigneeId,...request.activeApprovers,...request.watchers,
+        ...row.task.activityHistory.map(event => event.actorId)].filter(uuid);
+      const participants=await input(tx,auth).input('identities',sql.NVarChar(sql.MAX),JSON.stringify([...new Set(identities)]))
+        .query(`SELECT CONVERT(varchar(36),u.UserId) AS id,u.DisplayName AS name
+          FROM core.AppUser u WHERE u.TenantId=@tenantId AND EXISTS(SELECT 1 FROM OPENJSON(@identities) members
+            WHERE TRY_CONVERT(uniqueidentifier,members.value)=u.UserId);`);
+      const customer=await customerContext(tx,auth,row.task);
+      return {...present(row,auth),account:account ? {id:account.id,name:account.name}:null,order,stale,customer,
+        participants:Object.fromEntries(participants.recordset.map(p => [p.id.toLowerCase(),p.name]))};
+    }),
+
+    runReminders: (auth,today) => run(auth,async tx => {
+      const lock=await input(tx,auth).query(`DECLARE @lock int;
+        DECLARE @resource nvarchar(100)=CONCAT('task-request-reminders:',@tenantId);
+        EXEC @lock=sys.sp_getapplock @Resource=@resource,@LockMode='Exclusive',@LockOwner='Transaction',@LockTimeout=0;
+        SELECT @lock AS status;`);
+      if (Number(lock.recordset[0]?.status)<0) return {processed:0};
+      const overdue=await input(tx,auth).input('today',sql.Date,new Date(today)).query(`
+        SELECT TOP(50) task.EntityId AS id,task.JsonDoc,u.ManagerUserId AS manager,reminder.command
+        FROM sync.EntityStore task WITH(UPDLOCK,HOLDLOCK)
+        LEFT JOIN core.AppUser u ON u.TenantId=task.TenantId AND u.IsActive=1
+          AND u.UserId=TRY_CONVERT(uniqueidentifier,JSON_VALUE(task.JsonDoc,'$.assigneeId'))
+        CROSS APPLY(SELECT CONCAT('due:',JSON_VALUE(task.JsonDoc,'$.dueDate'),':',JSON_VALUE(task.JsonDoc,'$.managedRequest.assignedAt')) AS command) reminder
+        WHERE task.TenantId=@tenantId AND task.CollectionName=N'tasks' AND task.EntityId LIKE N'taskreq-%' AND task.IsDeleted=0
+          AND JSON_VALUE(task.JsonDoc,'$.status') NOT IN('COMPLETED','REJECTED','CANCELLED')
+          AND TRY_CONVERT(date,JSON_VALUE(task.JsonDoc,'$.dueDate'))<@today
+          AND NOT EXISTS(SELECT 1 FROM security.AuditEvent e WHERE e.TenantId=task.TenantId AND e.EventType=N'TASK_REQUEST_OVERDUE'
+            AND e.EntityId=task.EntityId AND e.CorrelationId=reminder.command)
+        ORDER BY TRY_CONVERT(date,JSON_VALUE(task.JsonDoc,'$.dueDate')),task.EntityId;`);
+      for (const row of overdue.recordset) {
+        const task=appendTaskActivity(JSON.parse(row.JsonDoc),{id:`${row.id}:${row.command}`,action:'OVERDUE',
+          actorId:actorId(auth),summary:'گذشت مهلت ثبت شد'});
+        await requestById(tx,auth,row.id).input('task',sql.NVarChar(sql.MAX),JSON.stringify(task))
+          .query(`UPDATE sync.EntityStore SET JsonDoc=@task,Version=Version+1,UpdatedAtUtc=SYSUTCDATETIME(),UpdatedByUserId=@actor
+            WHERE TenantId=@tenantId AND CollectionName=N'tasks' AND EntityId=@id AND IsDeleted=0;`);
+        await writeAudit(tx,auth,row.id,row.command,'TASK_REQUEST_OVERDUE',digest([row.id,row.command]),{dueDate:task.dueDate,assigneeId:task.assigneeId});
+        await notify(tx,auth,task,row.command,[row.manager],true);
+      }
+      return {processed:overdue.recordset.length};
     }),
 
     list: (auth,filter) => {
       const view=filter.view ?? 'ALL', search=filter.search ?? '', page=Number(filter.page ?? '1');
       if (!modes.has(view) || typeof search!=='string' || search.length>100 || !Number.isInteger(page) || page<1 || page>500) throw invalid('فیلتر کارتابل معتبر نیست.');
       return run(auth,async tx => {
+        const today=new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Tehran',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
         const result=await input(tx,auth).input('view',sql.VarChar(20),view).input('search',sql.NVarChar(100),search.trim())
+          .input('today',sql.Date,new Date(today))
           .input('offset',sql.Int,(page-1)*25).query(`${rowsSql}
             AND (@search=N'' OR CHARINDEX(@search,JSON_VALUE(task.JsonDoc,'$.title'))>0)
             AND (@view='ALL' OR (@view='MINE' AND (a.isAssignee=1 OR (a.canDecide=1 AND EXISTS(
@@ -276,15 +392,28 @@ export function createTaskRequests({sql,run}) {
                OR (@view='TEAM' AND a.isManager=1) OR (@view='WAITING' AND JSON_VALUE(task.JsonDoc,'$.status') IN('NEEDS_INFO','PENDING_APPROVAL','CONDITIONAL'))
                OR (@view='CLOSED' AND JSON_VALUE(task.JsonDoc,'$.status') IN('COMPLETED','REJECTED','CANCELLED'))
                OR (@view='OVERDUE' AND JSON_VALUE(task.JsonDoc,'$.status') NOT IN('COMPLETED','REJECTED','CANCELLED')
-                 AND TRY_CONVERT(date,JSON_VALUE(task.JsonDoc,'$.dueDate'))<CONVERT(date,SYSUTCDATETIME())))
-            ORDER BY task.UpdatedAtUtc DESC,task.EntityId OFFSET @offset ROWS FETCH NEXT 26 ROWS ONLY;`);
+                 AND TRY_CONVERT(date,JSON_VALUE(task.JsonDoc,'$.dueDate'))<@today))
+            ORDER BY task.UpdatedAtUtc DESC,task.EntityId OFFSET @offset ROWS FETCH NEXT 26 ROWS ONLY;
+            WITH visible AS (
+              SELECT JSON_VALUE(task.JsonDoc,'$.status') AS status, JSON_VALUE(task.JsonDoc,'$.priority') AS priority,
+                TRY_CONVERT(date,JSON_VALUE(task.JsonDoc,'$.dueDate')) AS due,
+                TRY_CONVERT(datetime2(3),JSON_VALUE(task.JsonDoc,'$.createdAt')) AS createdAt,
+                TRY_CONVERT(datetime2(3),JSON_VALUE(task.JsonDoc,'$.completedAt')) AS completedAt
+              FROM sync.EntityStore task CROSS APPLY security.fn_TaskRequestAccess(task.TenantId,@actor,task.JsonDoc)
+              WHERE task.TenantId=@tenantId AND task.CollectionName=N'tasks' AND task.IsDeleted=0 AND task.EntityId LIKE N'taskreq-%'
+            )
+            SELECT COUNT_BIG(CASE WHEN status NOT IN('COMPLETED','REJECTED','CANCELLED') THEN 1 END) AS openCount,
+              COUNT_BIG(CASE WHEN status IN('NEEDS_INFO','PENDING_APPROVAL','CONDITIONAL') THEN 1 END) AS waitingCount,
+              COUNT_BIG(CASE WHEN status NOT IN('COMPLETED','REJECTED','CANCELLED') AND due<@today AND priority IN('HIGH','URGENT') THEN 1 END) AS importantLate,
+              AVG(CASE WHEN status='COMPLETED' AND completedAt>=createdAt THEN CONVERT(float,DATEDIFF_BIG(minute,createdAt,completedAt)) END) AS meanMinutes
+            FROM visible;`);
         return { items:result.recordset.slice(0,25).map(row => {
           const {task,version,permissions,assignee,creator}=present({...row,task:JSON.parse(row.JsonDoc)},auth);
           return { id:task.id,title:task.title,status:task.status,priority:task.priority,assigneeId:task.assigneeId,assignee,creator,
             version,dueDate:task.dueDate,createdBy:task.createdBy,accountId:task.accountId,kind:task.managedRequest.kind,
             assignedAt:task.managedRequest.assignedAt,seen:task.managedRequest.seenBy.includes(task.assigneeId),
             nextAction:task.nextAction,canDecide:permissions.actions.includes('APPROVE'),watching:permissions.isWatcher };
-        }),hasMore:page<500 && result.recordset.length>25 };
+        }),hasMore:page<500 && result.recordset.length>25,metrics:result.recordsets[1]?.[0] };
       });
     },
 
@@ -322,12 +451,27 @@ export function createTaskRequests({sql,run}) {
           orderFingerprint(await readOrder(tx,auth,current.task))!==current.task.managedRequest.orderFingerprint) {
           throw conflict('مبلغ، اقلام یا وضعیت سفارش تغییر کرده است. نسخهٔ جدید ثبت کنید.');
         }
+        if (command.action==='APPROVE' && current.task.managedRequest.kind==='ORDER_APPROVAL') {
+          context.accountingName=await accountant(tx,auth,current.task,current.task.managedRequest.policy?.accountingUserId);
+        }
+        if (command.action==='ERP_INVOICE') context.invoice=await invoiceEvidence(tx,auth,current.task);
         if (['APPROVE','CONDITION','SATISFY','REJECT'].includes(command.action)) {
           const active=await approvedPolicy(tx,auth,current.task.managedRequest.kind);
           const bound=current.task.managedRequest.policy;
           if (!active || active.id!==bound?.id || active.version!==bound?.version) {
             throw conflict('سیاست تأیید تغییر کرده است. نسخهٔ درخواست باید بازبینی شود.');
           }
+        }
+        if (command.priceClass && ['APPROVE','REPLY'].includes(command.action)) {
+          const classResult=await input(tx,auth).input('code',sql.NVarChar(120),command.priceClass)
+            .input('source',sql.VarChar(40),current.task.managedRequest.priceSource ?? null)
+            .query(`SELECT TOP(2) m.SourceSystemCode FROM integration.CodeMapping m
+              WHERE m.TenantId=@tenantId AND m.MappingDomain='PRICE_CLASS' AND m.StandardCode=@code AND m.MapStatus='APPROVED'
+                AND (@source IS NULL OR m.SourceSystemCode=@source)
+                AND m.EffectiveFrom<=CONVERT(date,SYSUTCDATETIME())
+                AND (m.EffectiveTo IS NULL OR m.EffectiveTo>=CONVERT(date,SYSUTCDATETIME()))
+              GROUP BY m.SourceSystemCode HAVING COUNT_BIG(*)=1;`);
+          if (classResult.recordset.length!==1) throw invalid('کلاس قیمت با کد یکتا و مصوب ERP یافت نشد.');
         }
         const applied=applyRequestCommand(current.task,current,command,actorId(auth),now,context);
         if (!applied.ok) throw failure(422,'REQUEST_TRANSITION_REJECTED',applied.error);
@@ -451,7 +595,7 @@ export function createTaskRequests({sql,run}) {
 
     savePolicy(auth,kind,body) {
       const policy=policyInput(body);
-      if (!approvals.has(kind) || !policy || typeof body.enabled!=='boolean' ||
+      if (!approvals.has(kind) || !policy || (kind==='ORDER_APPROVAL' && !policy.accountingUserId) || typeof body.enabled!=='boolean' ||
         !Number.isInteger(body.version) || body.version<0) throw invalid('تعریف و نسخهٔ سیاست تأیید معتبر نیست.');
       return run(auth,async tx => {
         const code=`TASK_REQUEST:${kind}`;
@@ -476,7 +620,7 @@ export function createTaskRequests({sql,run}) {
               OUTPUT CONVERT(varchar(36),inserted.WorkflowId) AS id VALUES(@tenantId,@code,N'سیاست تأیید درخواست','TASK_REQUEST',@definition,@enabled,@next);`);
         const id=saved.recordset[0]?.id;
         if (!id) throw conflict();
-        await writeAudit(tx,auth,id,`policy-${next}`,'TASK_REQUEST_POLICY',digest(policy),{kind,version:next,enabled:body.enabled});
+        await writeAudit(tx,auth,id,`policy-${next}`,'TASK_REQUEST_POLICY',digest(policy),{kind,version:next,enabled:body.enabled,policy});
         return {id,version:next,enabled:body.enabled,...policy};
       });
     },

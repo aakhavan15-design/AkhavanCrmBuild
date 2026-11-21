@@ -50,7 +50,7 @@ const canReopenTask = (task: CustomerTask) => !task.isDeleted && !task.deletedAt
 
 export function TasksWorkspace({ state, updateState }: TasksWorkspaceProps) {
   const { can, canOn, denied } = useCan(state, updateState);
-  const [searchParams] = useSearchParams();
+  const [searchParams,setSearchParams] = useSearchParams();
   const [filterStatus, setFilterStatus] = useState<'ALL' | 'OPEN' | 'IN_PROGRESS' | 'COMPLETED'>('ALL');
   const [slaFilter, setSlaFilter] = useState<'ALL' | 'BREACHED' | 'AT_RISK' | 'UNSCHEDULED' | 'BLOCKED'>('ALL');
   const [priorityFilter, setPriorityFilter] = useState<'ALL' | 'HIGH' | 'URGENT'>('ALL');
@@ -518,7 +518,12 @@ export function TasksWorkspace({ state, updateState }: TasksWorkspaceProps) {
           setRequestCreate(false);setRequestId(id);setViewRequests(true);setRequestRefresh(value=>value+1);
         }}/>
       {requestId && <TaskRequestSheet key={`${currentUserId}:${requestId}`} id={requestId} viewer={currentUserId} accounts={visibleAccounts}
-        onClose={()=>setRequestId(null)} onChanged={()=>setRequestRefresh(value=>value+1)}/>}
+        onClose={()=>{
+          setRequestId(null);
+          if (searchParams.has('request')) {
+            const next=new URLSearchParams(searchParams);next.delete('request');setSearchParams(next,{replace:true});
+          }
+        }} onChanged={()=>setRequestRefresh(value=>value+1)}/>}
 
       <Modal
         isOpen={showTaskModal}

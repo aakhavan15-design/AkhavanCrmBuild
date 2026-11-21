@@ -14,7 +14,7 @@ export interface TaskRequestSummary {
   createdBy: string; assignedAt: string; seen: boolean; nextAction?: string; canDecide: boolean; watching: boolean;
 }
 export interface TaskRequestOrder {
-  id: string; number: string; status: string; currency: string; total: string; discount: string;
+  id: string; number: string; status: string; currency: string; total: string; discount: string; source?:string|null;
   lines: { number: number; product: string; title: string; quantity: string; unit?: string; price: string;
     discount: string; total: string; cost?: string | null; margin?: string | null }[];
 }
@@ -26,13 +26,19 @@ export interface TaskRequestRecord {
     managedRequest: {
       kind: TaskRequestKind; contentRevision: number; confidential: boolean; watchers:string[]; links:TaskRequestLink[];
       seenBy:string[]; priceItems:TaskPriceItem[]; activeApprovers:string[];
-      assignedAt:string; condition?: {text:string; evidence?:string | null}; authorization?: {expiresOn:string;maxUses:number;items:TaskPriceItem[]};
+      assignedAt:string; invoice?:{id:string;number:string;date:string;source:string}; condition?: {text:string; evidence?:string | null}; authorization?: {expiresOn:string;maxUses:number;items:TaskPriceItem[]};
     };
   };
   version: string;
   permissions: {canFiles:boolean;canUpload?:boolean;canWatch:boolean;isWatcher:boolean;isManager:boolean;actions:string[]};
   assignee?:string; creator?:string; account?:{id:string;name:string}|null; order?:TaskRequestOrder|null;
-  stale?:boolean; approval?:{index:number;total:number;required:number;received:number}|null;
+  customer?:{
+    finance:{creditLimit:string|null;currency:string}|null;
+    orders:{number:string;date:string;currency:string;amount:string}[];
+    cheques:{number:string;dueDate:string;bounced:boolean;sourceState:string|null}[];
+    promises:{dueDate:string|null;status:string|null}[];
+  }|null;
+  participants?:Record<string,string>; stale?:boolean; approval?:{index:number;total:number;required:number;received:number}|null;
 }
 export interface TaskRequestCommand {
   commandId:string; version:string; action:string; note:string; nextAction?:string; assigneeId?:string;
@@ -41,7 +47,7 @@ export interface TaskRequestCommand {
   priceItems?:{productId:string;price:string}[];
 }
 export type TaskRequestPolicyKind = 'PRICE_PERMISSION' | 'ORDER_APPROVAL';
-export interface TaskRequestApprovalPolicy { version:number; enabled:boolean; steps:{members:string[];required:number}[] }
+export interface TaskRequestApprovalPolicy { version:number; enabled:boolean; accountingUserId?:string|null; steps:{members:string[];required:number}[] }
 export interface TaskRequestFile { id:string; name:string; type:string; size:number }
 export const requestKinds = [
   {value:'GENERAL',label:'درخواست کاری'},
@@ -57,3 +63,9 @@ export const requestPriorities = [{value:'NORMAL',label:'عادی'},{value:'HIGH
 export const requestStatusLabels:Record<string,string> = {OPEN:'در انتظار اقدام',IN_PROGRESS:'در حال پیگیری',BLOCKED:'متوقف',
   NEEDS_INFO:'در انتظار پاسخ',PENDING_APPROVAL:'در انتظار تأیید',CONDITIONAL:'تأیید مشروط',APPROVED:'تأییدشده',
   REJECTED:'ردشده',COMPLETED:'تکمیل‌شده',CANCELLED:'لغوشده'};
+
+export interface TaskRequestPage {
+  items: TaskRequestSummary[];
+  hasMore: boolean;
+  metrics?: {openCount:number;waitingCount:number;importantLate:number;meanMinutes:number|null};
+}

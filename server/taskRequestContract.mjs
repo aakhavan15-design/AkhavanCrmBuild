@@ -47,7 +47,8 @@ export function policyInput(body) {
     for (const id of members) all.add(id);
     steps.push({members,required:step.required});
   }
-  return {steps};
+  if (body.accountingUserId!=null && !uuid(body.accountingUserId)) return null;
+  return {steps,accountingUserId:body.accountingUserId?.toLowerCase() ?? null};
 }
 
 const actions = {
@@ -56,7 +57,7 @@ const actions = {
   PRIORITY:['PRIORITY_CHANGED','اهمیت تغییر کرد'], WATCHERS:['WATCHERS_CHANGED','ناظران به‌روز شدند'],
   APPROVE:['APPROVED','تصمیم تأیید ثبت شد'], REJECT:['REJECTED','درخواست رد شد'], CONDITION:['CONDITION_SET','شرط ثبت شد'],
   SATISFY:['CONDITION_SATISFIED','شاهد انجام شرط ثبت شد'], CANCEL:['CANCELLED','درخواست لغو شد'],
-  REVISE:['REVISED','نسخهٔ جدید درخواست ثبت شد'],
+  REVISE:['REVISED','نسخهٔ جدید درخواست ثبت شد'], ERP_INVOICE:['ERP_INVOICE_LINKED','فاکتور رسمی ERP با سفارش تطبیق داده شد'],
 };
 
 export function commandInput(body) {
@@ -111,7 +112,11 @@ export function availableActions(task, access, actor) {
   if (access.canDecide && req.activeApprovers.includes(actor) && !req.decisions.some(x => x.step===req.step && x.actor===actor)) {
     if (task.status==='PENDING_APPROVAL') result.push('APPROVE','CONDITION','REJECT','ASK_INFO');
   }
-  if (access.canDecide && task.status==='CONDITIONAL' && req.condition?.actor!==actor && req.activeApprovers.includes(actor)) result.push('SATISFY');
+  if (task.status==='CONDITIONAL' && req.condition?.actor!==actor && task.createdBy!==actor &&
+      ((access.canDecide && req.activeApprovers.includes(actor)) || (access.isAssignee && access.canVerify))) result.push('SATISFY');
+  if (task.status==='APPROVED' && req.kind==='ORDER_APPROVAL' && access.isAssignee && req.policy?.accountingUserId===actor) {
+    result.push('ERP_INVOICE');
+  }
   return result;
 }
 
@@ -138,6 +143,11 @@ export function applyRequestCommand(task, access, command, actor, now, context =
         data.guidance={ note,priceClass:command.priceClass || null };
         next.status='COMPLETED'; next.completedAt=now; next.result=note;
       } else next.result=note;
+      break;
+    case 'ERP_INVOICE':
+      if (!context.invoice) return fail('سند فاکتور رسمی به‌طور یکتا به سفارش متصل نشده است.');
+      data.invoice=context.invoice;
+      next.status='COMPLETED';next.completedAt=now;next.nextAction='فاکتور رسمی در ERP تطبیق داده شد';
       break;
     case 'CANCEL': next.status='CANCELLED'; next.completedAt=now; data.authorization=null; break;
     case 'REVISE':
@@ -176,6 +186,12 @@ export function applyRequestCommand(task, access, command, actor, now, context =
         if (last) {
           data.authorization=authorization;
           next.status='APPROVED';
+          if (req.kind==='ORDER_APPROVAL') {
+            if (!req.policy.accountingUserId || !context.accountingName) return fail('مسئول مالی معتبر برای تحویل سفارش مشخص نیست.');
+            next.assigneeId=req.policy.accountingUserId;next.assignedTo=req.policy.accountingUserId;
+            data.assigneeName=context.accountingName;data.assignedAt=now;data.seenBy=[];
+            next.nextAction='پیگیری صدور ERP و تطبیق فاکتور رسمی';
+          }
         }
       }
       break;
