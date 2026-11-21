@@ -411,6 +411,9 @@ export class ClientStorageDataProvider implements DataProvider {
   }
 
   async getDetailSubsidiaryBalances(options?: LedgerBalanceOptions): Promise<DetailBalancesResult> {
+    if (options?.role || options?.source || options?.currency) {
+      return { status:'UNAVAILABLE',source:this.name,balances:[],reason:'ماندهٔ رسمی از دفتر گواهی‌شدهٔ SQL Server خوانده می‌شود.' };
+    }
     return buildDetailBalancesResult((this.getState() as any).journalLines, 'CLIENT_INDEXEDDB', options);
   }
 

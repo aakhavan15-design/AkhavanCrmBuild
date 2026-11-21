@@ -40,10 +40,13 @@ export function ProfitLossWidget({ state, height = 240 }: ProfitLossWidgetProps)
     ? ((effectiveState as Record<string, unknown>).coaMirror as unknown[]).length
     : 0;
 
-  const { data: ledgerPnlData, error: ledgerPnlError, loading: ledgerPnlLoading, refetch: refreshPnl } = useDataQuery(
-    async provider => (canSeeLedger ? provider.getLedgerPnlData({ ...scope,fromDate:from,toDate:asOf }) : null),
-    [canSeeLedger,effectiveState?.currentUserId, journalLineCount, coaCount,scope?.source,scope?.currency,from,asOf]
+  const requestKey = JSON.stringify([effectiveState?.currentUserId,scope,from,asOf]);
+  const { data: ledgerResponse, error: ledgerPnlError, loading: ledgerPnlLoading, refetch: refreshPnl } = useDataQuery(
+    async provider => canSeeLedger ? {
+      requestKey, report:await provider.getLedgerPnlData({ ...scope,fromDate:from,toDate:asOf }),
+    } : null, [canSeeLedger,requestKey,journalLineCount,coaCount],
   );
+  const ledgerPnlData = ledgerResponse?.requestKey===requestKey ? ledgerResponse.report : null;
 
   const resolvedPnlData = useMemo(() => {
     if (!canSeeLedger) {
@@ -51,6 +54,10 @@ export function ProfitLossWidget({ state, height = 240 }: ProfitLossWidgetProps)
     }
     if (ledgerPnlError) {
       return { status: 'UNAVAILABLE' as const, source: getActiveDataProvider().name, journalLines: [], coaMirror: [], reason: ledgerPnlError.message };
+    }
+    if (ledgerPnlData?.source==='CLIENT_INDEXEDDB') {
+      return { status:'UNAVAILABLE' as const,source:ledgerPnlData.source,journalLines:[],coaMirror:[],
+        reason:'گزارش رسمی به آرتیکل‌های معتبر SQL Server نیاز دارد.' };
     }
     return ledgerPnlData;
   }, [canSeeLedger, ledgerPnlError, ledgerPnlData]);

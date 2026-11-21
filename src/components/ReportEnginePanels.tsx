@@ -305,6 +305,10 @@ export function ReportEnginePanels({ state, visibleInvoices, visiblePayments, vi
     if (ledgerPnlError) {
       return { status: 'UNAVAILABLE' as const, source: getActiveDataProvider().name, journalLines: [], coaMirror: [], reason: ledgerPnlError.message };
     }
+    if (ledgerPnlData?.source==='CLIENT_INDEXEDDB') {
+      return { status:'UNAVAILABLE' as const,source:ledgerPnlData.source,journalLines:[],coaMirror:[],
+        reason:'گزارش رسمی به آرتیکل‌های معتبر SQL Server نیاز دارد.' };
+    }
     return ledgerPnlData;
   }, [canSeeLedger, ledgerPnlError, ledgerPnlData]);
 

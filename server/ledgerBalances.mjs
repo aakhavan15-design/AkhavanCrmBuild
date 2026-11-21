@@ -3,6 +3,7 @@ import { fixedUnits } from './financialFeedContract.mjs';
 /** Read-only ledger projection from migration 027; never fabricate balances. */
 export function projectLedgerBalances(rows, { detailKey, byPeriod = false, scope } = {}) {
   const details = new Map();
+  const exactTotals = new Map();
   for (const row of rows) {
     const key = String(row.ExternalDetailCode);
     if (detailKey && key !== detailKey) continue;
@@ -19,15 +20,17 @@ export function projectLedgerBalances(rows, { detailKey, byPeriod = false, scope
     }
     const balance = Number(debitUnits-creditUnits)/10000;
     item.subsidiaries.push({ subsidiaryCode, periodCode, source: scope?.source, currency: scope?.currency, debit, credit, balance, nature: balance > 0 ? 'DEBIT' : balance < 0 ? 'CREDIT' : 'SETTLED', lineCount });
-    const totalDebit = Math.round(item.total.debit*10000)+Math.round(debit*10000);
-    const totalCredit = Math.round(item.total.credit*10000)+Math.round(credit*10000);
-    if (![totalDebit,totalCredit,totalDebit-totalCredit].every(Number.isSafeInteger)) {
+    const exact = exactTotals.get(key) ?? {debit:0n,credit:0n};
+    exact.debit += debitUnits;
+    exact.credit += creditUnits;
+    exactTotals.set(key,exact);
+    if ([exact.debit,exact.credit].some(value => value>BigInt(Number.MAX_SAFE_INTEGER))) {
       return { status:'UNAVAILABLE',source:'SQLSERVER_BACKEND',balances:[],reason:'برای نمایش بدون گردکردن مبلغ، از مرور دفتر و تراز استفاده کنید.' };
     }
-    item.total.debit = totalDebit/10000;
-    item.total.credit = totalCredit/10000;
+    item.total.debit = Number(exact.debit)/10000;
+    item.total.credit = Number(exact.credit)/10000;
     item.total.lineCount += lineCount;
-    item.total.balance = (totalDebit-totalCredit)/10000;
+    item.total.balance = Number(exact.debit-exact.credit)/10000;
     item.total.nature = item.total.balance > 0 ? 'DEBIT' : item.total.balance < 0 ? 'CREDIT' : 'SETTLED';
     if (scope?.verified===false || subsidiaryCode === null || unmapped > 0) item.status = 'HAS_UNMAPPED';
   }
