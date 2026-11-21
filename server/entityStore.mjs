@@ -162,6 +162,20 @@ export class MssqlEntityDriver {
             EXEC @result=sys.sp_getapplock @Resource=@resource,@LockMode='Exclusive',@LockOwner='Transaction',@LockTimeout=8000;
             IF @result<0 THROW 50409,N'Could not acquire conversation write lock.',1;`);
       }
+      let groupAdministration = {};
+      if (rows.some(groupChanges)) {
+        const permissions = (await new sql.Request(tx).input('tenantId', sql.UniqueIdentifier, tenantId)
+          .input('userId', sql.UniqueIdentifier, userId)
+          .query(`SELECT DISTINCT privilege.Code
+            FROM core.AppUser AS actor
+            CROSS JOIN (VALUES(N'groups.create'),(N'groups.edit'),(N'groups.soft_delete'),(N'internal.manage'),(N'settings.manage')) AS privilege(Code)
+            CROSS APPLY security.fn_RecordReadScope(actor.TenantId,privilege.Code,actor.UserId,actor.BranchId,actor.TerritoryId,actor.TeamId) AS access
+            WHERE actor.TenantId=@tenantId AND actor.UserId=@userId AND actor.IsActive=1`)).recordset;
+        const codes = new Set(permissions.map(row => row.Code));
+        const admin = codes.has('internal.manage') || codes.has('settings.manage');
+        groupAdministration = { create: admin || codes.has('groups.create'), edit: admin || codes.has('groups.edit'),
+          remove: admin || codes.has('groups.soft_delete') };
+      }
       const partitions = [
         rows.filter(row => isAllocation(row) && row.d),
         rows.filter(row => row.c === 'groups' && !row.d),
@@ -285,7 +299,7 @@ export class MssqlEntityDriver {
               const next = row.d ? null : JSON.parse(row.j);
               let allowed;
               if (row.c === 'groups') {
-                allowed = !previous?.deleted && canChangeConversation(previous?.json, next, userId, row.d);
+                allowed = !previous?.deleted && canChangeConversation(previous?.json, next, userId, row.d, groupAdministration);
               } else if (row.c === 'messages') {
                 const group = records.get(`groups:${previous?.json?.groupId ?? next?.groupId}`);
                 allowed = !previous?.deleted && !group?.deleted

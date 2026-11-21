@@ -14,18 +14,18 @@ function onlyChanged(before, after, fields) {
     fields.includes(key) || isDeepStrictEqual(before[key], after[key]));
 }
 
-export function canChangeConversation(previous, next, userId, deleting) {
+export function canChangeConversation(previous, next, userId, deleting, administration = {}) {
   if (!previous) {
     return !deleting && next?.managerId === userId && isConversationMember(next, userId)
       && members(next).every(id => typeof id === 'string' && id.length > 0)
-      && (next.kind !== 'DIRECT' || new Set(members(next)).size === 2);
+      && (next.kind === 'DIRECT' ? new Set(members(next)).size === 2 : administration.create === true);
   }
   if (!isConversationMember(previous, userId)) return false;
-  const manager = previous.managerId === userId && previous.kind !== 'DIRECT';
-  if (deleting) return manager;
+  const manager = previous.managerId === userId || administration.edit === true;
+  if (deleting) return previous.kind !== 'DIRECT' && (previous.managerId === userId || administration.remove === true);
   if (!next || next.managerId !== previous.managerId || next.kind !== previous.kind) return false;
   const personal = ['pinnedBy', 'mutedBy', 'archivedBy'];
-  if (manager) return isConversationMember(next, userId) && members(next).every(id => typeof id === 'string' && id.length > 0)
+  if (manager && previous.kind !== 'DIRECT') return isConversationMember(next, userId) && members(next).every(id => typeof id === 'string' && id.length > 0)
     && personal.every(key => sameOtherUsers(previous[key], next[key], userId));
   return onlyChanged(previous, next, personal)
     && personal.every(key => sameOtherUsers(previous[key], next[key], userId));

@@ -188,6 +188,8 @@ function AppContent() {
   // بعد از ورود موفق: پرونده ناقص → فرم تکمیل؛ کامل → داشبورد (ورود واقعی فقط با سرویس احراز هویت فعال می‌شود)
   const onboardingConfig = getOnboardingConfig(state);
   const afterLogin = (u: { id: string }) => {
+    stopStateSync();
+    updateState(withoutPrivateSnapshot);
     const file = (state.personnelFiles as PersonnelFile[] | undefined)?.find(item => item.userId === u.id);
     navigate(onboardingConfig.enabled && file?.status !== 'APPROVED' && computeMissing(file, onboardingConfig).length ? '/personnel-file' : '/');
   };

@@ -1,5 +1,9 @@
 [
   {
+    "file": "tests/conversationScope.test.mjs",
+    "flags": []
+  },
+  {
     "file": "tests/uxTransactionExperience.test.mjs",
     "flags": []
   },

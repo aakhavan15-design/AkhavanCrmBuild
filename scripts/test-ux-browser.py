@@ -117,6 +117,36 @@ def run_payment_form(browser, origin, width, screenshot_dir):
         context.close()
 
 
+def test_floating_header(browser, origin, width):
+    context, page, errors = create_session(browser, origin, width, ["accounts.view", "internal.view"])
+    try:
+        sign_in(page, origin)
+        header = page.get_by_role("banner", name="نوار ابزار اصلی")
+        profile = header.get_by_role("button", name="حساب کاربری")
+        entry_url = page.url
+        profile.click()
+        expect(page.get_by_role("dialog", name="حساب کاربری")).to_be_visible()
+        assert page.url == entry_url
+        page.go_back()
+        expect(page.get_by_role("dialog", name="حساب کاربری")).to_have_count(0)
+        expect(profile).to_be_focused()
+        header.get_by_role("button", name="اعلان‌ها").click()
+        expect(page.get_by_role("button", name="مشاهده همه اعلان‌ها")).to_be_visible()
+        page.keyboard.press("Escape")
+        expect(page.get_by_role("dialog", name="اعلان‌ها")).to_have_count(0)
+        header.get_by_role("button", name="گفت‌وگوی سازمانی").click()
+        expect(page.get_by_role("button", name="ورود به چت")).to_be_visible()
+        page.keyboard.press("Escape")
+        header.get_by_role("button", name="منوی اصلی").click()
+        expect(page.get_by_role("dialog", name="منوی اصلی سامانه")).to_be_visible()
+        page.keyboard.press("Escape")
+        expect(header.get_by_role("button", name="منوی اصلی")).to_be_focused()
+        assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+        assert not errors, errors
+    finally:
+        context.close()
+
+
 def test_design_system(browser, origin, screenshot_dir):
     context, page, errors = create_session(browser, origin, 390, ["accounts.view", "settings.manage"])
     try:
@@ -189,6 +219,8 @@ def main():
         try:
             for width in (320, 390, 1440):
                 run_payment_form(browser, args.origin, width, args.screenshots)
+            for width in (320, 1440):
+                test_floating_header(browser, args.origin, width)
             if args.design_origin:
                 test_design_system(browser, args.design_origin, args.screenshots)
         finally:

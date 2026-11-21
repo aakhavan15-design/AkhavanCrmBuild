@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -eu
+node scripts/check-design-lock.mjs
 report=$(mktemp)
 trap 'rm -f "$report"' EXIT
 test_status=0
