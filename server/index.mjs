@@ -892,7 +892,7 @@ const taskRequestRoute = handler => wrap(async (req,res) => {
 });
 app.get('/api/v1/tasks/requests',authenticate,taskRequestRoute(req => taskRequests.list(req.auth,req.query)));
 app.post('/api/v1/tasks/requests',authenticate,taskRequestRoute(req => taskRequests.create(req.auth,req.body)));
-app.get('/api/v1/tasks/request-directory',authenticate,requirePermission('tasks.VIEW'),taskRequestRoute(req => taskRequests.users(req.auth,req.query.search ?? '')));
+app.get('/api/v1/tasks/request-directory',authenticate,taskRequestRoute(req => taskRequests.users(req.auth,req.query.search ?? '')));
 app.get('/api/v1/tasks/request-resources',authenticate,taskRequestRoute(req => taskRequests.resources(req.auth,req.query)));
 app.get('/api/v1/tasks/request-policies',authenticate,requirePermission('settings.manage',{organizationWide:true}),
   taskRequestRoute(req => taskRequests.readPolicies(req.auth)));

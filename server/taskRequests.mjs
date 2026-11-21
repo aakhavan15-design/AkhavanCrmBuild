@@ -64,8 +64,8 @@ export function createTaskRequests({sql,run}) {
     .input('tenantId',sql.UniqueIdentifier,auth.tenantId).input('actor',sql.UniqueIdentifier,auth.userId);
   const requestById = (tx,auth,id) => input(tx,auth).input('id',sql.NVarChar(120),id);
   const actorId = auth => String(auth.userId).toLowerCase();
-  const grant = async (tx,auth,permission) => (await input(tx,auth).input('permission',sql.NVarChar(120),permission).query(`
-    SELECT 1 FROM core.AppUser u CROSS APPLY security.fn_TaskRequestGrant(@tenantId,@actor,@permission,u.UserId,u.BranchId,u.TerritoryId,u.TeamId,1)
+  const grant = async (tx,auth,permission,write=true) => (await input(tx,auth).input('permission',sql.NVarChar(120),permission).input('write',sql.Bit,write).query(`
+    SELECT 1 FROM core.AppUser u CROSS APPLY security.fn_TaskRequestGrant(@tenantId,@actor,@permission,u.UserId,u.BranchId,u.TerritoryId,u.TeamId,@write)
     WHERE u.TenantId=@tenantId AND u.UserId=@actor AND u.IsActive=1;`)).recordset.length>0;
 
   async function access(tx,auth,task,viewer = auth.userId) {
@@ -538,6 +538,10 @@ export function createTaskRequests({sql,run}) {
     users: (auth,search) => {
       if (typeof search!=='string' || search.length>80) throw invalid('جست‌وجو معتبر نیست.');
       return run(auth,async tx => {
+        const allowed=await grant(tx,auth,'tasks.view',false) || await grant(tx,auth,'accounts.view',false)
+          || await grant(tx,auth,'internal.view',false) || await grant(tx,auth,'internal.manage',false)
+          || await grant(tx,auth,'settings.manage',false);
+        if (!allowed) throw forbidden();
         const result=await input(tx,auth).input('target',sql.UniqueIdentifier,null).input('search',sql.NVarChar(80),search.trim()||null)
           .query(`SELECT TOP(60) d.id,d.name FROM (${activeUsersSql}) d WHERE d.canAssign=1 ORDER BY d.name,d.id;`);
         return {items:result.recordset};

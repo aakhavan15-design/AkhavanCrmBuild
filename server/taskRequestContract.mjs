@@ -82,7 +82,8 @@ export function commandInput(body) {
   if (priceClass===null || paymentTerms===null || (body.expiresOn!=null && !date(body.expiresOn))
     || (body.maxUses!=null && (!Number.isInteger(body.maxUses) || body.maxUses<1 || body.maxUses>1000))) return null;
   return {commandId:body.commandId.toLowerCase(),version:body.version,action:body.action,note,nextAction,
-    assigneeId:body.assigneeId?.toLowerCase(),priority:body.priority,watchers,condition,revision,
+    assigneeId:body.action==='REFER' ? body.assigneeId.toLowerCase() : undefined,
+    priority:body.action==='PRIORITY' ? body.priority : undefined,watchers,condition,revision,
     priceClass,paymentTerms,expiresOn:body.expiresOn ?? null,maxUses:body.maxUses ?? null,
     priceItems:priceItems?.map(x => ({productId:x.productId.toLowerCase(),price:x.price})) ?? null};
 }

@@ -62,3 +62,10 @@ test('price authorization checks item, unit, expiry, discount and remaining uses
   assert.match(validateOrderPriceAuthorization(order,grant,'2026-11-23'),/اعتبار/);
   assert.match(validateOrderPriceAuthorization(order,{...grant,paymentTerms:'چک یک‌ماهه'},'2026-11-21'),/تسویه/);
 });
+
+
+test('action-specific inputs cannot change an unrelated command or terminate parsing',()=>{
+  assert.equal(command('COMMENT',{assigneeId:{id:manager},priority:'URGENT'}).assigneeId,undefined);
+  assert.equal(command('COMMENT',{priority:'URGENT'}).priority,undefined);
+  assert.equal(command('REFER',{assigneeId:{id:manager}}),null);
+});
