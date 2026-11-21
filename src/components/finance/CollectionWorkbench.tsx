@@ -4,12 +4,14 @@ import type { CollectionPromiseRecord, CustomerCollectionProfile, RiskLevel } fr
 import type { LedgerAgingCustomer } from '../../services/agingBuckets';
 import type { CollectionActionInput } from '../../services/dataProvider';
 import { resolveCustomerBalanceView, type DetailBalancesResult } from '../../lib/receivableReconciliation';
+import { pareto } from '../../lib/reportAnalytics';
 import { formatCount, formatMoney, formatNumber } from '../../lib/format';
 import { formatAppDate } from '../../lib/utils';
 import type { FilterGroup } from '../../lib/tableEngine';
 import { DataTable, DetailField, DetailGroup, type DataTableColumn } from '../ui/DataTable';
 import { SubsidiaryBalanceDetails } from '../shared/SubsidiaryBalancesPanel';
 import { Button } from '../ui/Button';
+import { Card } from '../ui/Card';
 import { CollectionReceiptSheet } from './CollectionReceiptSheet';
 import { BatchCollectionFollowUp } from './BatchCollectionFollowUp';
 
@@ -90,6 +92,17 @@ export function CollectionWorkbench({ state, accounts, profiles, balances, aging
     }];
   });
   const owners = new Map(rows.map(row => [row.ownerId, row.ownerName]));
+  const detailFrequency=new Map<string,number>();
+  for (const row of rows) if (row.balance.kind==='OK') {
+    detailFrequency.set(row.balance.detailKey,(detailFrequency.get(row.balance.detailKey) ?? 0)+1);
+  }
+  const scopedLedger=balances?.source==='SQLSERVER_BACKEND' && balances.status==='LIVE' && balances.currency==='IRR' && Boolean(balances.sourceSystem);
+  const comparable=scopedLedger ? rows.filter(row=>row.balance.kind==='OK' && !row.balance.incomplete &&
+    Number.isFinite(row.balance.total) && Math.abs(row.balance.total)<=Number.MAX_SAFE_INTEGER && detailFrequency.get(row.balance.detailKey)===1) : [];
+  const concentration=pareto(comparable.flatMap(row=>row.balance.kind==='OK' && row.balance.total>0
+    ? [{key:row.profile.accountId,value:row.balance.total,row}] : []));
+  const largestDebtors=concentration.rows.slice(0,5);
+  const percentage=new Intl.NumberFormat('fa-IR',{style:'percent',maximumFractionDigits:1});
   const filters: FilterGroup<CollectionRow>[] = [
     { id: 'risk', label: 'ریسک', options: [
       ...Object.entries(riskLabels).map(([value, label]) => ({ value, label })),
@@ -111,6 +124,24 @@ export function CollectionWorkbench({ state, accounts, profiles, balances, aging
       <span>دریافت ماندهٔ دفتر کل ممکن نیست. مانده و ریسک نامشخص نمایش داده می‌شوند.</span>
       <Button type="button" variant="outline" onClick={onRetry}>دریافت دوباره</Button>
     </div>}
+    {largestDebtors.length>0 && <Card padding="sm" className="space-y-2">
+      <div>
+        <h3 className="text-sm font-bold">تمرکز ماندهٔ بدهکار</h3>
+        <p className="text-caption text-text-secondary">
+          {formatCount(largestDebtors.length)} مشتری اول، {percentage.format(largestDebtors.at(-1)?.cumulativeShare ?? 0)} از ماندهٔ بدهکارِ مشتریان قابل مقایسهٔ این کارتابل را دارند.
+          {rows.length>comparable.length && <> {formatCount(rows.length-comparable.length)} حساب با ماندهٔ نامشخص، ناقص یا تفصیلی مشترک در مقایسه لحاظ نشده است.</>}
+          {balances?.asOf && <> · تا {formatAppDate(balances.asOf,state.settings?.locale)}</>}
+        </p>
+      </div>
+      <ul className="divide-y divide-border">{largestDebtors.map(item=><li key={item.key} className="flex flex-wrap items-center justify-between gap-2 py-2 text-caption">
+        <div className="min-w-0 flex-1">
+          <p className="font-semibold">{item.row.profile.accountName} · {formatMoney(item.value)}</p>
+          <p className="text-text-secondary">{item.row.ownerName}{item.row.overduePromise && ' · تعهد سررسیدگذشته نیازمند بررسی'}</p>
+          <progress value={item.share} max={1} className="w-full accent-primary" aria-label={`سهم ${item.row.profile.accountName} از ماندهٔ بدهکار قابل مقایسه`} />
+        </div>
+        {canFollowUp && <Button type="button" size="sm" variant="ghost" onClick={()=>onAction('FOLLOW_UP',item.row.profile)}>پیگیری</Button>}
+      </li>)}</ul>
+    </Card>}
     <DataTable tableId="collection-workbench" savedFiltersScope={state.currentUserId || undefined}
       title="کارتابل وصول مطالبات" subtitle="مبنای مانده دفتر کل است. معوق و ریسک، برآورد پیگیری‌اند."
       rows={rows} getRowId={getRowId} columns={columns} filterGroups={filters}
