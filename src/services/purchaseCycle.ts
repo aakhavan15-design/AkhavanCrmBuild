@@ -14,3 +14,8 @@ export interface PurchaseCycleResult {
   rows:PurchaseCycleRow[];
   hasMore:boolean;
 }
+
+export interface PurchaseProductHint {
+  productId:string;name:string;sku:string|null;priorDays:number;lastSeen:string;lastInvoiceNumber:string;
+}
+export interface PurchaseProductResult {asOf:string;rows:PurchaseProductHint[]}

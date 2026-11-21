@@ -1,6 +1,6 @@
 import type { ReportingLine, ReportingLineChange, TaskRequestApprovalPolicy, TaskRequestCommand, TaskRequestFile, TaskRequestInput, TaskRequestPolicyKind,
   TaskRequestRecord, TaskRequestPage, TaskRequestView, TaskRequestResource } from './taskRequests';
-import type { PurchaseCycleResult, PurchaseCycleView } from './purchaseCycle';
+import type { PurchaseCycleResult, PurchaseCycleView, PurchaseProductResult } from './purchaseCycle';
 import type { 
   AppState, 
   Account, 
@@ -314,6 +314,7 @@ export interface DataProvider {
   getLedgerPnlData(filter?: Pick<JournalLineFilter, 'fromDate' | 'toDate' | 'periodCode' | 'source' | 'currency'>): Promise<LedgerPnlDataResult>;
   getCashFlowData(): Promise<CashFlowDataResult>;
   getPurchaseCycle(search:string,view:PurchaseCycleView,page:number): Promise<PurchaseCycleResult>;
+  getPurchaseProductHints(account:string,source:string): Promise<PurchaseProductResult>;
   getMoneyReport(period: MoneyPeriod): Promise<MoneyReport>;
   getJournalCoverage(period: MoneyPeriod, filter: JournalCoverageFilter): Promise<JournalCoveragePage>;
   getJournalFollowUpEvidence(taskId: string): Promise<JournalFollowUpEvidence>;
@@ -363,6 +364,7 @@ const MAX_PNL_JOURNAL_PAGES = 100;
  */
 export class ClientStorageDataProvider implements DataProvider {
   async getPurchaseCycle(): Promise<PurchaseCycleResult> { throw new Error('آینهٔ ERP برای گزارش چرخهٔ خرید در دسترس نیست.'); }
+  async getPurchaseProductHints(): Promise<PurchaseProductResult> { throw new Error('ردیف فاکتورهای ERP در دسترس نیست.'); }
   async searchAccountDirectory(): Promise<null> { return null; }
   async getCollectionReceiptEvidence(): Promise<CollectionReceiptPage> {
     throw new Error('بررسی سند ERP نیازمند اتصال به سرور است.');
@@ -796,6 +798,9 @@ export class HttpBackendDataProvider implements DataProvider {
   async getPurchaseCycle(search:string,view:PurchaseCycleView,page:number): Promise<PurchaseCycleResult> {
     const params=new URLSearchParams({search,view,page:String(page)});
     return this.request(`/analytics/purchase-cycle?${params}`);
+  }
+  async getPurchaseProductHints(account:string,source:string): Promise<PurchaseProductResult> {
+    return this.request(`/analytics/purchase-cycle/products?${new URLSearchParams({account,source})}`);
   }
   async searchAccountDirectory(query: string, page: number): Promise<AccountDirectoryPage> {
     return this.request('/accounts/search', { method: 'POST', body: JSON.stringify({ query, page }) });

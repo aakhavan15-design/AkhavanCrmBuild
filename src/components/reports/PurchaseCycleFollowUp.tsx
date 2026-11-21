@@ -4,7 +4,7 @@ import { useDataQuery } from '../../hooks/useDataProvider';
 import { formatCount, formatDecimalString } from '../../lib/format';
 import { formatAppDate } from '../../lib/utils';
 import { useDataSyncStatus } from '../../services/dataSyncController';
-import type { PurchaseCycleRow, PurchaseCycleView } from '../../services/purchaseCycle';
+import type { PurchaseCycleRow, PurchaseCycleView, PurchaseProductHint } from '../../services/purchaseCycle';
 import type { Account } from '../../types';
 import { QuickTaskRequest } from '../tasks/QuickTaskRequest';
 import { Button } from '../ui/Button';
@@ -17,12 +17,33 @@ import { SearchableSelect } from '../ui/SearchableSelect';
 const views=[{value:'follow-up',label:'اولویت پیگیری'},{value:'all',label:'همهٔ مشتریان دارای فاکتور'}];
 const observedMoney=(value:string)=>Number(value)>0 ? `${formatDecimalString(value)} ریال` : 'فاکتوری مشاهده نشده';
 
+function PurchaseProductHints({account,source,onSelect}:{account:string;source:string;onSelect?:(item:PurchaseProductHint)=>void}) {
+  const [open,setOpen]=useState(false);
+  const {serverVersion}=useDataSyncStatus();
+  const {data,loading,error,refetch}=useDataQuery(provider=>open ? provider.getPurchaseProductHints(account,source) : Promise.resolve(null),
+    [open,account,source,serverVersion]);
+  return <div className="space-y-2">
+    <Button type="button" variant="ghost" size="sm" aria-expanded={open} onClick={()=>setOpen(current=>!current)}>کالاهای قابل پیگیری</Button>
+    {open && (error ? <EmptyState surface="purchase-product-hints" title="دریافت ردیف فاکتور ممکن نیست" compact
+      actionLabel="تلاش دوباره" onAction={()=>void refetch()} /> : loading || !data ? <LoadingState label="در حال بررسی ردیف فاکتورها" /> : <>
+      <p className="text-caption text-text-secondary">در دو روز یا بیشتر از بازهٔ قبلی خرید ثبت شده و در فاکتورهای دریافتی ۹۰ روز اخیر مشاهده نشده است. موجودی و علت تغییر باید بررسی شوند.</p>
+      {data.rows.length ? <ul className="divide-y divide-border">{data.rows.map(item=><li key={item.productId}
+        className="flex flex-wrap items-center justify-between gap-2 py-2 text-caption">
+        <div className="min-w-0 wrap-break-word"><p className="font-semibold">{item.name} {item.sku && <bdi>· {item.sku}</bdi>}</p>
+          <p>{formatCount(item.priorDays)} روز خرید · {formatAppDate(item.lastSeen)} · فاکتور <bdi>{item.lastInvoiceNumber}</bdi></p></div>
+        {onSelect && <Button type="button" variant="outline" size="sm" onClick={()=>onSelect(item)}>پیگیری کالا</Button>}
+      </li>)}</ul> : <p className="text-caption">کالایی با این الگو در دادهٔ دریافت‌شده مشاهده نشد.</p>}
+    </>)}
+  </div>;
+}
+
 export function PurchaseCycleFollowUp({viewer,accounts,canCreate}:{viewer:string;accounts:Account[];canCreate:boolean}) {
   const [view,setView]=useState<PurchaseCycleView>('all');
   const [search,setSearch]=useState('');
   const [activeSearch,setActiveSearch]=useState('');
   const [page,setPage]=useState(1);
-  const [selected,setSelected]=useState<PurchaseCycleRow|null>(null);
+  const [selection,setSelection]=useState<{row:PurchaseCycleRow; product?:PurchaseProductHint}|null>(null);
+  const selected=selection?.row;
   const navigate=useNavigate();
   const {serverVersion}=useDataSyncStatus();
   const requestKey=JSON.stringify([viewer,view,activeSearch,page,serverVersion]);
@@ -47,7 +68,9 @@ export function PurchaseCycleFollowUp({viewer,accounts,canCreate}:{viewer:string
         {!report.configured && <p className="text-caption text-warning">اولویت پیگیری بعد از تنظیم حداقل فاصلهٔ خرید و حداقل فروش در سیاست سازمان مشخص می‌شود.</p>}
         <p className="text-caption text-text-secondary">تاریخ مبنا {formatAppDate(report.asOf)}</p>
         {!report.rows.length ? <EmptyState surface="purchase-follow-up" title="فاکتور منطبق در دادهٔ دریافت‌شده مشاهده نشد" compact /> :
-          <ul className="divide-y divide-border">{report.rows.map(row=><li key={`${row.accountId}:${row.source}`} className="space-y-1 py-2">
+          <ul className="divide-y divide-border">{report.rows.map(row=>{
+            const canFollow=canCreate && accounts.some(account=>account.id.toLowerCase()===row.accountId.toLowerCase());
+            return <li key={`${row.accountId}:${row.source}`} className="space-y-1 py-2">
             <details>
               <summary className="min-h-11 cursor-pointer py-1 text-sm font-semibold">
                 {row.name} {row.followUp===1 && <span className="text-caption text-warning">· اولویت پیگیری</span>}
@@ -64,20 +87,22 @@ export function PurchaseCycleFollowUp({viewer,accounts,canCreate}:{viewer:string
               {row.followUp===1 && <p className="text-caption text-warning">فاصلهٔ خرید از الگوی ثبت‌شده بیشتر شده است. در تماس یا مراجعه، وضعیت خرید و علت احتمالی را بررسی کنید.</p>}
               <div className="flex flex-wrap items-center gap-2">
                 <Link className="inline-flex min-h-11 items-center text-sm text-primary" to={`/accounts/${encodeURIComponent(row.accountId)}`}>پروندهٔ مشتری</Link>
-                {canCreate && accounts.some(account=>account.id.toLowerCase()===row.accountId.toLowerCase()) &&
-                  <Button type="button" variant="outline" size="sm" onClick={()=>setSelected(row)}>ثبت پیگیری</Button>}
+                {canFollow && <Button type="button" variant="outline" size="sm" onClick={()=>setSelection({row})}>ثبت پیگیری</Button>}
               </div>
+              <PurchaseProductHints account={row.accountId} source={row.source} onSelect={canFollow ? product=>setSelection({row,product}) : undefined} />
             </details>
-          </li>)}</ul>}
+          </li>;})}</ul>}
         {(page>1 || report.hasMore) && <nav aria-label="صفحه‌بندی چرخهٔ خرید" className="flex items-center justify-between">
           <Button type="button" variant="ghost" disabled={page===1} onClick={()=>setPage(current=>current-1)}>قبلی</Button>
           <span className="text-caption">صفحهٔ {formatCount(page)}</span>
           <Button type="button" variant="ghost" disabled={!report.hasMore} onClick={()=>setPage(current=>current+1)}>بعدی</Button>
         </nav>}
       </>}
-    {selected && taskAccount && <QuickTaskRequest open viewer={viewer} accounts={[taskAccount]} onClose={()=>setSelected(null)}
-      initial={{kind:'GENERAL',accountId:taskAccount.id,priority:selected.followUp===1?'HIGH':'NORMAL',title:`پیگیری چرخهٔ خرید ${selected.name}`.slice(0,160),
-        description:`آخرین خرید مشاهده‌شده: ${formatAppDate(selected.lastPurchase)}${selected.lastInvoiceNumber ? `، فاکتور ${selected.lastInvoiceNumber}` : ''}\nمنبع ERP: ${selected.source}\nلطفاً علت فاصلهٔ خرید و اقدام بعدی را در پرونده ثبت کنید.`}}
+    {selected && taskAccount && <QuickTaskRequest open viewer={viewer} accounts={[taskAccount]} onClose={()=>setSelection(null)}
+      initial={{kind:'GENERAL',accountId:taskAccount.id,priority:selected.followUp===1?'HIGH':'NORMAL',
+        title:(selection?.product ? `پیگیری ${selection.product.name} برای ${selected.name}` : `پیگیری چرخهٔ خرید ${selected.name}`).slice(0,160),
+        description:selection?.product ? `آخرین خرید مشاهده‌شدهٔ ${selection.product.name}: ${formatAppDate(selection.product.lastSeen)}، فاکتور ${selection.product.lastInvoiceNumber}\nمنبع ERP: ${selected.source}\nلطفاً وضعیت و نیاز مشتری به این کالا را بررسی کنید.`
+          : `آخرین خرید مشاهده‌شده: ${formatAppDate(selected.lastPurchase)}${selected.lastInvoiceNumber ? `، فاکتور ${selected.lastInvoiceNumber}` : ''}\nمنبع ERP: ${selected.source}\nلطفاً علت فاصلهٔ خرید و اقدام بعدی را در پرونده ثبت کنید.`}}
       onSaved={id=>navigate(`/tasks?request=${encodeURIComponent(id)}`)} />}
   </Card>;
 }

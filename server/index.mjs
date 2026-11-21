@@ -13,7 +13,7 @@ import { createAccountDirectory } from './accountDirectory.mjs';
 import { createInvoiceFifoEvidence } from './invoiceFifoEvidence.mjs';
 import { createCollectionReceiptEvidence } from './collectionReceiptEvidence.mjs';
 import { createTreasuryFlowReader } from './treasuryFlow.mjs';
-import { createPurchaseCycleReader, parsePurchaseCycleQuery } from './purchaseCycle.mjs';
+import { createPurchaseCycleReader, createPurchaseProductReader, parsePurchaseCycleQuery, parsePurchaseProductQuery } from './purchaseCycle.mjs';
 import { createMoneyIntelligenceReader, parseMoneyReportQuery } from './moneyIntelligence.mjs';
 import { createJournalCoverageReader, createJournalCoverageFollowUp, createJournalFollowUpEvidenceReader, coverageFilter } from './journalCoverage.mjs';
 import { createCollectionActions } from './collectionActions.mjs';
@@ -1115,12 +1115,20 @@ app.post('/api/v1/push/send', authenticate, requireSignedSession, limitPushSend,
 }));
 
 const readPurchaseCycle = createPurchaseCycleReader({sql,run:withTenantContext});
+const readPurchaseProducts = createPurchaseProductReader({sql,run:withTenantContext});
 app.get('/api/v1/analytics/purchase-cycle',authenticate,requirePermission('quotes.view'),wrap(async(req,res)=>{
   res.set('Cache-Control','private, no-store');
   if (entityDriverKind!=='mssql') return bad(req,res,503,'SALES_SOURCE_UNAVAILABLE','چرخهٔ خرید به آینهٔ ERP در SQL نیاز دارد.');
   const filter=parsePurchaseCycleQuery(req.query);
   if (!filter) return bad(req,res,400,'INVALID_PURCHASE_FILTER','فیلتر چرخهٔ خرید معتبر نیست.');
   res.json(await readPurchaseCycle(req.auth,filter));
+}));
+app.get('/api/v1/analytics/purchase-cycle/products',authenticate,requirePermission('quotes.view'),wrap(async(req,res)=>{
+  res.set('Cache-Control','private, no-store');
+  if (entityDriverKind!=='mssql') return bad(req,res,503,'SALES_SOURCE_UNAVAILABLE','سابقهٔ کالا به آینهٔ ERP در SQL نیاز دارد.');
+  const filter=parsePurchaseProductQuery(req.query);
+  if (!filter) return bad(req,res,400,'INVALID_PURCHASE_FILTER','مرجع مشتری یا سامانهٔ مبدأ معتبر نیست.');
+  res.json(await readPurchaseProducts(req.auth,filter));
 }));
 
 app.get('/api/v1/analytics/reports/:reportId', authenticate, async (req, res) => {
