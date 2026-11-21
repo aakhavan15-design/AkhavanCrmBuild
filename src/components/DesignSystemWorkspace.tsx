@@ -3,6 +3,8 @@ import { CircleHelp } from 'lucide-react';
 import { useTheme } from '../theme/ThemeProvider';
 import { formatMoney, formatMoneyCompact } from '../lib/format';
 import { Avatar, Badge, BottomSheet, Button, Card, Checkbox, CustomDatePicker, EmptyState, ErrorState, FilterChip, IconButton, Input, LoadingState, Modal, SearchableSelect, Select, StatusBadge, Switch, Textarea } from './ui';
+import { ChartCard } from './charts/ChartCard';
+import { DonutChart } from './charts/DonutChart';
 import { DataTable, type DataTableColumn } from './ui/DataTable';
 
 const exampleOptions = [
@@ -73,12 +75,26 @@ export function DesignSystemWorkspace() {
           <IconButton type="button" aria-label="راهنمای پنجره" onClick={() => setDialog(true)}><CircleHelp size={18} /></IconButton>
           <Badge variant="info">اطلاع</Badge><StatusBadge status="PENDING" /><StatusBadge status="APPROVED" /><StatusBadge status="REJECTED" />
           <Avatar name="کاربر راهنما" />
+          <Avatar name="شرکت نمونه" entity="company" />
         </div>
         <div className="grid gap-3 md:grid-cols-3">
           <Card><LoadingState label="دریافت فهرست" /></Card>
           <Card><EmptyState title="نتیجه‌ای یافت نشد" description="جست‌وجو را تغییر دهید." /></Card>
           <Card>{retried ? <p role="status" className="text-sm text-text-secondary">تلاش مجدد انجام شد.</p> :
             <ErrorState title="دریافت اطلاعات ناموفق بود" description="دوباره تلاش کنید." onRetry={() => setRetried(true)} />}</Card>
+        </div>
+      </section>
+
+      <section aria-labelledby="design-charts" className="space-y-3">
+        <h2 id="design-charts" className="font-semibold text-text-main">نمودار و منشأ داده</h2>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <ChartCard title="واحد شمارش در نمودار" periodLabel="نمونهٔ مستقل کاتالوگ" sourceLabel="فقط محیط توسعه">
+            <DonutChart segments={[{ label: 'گزینهٔ اول', value: 6, color: 'var(--c-chart-1)' },
+              { label: 'گزینهٔ دوم', value: 4, color: 'var(--c-chart-2)' }]} centerLabel="تعداد" size={144} />
+          </ChartCard>
+          <ChartCard title="نمودار با دادهٔ قدیمی" empty freshnessLabel="در انتظار اطلاعات تازه" />
+          <ChartCard title="نمودار در حال دریافت" loading />
+          <ChartCard title="نمودار ناموفق" error="اطلاعات منبع در دسترس نیست." />
         </div>
       </section>
 

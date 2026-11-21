@@ -1,3 +1,4 @@
+import { formatNumber } from '../lib/format';
 import { ChartCard } from './charts/ChartCard';
 import { WorkspaceViewSwitcher } from './shared/WorkspaceViewSwitcher';
 import React, { useMemo, useState } from 'react';
@@ -382,7 +383,7 @@ export function OperationsControlWorkspace({ state, updateState }: Props) {
             <Card padding="sm" className="bg-surface border border-border rounded-xl p-3">
               <span className="text-micro text-text-secondary font-medium">نسبت مرجوعی به سفارش</span>
               <div className="text-base sm:text-lg font-bold text-warning font-mono mt-1">
-                {totalOrderValue > 0 ? ((totalReturns / totalOrderValue) * 100).toFixed(1) : '۰.۰'}٪
+                {totalOrderValue > 0 ? `${formatNumber((totalReturns / totalOrderValue) * 100, { maximumFractionDigits: 1 })}٪` : 'نامشخص'}
               </div>
               <span className="text-micro text-text-secondary mt-0.5 block">شاخص کنترلی</span>
             </Card>
@@ -390,7 +391,7 @@ export function OperationsControlWorkspace({ state, updateState }: Props) {
             <Card padding="sm" className="bg-surface border border-border rounded-xl p-3">
               <span className="text-micro text-text-secondary font-medium">تأییدشده در سامانه مالی</span>
               <div className="text-base sm:text-lg font-bold text-primary font-mono mt-1">
-                {returns.filter(r => r.financialDocumentConfirmed === true).length} فقره
+                {formatCount(returns.filter(r => r.financialDocumentConfirmed === true).length)} فقره
               </div>
               <span className="text-micro text-text-secondary mt-0.5 block">تطبیق کامل حسابداری</span>
             </Card>

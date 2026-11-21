@@ -206,7 +206,6 @@ export function NegotiationsWorkspace({ state, updateState }: { state: AppState;
             title="فرصتی یافت نشد" 
             description="فرصت تجاری جدید برای پیشبرد مذاکرات ثبت کنید." 
             actionLabel="فرصت جدید"
-            onAction={() => setShowNewModal(true)}
           />
         )}
       </div>

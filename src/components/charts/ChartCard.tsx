@@ -7,7 +7,7 @@ import { EmptyState } from '../ui/EmptyState';
 import { ExportMenuButton } from '../ui/ExportMenuButton';
 
 export interface ChartCardProps {
-  title: string; periodLabel?: string; children: React.ReactNode; onClick?: () => void;
+  title: string; periodLabel?: string; children?: React.ReactNode; onClick?: () => void;
   onExportExcel?: () => void; onExportCsv?: () => void; onShowSource?: () => void;
   className?: string; loading?: boolean; empty?: boolean; emptyMessage?: string; height?: number | string;
   error?: string; onRetry?: () => void; sourceLabel?: string; freshnessLabel?: string;
