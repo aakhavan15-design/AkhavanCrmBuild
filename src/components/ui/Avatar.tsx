@@ -1,4 +1,5 @@
 import React from 'react';
+import { Building2 } from 'lucide-react';
 
 const AVATAR_GRADIENTS = [
   'linear-gradient(135deg,var(--c-primary),var(--c-avatar-deep))', 'linear-gradient(135deg,var(--c-forest-light),var(--c-forest-dark))',
@@ -9,12 +10,15 @@ const AVATAR_GRADIENTS = [
 interface AvatarProps {
   name: string;
   src?: string;
+  entity?: 'person' | 'company';
   size?: 'xs' | 'sm' | 'md' | 'lg';
   className?: string;
 }
 
-export const Avatar: React.FC<AvatarProps> = ({ name, src, size = 'md', className = '' }) => {
-  const initial = name ? name.trim().charAt(0) : 'ک';
+export const Avatar: React.FC<AvatarProps> = ({ name, src, entity = 'person', size = 'md', className = '' }) => {
+  const meaningfulWord = (name || '').trim().split(/\s+/).find(word =>
+    /\p{L}/u.test(word) && !['آقای', 'خانم', 'جناب', 'سرکار', 'دکتر', 'مهندس'].includes(word));
+  const initial = Array.from(meaningfulWord || 'ک').find(letter => /\p{L}/u.test(letter)) || 'ک';
   const hue = AVATAR_GRADIENTS[[...(name || 'ک')].reduce((a, c) => a + c.charCodeAt(0), 0) % AVATAR_GRADIENTS.length];
   
   const sizeClasses = {
@@ -33,7 +37,7 @@ export const Avatar: React.FC<AvatarProps> = ({ name, src, size = 'md', classNam
       style={{ background: hue }}
       className={`rounded-full text-white flex items-center justify-center font-extrabold select-none shadow-xs ${sizeClasses} ${className}`}
     >
-      {initial}
+      {entity === 'company' ? <Building2 className="h-1/2 w-1/2" aria-hidden /> : initial}
     </div>
   );
 };

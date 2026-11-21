@@ -4,6 +4,8 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { CheckCircle2, ChevronLeft, Phone, Plus, Search, ShieldAlert, Users, MapPin, Wallet, ArrowUpLeft } from 'lucide-react';
 import { AppState, Account } from '../types';
 import { Customer360 } from './Customer360';
+import { Button } from './ui/Button';
+import { LoadingState } from './ui/LoadingState';
 import { EmptyState } from './ui/EmptyState';
 import { Modal } from './ui/Modal';
 import { DataTable, DataTableColumn, DetailField, DetailGroup } from './ui/DataTable';
@@ -68,19 +70,25 @@ export function CustomersWorkspace({ state, updateState }: CustomersWorkspacePro
     return () => window.clearTimeout(t);
   }, [successNotice]);
 
-  const visibleAccounts = useMemo(() => activeRecords(state.accounts).filter(account =>
-    canOn('accounts', 'VIEW', {
-      ownerId: account.ownerId, branchId: account.branchId, territoryId: account.territoryId,
-      teamId: account.teamId, tenantId: account.tenantId,
-      deletedAt: extras(account).deletedAt, isDeleted: extras(account).isDeleted
-    })
-  ), [state.accounts, canOn]);
+  const mayViewAccount = (account: Account) => canOn('accounts', 'VIEW', {
+    ownerId: account.ownerId, branchId: account.branchId, territoryId: account.territoryId,
+    teamId: account.teamId, tenantId: account.tenantId,
+    deletedAt: extras(account).deletedAt, isDeleted: extras(account).isDeleted
+  });
+  const visibleAccounts = useMemo(() => activeRecords(state.accounts).filter(mayViewAccount), [state.accounts, canOn]);
 
   const userName = useMemo(() => new Map((state.users || []).map(u => [u.id, u.name] as const)), [state.users]);
   const [rawCustomerId] = location.pathname.split('/').filter(Boolean).slice(1);
   let urlCustomerId = rawCustomerId;
   try { if (rawCustomerId) urlCustomerId = decodeURIComponent(rawCustomerId); } catch { /* keep malformed ids unavailable */ }
-  const selectedCustomer = urlCustomerId ? visibleAccounts.find(account => account.id === urlCustomerId) : undefined;
+  const listAccount = urlCustomerId ? visibleAccounts.find(account => account.id === urlCustomerId) : undefined;
+  const detailQuery = useDataQuery(async provider => urlCustomerId && !listAccount
+    ? { id: urlCustomerId, viewer: state.currentUserId, account: await provider.getAccountById(urlCustomerId) } : null,
+  [urlCustomerId, !!listAccount, state.currentUserId]);
+  const remoteDetail = !detailQuery.loading && !detailQuery.error && detailQuery.data?.id === urlCustomerId
+    && detailQuery.data?.viewer === state.currentUserId ? detailQuery.data?.account : undefined;
+  const selectedCustomer = listAccount || (remoteDetail && mayViewAccount(remoteDetail) ? remoteDetail : undefined);
+
   const listScroll = useRef<number | null>(null);
   const triggerFocusId = useRef('');
   const searchInputId = useId();
@@ -234,9 +242,17 @@ export function CustomersWorkspace({ state, updateState }: CustomersWorkspacePro
     ]).map(result => result.item);
   }, [visibleAccounts, activeChip, atRiskAccounts, debouncedSearch]);
 
-  const searchSuggestions = filteredAccounts.slice(0, 6);
+  const [directoryPage, setDirectoryPage] = useState(1);
+  const directory = useDataQuery(async provider => {
+    if (activeChip !== 'all' || !can('accounts', 'VIEW') || debouncedSearch.trim().length < 2) return null;
+    return { query: debouncedSearch, viewer: state.currentUserId, result: await provider.searchAccountDirectory(debouncedSearch, directoryPage) };
+  }, [activeChip, debouncedSearch, directoryPage, state.currentUserId, can('accounts', 'VIEW')]);
+  const serverResults = !directory.loading && !directory.error && directory.data?.query === debouncedSearch
+    && directory.data?.viewer === state.currentUserId && directory.data?.result?.page === directoryPage ? directory.data.result : null;
+  const searchSuggestions = serverResults ? serverResults.items.filter(mayViewAccount) : filteredAccounts.slice(0, 6);
+
   const searchReady = searchQuery === debouncedSearch;
-  const suggestionsOpen = searchFocused && searchReady && searchQuery.trim().length >= 2 && searchSuggestions.length > 0;
+  const suggestionsOpen = searchFocused && searchReady && searchQuery.trim().length >= 2 && (searchSuggestions.length > 0 || !!serverResults && serverResults.page > 1);
   const activeIndex = Math.min(suggestionIndex, Math.max(0, searchSuggestions.length - 1));
   const openSuggestion = (account: Account) => {
     setSearchFocused(false);
@@ -252,6 +268,7 @@ export function CustomersWorkspace({ state, updateState }: CustomersWorkspacePro
   if (selectedCustomer) {
     return <Customer360 customer={selectedCustomer} state={state} updateState={updateState} onBack={goBackToCustomers} />;
   }
+  if (urlCustomerId && detailQuery.loading) return <LoadingState label="در حال دریافت پروندهٔ مشتری" />;
   if (urlCustomerId && !selectedCustomer) {
     return <div className="p-6" dir="rtl"><EmptyState surface="customers_workspace_1" icon={<ShieldAlert className="w-9 h-9 text-text-secondary" />} title="پرونده در دسترس نیست" description="این حساب وجود ندارد، غیرفعال شده یا خارج از محدوده دسترسی شماست." actionLabel="بازگشت به فهرست" onAction={goBackToCustomers} /></div>;
   }
@@ -302,7 +319,7 @@ export function CustomersWorkspace({ state, updateState }: CustomersWorkspacePro
       {successNotice && <div role="status" className="se-rise-in flex items-start gap-2 rounded-xl border border-primary/20 bg-primary-soft px-3 py-2 text-xs font-semibold text-text-main shadow-xs"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden="true" /><span>{successNotice}</span></div>}
 
       <h1 className="sr-only">فهرست مشتریان و طرف‌های حساب</h1>
-      <div className="relative z-20 w-full">
+      <div className="relative z-20 w-full" onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) setSearchFocused(false); }}>
         <Search size={15} className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 text-text-muted" aria-hidden="true" />
         <InputControl
           id={searchInputId}
@@ -312,12 +329,11 @@ export function CustomersWorkspace({ state, updateState }: CustomersWorkspacePro
           aria-autocomplete="list"
           aria-expanded={suggestionsOpen}
           aria-controls={suggestionsOpen ? searchListId : undefined}
-          aria-activedescendant={suggestionsOpen ? `${searchListId}-${activeIndex}` : undefined}
+          aria-activedescendant={suggestionsOpen && searchSuggestions[activeIndex] ? `${searchListId}-${activeIndex}` : undefined}
           className="ps-9"
           value={searchQuery}
           onFocus={() => setSearchFocused(true)}
-          onBlur={() => setSearchFocused(false)}
-          onChange={event => { setSearchQuery(event.target.value); setSuggestionIndex(0); setSearchFocused(true); }}
+          onChange={event => { setSearchQuery(event.target.value); setDirectoryPage(1); setSuggestionIndex(0); setSearchFocused(true); }}
           onKeyDown={event => {
             if (event.key === 'Escape' && suggestionsOpen) { event.preventDefault(); setSearchFocused(false); }
             if (!suggestionsOpen) return;
@@ -325,7 +341,7 @@ export function CustomersWorkspace({ state, updateState }: CustomersWorkspacePro
               event.preventDefault();
               setSuggestionIndex(Math.max(0, Math.min(searchSuggestions.length - 1, activeIndex + (event.key === 'ArrowDown' ? 1 : -1))));
             }
-            if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
+            if (event.key === 'Enter' && searchSuggestions[activeIndex] && !event.nativeEvent.isComposing) {
               event.preventDefault();
               openSuggestion(searchSuggestions[activeIndex]);
             }
@@ -333,7 +349,8 @@ export function CustomersWorkspace({ state, updateState }: CustomersWorkspacePro
           placeholder="نام، کد، شماره تماس یا نشانی"
         />
         {suggestionsOpen && (
-          <div id={searchListId} role="listbox" aria-label="نتایج جست‌وجوی مشتری" className="absolute inset-x-0 top-[calc(100%+6px)] max-h-56 overflow-y-auto rounded-xl border border-border bg-surface shadow-floating">
+          <div className="absolute inset-x-0 top-[calc(100%+6px)] rounded-xl border border-border bg-surface shadow-floating">
+          <div id={searchListId} role="listbox" aria-label="نتایج جست‌وجوی مشتری" className="max-h-56 overflow-y-auto rounded-xl">
             {searchSuggestions.map((account, index) => (
               <button key={account.id} id={`${searchListId}-${index}`} type="button" role="option" tabIndex={-1} aria-selected={index === activeIndex}
                 onMouseDown={event => event.preventDefault()} onClick={() => openSuggestion(account)}
@@ -344,8 +361,18 @@ export function CustomersWorkspace({ state, updateState }: CustomersWorkspacePro
               </button>
             ))}
           </div>
+            {serverResults && (serverResults.page > 1 || serverResults.hasMore) && <div className="flex items-center justify-between gap-2 border-t border-border px-2 py-1">
+              <Button type="button" size="sm" variant="ghost" disabled={serverResults.page <= 1}
+                onClick={() => { setDirectoryPage(page => page - 1); setSuggestionIndex(0); document.getElementById(searchInputId)?.focus(); }}>نتایج قبلی</Button>
+              <Button type="button" size="sm" variant="ghost" disabled={!serverResults.hasMore}
+                onClick={() => { setDirectoryPage(page => page + 1); setSuggestionIndex(0); document.getElementById(searchInputId)?.focus(); }}>نتایج بعدی</Button>
+            </div>}
+          </div>
         )}
       </div>
+
+      {searchFocused && activeChip === 'all' && debouncedSearch.trim().length >= 2 && directory.error &&
+        <p role="status" className="text-caption text-text-secondary">جست‌وجوی سرور در دسترس نیست. نتایج از مشتریان بارگذاری‌شده‌اند.</p>}
 
       <section id="acc-metrics" data-tour-primary data-tour-heading aria-label="خلاصه و فیلتر مشتریان در محدودهٔ دسترسی" className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex min-w-0 flex-wrap items-center gap-1.5">
@@ -432,7 +459,7 @@ export function CustomersWorkspace({ state, updateState }: CustomersWorkspacePro
       ) : (
         <div id="customer-table" data-tour-primary>
         <DataTable<Account>
-          tableId="customers" title="مشتریان و پرونده‌های تجاری"
+          tableId="customers" savedFiltersScope={state.currentUserId || undefined} title="مشتریان و پرونده‌های تجاری"
           rows={filteredAccounts} columns={columns} getRowId={a => a.id} hideSearch
           filterGroups={filterGroups} selection={selection} onSelectionChange={setSelection}
           defaultSort={{ columnId: 'name', direction: 'asc' }} summary={null}

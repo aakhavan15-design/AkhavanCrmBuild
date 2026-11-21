@@ -1146,3 +1146,21 @@
   :root { --motion-dialog-duration: 0ms; }
   .crm-dialog-viewport :is(.animate-in) { animation: none; }
 }
+
+/* Physical paper always uses the semantic paper palette, including when the app is dark. */
+@media print {
+  .crm-print-document {
+    --c-canvas: var(--c-print-canvas);
+    --c-surface: var(--c-print-paper);
+    --c-surface-raised: var(--c-print-paper);
+    --c-sunken: var(--c-print-canvas);
+    --c-ink-main: var(--c-print-ink);
+    --c-ink-secondary: var(--c-print-muted);
+    --c-border: var(--c-print-line);
+    --c-border-light: var(--c-print-line);
+    --c-primary: var(--c-print-ink);
+    color-scheme: light;
+  }
+  .crm-print-document tr { break-inside: avoid; }
+  .crm-print-document thead { display: table-header-group; }
+}

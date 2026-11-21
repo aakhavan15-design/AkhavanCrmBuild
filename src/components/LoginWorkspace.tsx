@@ -151,13 +151,13 @@ export function LoginWorkspace({
 
   return (
     <main
-      className="fixed inset-0 h-dvh max-h-dvh w-full overflow-hidden select-none flex flex-col justify-between text-white"
+      className="fixed inset-0 h-dvh max-h-dvh w-full overflow-hidden select-none flex flex-col justify-between text-(--c-auth-on-ambient)"
       dir="rtl"
       style={{
         backgroundColor: 'black',
         backgroundImage: isLightOn
-          ? 'radial-gradient(ellipse at 50% 40%, color-mix(in srgb, var(--c-primary) 22%, transparent) 0%, color-mix(in srgb, var(--c-forest-dark) 20%, black) 40%, black 80%)'
-          : 'radial-gradient(ellipse at 50% 45%, color-mix(in srgb, var(--c-copper) 5%, black) 0%, black 65%)',
+          ? 'radial-gradient(ellipse at 50% 40%, color-mix(in srgb, var(--c-primary) 22%, transparent) 0%, color-mix(in srgb, var(--c-forest-dark) 20%, var(--c-auth-ambient)) 40%, var(--c-auth-ambient) 80%)'
+          : 'radial-gradient(ellipse at 50% 45%, color-mix(in srgb, var(--c-copper) 5%, var(--c-auth-ambient)) 0%, var(--c-auth-ambient) 65%)',
         transition: 'background-color 1.1s ease, background-image 1.1s ease',
       }}
     >
@@ -166,17 +166,17 @@ export function LoginWorkspace({
         {/* پنجره تاریک در دیوار سمت چپ پشت آباژور با نور مه‌آلود */}
         {isLightOn && (
           <div
-            className="absolute top-10 left-6 sm:top-14 sm:left-14 w-24 sm:w-36 h-36 sm:h-52 rounded-lg border border-white/5 opacity-20 flex flex-col transition-opacity duration-700"
+            className="absolute top-10 left-6 sm:top-14 sm:left-14 w-24 sm:w-36 h-36 sm:h-52 rounded-lg border border-(--c-auth-on-ambient)/5 opacity-20 flex flex-col transition-opacity duration-700"
             style={{
               background: 'linear-gradient(135deg, color-mix(in srgb, var(--c-cobalt) 8%, transparent) 0%, transparent 85%)',
             }}
           >
-            <div className="flex-1 flex border-b border-white/5">
-              <div className="flex-1 border-r border-white/5" />
+            <div className="flex-1 flex border-b border-(--c-auth-on-ambient)/5">
+              <div className="flex-1 border-r border-(--c-auth-on-ambient)/5" />
               <div className="flex-1" />
             </div>
             <div className="flex-1 flex">
-              <div className="flex-1 border-r border-white/5" />
+              <div className="flex-1 border-r border-(--c-auth-on-ambient)/5" />
               <div className="flex-1" />
             </div>
           </div>
@@ -194,11 +194,11 @@ export function LoginWorkspace({
       </div>
 
       {/* ================= بخش ۴: نوار هدر فوق‌العاده مینیمال و شیشه‌ای ================= */}
-      <header className="relative z-30 shrink-0 h-14 w-full px-4 sm:px-8 flex items-center justify-between border-b border-white/5 bg-black/40 backdrop-blur-2xl">
+      <header className="relative z-30 shrink-0 h-14 w-full px-4 sm:px-8 flex items-center justify-between border-b border-(--c-auth-on-ambient)/5 bg-(--c-auth-ambient)/40 backdrop-blur-2xl">
         {/* برند اخوان */}
         <div className="flex items-center gap-3">
           <div
-            className="w-9 h-9 rounded-xl flex items-center justify-center p-1.5 border border-white/10 shadow-lg overflow-hidden bg-white/5"
+            className="w-9 h-9 rounded-xl flex items-center justify-center p-1.5 border border-(--c-auth-on-ambient)/10 shadow-lg overflow-hidden bg-(--c-auth-on-ambient)/5"
             style={{
               boxShadow: isLightOn
                 ? '0 0 20px color-mix(in srgb, var(--c-primary) 35%, transparent)'
@@ -220,37 +220,37 @@ export function LoginWorkspace({
           </div>
 
           <div className="flex flex-col">
-            <span className="font-bold text-xs sm:text-sm text-white tracking-tight leading-tight">
+            <span className="font-bold text-xs sm:text-sm text-(--c-auth-on-ambient) tracking-tight leading-tight">
               {tenantName || 'گروه صنعتی اخوان'}
             </span>
-            <span className="text-nano tracking-widest font-mono text-white/50 uppercase">
+            <span className="text-nano tracking-widest font-mono text-(--c-auth-on-ambient)/50 uppercase">
               ENTERPRISE PLATFORM
             </span>
           </div>
         </div>
 
         {/* دکمه‌های کنترل محیطی (صدا و روشنایی) */}
-        <div className="flex items-center gap-1.5 p-1 rounded-xl border border-white/10 backdrop-blur-xl bg-white/5">
+        <div className="flex items-center gap-1.5 p-1 rounded-xl border border-(--c-auth-on-ambient)/10 backdrop-blur-xl bg-(--c-auth-on-ambient)/5">
           <button
             type="button"
             onClick={toggleSound}
             aria-label={soundEnabled ? 'قطع صدا' : 'فعال‌سازی صدا'}
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg hover:bg-white/10 text-white text-xs font-medium transition-colors cursor-pointer"
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg hover:bg-(--c-auth-on-ambient)/10 text-(--c-auth-on-ambient) text-xs font-medium transition-colors cursor-pointer"
           >
             {soundEnabled ? (
               <>
                 <Volume2 size={14} className="text-amber-300" />
-                <span className="hidden sm:inline text-white/80">صدا</span>
+                <span className="hidden sm:inline text-(--c-auth-on-ambient)/80">صدا</span>
               </>
             ) : (
               <>
-                <VolumeX size={14} className="text-white/40" />
-                <span className="hidden sm:inline text-white/40">بی‌صدا</span>
+                <VolumeX size={14} className="text-(--c-auth-on-ambient)/40" />
+                <span className="hidden sm:inline text-(--c-auth-on-ambient)/40">بی‌صدا</span>
               </>
             )}
           </button>
 
-          <div className="w-px h-3.5 bg-white/10" />
+          <div className="w-px h-3.5 bg-(--c-auth-on-ambient)/10" />
 
           <button
             type="button"
@@ -258,7 +258,7 @@ export function LoginWorkspace({
             className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
               isLightOn
                 ? 'bg-emerald-950/70 text-emerald-200 border border-emerald-500/40 shadow-sm'
-                : 'text-white/70 hover:text-white'
+                : 'text-(--c-auth-on-ambient)/70 hover:text-(--c-auth-on-ambient)'
             }`}
           >
             <span>{isLightOn ? 'فضا روشن' : 'فضا خاموش'}</span>
@@ -316,11 +316,11 @@ export function LoginWorkspace({
             /* فرم ورود گلسمورفیسم فوق‌العاده باکیفیت و شفاف هماهنگ با Indigo */
             <div
               key="auth-card-lit"
-              className="relative w-full rounded-2xl border border-white/10 p-2.5 xs:p-3 sm:p-5 backdrop-blur-2xl overflow-hidden transition-all duration-500"
+              className="relative w-full rounded-2xl border border-(--c-auth-on-ambient)/10 p-2.5 xs:p-3 sm:p-5 backdrop-blur-2xl overflow-hidden transition-all duration-500"
               style={{
-                background: 'linear-gradient(145deg, color-mix(in srgb, var(--c-navy-dark) 85%, black) 0%, black 100%)',
+                background: 'linear-gradient(145deg, color-mix(in srgb, var(--c-navy-dark) 85%, var(--c-auth-ambient)) 0%, var(--c-auth-ambient) 100%)',
                 borderTop: '1px solid color-mix(in srgb, var(--c-copper) 45%, transparent)',
-                boxShadow: '0 20px 45px color-mix(in srgb, black 90%, transparent), 0 0 30px color-mix(in srgb, var(--c-cobalt) 22%, transparent)',
+                boxShadow: '0 20px 45px color-mix(in srgb, var(--c-auth-ambient) 90%, transparent), 0 0 30px color-mix(in srgb, var(--c-cobalt) 22%, transparent)',
                 animation: 'lampRayCinematicReveal 1.05s cubic-bezier(0.16, 1, 0.3, 1) both',
               }}
             >
@@ -333,19 +333,19 @@ export function LoginWorkspace({
                 }}
               />
               {/* تب‌های بالای کارت کاملاً محصور در کادر بدون هیچ‌گونه بیرون‌زدگی */}
-              <div className="flex flex-col xs:flex-row xs:items-center justify-between pb-2 sm:pb-2.5 border-b border-white/10 gap-1.5 sm:gap-2">
-                <span className="text-caption sm:text-compact font-bold text-white tracking-wide">
+              <div className="flex flex-col xs:flex-row xs:items-center justify-between pb-2 sm:pb-2.5 border-b border-(--c-auth-on-ambient)/10 gap-1.5 sm:gap-2">
+                <span className="text-caption sm:text-compact font-bold text-(--c-auth-on-ambient) tracking-wide">
                   ورود به حساب کاربری
                 </span>
 
-                {import.meta.env.DEV && (                <div className="flex items-center gap-0.5 sm:gap-1 p-0.5 sm:p-1 rounded-lg border border-white/15 bg-white/5 backdrop-blur-md self-start xs:self-auto shrink-0 max-w-full">
+                {import.meta.env.DEV && (                <div className="flex items-center gap-0.5 sm:gap-1 p-0.5 sm:p-1 rounded-lg border border-(--c-auth-on-ambient)/15 bg-(--c-auth-on-ambient)/5 backdrop-blur-md self-start xs:self-auto shrink-0 max-w-full">
                   <button
                     type="button"
                     onClick={() => setActiveTab('LOGIN')}
                     className={`px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-md text-micro sm:text-xs font-black transition-all cursor-pointer whitespace-nowrap ${
                       activeTab === 'LOGIN'
                         ? 'bg-primary-dark text-warning border border-warning/50 shadow-md'
-                        : 'text-slate-300 hover:text-white hover:bg-white/10'
+                        : 'text-(--c-auth-on-ambient)/75 hover:text-(--c-auth-on-ambient) hover:bg-(--c-auth-on-ambient)/10'
                     }`}
                   >
                     فرم ورود
@@ -356,10 +356,10 @@ export function LoginWorkspace({
                     className={`px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-md text-micro sm:text-xs font-bold transition-all cursor-pointer flex items-center gap-1 whitespace-nowrap ${
                       activeTab === 'DEMO_INFO'
                         ? 'bg-primary-dark text-warning border border-warning/50 shadow-md'
-                        : 'text-slate-300 hover:text-white hover:bg-white/10'
+                        : 'text-(--c-auth-on-ambient)/75 hover:text-(--c-auth-on-ambient) hover:bg-(--c-auth-on-ambient)/10'
                     }`}
                   >
-                    <KeyRound size={11} className={activeTab === 'DEMO_INFO' ? 'text-warning' : 'text-slate-300'} />
+                    <KeyRound size={11} className={activeTab === 'DEMO_INFO' ? 'text-warning' : 'text-(--c-auth-on-ambient)/75'} />
                     <span>حساب‌ها</span>
                   </button>
                 </div>
@@ -380,8 +380,8 @@ export function LoginWorkspace({
                       value={tenantCode}
                       onChange={e => setTenantCode(e.target.value)}
                       placeholder="نام سازمان"
-                      className="w-full h-8.5 xs:h-9 sm:h-10.5 px-2.5 sm:px-3.5 rounded-lg sm:rounded-xl border border-white/15 text-xs sm:text-sm text-white placeholder-slate-500 font-mono transition-all duration-200 focus:outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-400/30"
-                      style={{ background: 'color-mix(in srgb, black 85%, var(--c-navy-dark))' }}
+                      className="w-full h-8.5 xs:h-9 sm:h-10.5 px-2.5 sm:px-3.5 rounded-lg sm:rounded-xl border border-(--c-auth-on-ambient)/15 text-xs sm:text-sm text-(--c-auth-on-ambient) placeholder-slate-500 font-mono transition-all duration-200 focus:outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-400/30"
+                      style={{ background: 'color-mix(in srgb, var(--c-auth-ambient) 85%, var(--c-navy-dark))' }}
                       disabled={warpActive || isSubmitting}
                     />
                   </div>
@@ -397,8 +397,8 @@ export function LoginWorkspace({
                       value={username}
                       onChange={e => setUsername(e.target.value)}
                       placeholder="مثال: a.akhavan"
-                      className="w-full h-8.5 xs:h-9 sm:h-10.5 px-2.5 sm:px-3.5 rounded-lg sm:rounded-xl border border-white/15 text-xs sm:text-sm text-white placeholder-slate-500 font-mono text-left transition-all duration-200 focus:outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-400/30"
-                      style={{ background: 'color-mix(in srgb, black 85%, var(--c-navy-dark))' }}
+                      className="w-full h-8.5 xs:h-9 sm:h-10.5 px-2.5 sm:px-3.5 rounded-lg sm:rounded-xl border border-(--c-auth-on-ambient)/15 text-xs sm:text-sm text-(--c-auth-on-ambient) placeholder-slate-500 font-mono text-left transition-all duration-200 focus:outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-400/30"
+                      style={{ background: 'color-mix(in srgb, var(--c-auth-ambient) 85%, var(--c-navy-dark))' }}
                       dir="ltr"
                       disabled={warpActive || isSubmitting}
                     />
@@ -416,8 +416,8 @@ export function LoginWorkspace({
                         value={password}
                         onChange={e => setPassword(e.target.value)}
                         placeholder="رمز عبور"
-                        className="w-full h-8.5 xs:h-9 sm:h-10.5 pr-2.5 sm:pr-3.5 pl-8 sm:pl-10 rounded-lg sm:rounded-xl border border-white/15 text-xs sm:text-sm text-white placeholder-slate-500 font-mono text-left transition-all duration-200 focus:outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-400/30"
-                        style={{ background: 'color-mix(in srgb, black 85%, var(--c-navy-dark))' }}
+                        className="w-full h-8.5 xs:h-9 sm:h-10.5 pr-2.5 sm:pr-3.5 pl-8 sm:pl-10 rounded-lg sm:rounded-xl border border-(--c-auth-on-ambient)/15 text-xs sm:text-sm text-(--c-auth-on-ambient) placeholder-slate-500 font-mono text-left transition-all duration-200 focus:outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-400/30"
+                        style={{ background: 'color-mix(in srgb, var(--c-auth-ambient) 85%, var(--c-navy-dark))' }}
                         dir="ltr"
                         disabled={warpActive || isSubmitting}
                       />
@@ -425,7 +425,7 @@ export function LoginWorkspace({
                         type="button"
                         aria-label={showPassword ? 'پنهان کردن رمز' : 'نمایش رمز'}
                         onClick={() => setShowPassword(v => !v)}
-                        className="absolute left-1.5 sm:left-2 w-6 h-6 sm:w-7 sm:h-7 flex items-center justify-center text-slate-400 hover:text-white transition-colors cursor-pointer"
+                        className="absolute left-1.5 sm:left-2 w-6 h-6 sm:w-7 sm:h-7 flex items-center justify-center text-(--c-auth-on-ambient)/70 hover:text-(--c-auth-on-ambient) transition-colors cursor-pointer"
                       >
                         {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
                       </button>
@@ -442,7 +442,7 @@ export function LoginWorkspace({
                     type="submit"
                     onClick={() => unlockAudioAndSpeech()}
                     disabled={warpActive || isSubmitting}
-                    className="w-full h-9.5 xs:h-10 sm:h-12 rounded-lg sm:rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-1.5 sm:gap-2 shadow-xl transition-all duration-200 cursor-pointer disabled:opacity-50 text-white mt-1 sm:mt-2 hover:scale-(--scale-lift-subtle) active:scale-(--scale-press-subtle)"
+                    className="w-full h-9.5 xs:h-10 sm:h-12 rounded-lg sm:rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-1.5 sm:gap-2 shadow-xl transition-all duration-200 cursor-pointer disabled:opacity-50 text-(--c-auth-on-ambient) mt-1 sm:mt-2 hover:scale-(--scale-lift-subtle) active:scale-(--scale-press-subtle)"
                     style={{
                       background: 'linear-gradient(135deg, var(--c-cobalt) 0%, var(--c-cobalt-dark) 100%)',
                       border: '1px solid color-mix(in srgb, var(--c-copper) 45%, transparent)',
@@ -461,14 +461,14 @@ export function LoginWorkspace({
                   <div className="space-y-1">
                     <div
                       onClick={() => applyAccount('a.akhavan', '123456')}
-                      className="p-1.5 sm:p-2 rounded-lg border border-white/10 hover:border-warning transition-all cursor-pointer group flex items-center justify-between"
-                      style={{ background: 'color-mix(in srgb, black 85%, var(--c-navy-dark))' }}
+                      className="p-1.5 sm:p-2 rounded-lg border border-(--c-auth-on-ambient)/10 hover:border-warning transition-all cursor-pointer group flex items-center justify-between"
+                      style={{ background: 'color-mix(in srgb, var(--c-auth-ambient) 85%, var(--c-navy-dark))' }}
                     >
                       <div className="flex items-center gap-1.5">
                         <UserCheck size={13} className="text-warning shrink-0" />
                         <div>
-                          <b className="text-mini sm:text-caption text-white block group-hover:text-warning leading-tight">علی اخوان (مدیر ارشد)</b>
-                          <span className="text-tiny text-slate-400 font-mono">a.akhavan · 123456</span>
+                          <b className="text-mini sm:text-caption text-(--c-auth-on-ambient) block group-hover:text-warning leading-tight">علی اخوان (مدیر ارشد)</b>
+                          <span className="text-tiny text-(--c-auth-on-ambient)/70 font-mono">a.akhavan · 123456</span>
                         </div>
                       </div>
                       <span className="text-tiny text-warning font-bold bg-primary-dark px-1.5 py-0.5 rounded border border-warning/40">انتخاب</span>
@@ -476,14 +476,14 @@ export function LoginWorkspace({
 
                     <div
                       onClick={() => applyAccount('s.rezaei', '123456')}
-                      className="p-1.5 sm:p-2 rounded-lg border border-white/10 hover:border-warning transition-all cursor-pointer group flex items-center justify-between"
-                      style={{ background: 'color-mix(in srgb, black 85%, var(--c-navy-dark))' }}
+                      className="p-1.5 sm:p-2 rounded-lg border border-(--c-auth-on-ambient)/10 hover:border-warning transition-all cursor-pointer group flex items-center justify-between"
+                      style={{ background: 'color-mix(in srgb, var(--c-auth-ambient) 85%, var(--c-navy-dark))' }}
                     >
                       <div className="flex items-center gap-1.5">
                         <UserCheck size={13} className="text-success shrink-0" />
                         <div>
-                          <b className="text-mini sm:text-caption text-white block group-hover:text-success leading-tight">سارا رضایی (مدیر فروش)</b>
-                          <span className="text-tiny text-slate-400 font-mono">s.rezaei · 123456</span>
+                          <b className="text-mini sm:text-caption text-(--c-auth-on-ambient) block group-hover:text-success leading-tight">سارا رضایی (مدیر فروش)</b>
+                          <span className="text-tiny text-(--c-auth-on-ambient)/70 font-mono">s.rezaei · 123456</span>
                         </div>
                       </div>
                       <span className="text-tiny text-warning font-bold bg-primary-dark px-1.5 py-0.5 rounded border border-warning/40">انتخاب</span>
@@ -491,14 +491,14 @@ export function LoginWorkspace({
 
                     <div
                       onClick={() => applyAccount('r.kamali', '123456')}
-                      className="p-1.5 sm:p-2 rounded-lg border border-white/10 hover:border-warning transition-all cursor-pointer group flex items-center justify-between"
-                      style={{ background: 'color-mix(in srgb, black 85%, var(--c-navy-dark))' }}
+                      className="p-1.5 sm:p-2 rounded-lg border border-(--c-auth-on-ambient)/10 hover:border-warning transition-all cursor-pointer group flex items-center justify-between"
+                      style={{ background: 'color-mix(in srgb, var(--c-auth-ambient) 85%, var(--c-navy-dark))' }}
                     >
                       <div className="flex items-center gap-1.5">
                         <UserCheck size={13} className="text-warning shrink-0" />
                         <div>
-                          <b className="text-mini sm:text-caption text-white block group-hover:text-warning leading-tight">رضا کمالی (مدیر مالی)</b>
-                          <span className="text-tiny text-slate-400 font-mono">r.kamali · 123456</span>
+                          <b className="text-mini sm:text-caption text-(--c-auth-on-ambient) block group-hover:text-warning leading-tight">رضا کمالی (مدیر مالی)</b>
+                          <span className="text-tiny text-(--c-auth-on-ambient)/70 font-mono">r.kamali · 123456</span>
                         </div>
                       </div>
                       <span className="text-tiny text-warning font-bold bg-primary-dark px-1.5 py-0.5 rounded border border-warning/40">انتخاب</span>
@@ -509,11 +509,11 @@ export function LoginWorkspace({
 
               {/* لینک ثبت‌نام پرسنل */}
               {applyEnabled && (
-                <div className="mt-2 pt-1.5 border-t border-white/10 text-center">
+                <div className="mt-2 pt-1.5 border-t border-(--c-auth-on-ambient)/10 text-center">
                   <button
                     type="button"
                     onClick={() => navigate('/apply')}
-                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-micro sm:text-caption font-bold text-emerald-300 hover:text-white hover:bg-emerald-500/15 transition-all cursor-pointer border border-emerald-400/25 hover:border-emerald-400/50 shadow-sm"
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-micro sm:text-caption font-bold text-emerald-300 hover:text-(--c-auth-on-ambient) hover:bg-emerald-500/15 transition-all cursor-pointer border border-emerald-400/25 hover:border-emerald-400/50 shadow-sm"
                   >
                     <span>فرم استخدام پرسنل جدید</span>
                     <span aria-hidden="true">←</span>
@@ -526,11 +526,11 @@ export function LoginWorkspace({
             <div
               key="auth-card-hint"
               onClick={() => handleLampToggle(true)}
-              className="relative overflow-hidden w-full rounded-2xl sm:rounded-3xl border border-white/10 hover:border-amber-400/40 p-5 sm:p-7 backdrop-blur-2xl text-center cursor-pointer group transition-all duration-500 flex flex-col items-center justify-center gap-4"
+              className="relative overflow-hidden w-full rounded-2xl sm:rounded-3xl border border-(--c-auth-on-ambient)/10 hover:border-amber-400/40 p-5 sm:p-7 backdrop-blur-2xl text-center cursor-pointer group transition-all duration-500 flex flex-col items-center justify-center gap-4"
               style={{
-                background: 'linear-gradient(145deg, color-mix(in srgb, var(--c-navy-dark) 92%, black) 0%, black 100%)',
+                background: 'linear-gradient(145deg, color-mix(in srgb, var(--c-navy-dark) 92%, var(--c-auth-ambient)) 0%, var(--c-auth-ambient) 100%)',
                 borderTop: '1px solid color-mix(in srgb, var(--c-copper) 45%, transparent)',
-                boxShadow: '0 25px 50px color-mix(in srgb, black 95%, transparent)',
+                boxShadow: '0 25px 50px color-mix(in srgb, var(--c-auth-ambient) 95%, transparent)',
                 animation: 'luxuryCardCinematicEntrance 0.65s cubic-bezier(0.16, 1, 0.3, 1) forwards',
               }}
               title="برای ورود، نخ آباژور را به پایین بکشید یا اینجا کلیک کنید"
@@ -569,8 +569,8 @@ export function LoginWorkspace({
                 <div
                   className="w-11 h-11 rounded-2xl flex items-center justify-center border border-amber-400/25 transition-transform duration-500 group-hover:scale-105"
                   style={{
-                    background: 'linear-gradient(135deg, color-mix(in srgb, var(--c-navy-dark) 80%, black) 0%, black 100%)',
-                    boxShadow: '0 4px 16px color-mix(in srgb, black 80%, transparent)',
+                    background: 'linear-gradient(135deg, color-mix(in srgb, var(--c-navy-dark) 80%, var(--c-auth-ambient)) 0%, var(--c-auth-ambient) 100%)',
+                    boxShadow: '0 4px 16px color-mix(in srgb, var(--c-auth-ambient) 80%, transparent)',
                   }}
                 >
                   <LockKeyhole size={18} className="text-amber-300/80 transition-colors group-hover:text-amber-200" />
@@ -582,10 +582,10 @@ export function LoginWorkspace({
 
               {/* متن دعوت اشرافی و کوتاه */}
               <div className="relative z-10 space-y-1.5 max-w-xs">
-                <h2 className="text-sm sm:text-base font-bold text-white tracking-wide">
+                <h2 className="text-sm sm:text-base font-bold text-(--c-auth-on-ambient) tracking-wide">
                   ورود به درگاه هوشمند سازمانی
                 </h2>
-                <p className="text-xs text-white/55 leading-relaxed font-sans">
+                <p className="text-xs text-(--c-auth-on-ambient)/55 leading-relaxed font-sans">
                   برای روشن‌شدن فضا و دسترسی به سامانه، نخ آباژور را به پایین بکشید یا اینجا ضربه بزنید.
                 </p>
               </div>
@@ -594,8 +594,8 @@ export function LoginWorkspace({
               <div
                 className="relative z-10 mt-1 px-4 py-2 rounded-xl border border-amber-400/30 text-amber-200 text-xs font-medium flex items-center gap-2 group-hover:border-amber-400/60 group-hover:text-amber-100 transition-all duration-300"
                 style={{
-                  background: 'color-mix(in srgb, var(--c-navy-dark) 60%, black)',
-                  boxShadow: '0 2px 10px color-mix(in srgb, black 60%, transparent)',
+                  background: 'color-mix(in srgb, var(--c-navy-dark) 60%, var(--c-auth-ambient))',
+                  boxShadow: '0 2px 10px color-mix(in srgb, var(--c-auth-ambient) 60%, transparent)',
                 }}
               >
                 <ArrowDownLeft size={14} className="text-amber-300 transition-transform duration-300 group-hover:-translate-x-0.5 group-hover:translate-y-0.5" />
@@ -609,23 +609,23 @@ export function LoginWorkspace({
       </div>
 
       {/* ================= بخش ۳: فوتر مینیمال با متن دقیق ================= */}
-      <footer className="relative z-20 shrink-0 py-2 sm:py-2.5 w-full px-4 border-t border-white/5 bg-black/80 backdrop-blur-md text-center flex flex-col items-center justify-center gap-0.5 select-none">
-        <span className="font-bold text-mini sm:text-small tracking-[0.26em] text-white/90 font-sans uppercase">
+      <footer className="relative z-20 shrink-0 py-2 sm:py-2.5 w-full px-4 border-t border-(--c-auth-on-ambient)/5 bg-(--c-auth-ambient)/80 backdrop-blur-md text-center flex flex-col items-center justify-center gap-0.5 select-none">
+        <span className="font-bold text-mini sm:text-small tracking-[0.26em] text-(--c-auth-on-ambient)/90 font-sans uppercase">
           AKHAVAN GROUP
         </span>
-        <span className="text-pico sm:text-tiny tracking-[0.22em] text-white/60 font-mono uppercase">
+        <span className="text-pico sm:text-tiny tracking-[0.22em] text-(--c-auth-on-ambient)/60 font-mono uppercase">
           INTELLIGENCE IN EVERY CONNECTION · EXCELLENCE IN EVERY DECISION
         </span>
       </footer>
 
       {/* مودال ترنزیشن هنگام ورود */}
       {warpActive && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-xl" aria-live="assertive">
-          <div className="p-6 rounded-2xl border border-warning/40 bg-black max-w-xs w-full text-center shadow-2xl space-y-3">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-(--c-auth-ambient)/90 backdrop-blur-xl" aria-live="assertive">
+          <div className="p-6 rounded-2xl border border-warning/40 bg-(--c-auth-ambient) max-w-xs w-full text-center shadow-2xl space-y-3">
             <div
               className="w-10 h-10 mx-auto rounded-xl flex items-center justify-center text-warning-soft font-black text-lg animate-pulse border border-warning/50"
               style={{
-                background: 'linear-gradient(135deg, var(--c-forest-dark) 0%, black 100%)',
+                background: 'linear-gradient(135deg, var(--c-forest-dark) 0%, var(--c-auth-ambient) 100%)',
               }}
             >
               A
@@ -666,7 +666,7 @@ export function LoginWorkspace({
             opacity: 1;
             transform: perspective(900px) translateX(0) translateY(0) rotateY(0) scale(1);
             filter: blur(0px);
-            box-shadow: 0 20px 45px color-mix(in srgb, black 90%, transparent), 0 0 25px color-mix(in srgb, var(--c-cobalt) 20%, transparent);
+            box-shadow: 0 20px 45px color-mix(in srgb, var(--c-auth-ambient) 90%, transparent), 0 0 25px color-mix(in srgb, var(--c-cobalt) 20%, transparent);
           }
         }
 

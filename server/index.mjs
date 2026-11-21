@@ -9,6 +9,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import fs from 'node:fs';
 import { createEntityService, FileEntityDriver, MssqlEntityDriver, MemoryEntityDriver } from './entityStore.mjs';
+import { createAccountDirectory } from './accountDirectory.mjs';
 import { createCollectionActions } from './collectionActions.mjs';
 import { createPublicRecruitment } from './publicRecruitment.mjs';
 import { buildReportStatus } from './reportStatus.mjs';
@@ -762,6 +763,11 @@ app.post('/api/v1/public/recruitment/applications', wrap(async (req, res) => {
   const result = await publicRecruitment.submit(req.body);
   if (!result.receipt) return bad(req, res, result.status, 'RECRUITMENT_NOT_ACCEPTED', result.message);
   res.status(result.status).json(result.receipt);
+}));
+
+const searchAccountDirectory = createAccountDirectory({ sql, run: withTenantContext, excludeFixtures: isProduction });
+app.post('/api/v1/accounts/search', authenticate, requirePermission('accounts.VIEW'), wrap(async (req, res) => {
+  res.json(await searchAccountDirectory(req.auth, req.body?.query, req.body?.page));
 }));
 
 const submitCollectionAction = createCollectionActions({ sql, run: withTenantContext });

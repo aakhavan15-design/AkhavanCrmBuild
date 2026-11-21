@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { AppState } from '../../types';
 import { DynamicFormRenderer } from '../shared/DynamicFormRenderer';
-import { DocumentField, DocFile } from '../shared/DocumentField';
+import { DocumentField, type DocFile, RECRUITMENT_DOCUMENT_TYPES } from '../shared/DocumentField';
 import { createApplicationFormSchema } from '../../services/dynamicFormEngine';
 import { useDataQuery } from '../../hooks/useDataProvider';
 import { getActiveDataProvider } from '../../services/dataProvider';
@@ -76,7 +76,7 @@ export function ApplyPage({ state }: { state: AppState }) {
       {step === 0 && <DynamicFormRenderer schema={createApplicationFormSchema(cfg.desiredRoles, cfg.requireNationalId)} initialValues={values} submitLabel="ادامه: بارگذاری مدارک" onSubmit={v => { setValues(v); setErrors([]); setStep(1); }} />}
       {step === 1 && (
         <div className="space-y-3">
-          {cfg.requiredDocs.map(d => <DocumentField key={d.key} label={d.label} required={d.required} value={docs[d.key] || null} onChange={f => setDocs(p => ({ ...p, [d.key]: f }))} />)}
+          {cfg.requiredDocs.map(d => <DocumentField allowedTypes={RECRUITMENT_DOCUMENT_TYPES} key={d.key} label={d.label} required={d.required} value={docs[d.key] || null} onChange={f => setDocs(p => ({ ...p, [d.key]: f }))} />)}
           {missingDocs.length > 0 && <p className="se-caption">مدارک الزامی باقی‌مانده: {missingDocs.map(d => d.label).join('، ')}</p>}
           <div className="flex gap-2"><Button variant="ghost" onClick={() => setStep(0)}>مرحله قبل</Button><Button variant="primary" disabled={missingDocs.length > 0} onClick={() => setStep(2)}>مرور و ارسال</Button></div>
         </div>)}

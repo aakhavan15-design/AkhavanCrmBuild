@@ -1,3 +1,5 @@
+import { ChartCard } from './charts/ChartCard';
+import { WorkspaceViewSwitcher } from './shared/WorkspaceViewSwitcher';
 import React, { useMemo, useState } from 'react';
 import { DemoTrustBanner } from './shared/DemoTrustBanner';
 import { useTabParam } from '../hooks/useTabParam';
@@ -104,7 +106,9 @@ export function OperationsControlWorkspace({ state, updateState }: Props) {
 
   const [tab, setTab] = useTabParam<Tab>(visibleTabs.map(t => t.id), 'overview');
   const activeArea = areaOf(OPERATIONS_AREAS, tab);
-  const areaTabs = visibleTabs.filter(t => activeArea.views.some(v => v.id === t.id));
+  const visibleAreas = OPERATIONS_AREAS.map(area => ({ ...area,
+    views: area.views.filter(view => visibleTabs.some(tab => tab.id === view.id)),
+  })).filter(area => area.views.length > 0);
   const isDistributionArea = activeArea.id === 'distribution';
   const totalOrderValue = orders.filter(o => o.status !== 'CANCELLED').reduce((sum, o) => sum + Number(o.totalAmount || 0), 0);
   const totalReturns = returns.reduce((sum, r) => sum + Number(r.amount || 0), 0);
@@ -267,9 +271,11 @@ export function OperationsControlWorkspace({ state, updateState }: Props) {
         </div>
       </div>
 
+      <WorkspaceViewSwitcher<Tab> id="ops-tabs" label="بخش عملیات" areas={visibleAreas} value={tab} onChange={setTab} />
+
       <VerdictStrip
-        verdict={openCases > 0 ? `${openCases} مورد مغایرت در فرآیند توزیع نیازمند رسیدگی است` : `فرآیند ارسال و توزیع ناوگان در وضعیت نرمال قرار دارد`}
-        magnitude={`پوشش بهای تمام‌شده: ${Math.round(costCoverage * 100)}٪`}
+        verdict={openCases > 0 ? `${formatCount(openCases)} مورد مغایرت در فرآیند توزیع نیازمند رسیدگی است` : `فرآیند ارسال و توزیع ناوگان در وضعیت نرمال قرار دارد`}
+        magnitude={`پوشش بهای تمام‌شده: ${formatCount(Math.round(costCoverage * 100))}٪`}
         tone={openCases > 0 ? 'warning' : 'success'}
         actionLabel={openCases > 0 ? 'مشاهده مغایرت‌ها' : undefined}
         onAction={() => setTab('reconciliation')}
@@ -301,26 +307,6 @@ export function OperationsControlWorkspace({ state, updateState }: Props) {
             <span className="text-micro text-text-secondary mt-0.5 block">نیازمند رسیدگی</span>
           </button>
         </div>
-      )}
-
-      {areaTabs.length > 1 && (
-        <section id="ops-tabs" data-tour-actions className="rounded-xl border border-border bg-surface p-2 shadow-xs" aria-label={`نماهای ${activeArea.title}`}>
-          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
-            {areaTabs.map(t => (
-              <button
-                key={t.id}
-                onClick={() => setTab(t.id as Tab)}
-                className={`h-8 px-3 rounded-lg text-xs font-bold whitespace-nowrap cursor-pointer transition-colors ${
-                  tab === t.id
-                    ? 'bg-primary text-on-primary shadow-xs'
-                    : 'text-text-secondary hover:text-text-main hover:bg-canvas'
-                }`}
-              >
-                {t.label}
-              </button>
-            ))}
-          </div>
-        </section>
       )}
 
       {tab==='overview' && (
@@ -411,21 +397,10 @@ export function OperationsControlWorkspace({ state, updateState }: Props) {
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-            <Card padding="md" className="space-y-3 rounded-xl border border-border bg-surface">
-              <div className="flex justify-between items-center text-xs">
-                <span className="font-bold text-text-main">علل ثبت‌شده مرجوعی کالا</span>
-                <span className="text-micro text-text-secondary">تفکیک علل</span>
-              </div>
-              <div className="py-2 flex justify-center">
-                <DonutChart
-                  size={150}
-                  thickness={16}
-                  segments={returnCausesSegments}
-                  centerLabel="تعداد برگشتی"
-                  centerValue={formatCount(returnCausesSegments.reduce((sum, segment) => sum + segment.value, 0))}
-                />
-              </div>
-            </Card>
+            <ChartCard title="علل ثبت‌شده مرجوعی کالا" periodLabel="تعداد در داده‌های قابل مشاهده"
+              empty={!returnCausesSegments.some(segment => segment.value > 0)} sourceLabel="اسناد برگشتِ قابل مشاهده">
+              <DonutChart size={150} thickness={16} segments={returnCausesSegments} centerLabel="تعداد برگشتی" />
+            </ChartCard>
 
             <Card padding="md" className="space-y-3 rounded-xl border border-border bg-surface">
               <div className="flex justify-between items-center text-xs">

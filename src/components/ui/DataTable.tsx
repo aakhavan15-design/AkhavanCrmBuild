@@ -9,6 +9,8 @@ import {
   paginate, rangeIds, searchRows, sortRows, toCsv
 } from '../../lib/tableEngine';
 import { PageToolbar, ActiveFilter } from './PageToolbar';
+import { Button } from './Button';
+import { Input } from './Input';
 import { EmptyState } from './EmptyState';
 import { ErrorState } from './Skeleton';
 
@@ -41,6 +43,7 @@ export interface BulkAction<T> {
 export interface DataTableProps<T> {
   /** شناسهٔ پایدار برای ذخیرهٔ ترجیحات نما (چگالی، ستونها، اندازهٔ صفحه، مرتبسازی) */
   tableId: string;
+  savedFiltersScope?: string;
   rows: readonly T[];
   columns: readonly DataTableColumn<T>[];
   getRowId: (row: T) => string;
@@ -88,6 +91,17 @@ interface ViewPrefs { density: Density; pageSize: number; hidden: string[]; sort
 const readPrefs = (key: string): Partial<ViewPrefs> => {
   try { const raw = window.localStorage.getItem(key); return raw ? JSON.parse(raw) : {}; } catch { return {}; }
 };
+interface SavedFilter { name: string; selection: FilterSelection }
+function loadSavedFilters(key: string | null): SavedFilter[] {
+  if (!key) return [];
+  try {
+    const entries: unknown = JSON.parse(window.localStorage.getItem(key) || '[]');
+    if (!Array.isArray(entries)) return [];
+    return entries.filter((item): item is SavedFilter => Boolean(item && typeof item.name === 'string'
+      && item.selection && typeof item.selection === 'object')).slice(0, 10);
+  } catch { return []; }
+}
+
 const writePrefs = (key: string, prefs: ViewPrefs) => {
   try { window.localStorage.setItem(key, JSON.stringify(prefs)); } catch { /* ذخیرهسازی در دسترس نیست؛ فقط نشست جاری */ }
 };
@@ -176,6 +190,23 @@ export function DataTable<T>(props: DataTableProps<T>) {
   const [internalSelection, setInternalSelection] = useState<FilterSelection>({});
   const filterSelection = props.selection ?? internalSelection;
   const setFilterSelection = (next: FilterSelection) => { (props.onSelectionChange ?? setInternalSelection)(next); setPage(1); };
+  const savedFiltersKey = props.savedFiltersScope ? `${prefsKey}:filters:${props.savedFiltersScope}` : null;
+  const [savedFilterName, setSavedFilterName] = useState('');
+  const [savedFilterVersion, setSavedFilterVersion] = useState(0);
+  const filters = useMemo(() => loadSavedFilters(savedFiltersKey), [savedFiltersKey, savedFilterVersion]);
+  const validFilters = (input: FilterSelection): FilterSelection => Object.fromEntries(filterGroups.flatMap(group => {
+    const values = input[group.id];
+    const matches = Array.isArray(values) ? values.filter(value => group.options.some(option => option.value === value)) : [];
+    return matches.length ? [[group.id, matches]] : [];
+  }));
+  const storeFilters = (next: SavedFilter[]) => {
+    if (!savedFiltersKey) return;
+    try {
+      window.localStorage.setItem(savedFiltersKey, JSON.stringify(next.slice(0, 10)));
+      setSavedFilterVersion(version => version + 1);
+      setSavedFilterName('');
+    } catch { setNotice('ذخیرهٔ فیلتر در این مرورگر در دسترس نیست.'); }
+  };
   const [sort, setSort] = useState<SortState | null>(saved.sort === undefined ? defaultSort : saved.sort);
   const [density, setDensity] = useState<Density>(saved.density === 'comfortable' ? 'comfortable' : 'compact');
   const [pageSize, setPageSize] = useState<number>(pageSizes.includes(Number(saved.pageSize)) ? Number(saved.pageSize) : pageSizes[0]);
@@ -289,6 +320,20 @@ export function DataTable<T>(props: DataTableProps<T>) {
         })}
       </Popover>;
     })}
+    {savedFiltersKey && filterGroups.length > 0 && <Popover label="فیلترهای ذخیره‌شده">
+      {filters.length ? filters.map(item => <div key={item.name} className="flex items-center justify-between">
+        <Button type="button" variant="ghost" size="sm" onClick={() => setFilterSelection(validFilters(item.selection))}>{item.name}</Button>
+        <Button type="button" variant="ghost" size="sm" aria-label={`حذف فیلتر ${item.name}`}
+          onClick={() => storeFilters(filters.filter(filter => filter.name !== item.name))}><X size={15} aria-hidden /></Button>
+      </div>) : <p className="p-2 text-caption text-text-secondary">فیلتر ذخیره‌شده‌ای ندارید.</p>}
+      <div className="space-y-2 border-t border-border pt-2">
+        <Input label="نام فیلتر فعلی" value={savedFilterName} maxLength={40} onChange={event => setSavedFilterName(event.target.value)} />
+        <Button type="button" size="sm" variant="outline" disabled={!savedFilterName.trim() || !activeFilters.length}
+          onClick={() => { const name = savedFilterName.trim(); storeFilters([{ name, selection: validFilters(filterSelection) }, ...filters.filter(item => item.name !== name)]); }}>
+          ذخیرهٔ فیلتر فعلی
+        </Button>
+      </div>
+    </Popover>}
     <Popover label="ستونها" icon={<Columns3 size={15} />} align="end">
       {columns.map(c => {
         const locked = c.hideable === false || c.primary;

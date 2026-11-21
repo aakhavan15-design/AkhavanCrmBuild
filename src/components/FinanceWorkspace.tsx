@@ -1,3 +1,4 @@
+import { WorkspaceViewSwitcher } from './shared/WorkspaceViewSwitcher';
 import { getActiveDataProvider } from '../services/dataProvider';
 import { guard, useCan } from '../hooks/useCan';
 import React, { useState, useMemo } from 'react';
@@ -440,32 +441,7 @@ export function FinanceWorkspace({ state, updateState }: FinanceWorkspaceProps) 
         </div>
       )}
 
-      {/* ناوبری مالی: چهار کانون کاری به‌جای ردیف بلند تب‌ها؛ زیرنماها در یک انتخابگر */}
-      <section id="fin-tabs" data-tour-actions className="rounded-2xl border border-border/70 bg-surface p-2.5 shadow-xs space-y-2" aria-label="بخش‌های اصلی امور مالی">
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-1.5">
-          {FINANCE_AREAS.map(area => {
-            const selected = area.id === activeArea.id;
-            const primaryView = area.views[0]?.id as FinanceView;
-            const count = area.views.length;
-            return (
-              <button type="button" key={area.id} onClick={() => setLocalTab(primaryView)} aria-current={selected ? 'page' : undefined} className={`min-h-11 rounded-xl px-3 py-2 text-right transition-colors ${selected ? 'bg-primary text-on-primary shadow-sm' : 'bg-canvas/70 text-text-secondary hover:bg-primary/5 hover:text-text-main'}`}>
-                <span className="block text-xs font-bold">{area.title}</span>
-                <span className={`mt-0.5 block text-micro ${selected ? 'text-on-primary/75' : 'text-text-muted'}`}>{count === 1 ? 'نمای یکپارچه' : `${count.toLocaleString('fa-IR')} نمای مرتبط`}</span>
-              </button>
-            );
-          })}
-        </div>
-        {activeArea.views.length > 1 && (
-          <div className="flex flex-col sm:flex-row sm:items-center gap-2 border-t border-border/60 pt-2">
-            <label htmlFor="finance-subview" className="shrink-0 text-caption font-semibold text-text-secondary">نمای جزئی‌تر</label>
-            <Select density="compact" id="finance-subview" value={activeTab} onChange={event => setLocalTab(event.target.value as FinanceView)}
-              className="sm:max-w-sm">
-              {activeArea.views.map(view => <option key={view.id} value={view.id}>{view.label}</option>)}
-            </Select>
-            <span className="text-micro text-text-muted">همه قابلیت‌ها حفظ شده‌اند؛ فقط مسیر دسترسی ساده‌تر شده است.</span>
-          </div>
-        )}
-      </section>
+      <WorkspaceViewSwitcher<FinanceView> id="fin-tabs" label="بخش مالی" areas={FINANCE_AREAS} value={activeTab} onChange={setLocalTab} />
 
       {/* لیست فاکتورها */}
       {activeTab === 'invoices' && (

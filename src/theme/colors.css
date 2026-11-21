@@ -5,6 +5,13 @@
  */
 :root {
   /* Layout metrics — content padding must clear sticky header / bottom nav */
+  --c-print-paper: #fff;
+  --c-print-canvas: #f7f8fa;
+  --c-print-ink: #182337;
+  --c-print-muted: #44536b;
+  --c-print-line: #cfd7e3;
+  --c-auth-ambient: #0b1422;
+  --c-auth-on-ambient: #fff;
   --header-h: 56px;
   --nav-h: 64px;
   --space-3: 12px;

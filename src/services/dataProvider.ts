@@ -173,6 +173,8 @@ export interface CashFlowDataResult {
   reason?: string;
 }
 
+export interface AccountDirectoryPage { items: Account[]; page: number; pageSize: number; hasMore: boolean }
+
 export interface CollectionActionInput {
   requestId: string;
   kind: 'FOLLOW_UP' | 'PROMISE';
@@ -207,6 +209,7 @@ export interface DataProvider {
   submitPublicApplication(input: PublicApplicationSubmission): Promise<PublicApplicationReceipt>;
 
   // Accounts
+  searchAccountDirectory(query: string, page: number): Promise<AccountDirectoryPage | null>;
   getAccounts(filter?: any, pagination?: PaginationParams): Promise<PaginatedResult<Account>>;
   getAccountById(id: string): Promise<Account | null>;
   createAccount(account: Partial<Account>, idempotencyKey?: string): Promise<Account>;
@@ -281,6 +284,7 @@ const MAX_PNL_JOURNAL_PAGES = 100;
  * 1. پیاده‌سازی ارائه‌دهنده داده سمت کلاینت (IndexedDB / Local-first)
  */
 export class ClientStorageDataProvider implements DataProvider {
+  async searchAccountDirectory(): Promise<null> { return null; }
   async submitCollectionAction(): Promise<{ id: string }> {
     throw new Error('ثبت پیگیری وصول نیازمند اتصال به سرور است.');
   }
@@ -658,6 +662,9 @@ export class ClientStorageDataProvider implements DataProvider {
  * 2. پیاده‌سازی ارائه‌دهنده داده مستقیم به Backend سرور و SQL Server
  */
 export class HttpBackendDataProvider implements DataProvider {
+  async searchAccountDirectory(query: string, page: number): Promise<AccountDirectoryPage> {
+    return this.request('/accounts/search', { method: 'POST', body: JSON.stringify({ query, page }) });
+  }
   async submitCollectionAction(accountId: string, input: CollectionActionInput): Promise<{ id: string }> {
     const receipt = await this.request<{ id: string; status: string }>(`/finance/collections/${encodeURIComponent(accountId)}/actions`, {
       method: 'POST', body: JSON.stringify(input),
@@ -826,7 +833,7 @@ export class HttpBackendDataProvider implements DataProvider {
   }
 
   async getAccountById(id: string): Promise<Account | null> {
-    const res = await this.request<Account>(`/accounts/${id}`);
+    const res = await this.request<Account>(`/accounts/${encodeURIComponent(id)}`);
     return res || null;
   }
 

@@ -13,7 +13,8 @@ export function DonutChart({ segments, centerValue, centerLabel, size = 168, thi
   const r = 60 - thickness / 2;
   let a = 0;
   const visible = segments.filter(s => s.value > 0);
-  const centerText = String(hot !== null ? fNum(segments[hot].value) : typeof centerValue === 'number' ? fNum(Math.round(animatedCenterValue)) : (centerValue ?? fNum(total)));
+  const hovered = hot === null ? null : segments[hot];
+  const centerText = String(hovered ? fNum(hovered.value) : typeof centerValue === 'number' ? fNum(Math.round(animatedCenterValue)) : (centerValue ?? fNum(total)));
   return (
     <div className="flex flex-wrap items-center justify-center gap-6">
       <div className="relative shrink-0" style={{ width: size, height: size }}>
@@ -36,12 +37,12 @@ export function DonutChart({ segments, centerValue, centerLabel, size = 168, thi
                          onMouseEnter={() => setHot(i)} onFocus={() => setHot(i)} onBlur={() => setHot(null)} onTouchStart={() => setHot(i)} onClick={() => onSegmentClick?.(s)} onKeyDown={e => { if (onSegmentClick && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); onSegmentClick(s); } }} style={{ opacity: (hot === null && !activeSegment) || hot === i || activeSegment === s.label ? 1 : .38, cursor: onSegmentClick ? 'pointer' : 'default', transition: 'opacity 300ms ease, stroke-width 300ms ease' }} />;
           })}
         </svg>
-        <div className="absolute inset-0 grid place-items-center">
+        <div className="pointer-events-none absolute inset-0 grid place-items-center">
           <div className="grid place-items-center rounded-full bg-card text-center ring-1 ring-border/40"
                style={{ width: size * 0.56, height: size * 0.56 }}>
-            <div>
+            <div className="min-w-0 max-w-full wrap-break-word px-1">
               <div className={`max-w-full px-1 font-extrabold leading-none tabular-nums text-ink ${centerText.length <= 6 ? 'text-kpi' : centerText.length <= 9 ? 'text-h2' : 'text-compact'}`}>{centerText}</div>
-              {(hot !== null || centerLabel) && <div className="mt-1 text-micro font-medium text-ink-soft">{hot !== null ? segments[hot].label : centerLabel}</div>}
+              {(hovered || centerLabel) && <div className="mt-1 text-micro font-medium text-ink-soft">{hovered ? hovered.label : centerLabel}</div>}
             </div>
           </div>
         </div>

@@ -50,6 +50,7 @@ export class StateSyncEngine {
   }
 
   getStatus(): SyncStatus { return this.status; }
+  isRecordAcknowledged(collection: string, id: string): boolean { return this.index.collections[collection]?.has(id) ?? false; }
   onStatus(fn: (s: SyncStatus) => void): () => void { this.listeners.add(fn); fn(this.status); return () => this.listeners.delete(fn); }
   private set(patch: Partial<SyncStatus>) { this.status = { ...this.status, ...patch }; this.listeners.forEach(fn => fn(this.status)); }
 

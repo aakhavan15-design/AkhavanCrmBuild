@@ -1,3 +1,5 @@
+import { getStateSyncEngine } from '../services/stateSyncRuntime';
+import { useDataSyncStatus } from '../services/dataSyncController';
 import { useDeepLinkCreate } from '../hooks/useDeepLinkCreate';
 import { BottomSheet } from './ui/BottomSheet';
 import { toast } from './ui/Toast';
@@ -50,6 +52,13 @@ const ENTITY_ICON: Record<string, React.ElementType> = { ACCOUNT: Building2, CUS
 export function GroupsWorkspace({ state, updateState }: Props) {
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
+  const syncStatus = useDataSyncStatus();
+  const [retryingMessage, setRetryingMessage] = useState(false);
+  async function retrySend() {
+    if (retryingMessage) return;
+    setRetryingMessage(true);
+    try { await syncStatus.syncNow(); } finally { setRetryingMessage(false); }
+  }
   const me = state.currentUserId || '';
   const rbac = useMemo(() => new RBACService(state), [state]);
   const { denied } = useCan(state, updateState);
@@ -417,6 +426,7 @@ export function GroupsWorkspace({ state, updateState }: Props) {
                 const reply = m.replyToId ? messages.find(x => x.id === m.replyToId) : null;
                 const others = activeGroup.memberIds.filter((id: string) => id !== m.senderId);
                 const seen = others.filter((id: string) => m.readBy?.includes(id)).length;
+                const pending = mine && syncStatus.isSqlActive && !getStateSyncEngine()?.isRecordAcknowledged('messages', m.id);
                 const sel = selectedMsg === m.id;
                 return (
                   <React.Fragment key={m.id}>
@@ -462,7 +472,15 @@ export function GroupsWorkspace({ state, updateState }: Props) {
                         {Array.isArray(m.reactions) && m.reactions.some(r => (r.userIds || []).length) && <div className="mt-1 flex flex-wrap gap-1" aria-label="واکنش‌ها">{m.reactions.filter(r => (r.userIds || []).length).map(r => <button key={r.emoji} onClick={e => { e.stopPropagation(); toggleReaction(m, r.emoji); }} aria-pressed={(r.userIds || []).includes(me)} className={cn('rounded-full border px-2 py-0.5 text-caption', (r.userIds || []).includes(me) ? 'border-primary/40 bg-primary/10' : 'border-border bg-surface')}>{r.emoji} {fa(r.userIds.length)}</button>)}</div>}
                         <div className="mt-0.5 flex items-center gap-1.5 px-1 text-micro text-text-secondary">
                           <span>{timeOf(m.createdAt)}</span>{m.editedAt && <span>· ویرایش‌شده</span>}
-                          {mine && !m.deleted && (seen >= others.length && others.length > 0 ? <CheckCheck size={13} className="text-success" aria-label="دیده شد" /> : seen > 0 ? <span className="flex items-center gap-0.5"><CheckCheck size={13} aria-hidden />{fa(seen)}/{fa(others.length)}</span> : <Check size={13} aria-label="پیام ثبت‌شده در گفتگو" />)}
+                          {mine && !m.deleted && (pending
+                            ? <><span>{syncStatus.lastError ? 'تأیید سرور نرسید' : 'در صف ارسال'}</span>
+                              {syncStatus.lastError && <Button type="button" variant="ghost" size="xs" disabled={retryingMessage}
+                                onClick={() => void retrySend()}>تلاش دوباره</Button>}</>
+                            : !syncStatus.isSqlActive ? <span>ذخیرهٔ محلی</span>
+                            : seen >= others.length && others.length > 0
+                              ? <CheckCheck size={13} className="text-success" aria-label="خوانده شد" />
+                              : seen > 0 ? <span className="flex items-center gap-0.5"><CheckCheck size={13} aria-hidden />{fa(seen)}/{fa(others.length)}</span>
+                                : <Check size={13} aria-label="ثبت در سرور" />)}
                         </div>
                         {sel && !m.deleted && (
                           <div className="se-panel-enter mt-1 flex flex-wrap items-center gap-1 rounded-2xl border border-border bg-surface p-1.5 shadow-card" onClick={e => e.stopPropagation()}>
