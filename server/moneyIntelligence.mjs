@@ -2,7 +2,7 @@ import { FIFO_COST_METHOD } from './fifoInventory.mjs';
 
 const DAY = 86_400_000;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
-const modes = new Set(['cash', 'outflow', 'expense', 'role', 'balance', 'opening', 'review', 'fifo', 'profit', 'bank']);
+const modes = new Set(['cash', 'outflow', 'expense', 'role', 'balance', 'opening', 'review', 'fifo', 'profit', 'bank', 'cash-accounts', 'cash-account']);
 
 function dateValue(value) {
   if (typeof value !== 'string' || !DATE.test(value) || value < '1900-01-01') return null;
@@ -22,11 +22,13 @@ export function parseMoneyReportQuery(query) {
   const page = typeof query.page === 'string' && /^\d{1,4}$/.test(query.page) ? Number(query.page) : query.page === undefined ? 1 : 0;
   const key = query.key ?? null;
   const search = query.search ?? '';
+  const detail = query.detail ?? '';
   const dimension = query.dimension ?? '';
   if ((mode !== null && !modes.has(mode)) || page < 1 || page > 1000 ||
       (key !== null && (typeof key !== 'string' || key.length > 120)) || typeof search !== 'string' || search.length > 100 ||
+      typeof detail !== 'string' || detail.length > 120 || (mode === 'cash-account' && !key?.trim()) ||
       !['', 'category', 'center', 'party', 'month'].includes(dimension)) return null;
-  return { from, to, mode, key, page, search: search.trim(), dimension,
+  return { from, to, mode, key, page, detail, search: search.trim(), dimension,
     priorStart: new Date(start - span * DAY).toISOString().slice(0, 10) };
 }
 
@@ -217,6 +219,8 @@ LEFT JOIN #cash c ON c.journalId=d.journalId
 LEFT JOIN #analysis a ON a.lineId=l.lineId AND (@mode='outflow' OR @mode='expense')
 WHERE ((@mode IN ('balance','opening') AND j.issue IS NULL AND l.role=@key
     AND (@mode='balance' OR d.[date]<@from OR d.isOpening=1))
+  OR (@mode='cash-account' AND j.issue IS NULL AND l.role='CASH' AND l.accountCode=@key
+    AND COALESCE(NULLIF(l.detailCode,N''),N'')=@detail)
   OR (@mode='review' AND d.[date]>=@from AND (j.issue IS NOT NULL OR c.movement='MIXED' OR (c.movement='OUT' AND c.otherCredits>0)))
   OR (d.[date]>=@from AND d.isOpening=0 AND d.isClosing=0 AND j.issue IS NULL AND
     ((@mode='cash' AND c.movement<>'NONE' AND (@key IS NULL OR c.movement=@key))
@@ -227,6 +231,20 @@ WHERE ((@mode IN ('balance','opening') AND j.issue IS NULL AND l.role=@key
   AND (@search='' OR CHARINDEX(@search,d.DocumentNumber)>0 OR CHARINDEX(@search,d.ExternalJournalId)>0
     OR CHARINDEX(@search,l.accountCode)>0 OR CHARINDEX(@search,l.detailCode)>0 OR CHARINDEX(@search,l.refId)>0)
 ORDER BY d.[date] DESC,d.journalId,l.lineId
+OFFSET @offset ROWS FETCH NEXT 26 ROWS ONLY;`;
+
+const cashAccountsSql = `
+SELECT l.accountCode,NULLIF(l.detailCode,N'') AS detailCode,MAX(l.accountTitle) AS accountTitle,MAX(l.partyTitle) AS partyTitle,
+  CONVERT(varchar(48),SUM(CASE WHEN l.[date]<@from OR l.isOpening=1 THEN l.debit-l.credit ELSE 0 END)) AS opening,
+  CONVERT(varchar(48),SUM(l.debit-l.credit)) AS closing,
+  CONVERT(varchar(48),SUM(CASE WHEN l.[date]>=@from AND l.isOpening=0 THEN l.debit ELSE 0 END)) AS periodDebit,
+  CONVERT(varchar(48),SUM(CASE WHEN l.[date]>=@from AND l.isOpening=0 THEN l.credit ELSE 0 END)) AS periodCredit
+FROM #lines l JOIN #journal j ON j.journalId=l.journalId AND j.issue IS NULL
+WHERE l.role='CASH'
+GROUP BY l.accountCode,NULLIF(l.detailCode,N'')
+HAVING @search='' OR CHARINDEX(@search,l.accountCode)>0 OR CHARINDEX(@search,NULLIF(l.detailCode,N''))>0
+  OR CHARINDEX(@search,MAX(l.accountTitle))>0 OR CHARINDEX(@search,MAX(l.partyTitle))>0
+ORDER BY l.accountCode,NULLIF(l.detailCode,N'')
 OFFSET @offset ROWS FETCH NEXT 26 ROWS ONLY;`;
 
 // A published set is usable only when every exact-date ERP inventory position is matched
@@ -342,17 +360,23 @@ function expenseCalendar(filter) {
 }
 const profitRoles = new Set(['PNL_INCOME', 'PNL_EXPENSE', 'PNL_NONCASH']);
 
+function reportCoverage(meta, filter) {
+  if (!meta) return { openingKnown: false, periodCovered: false, priorCovered: false };
+  const precedingDay = new Date(Date.parse(filter.from) - DAY).toISOString().slice(0, 10);
+  const openingKnown = filter.from >= meta.openingDate && precedingDay <= meta.verifiedThrough &&
+    Number(meta.openingDocuments) > 0 && Number(meta.excludedOpening) === 0;
+  const periodCovered = filter.from >= meta.openingDate && filter.to <= meta.verifiedThrough && Number(meta.excludedPeriod) === 0;
+  const priorCovered = filter.priorStart >= meta.openingDate && precedingDay <= meta.verifiedThrough && Number(meta.excludedPrior) === 0;
+  return { openingKnown, periodCovered, priorCovered };
+}
+
 export function projectMoneyReport(result, filter) {
   const [metadataRows, trend, balances, grouped, unallocatedRows, fifoRows, bankRows = []] = result;
   const meta = metadataRows[0];
   if (!meta) return { status: 'UNAVAILABLE', reason: 'منبع دفتر کل و پوشش تأییدشده برای این گزارش تنظیم نشده است.' };
 
   const observed = trend.length > 0;
-  const precedingDay = new Date(Date.parse(filter.from) - DAY).toISOString().slice(0, 10);
-  const openingKnown = filter.from >= meta.openingDate && precedingDay <= meta.verifiedThrough &&
-    Number(meta.openingDocuments) > 0 && Number(meta.excludedOpening) === 0;
-  const periodCovered = filter.from >= meta.openingDate && filter.to <= meta.verifiedThrough && Number(meta.excludedPeriod) === 0;
-  const priorCovered = filter.priorStart >= meta.openingDate && precedingDay <= meta.verifiedThrough && Number(meta.excludedPrior) === 0;
+  const { openingKnown, periodCovered, priorCovered } = reportCoverage(meta, filter);
   const roles = new Map(balances.map(row => [row.role,row]));
   const fifo = Object.fromEntries(fifoRows.map(row => [row.side,row]));
   const movement = field => observed || periodCovered ? decimal(sum(trend, field)) : null;
@@ -419,10 +443,19 @@ export function createMoneyIntelligenceReader({ sql, run }) {
       return { items: result.recordset, hasMore: false };
     }
     if (filter.mode) {
-      request.input('mode', sql.VarChar(12), filter.mode)
+      request.input('mode', sql.VarChar(20), filter.mode)
         .input('key', sql.NVarChar(120), filter.key)
+        .input('detail', sql.NVarChar(120), filter.detail)
         .input('search', sql.NVarChar(100), filter.search)
         .input('offset', sql.Int, (filter.page - 1) * 25);
+      if (filter.mode === 'cash-accounts') {
+        const result = await request.query(`${profileSql}${prepare}${metadata}${cashAccountsSql}`);
+        const [meta, accounts] = result.recordsets;
+        const { openingKnown, periodCovered } = reportCoverage(meta[0], filter);
+        return { items: accounts.slice(0, 25).map(row => ({
+          ...row, opening: openingKnown ? row.opening : null, closing: openingKnown && periodCovered ? row.closing : null,
+        })), hasMore: filter.page < 1000 && accounts.length > 25 };
+      }
       const result = await request.query(filter.mode === 'fifo'
         ? `${profileSql}${fifoPrepare}${fifoEvidence}`
         : `${profileSql}${prepare}${evidence}`);

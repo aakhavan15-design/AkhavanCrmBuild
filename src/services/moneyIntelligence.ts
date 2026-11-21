@@ -3,8 +3,9 @@ type Amount = string | null;
 export type MoneyDimension = 'category' | 'center' | 'party' | 'month';
 export interface MoneyPeriod { from: string; to: string; dimension: MoneyDimension }
 export interface MoneyEvidenceFilter {
-  mode: 'cash' | 'outflow' | 'expense' | 'role' | 'balance' | 'opening' | 'review' | 'fifo' | 'profit' | 'bank';
+  mode: 'cash' | 'outflow' | 'expense' | 'role' | 'balance' | 'opening' | 'review' | 'fifo' | 'profit' | 'bank' | 'cash-accounts' | 'cash-account';
   key?: string;
+  detail?: string;
   page: number;
   search?: string;
 }
@@ -102,7 +103,15 @@ export interface MoneyBankControl {
   amount: Amount;
   comparisonAmount: Amount;
 }
+export interface MoneyCashAccount extends MoneyPosition {
+  accountCode: string;
+  detailCode: string | null;
+  accountTitle: string | null;
+  partyTitle: string | null;
+  periodDebit: string;
+  periodCredit: string;
+}
 export interface MoneyEvidencePage {
-  items: (MoneyJournalLine | MoneyInventoryPosition | MoneyBankControl)[];
+  items: (MoneyJournalLine | MoneyInventoryPosition | MoneyBankControl | MoneyCashAccount)[];
   hasMore: boolean;
 }

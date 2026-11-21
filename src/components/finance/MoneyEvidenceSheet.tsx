@@ -16,36 +16,40 @@ const issueLabels: Record<string, string> = {
   LINES: 'بدون ردیف', UNBALANCED: 'سند نامتوازن', MAPPING: 'کدینگ ناقص یا مبهم', CLOSING_CASH: 'گردش نقدی در سند بستن حساب‌ها',
 };
 
-export function MoneyEvidenceSheet({ selection, period, onClose }: {
+export function MoneyEvidenceSheet({ selection, period, onClose, onSelect }: {
   selection: MoneyEvidenceSelection;
   period: MoneyPeriod;
   onClose: () => void;
+  onSelect: (selection: MoneyEvidenceSelection) => void;
 }) {
   const [page, setPage] = useState(1);
   const [draft, setDraft] = useState('');
   const [search, setSearch] = useState('');
   const [fifoRun, setFifoRun] = useState<MoneyInventoryPosition | null>(null);
-  const requestKey = JSON.stringify([period, selection.mode, selection.key, page, search]);
+  const requestKey = JSON.stringify([period, selection.mode, selection.key, selection.detail, page, search]);
   const { data, loading, error, refetch } = useDataQuery(async provider => ({
     requestKey,
-    result: await provider.getMoneyEvidence(period, { mode: selection.mode, key: selection.key, page, search }),
+    result: await provider.getMoneyEvidence(period, { mode: selection.mode, key: selection.key, selection.detail, page, search }),
   }), [requestKey]);
   const result = data?.requestKey === requestKey ? data.result : null;
   const fifo = selection.mode === 'fifo';
+  const accounts = selection.mode === 'cash-accounts';
   const showBank = selection.mode === 'bank';
 
   if (fifoRun) return <FifoLayerDialog run={fifoRun} onClose={() => setFifoRun(null)} />;
   return (
-    <BottomSheet isOpen onClose={onClose} title={selection.title} subtitle={showBank ? 'کنترل‌های ثبت‌شدهٔ تطبیق بانکی' : 'ریز اسناد و ردیف‌های منبع'} footer={!showBank &&
+    <BottomSheet isOpen onClose={onClose} title={selection.title} subtitle={showBank ? 'کنترل‌های ثبت‌شدهٔ تطبیق بانکی' : accounts ? 'گردش هر حساب شامل انتقال داخلی آن حساب است' : 'ریز اسناد و ردیف‌های منبع'} footer={!showBank &&
       <nav className="flex w-full flex-wrap items-center justify-between gap-2" aria-label="صفحه‌بندی اسناد">
         <Button type="button" variant="outline" disabled={page <= 1 || loading} onClick={() => setPage(page - 1)}>قبلی</Button>
         <span className="text-caption">صفحهٔ {formatCount(page)}</span>
         <Button type="button" variant="outline" disabled={!result?.hasMore || loading} onClick={() => setPage(page + 1)}>بعدی</Button>
       </nav>
     }>
+      {selection.mode === 'cash-account' && <Button type="button" size="sm" variant="ghost"
+        onClick={() => onSelect({ title: 'حساب‌های نقدی و بانکی', mode: 'cash-accounts' })}>بازگشت به حساب‌ها</Button>}
       {!showBank && <form className="mb-3 flex items-end gap-2" onSubmit={event => { event.preventDefault(); setPage(1); setSearch(draft.trim()); }}>
         <div className="min-w-0 flex-1">
-          <Input label={fifo ? 'شناسهٔ کالا یا انبار' : 'شمارهٔ سند، فاکتور یا کد حساب'}
+          <Input label={fifo ? 'شناسهٔ کالا یا انبار' : accounts ? 'نام حساب یا کد معین و تفصیلی' : 'شمارهٔ سند، فاکتور یا کد حساب'}
             type="search" maxLength={100} value={draft} onChange={event => setDraft(event.target.value)} />
         </div>
         <Button type="submit" variant="outline">جست‌وجو</Button>
@@ -63,6 +67,22 @@ export function MoneyEvidenceSheet({ selection, period, onClose }: {
               <p className="wrap-break-word text-text-secondary">تاریخ ارزش‌گذاری {formatAppDate(row.date)} · مرجع <bdi>{row.sourceProof}</bdi></p>
             </div>
             <Button type="button" variant="outline" size="sm" onClick={() => setFifoRun(row)}>لایه‌ها و اسناد</Button>
+          </li>
+        ) : 'periodDebit' in row ? (
+          <li key={JSON.stringify([row.accountCode,row.detailCode])} className="py-2">
+            <button type="button" className="min-h-11 w-full rounded-lg p-2 text-start hover:bg-hover" onClick={() => onSelect({
+              title: row.partyTitle || row.accountTitle || 'گردش حساب نقدی',
+              mode: 'cash-account', key: row.accountCode, detail: row.detailCode ?? '',
+            })}>
+              <span className="block font-bold wrap-break-word">{row.partyTitle || row.accountTitle || 'حساب نقدی'}</span>
+              <span className="block text-caption text-text-secondary">معین <bdi>{row.accountCode}</bdi>{row.detailCode && <> · تفصیلی <bdi>{row.detailCode}</bdi></>}</span>
+              <dl className="mt-2 grid grid-cols-2 gap-2 text-caption tabular-nums">
+                <div><dt>ابتدای دوره</dt><dd>{formatDecimalString(row.opening)}</dd></div>
+                <div><dt>پایان دوره</dt><dd>{formatDecimalString(row.closing)}</dd></div>
+                <div><dt>گردش بدهکار</dt><dd>{formatDecimalString(row.periodDebit)}</dd></div>
+                <div><dt>گردش بستانکار</dt><dd>{formatDecimalString(row.periodCredit)}</dd></div>
+              </dl>
+            </button>
           </li>
         ) : 'controlId' in row ? (
           <li key={row.controlId} className="space-y-1 py-3 text-caption">

@@ -224,6 +224,8 @@ export function MoneyIntelligencePanel() {
           <EChartCard title="روند ورود و خروج وجه دفتری" option={trendOption(ready.trend, period, granularity, ready.periodCovered)}
             empty={!ready.trend.length} sourceLabel="دفتر کل ERP" periodLabel="مبالغ به ریال" />
           <Card padding="md" className="space-y-1">
+            <Button type="button" size="sm" variant="outline"
+              onClick={() => open({ title: 'حساب‌های نقدی و بانکی', mode: 'cash-accounts' })}>مانده و گردش هر حساب</Button>
             {[
               { label: 'ماندهٔ دفتری ابتدای دوره', value: ready.cash.opening, mode: 'opening', key: 'CASH' },
               { label: 'انتقال داخلی (بی‌اثر در خالص)', value: ready.cash.transfers, mode: 'cash', key: 'TRANSFER' },
@@ -300,7 +302,7 @@ export function MoneyIntelligencePanel() {
         </Card>
       </>}
       {evidence?.requestKey === requestKey && <MoneyEvidenceSheet key={JSON.stringify(evidence.selection)}
-        period={period} selection={evidence.selection} onClose={() => setEvidence(null)} />}
+        period={period} selection={evidence.selection} onSelect={open} onClose={() => setEvidence(null)} />}
     </section>
   );
 }
