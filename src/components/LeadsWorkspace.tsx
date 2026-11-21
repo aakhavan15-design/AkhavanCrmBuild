@@ -1,3 +1,4 @@
+import { BottomSheet } from './ui/BottomSheet';
 import { DynamicFormRenderer } from './shared/DynamicFormRenderer';
 import { LEAD_FORM_SCHEMA } from '../services/dynamicFormEngine';
 import { useDeepLinkCreate } from '../hooks/useDeepLinkCreate';
@@ -8,7 +9,6 @@ import { AppState, Lead, LeadStage, ID, Account } from '../types';
 import { generateId, matchesSearch } from '../lib/utils';
 import { Card } from './ui/Card';
 import { Button } from './ui/Button';
-import { Modal } from './ui/Modal';
 import { Select, InputControl } from './ui/Input';
 import { EmptyState } from './ui/EmptyState';
 import { LEAD_STAGES, PIPELINE_FILTER_ALL } from '../config/pipeline';
@@ -406,16 +406,14 @@ export function LeadsWorkspace({ state, updateState }: LeadsWorkspaceProps) {
           <EmptyState surface="leads_workspace"
             icon={<UserCheck className="w-8 h-8 text-text-secondary opacity-50" />}
             title="هیچ سرنخی یافت نشد"
-            description="برای شروع، سرنخ جدید ثبت کنید یا عبارت جست‌وجو را تغییر دهید."
-            actionLabel="ثبت سرنخ جدید"
-            onAction={() => setIsNewLeadOpen(true)}
+            description={can('leads', 'CREATE') ? 'از + هدر برای ثبت سرنخ استفاده کنید یا جست‌وجو را تغییر دهید.' : 'عبارت جست‌وجو را تغییر دهید.'}
           />
         )}
       </div>
 
-      <Modal isOpen={isNewLeadOpen} onClose={() => setIsNewLeadOpen(false)} title="ثبت سرنخ بازرگانی جدید">
+      <BottomSheet isOpen={isNewLeadOpen} onClose={() => setIsNewLeadOpen(false)} title="ثبت سرنخ بازرگانی جدید">
         <DynamicFormRenderer schema={LEAD_FORM_SCHEMA} onSubmit={handleCreateLead} onCancel={() => setIsNewLeadOpen(false)} submitLabel="ثبت سرنخ" />
-      </Modal>
+      </BottomSheet>
     </div>
   );
 }

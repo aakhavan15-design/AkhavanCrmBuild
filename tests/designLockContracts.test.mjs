@@ -14,7 +14,7 @@ assert.ok(fs.existsSync(new URL('../docs/design-reference/menu-reference-light-d
 // Glass menu panel.
 assert.match(drawer, /se-menu-panel/);
 assert.match(drawer, /backdrop-blur-\[12px\]/);
-assert.match(css, /\.se-menu-panel\s*\{[\s\S]*?border-radius: 28px/);
+assert.match(css, /\.se-menu-panel\s*\{[\s\S]*?border-radius: var\(--c-radius-3xl\)/);
 
 // Toolbar: about + light/dark toggle.
 assert.match(drawer, /aria-label="درباره نرم‌افزار"/);
@@ -29,8 +29,8 @@ assert.ok(drawer.indexOf('currentRole?.name') < drawer.indexOf('currentUser?.nam
 // Bottom dock: exactly four minimal actions with tiny labels, RBAC-gated, wired to real routes.
 assert.equal((drawer.match(/<DockButton /g) || []).length, 4);
 for (const [label, route] of [
-  ['ثبت درخواست سازمانی', "go('/internal_automation?new=1')"],
-  ['ثبت تسک', "go('/tasks?new=1')"],
+  ['درخواست‌ها', "go('/internal_automation')"],
+  ['وظایف', "go('/tasks')"],
   ['دستور پرداخت', "go('/finance?tab=requests')"],
   ['میز مذاکره', "go('/opportunities')"],
 ]) {

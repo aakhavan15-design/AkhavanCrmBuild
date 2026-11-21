@@ -1,41 +1,41 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-const layout = await readFile(new URL('../src/components/Layout.tsx', import.meta.url), 'utf8');
-const app = await readFile(new URL('../src/App.tsx', import.meta.url), 'utf8');
-const css = await readFile(new URL('../src/index.css', import.meta.url), 'utf8');
-const header = layout.slice(layout.indexOf('Floating island header'), layout.indexOf('{/* Local-First Offline Sync status */}'));
 
-// Floating island header: transparent, zero-height sticky host so content flows underneath.
-assert.match(layout, /se-floating-header se-island-header sticky top-0/);
-assert.match(layout, /data-scrolled=\{headerScrolled \? 'true' : 'false'\}/);
-assert.match(css, /\.se-floating-header\.se-island-header\s*\{[\s\S]*?height: 0 !important/);
-assert.match(css, /\.se-island-clearance\s*\{\s*padding-top:/);
+const load = relative => readFile(new URL(`../${relative}`, import.meta.url), 'utf8');
+const [layout, app, css, header, drawer, actions] = await Promise.all([
+  load('src/components/Layout.tsx'), load('src/App.tsx'), load('src/index.css'),
+  load('src/components/header/FloatingHeader.tsx'), load('src/components/NavigationDrawer.tsx'),
+  load('src/lib/headerQuickActions.ts'),
+]);
+
+assert.equal((layout.match(/<FloatingHeader\b/g) || []).length, 1);
 assert.match(layout, /se-island-clearance/);
+assert.match(css, /\.se-floating-header\.se-island-header\s*\{[^}]*height: 0 !important/);
+assert.match(css, /\.se-island-clearance\s*\{\s*padding-top:/);
+assert.match(header, /data-scrolled=\{scrolled\}/);
 
-// Right: double capsule with menu + the single create entry.
 const capsule = header.slice(header.indexOf('se-island se-island-capsule'), header.indexOf('se-island-title'));
 assert.match(capsule, /id="mb0"/);
-assert.match(capsule, /<Plus size=\{20\}/);
-assert.doesNotMatch(capsule, /<Bell|<MessageCircle/);
+assert.equal((capsule.match(/<Plus\b/g) || []).length, 1);
+assert.match(capsule, /quickAction\.path/);
+assert.doesNotMatch(capsule, /<Avatar|<Bell|<MessageCircle/);
+assert.match(drawer, /id="main-navigation-drawer"/);
+assert.match(drawer, /useOverlayDialog\(isOpen, dialogRef, onClose\)/);
 
-// Left: two separate islands, notification and chat, each opening a minimal drop-down.
-assert.match(header, /<Bell size=\{19\}/);
-assert.match(header, /<MessageCircle size=\{19\}/);
-assert.equal((header.match(/se-island se-island-btn/g) || []).length, 2);
-assert.match(header, /setPanel\(value => \(value === 'notifications'/);
-assert.match(header, /setPanel\(value => \(value === 'chat'/);
-assert.match(header, /ورود به صفحه چت/);
-assert.match(header, /ورود به صفحه اعلان‌ها/);
-assert.match(header, /onNotificationClick\?\.\(n\)/);
-assert.match(header, /onOpenNotifications\?\.\(\)/);
-assert.match(css, /\.se-island-panel\s*\{/);
-
-// No profile avatar in the header, and no fabricated chat preview text.
-assert.doesNotMatch(header, /پروفایل کاربر|navigate\('\/profile'\)/);
-assert.doesNotMatch(layout, /پیام جدید در گفتگوهای سازمانی دریافت شد/);
-
-// App feeds the drop-down with the real, recipient-filtered notifications.
+for (const kind of ['account', 'notifications', 'chat']) {
+  assert.ok(header.includes(`show('${kind}', event.currentTarget)`));
+}
+assert.equal((header.match(/className="se-island se-island-btn\b/g) || []).length, 3);
+assert.match(header, /headerPreview: target/);
+assert.match(header, /navigate\(-1\)/);
+assert.match(header, /se-header-dismiss[\s\S]*?onClick=\{close\}/);
+assert.match(header, /aria-labelledby="header-preview-title"/);
+assert.match(header, /group\.memberIds\?\.includes\(me\)/);
+assert.match(header, /message\.readBy\?\.includes\(me\)/);
+assert.match(header, /مشاهده همه اعلان‌ها/);
+assert.match(header, /ورود به چت/);
 assert.match(app, /notifications=\{visibleNotifications\}/);
-assert.match(app, /onNotificationClick=\{handleNotificationClick\}/);
-assert.match(css, /\.se-header-create\s*\{\s*color: var\(--c-header-accent/);
-console.log('PASS floating island header contracts');
+assert.match(actions, /create-conversation.*\/groups\?new=1/);
+assert.match(css, /\.se-island-panel\s*\{[^}]*--app-viewport-height/);
+assert.match(css, /@media \(prefers-reduced-motion: reduce\)/);
+console.log('PASS floating header contracts');

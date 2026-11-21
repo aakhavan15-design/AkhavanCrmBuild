@@ -1,3 +1,4 @@
+import { BottomSheet } from './ui/BottomSheet';
 import { PageToolbar } from './ui/PageToolbar';
 import { requireActiveUser, useCan } from '../hooks/useCan';
 import React, { useState, useMemo } from 'react';
@@ -9,7 +10,6 @@ import { emitBusinessEvent } from '../lib/events';
 import { Card } from './ui/Card';
 import { FilterChip } from './ui/Tabs';
 import { EmptyState } from './ui/EmptyState';
-import { Modal } from './ui/Modal';
 import { DynamicFormRenderer } from './shared/DynamicFormRenderer';
 import { OPPORTUNITY_FORM_SCHEMA, DynamicFormSchema } from '../services/dynamicFormEngine';
 import { useDeepLinkCreate } from '../hooks/useDeepLinkCreate';
@@ -211,7 +211,7 @@ export function NegotiationsWorkspace({ state, updateState }: { state: AppState;
         )}
       </div>
 
-      <Modal isOpen={showNewModal} onClose={() => setShowNewModal(false)} title="ثبت فرصت تجاری جدید">
+      <BottomSheet isOpen={showNewModal} onClose={() => setShowNewModal(false)} title="ثبت فرصت تجاری جدید">
         <DynamicFormRenderer
           schema={opportunitySchema}
           initialValues={{
@@ -223,7 +223,7 @@ export function NegotiationsWorkspace({ state, updateState }: { state: AppState;
           onCancel={() => setShowNewModal(false)}
           submitLabel="ثبت فرصت"
         />
-      </Modal>
+      </BottomSheet>
     </div>
   );
 }

@@ -42,6 +42,7 @@ export type NavigationTab =
   | 'tasks'
   | 'activities'
   | 'calendar'
+  | 'groups'
   | 'reports'
   | 'operations_control'
   | 'geo_intelligence';

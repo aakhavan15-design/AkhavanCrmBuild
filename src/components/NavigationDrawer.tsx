@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Settings, LogOut, ChevronRight, ChevronDown, Search, Plus, Sun, Moon, Info, X,
@@ -9,13 +9,15 @@ import { APP_VERSION_LABEL } from '../lib/version';
 import { cn } from '../lib/utils';
 import { NAV_SECTIONS, isNavActive, makeCanAccess } from '../lib/navigation';
 import { Avatar } from './ui/Avatar';
+import { useOverlayDialog } from '../hooks/useOverlayDialog';
+import type { AppState } from '../types';
 import { useTheme } from '../theme/ThemeProvider';
 import { triggerTourMenu, triggerWhatsNew } from './InteractiveTour';
 
 interface NavigationDrawerProps {
   isOpen: boolean;
   onClose: () => void;
-  state?: unknown;
+  state?: AppState;
   /** Real logout handler of the app. Falls back to navigating to /login. */
   onLogout?: () => void;
   onOpenSearch?: () => void;
@@ -52,27 +54,8 @@ export function NavigationDrawer({ isOpen, onClose, state, onLogout, onOpenSearc
   const rbac = useMemo(() => (state ? new RBACService(state) : null), [state]);
   const canAccess = useMemo(() => makeCanAccess(rbac), [rbac]);
 
-  // Lock body scroll while open
-  useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = '';
-    }
-    return () => {
-      document.body.style.overflow = '';
-    };
-  }, [isOpen]);
-
-  // Close with Escape
-  useEffect(() => {
-    if (!isOpen) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [isOpen, onClose]);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useOverlayDialog(isOpen, dialogRef, onClose);
 
   // Auto-open the section that contains the active page
   useEffect(() => {
@@ -153,7 +136,10 @@ export function NavigationDrawer({ isOpen, onClose, state, onLogout, onOpenSearc
 
   return (
     <div
-      className="fixed inset-0 z-50 flex md:hidden"
+      id="main-navigation-drawer"
+      ref={dialogRef}
+      tabIndex={-1}
+      className="fixed inset-0 z-50 flex"
       dir="rtl"
       role="dialog"
       aria-modal="true"
@@ -437,8 +423,8 @@ export function NavigationDrawer({ isOpen, onClose, state, onLogout, onOpenSearc
         {hasDock && (
           <div className="shrink-0 px-3 pt-1 pb-[calc(var(--safe-bottom)+0.75rem)]">
             <div className="se-menu-dock grid grid-flow-col auto-cols-fr items-start gap-0.5 p-1.5" role="group" aria-label="اقدام‌های سریع">
-              {dockActions.request && <DockButton icon={Inbox} label="ثبت درخواست سازمانی" onClick={() => go('/internal_automation?new=1')} />}
-              {dockActions.task && <DockButton icon={CheckSquare} label="ثبت تسک" onClick={() => go('/tasks?new=1')} />}
+              {dockActions.request && <DockButton icon={Inbox} label="درخواست‌ها" onClick={() => go('/internal_automation')} />}
+              {dockActions.task && <DockButton icon={CheckSquare} label="وظایف" onClick={() => go('/tasks')} />}
               {dockActions.payment && <DockButton icon={Banknote} label="دستور پرداخت" onClick={() => go('/finance?tab=requests')} />}
               {dockActions.negotiation && <DockButton icon={Handshake} label="میز مذاکره" onClick={() => go('/opportunities')} />}
             </div>

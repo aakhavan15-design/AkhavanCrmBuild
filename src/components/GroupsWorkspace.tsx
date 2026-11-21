@@ -1,3 +1,5 @@
+import { useDeepLinkCreate } from '../hooks/useDeepLinkCreate';
+import { BottomSheet } from './ui/BottomSheet';
 import { toast } from './ui/Toast';
 import { guard } from '../hooks/useCan';
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
@@ -7,7 +9,7 @@ import { generateId } from '../lib/utils';
 import { processMessageMentions, processTaskCollaborationEvents } from '../lib/collaboration';
 import {
   Users, Send, Building2, CheckSquare, Search, Plus, MessageCircle, Paperclip, Check, CheckCheck, UserPlus, FileText, TrendingUp,
-  ShieldAlert, Activity, ArrowRight, Pin, PinOff, Reply, Pencil, Trash2, X, MessageSquarePlus, ImageIcon, Download, ListPlus, AtSign, Archive, Bell, BellOff
+  ShieldAlert, Activity, ArrowRight, Pin, PinOff, Reply, Pencil, Trash2, X, ImageIcon, Download, ListPlus, AtSign, Archive, Bell, BellOff
 } from 'lucide-react';
 import { Button } from './ui/Button';
 import { Input, Select, Textarea, InputControl, Checkbox } from './ui/Input';
@@ -69,7 +71,7 @@ export function GroupsWorkspace({ state, updateState }: Props) {
   const [pendingMentions, setPendingMentions] = useState<Mention[]>([]);
   const [pendingEntityMentions, setPendingEntityMentions] = useState<MessageReference[]>([]);
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
-  const [modal, setModal] = useState<null | 'group' | 'dm' | 'members' | 'record' | 'task'>(null);
+  const [modal, setModal] = useState<null | 'create' | 'group' | 'dm' | 'members' | 'record' | 'task'>(null);
   const [taskFrom, setTaskFrom] = useState<ConversationMessage | null>(null);
   const [taskAssignee, setTaskAssignee] = useState(me);
   const [taskDue, setTaskDue] = useState(new Date(Date.now() + 2 * 86400000).toISOString().split('T')[0]);
@@ -106,6 +108,11 @@ export function GroupsWorkspace({ state, updateState }: Props) {
     setPendingEntityMentions([]);
     setMentionQuery(null);
   }, [activeId]);
+
+  useDeepLinkCreate(() => {
+    setPickQuery('');
+    setModal(canCreateGroup ? 'create' : 'dm');
+  }, rbac.canAccessWorkspace('groups'));
 
   // ---- مجموعه گفتگوهایی که کاربر اجازه دیدن دارد (پیام مستقیم فقط برای طرفین) ----
   const allGroups = state.groups || [];
@@ -330,10 +337,6 @@ export function GroupsWorkspace({ state, updateState }: Props) {
         <div className="space-y-3 border-b border-border p-3.5">
           <div className="flex items-center justify-between">
             <h1 data-tour-heading className="flex items-center gap-2 text-base font-extrabold text-text-main"><MessageCircle className="h-5 w-5 text-primary" />تعاملات{totalUnread > 0 && <span className="rounded-full bg-danger px-2 py-0.5 text-micro font-bold text-white">{fa(totalUnread)}</span>}</h1>
-            <div className="flex items-center gap-1.5">
-              <button onClick={() => { setPickQuery(''); setModal('dm'); }} aria-label="پیام جدید" title="پیام مستقیم جدید" className="se-float-btn se-interactive se-pressable"><MessageSquarePlus size={18} /></button>
-              {canCreateGroup && <button onClick={() => setModal('group')} aria-label="گروه جدید" title="گروه جدید" className="se-float-btn se-interactive se-pressable"><Users size={18} /></button>}
-            </div>
           </div>
           <div className="relative">
             <Search size={15} className="pointer-events-none absolute end-3.5 top-1/2 -translate-y-1/2 text-text-secondary" />
@@ -357,11 +360,11 @@ export function GroupsWorkspace({ state, updateState }: Props) {
                   {isDm ? <Avatar name={r.name} src={other?.avatar} size="sm" /> : <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-primary/10 text-primary"><Users size={16} /></span>}
                   <span className="min-w-0 flex-1">
                     <span className="flex items-center justify-between gap-2">
-                      <strong className={cn('flex min-w-0 items-center gap-1 truncate text-xs text-text-main', r.unread ? 'font-black' : 'font-bold')}>{r.pinned && <Pin size={11} className="shrink-0 text-gold" />}{r.muted && <BellOff size={11} className="shrink-0 text-text-secondary" />}<span className="truncate">{r.name}</span></strong>
+                      <strong className={cn('flex min-w-0 items-center gap-1 wrap-break-word text-xs text-text-main', r.unread ? 'font-black' : 'font-bold')}>{r.pinned && <Pin size={11} className="shrink-0 text-gold" />}{r.muted && <BellOff size={11} className="shrink-0 text-text-secondary" />}<span className="truncate">{r.name}</span></strong>
                       <span className="shrink-0 text-micro text-text-secondary">{r.last ? shortWhen(r.last.createdAt) : ''}</span>
                     </span>
                     <span className="mt-0.5 flex items-center justify-between gap-2">
-                      <span className={cn('truncate text-caption', r.unread ? 'font-bold text-text-main' : 'text-text-secondary')}>{previewOf(r.last)}</span>
+                      <span className={cn('line-clamp-2 wrap-break-word text-caption', r.unread ? 'font-bold text-text-main' : 'text-text-secondary')}>{previewOf(r.last)}</span>
                       <span className="flex shrink-0 items-center gap-1">
                         {r.mentioned > 0 && <span aria-label="منشن شده‌اید" className="grid h-5 min-w-5 place-items-center rounded-full bg-gold px-1 text-micro font-black text-primary-dark"><AtSign size={11} /></span>}
                         {r.unread > 0 && <span aria-label={`${r.unread} پیام خوانده‌نشده`} className="grid h-5 min-w-5 place-items-center rounded-full bg-danger px-1.5 text-micro font-bold text-white">{fa(r.unread)}</span>}
@@ -521,6 +524,12 @@ export function GroupsWorkspace({ state, updateState }: Props) {
       </section>
 
       {/* ---------------- Modals ---------------- */}
+      <BottomSheet isOpen={modal === 'create'} onClose={() => setModal(null)} title="شروع گفت‌وگو">
+        <div className="grid gap-2">
+          <Button variant="outline" onClick={() => setModal('dm')}>پیام مستقیم به همکار</Button>
+          {canCreateGroup && <Button variant="outline" onClick={() => setModal('group')}>ایجاد گروه کاری</Button>}
+        </div>
+      </BottomSheet>
       {modal === 'group' && (
         <Modal isOpen onClose={() => setModal(null)} title="ایجاد گروه کاری جدید" footer={<><Button variant="ghost" size="sm" onClick={() => setModal(null)}>انصراف</Button><Button variant="primary" size="sm" onClick={createGroup} disabled={!newGroupName.trim()}>ثبت گروه</Button></>}>
           <div className="space-y-4 text-xs">

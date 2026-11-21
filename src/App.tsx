@@ -160,7 +160,7 @@ function AppContent() {
     syncPerms();
   }, [updateState]);
 
-  const handleNotificationClick = (n: AppNotification) => {
+  const handleNotificationClick = (n: AppNotification, replace = false) => {
     if (n.recipientId && n.recipientId !== state?.currentUserId) return;
     updateState(draft => {
       const notif = draft.notifications?.find(x => x.id === n.id && (!x.recipientId || x.recipientId === draft.currentUserId));
@@ -178,7 +178,7 @@ function AppContent() {
         internal_automation: '/internal_automation',
         groups: '/groups'
       };
-      navigate(routeMap[n.linkTab] || `/${n.linkTab}`);
+      navigate(routeMap[n.linkTab] || `/${n.linkTab}`, { replace });
     }
   };
 
@@ -285,6 +285,8 @@ function AppContent() {
           <Route path="/onboarding" element={guard('onboarding', <OnboardingAdminWorkspace state={state} updateState={updateState} />)} />
           <Route path="/personnel-file" element={<PersonnelFilePage state={state} updateState={updateState} />} />
           <Route path="/profile" element={<ProfileWorkspace state={state} updateState={updateState} setActiveTab={(t: string) => navigate(`/${t}`)} />} />
+          <Route path="/customers/*" element={<Navigate to={`/accounts${location.pathname.slice(10)}${location.search}${location.hash}`} replace />} />
+          <Route path="/operations_control" element={<Navigate to={`/operations${location.search}${location.hash}`} replace />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
         </Suspense>

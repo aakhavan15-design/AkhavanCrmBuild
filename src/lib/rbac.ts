@@ -186,6 +186,7 @@ export class RBACService {
       case 'dashboard': return this.hasPermission('accounts.view') || this.hasPermission('finance.view') || this.hasPermission('internal.view');
       case 'tasks': return this.hasPermission('accounts.view') || this.hasPermission('internal.view') || this.hasPermission('internal.manage');
       case 'activities': return this.hasPermission('accounts.view') || this.hasPermission('leads.view');
+      case 'groups': return this.hasPermission('accounts.view') || this.hasPermission('internal.view') || this.hasPermission('internal.manage');
       case 'calendar': return this.can('calendar', 'VIEW');
       case 'reports': return this.hasPermission('accounts.view') || this.hasPermission('finance.view') || this.hasPermission('internal.view');
       case 'operations_control': return this.hasPermission('quotes.view') || this.hasPermission('finance.view') || this.hasPermission('internal.view');

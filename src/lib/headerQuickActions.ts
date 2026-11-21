@@ -15,7 +15,7 @@ export interface HeaderQuickAction {
 
 type ActionDefinition = HeaderQuickAction & {
   workspace: NavigationTab;
-  permission: { module: PermModule } | { capability: string };
+  permission?: { module: PermModule } | { capability: string };
 };
 
 const task: ActionDefinition = {
@@ -38,6 +38,7 @@ const paymentOrder: ActionDefinition = {
 const actionsByRoute: ReadonlyMap<string, ActionDefinition> = new Map([
   ['/', task],
   ['/tasks', task],
+  ['/groups', { id: 'create-conversation', label: 'شروع گفت‌وگو', path: '/groups?new=1', workspace: 'groups' }],
   ['/calendar', meeting],
   ['/internal_automation:meetings', meeting],
   ['/calendar:meetings', { ...meeting, path: '/calendar?tab=meetings&new=1' }],
@@ -69,8 +70,8 @@ export function resolveHeaderQuickAction(
   if (!action || !rbac.canAccessWorkspace(action.workspace)) return null;
 
   const { permission, id, label, path } = action;
-  const allowed = 'module' in permission
+  const allowed = !permission || ('module' in permission
     ? rbac.can(permission.module, 'CREATE')
-    : rbac.hasPermission(permission.capability);
+    : rbac.hasPermission(permission.capability));
   return allowed ? { id, label, path } : null;
 }
