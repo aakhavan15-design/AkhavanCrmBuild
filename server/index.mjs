@@ -531,6 +531,63 @@ app.get('/api/v1/inventory/fifo/valuation', authenticate, requirePermission('fin
   res.json({ status: items.length ? 'AVAILABLE' : 'EMPTY', items, hasMore: result.recordset.length > items.length });
 }));
 
+app.get('/api/v1/inventory/fifo/layers', authenticate, requirePermission('finance.view', { organizationWide: true }), wrap(async (req, res) => {
+  if (entityDriverKind !== 'mssql') return bad(req, res, 503, 'FIFO_SOURCE_UNAVAILABLE', 'ریز لایه‌های موجودی در دسترس نیست.');
+  const { runId, warehouseId, after = '0' } = req.query;
+  if (typeof runId !== 'string' || !/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(runId) ||
+      typeof warehouseId !== 'string' || !warehouseId.trim() || warehouseId.length > 200 ||
+      typeof after !== 'string' || !/^\d{1,10}$/.test(after) || Number(after) > 2147483647) {
+    return bad(req, res, 400, 'INVALID_FIFO_FILTER', 'محدودهٔ لایه‌های موجودی معتبر نیست.');
+  }
+  const result = await withTenantContext(req.auth, transaction => new sql.Request(transaction)
+    .input('tenantId', sql.UniqueIdentifier, req.auth.tenantId)
+    .input('runId', sql.UniqueIdentifier, runId)
+    .input('warehouseId', sql.NVarChar(200), warehouseId)
+    .input('after', sql.Int, Number(after))
+    .query(`SELECT TOP (51) l.LayerNo AS layerNo,l.DocumentId AS documentId,l.LineId AS lineId,
+      l.EffectiveAtUtc AS effectiveAt,l.KindCode AS kind,
+      CONVERT(varchar(40),l.InitialQuantity) AS quantity, CONVERT(varchar(40),l.RemainingQuantity) AS remaining,
+      CONVERT(varchar(40),l.UnitCost) AS unitCost,l.OriginConsumptionNo AS originConsumptionNo
+      FROM analytics.FifoLayer AS l
+      JOIN analytics.FifoValuation AS v ON v.TenantId=l.TenantId AND v.RunId=l.RunId AND v.WarehouseExternalId=l.WarehouseExternalId
+      WHERE l.TenantId=@tenantId AND l.RunId=@runId AND l.WarehouseExternalId=@warehouseId AND l.LayerNo>@after
+        AND EXISTS (SELECT 1 FROM security.fn_RecordReadScope(@tenantId,N'finance.view',NULL,NULL,NULL,NULL))
+      ORDER BY l.LayerNo`));
+  const items = result.recordset.slice(0, 50);
+  res.json({ status: items.length ? 'AVAILABLE' : 'EMPTY', items,
+    next: result.recordset.length > items.length ? items.at(-1).layerNo : null });
+}));
+
+app.get('/api/v1/inventory/fifo/sales/:documentId/cogs', authenticate, requirePermission('finance.view', { organizationWide: true }), wrap(async (req, res) => {
+  if (entityDriverKind !== 'mssql') return bad(req, res, 503, 'FIFO_SOURCE_UNAVAILABLE', 'برداشت‌های ثبت‌شدهٔ سند در دسترس نیست.');
+  const { documentId } = req.params;
+  const { source, periodStart } = req.query;
+  if (!documentId.trim() || documentId.length > 200 || typeof source !== 'string' || !/^[A-Za-z0-9._-]{1,40}$/.test(source) ||
+      typeof periodStart !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(periodStart) ||
+      !Number.isFinite(Date.parse(periodStart)) || new Date(periodStart).toISOString() !== periodStart) {
+    return bad(req, res, 400, 'INVALID_FIFO_DOCUMENT', 'منبع، سند یا ابتدای دوره معتبر نیست.');
+  }
+  const result = await withTenantContext(req.auth, transaction => new sql.Request(transaction)
+    .input('tenantId', sql.UniqueIdentifier, req.auth.tenantId)
+    .input('source', sql.VarChar(40), source)
+    .input('documentId', sql.NVarChar(200), documentId)
+    .input('periodStart', sql.DateTime2(3), new Date(periodStart))
+    .query(`SELECT TOP (101) r.RunId AS runId,r.ThroughUtc AS through,r.ProductExternalId AS productId,
+      r.UnitCode AS unitCode,r.CurrencyCode AS currencyCode,c.LineId AS lineId,c.MovementId AS movementId,
+      c.ConsumptionNo AS consumptionNo,c.LayerNo AS layerNo,l.WarehouseExternalId AS warehouseId,
+      CONVERT(varchar(40),c.Quantity) AS quantity,CONVERT(varchar(40),c.ReturnedQuantity) AS returned,
+      CONVERT(varchar(40),l.UnitCost) AS unitCost,CONVERT(varchar(42),c.TotalCost) AS originalCost
+      FROM analytics.FifoRun AS r
+      JOIN analytics.FifoConsumption AS c ON c.TenantId=r.TenantId AND c.RunId=r.RunId
+      JOIN analytics.FifoLayer AS l ON l.TenantId=c.TenantId AND l.RunId=c.RunId AND l.LayerNo=c.LayerNo
+      WHERE r.TenantId=@tenantId AND r.IsCurrent=1 AND r.SourceSystemCode=@source AND r.PeriodStartUtc=@periodStart
+        AND c.KindCode='SALE' AND c.DocumentId COLLATE Latin1_General_100_BIN2=@documentId
+        AND EXISTS (SELECT 1 FROM security.fn_RecordReadScope(@tenantId,N'finance.view',NULL,NULL,NULL,NULL))
+      ORDER BY c.LineId,r.RunId,c.ConsumptionNo`));
+  const items = result.recordset.slice(0, 100);
+  res.json({ status: items.length ? 'AVAILABLE' : 'EMPTY', coverage: 'UNVERIFIED', items, hasMore: result.recordset.length > items.length });
+}));
+
 // F0-14: tenant-scoped, permission-protected SQL ledger projection; no local fallback.
 app.get('/api/v1/ledger/balances', authenticate, requirePermission('finance.VIEW'), wrap(async (req, res) => {
   const detailKey = req.query.detailKey == null ? null : String(req.query.detailKey);

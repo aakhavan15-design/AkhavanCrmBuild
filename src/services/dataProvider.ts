@@ -71,6 +71,46 @@ export interface FifoValuations {
   hasMore: boolean;
 }
 
+export interface FifoLayerRow {
+  layerNo: number;
+  documentId: string;
+  lineId: string;
+  effectiveAt: string;
+  kind: string;
+  quantity: string;
+  remaining: string;
+  unitCost: string;
+  originConsumptionNo: number | null;
+}
+
+export interface FifoLayerPage {
+  status: FifoValuations['status'];
+  items: FifoLayerRow[];
+  next: number | null;
+}
+
+export interface FifoSaleEvidence {
+  status: FifoValuations['status'];
+  coverage: 'UNVERIFIED';
+  items: Array<{
+    runId: string;
+    through: string;
+    productId: string;
+    unitCode: string;
+    currencyCode: string;
+    lineId: string;
+    movementId: string;
+    consumptionNo: number;
+    layerNo: number;
+    warehouseId: string;
+    quantity: string;
+    returned: string;
+    unitCost: string;
+    originalCost: string;
+  }>;
+  hasMore: boolean;
+}
+
 export interface ErpSyncConnectorOverview {
   id: string;
   displayName: string;
@@ -182,6 +222,8 @@ export interface DataProvider {
   getPaymentAllocations(): Promise<PaymentAllocation[]>;
   getCreditNoteEvidence(): Promise<CreditNoteEvidence>;
   getFifoValuations(): Promise<FifoValuations>;
+  getFifoLayers(runId: string, warehouseId: string, after?: number): Promise<FifoLayerPage>;
+  getFifoSaleEvidence(documentId: string, source: string, periodStart: string): Promise<FifoSaleEvidence>;
   
   // Financial Intelligence & Approval Center (Approval Intelligence / Financial 360 / Smart Accounting Classification)
   getApprovalContext(ref: ApprovalRef, opts?: ContextOptions): Promise<ApprovalContext | null>;
@@ -208,6 +250,12 @@ const MAX_PNL_JOURNAL_PAGES = 100;
  * 1. پیاده‌سازی ارائه‌دهنده داده سمت کلاینت (IndexedDB / Local-first)
  */
 export class ClientStorageDataProvider implements DataProvider {
+  async getFifoSaleEvidence(): Promise<FifoSaleEvidence> {
+    return { status: 'UNAVAILABLE', coverage: 'UNVERIFIED', items: [], hasMore: false };
+  }
+  async getFifoLayers(): Promise<FifoLayerPage> {
+    return { status: 'UNAVAILABLE', items: [], next: null };
+  }
   async getFifoValuations(): Promise<FifoValuations> {
     return { status: 'UNAVAILABLE', items: [], hasMore: false };
   }
@@ -570,6 +618,28 @@ export class ClientStorageDataProvider implements DataProvider {
  * 2. پیاده‌سازی ارائه‌دهنده داده مستقیم به Backend سرور و SQL Server
  */
 export class HttpBackendDataProvider implements DataProvider {
+  async getFifoSaleEvidence(documentId: string, source: string, periodStart: string): Promise<FifoSaleEvidence> {
+    try {
+      const query = new URLSearchParams({ source, periodStart });
+      const data = await this.request<FifoSaleEvidence>(`/inventory/fifo/sales/${encodeURIComponent(documentId)}/cogs?${query}`);
+      if ((data?.status === 'AVAILABLE' || data?.status === 'EMPTY') && data.coverage === 'UNVERIFIED'
+        && Array.isArray(data.items) && typeof data.hasMore === 'boolean') return data;
+    } catch (error) {
+      if (error instanceof Error && 'status' in error && error.status === 403) return { status: 'RESTRICTED', coverage: 'UNVERIFIED', items: [], hasMore: false };
+    }
+    return { status: 'UNAVAILABLE', coverage: 'UNVERIFIED', items: [], hasMore: false };
+  }
+  async getFifoLayers(runId: string, warehouseId: string, after = 0): Promise<FifoLayerPage> {
+    try {
+      const query = new URLSearchParams({ runId, warehouseId, after: String(after) });
+      const data = await this.request<FifoLayerPage>(`/inventory/fifo/layers?${query}`);
+      if ((data?.status === 'AVAILABLE' || data?.status === 'EMPTY') && Array.isArray(data.items)
+        && (data.next === null || (Number.isInteger(data.next) && data.next > after))) return data;
+    } catch (error) {
+      if (error instanceof Error && 'status' in error && error.status === 403) return { status: 'RESTRICTED', items: [], next: null };
+    }
+    return { status: 'UNAVAILABLE', items: [], next: null };
+  }
   async getFifoValuations(): Promise<FifoValuations> {
     try {
       const data = await this.request<FifoValuations>('/inventory/fifo/valuation');
