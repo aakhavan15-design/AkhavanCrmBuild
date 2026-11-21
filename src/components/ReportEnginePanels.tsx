@@ -37,7 +37,8 @@ import { DocumentDetailModal, DocumentDetailData } from './shared/DocumentDetail
 import { ArrowUpRight, Download, Filter, Layers, ShieldCheck, ShieldAlert } from 'lucide-react';
 import { resolveDataSourceStatus, sourceStatusNote, DATA_SOURCE_STATUS_LABELS } from '../lib/dataTrust';
 import type { AppState, Invoice, Payment, Cheque, Account, Quote, ExternalProduct } from '../types';
-import { MiniHaloSparkline } from './charts/Sparkline';
+import { KpiCard } from './charts/KpiCard';
+import { CashFlowPanel } from './finance/CashFlowPanel';
 import { InputControl } from './ui/Input';
 import { Button } from './ui/Button';
 import { FilterChip } from './ui/Tabs';
@@ -120,24 +121,9 @@ const REPORTS = [
 const nf = (n: number | null | undefined, digits = 0) => n == null || !Number.isFinite(n) ? 'نامشخص' : new Intl.NumberFormat('fa-IR', { maximumFractionDigits: digits, minimumFractionDigits: digits }).format(n);
 const pf = (n: number | null | undefined) => n == null ? 'نامشخص' : `${nf(n * 100, 1)}٪`;
 
-function MiniSparkline({ trend = 'up', isPositive = true }: { trend?: 'up' | 'down' | 'flat'; isPositive?: boolean }) {
-  return <MiniHaloSparkline trend={trend} isPositive={isPositive} />;
-}
-
-function Metric({ label, value, note, trend, isPositive = true }: { label: string; value: React.ReactNode; note?: string; trend?: 'up' | 'down' | 'flat'; isPositive?: boolean }) { 
-  const unknownValue = typeof value === 'string' && /نامشخص|ثبت نشده|نیازمند بررسی/.test(value);
-  return (
-    <div className="rounded-xl border border-border bg-canvas/70 p-3 flex flex-col justify-between">
-      <div>
-        <div className="flex items-center justify-between text-mini font-semibold text-text-secondary">
-          <span>{label}</span>
-          {trend && !unknownValue && <MiniSparkline trend={trend} isPositive={isPositive} />}
-        </div>
-        <div className="mt-1 text-base sm:text-lg font-bold tabular-nums text-text-main">{value}</div>
-      </div>
-      {note && <div className="mt-1 text-tiny leading-4 text-text-secondary">{note}</div>}
-    </div>
-  ); 
+function Metric({label,value,note,sparkline}:{label:string;value:React.ReactNode;note?:string;sparkline?:number[]}) {
+  return <KpiCard density="compact" label={label} value={value} description={note}
+    sparkline={sparkline} sparklineLabel={sparkline ? 'روند فروش در روزهای دارای فاکتور' : undefined} />;
 }
 
 function Bars({ rows, money = false, onRowClick }: { rows: { key: string; value: number }[]; money?: boolean; onRowClick?: (row: { key: string; value: number }) => void }) {
@@ -210,7 +196,7 @@ function pctChange(current: number | null, previous: number | null): string | nu
   return `${pct >= 0 ? '+' : ''}${pct.toLocaleString('fa-IR', { maximumFractionDigits: 1 })}٪`;
 }
 
-export function ReportEnginePanels({ state, visibleInvoices, visiblePayments, visibleCheques, visibleExpenses, visibleAccounts }: Props) {
+export function ReportEnginePanels({ state, visibleInvoices, visiblePayments, visibleExpenses, visibleAccounts }: Props) {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [selected, setSelected] = useState(1);
@@ -262,7 +248,6 @@ export function ReportEnginePanels({ state, visibleInvoices, visiblePayments, vi
   
   const reportInvoices = useMemo(() => sampleOnly(visibleInvoices), [visibleInvoices, localTest]);
   const reportPayments = useMemo(() => sampleOnly(visiblePayments), [visiblePayments, localTest]);
-  const reportCheques = useMemo(() => sampleOnly(visibleCheques), [visibleCheques, localTest]);
   const reportExpenses = useMemo(() => sampleOnly(visibleExpenses), [visibleExpenses, localTest]);
   const accountMap = useMemo(() => new Map(visibleAccounts.map(a => [a.id, a])), [visibleAccounts]);
   const asOf = new Date().toISOString().slice(0,10);
@@ -384,7 +369,7 @@ export function ReportEnginePanels({ state, visibleInvoices, visiblePayments, vi
   }), [state.externalProducts, state.salesOrders, state.geoZones, state.zoneAssignments]);
 
   const salesKpi = useMemo(() => {
-    const totalSales = invoices.reduce((s, i) => s + Number(i.totalAmount || 0), 0);
+    const totalSales = invoices.length ? invoices.reduce((sum,invoice)=>sum+Number(invoice.totalAmount),0) : null;
     const fromMonth = cutoff ? cutoff.slice(0, 7) : '0000-00';
     const toMonth = asOf.slice(0, 7);
     const target = (state.salesTargets || [])
@@ -392,6 +377,16 @@ export function ReportEnginePanels({ state, visibleInvoices, visiblePayments, vi
       .reduce((sum, item) => sum + Math.max(0, Number(item.revenueTargetRials) || 0), 0);
     return targetAchievement(totalSales, target > 0 ? target : null);
   }, [invoices, state.salesTargets, cutoff, asOf]);
+
+  const observedSalesTrend=useMemo(()=>{
+    if (localTest || getActiveDataProvider().name!=='SQLSERVER_BACKEND') return undefined;
+    const byDay=new Map<string,number>();
+    for (const invoice of invoices) {
+      const date=invoice.date.slice(0,10);
+      byDay.set(date,(byDay.get(date) ?? 0)+Number(invoice.totalAmount));
+    }
+    return [...byDay].sort(([a],[b])=>a.localeCompare(b)).slice(-12).map(([,amount])=>amount);
+  },[invoices,localTest]);
 
   const productShareRows = useMemo(() => {
     const map = new Map<string, number>();
@@ -621,13 +616,13 @@ export function ReportEnginePanels({ state, visibleInvoices, visiblePayments, vi
           ))}
         </div>
 
-        <Button variant="outline" size="sm" className="shrink-0" type="button" onClick={handleExportCurrentReportCsv} >
+        {selected!==8 && <Button variant="outline" size="sm" className="shrink-0" type="button" onClick={handleExportCurrentReportCsv} >
           <Download size={13} className="text-primary" />
           <span>خروجی اکسل</span>
-        </Button>
+        </Button>}
       </div>
 
-      {hasAnyFilter && (
+      {hasAnyFilter && selected!==8 && (
         <div className="flex items-center flex-wrap gap-2 p-2 rounded-xl bg-canvas border border-border/80 text-xs animate-in fade-in">
           <span className="text-caption font-bold text-text-secondary flex items-center gap-1">
             <Filter size={12} className="text-primary" />
@@ -681,7 +676,7 @@ export function ReportEnginePanels({ state, visibleInvoices, visiblePayments, vi
           </span>
         </div>
 
-        <div className="flex flex-wrap items-center justify-between gap-2 bg-canvas p-2 rounded-xl border border-border">
+        {selected!==8 && <div className="flex flex-wrap items-center justify-between gap-2 bg-canvas p-2 rounded-xl border border-border">
           <div className="flex items-center gap-1.5">
             <span className="text-xs font-semibold text-text-secondary">بازه محاسبه:</span>
             <div className="inline-flex p-0.5 rounded-lg bg-surface border border-border/80">
@@ -705,7 +700,7 @@ export function ReportEnginePanels({ state, visibleInvoices, visiblePayments, vi
               className="w-48"
             />
           )}
-        </div>
+        </div>}
 
         {selected === 1 && (
           <div className="space-y-4">
@@ -735,44 +730,32 @@ export function ReportEnginePanels({ state, visibleInvoices, visiblePayments, vi
               <Metric 
                 label="فروش ناخالص دفتری" 
                 value={pnlValues.GROSS_SALES == null ? 'نامشخص' : `${formatCurrency(pnlValues.GROSS_SALES)}`} 
-                note={previousPnlReport ? `تغییر با دوره قبل: ${pctChange(pnlValues.GROSS_SALES, previousPnlReport.values.GROSS_SALES) || '—'}` : 'خطوط ثبت‌شدهٔ دفترکل'} 
-                trend="up"
-                isPositive={true}
+                note={previousPnlReport ? `تغییر با دوره قبل: ${pctChange(pnlValues.GROSS_SALES, previousPnlReport.values.GROSS_SALES) || '—'}` : 'خطوط ثبت‌شدهٔ دفترکل'}
               />
               <Metric 
                 label="برگشت و تخفیف" 
                 value={pnlValues.SALES_RETURNS == null ? 'نامشخص' : `${formatCurrency(pnlValues.SALES_RETURNS)}`} 
                 note="کاهنده درآمد فروش"
-                trend="down"
-                isPositive={true}
               />
               <Metric 
                 label="فروش خالص دفتری" 
                 value={pnlValues.NET_SALES == null ? 'نامشخص' : `${formatCurrency(pnlValues.NET_SALES)}`} 
                 note={previousPnlReport ? `تغییر با دوره قبل: ${pctChange(pnlValues.NET_SALES, previousPnlReport.values.NET_SALES) || '—'}` : 'درآمد خالص شناسایی‌شده'}
-                trend="up"
-                isPositive={true}
               />
               <Metric 
                 label="بهای تمام‌شده" 
                 value={pnlValues.COGS == null ? 'نامشخص' : `${formatCurrency(pnlValues.COGS)}`} 
                 note="بهای کالای فروش‌رفته"
-                trend="flat"
-                isPositive={false}
               />
               <Metric 
                 label="سود ناخالص عملیاتی" 
                 value={pnlValues.GROSS_PROFIT == null ? 'نامشخص' : `${formatCurrency(pnlValues.GROSS_PROFIT)}`} 
                 note={previousPnlReport ? `تغییر با دوره قبل: ${pctChange(pnlValues.GROSS_PROFIT, previousPnlReport.values.GROSS_PROFIT) || '—'}` : 'فروش خالص − بهای کالا'}
-                trend="up"
-                isPositive={true}
               />
               <Metric 
                 label="سود عملیاتی دفتری" 
                 value={pnlValues.OPERATING_PROFIT == null ? 'نامشخص' : `${formatCurrency(pnlValues.OPERATING_PROFIT)}`} 
                 note={previousPnlReport ? `تغییر با دوره قبل: ${pctChange(pnlValues.OPERATING_PROFIT, previousPnlReport.values.OPERATING_PROFIT) || '—'}` : 'پس از هزینه‌های توزیع و اداری'}
-                trend="up"
-                isPositive={true}
               />
             </div>
 
@@ -976,13 +959,13 @@ export function ReportEnginePanels({ state, visibleInvoices, visiblePayments, vi
         {selected === 2 && (
           <div className="space-y-4">
             <div id="report-kpis" className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2" data-tour-primary>
-              <Metric label="فروش محقق‌شده" value={`${formatCurrency(salesKpi.actual || 0)}`} note="فاکتورهای قطعی دوره" trend="up" isPositive={true} />
-              <Metric label="هدف مصوب فروش" value={`${formatCurrency(salesKpi.target || 0)}`} note="بودجه مصوب سازمان" />
-              <Metric label="درصد تحقق هدف" value={salesKpi.achievementPct == null ? 'هدف ثبت نشده' : pf(salesKpi.achievementPct / 100)} note="شاخص عملکرد شاخص کلیدی" trend={salesKpi.achievementPct && salesKpi.achievementPct >= 100 ? 'up' : 'down'} isPositive={salesKpi.achievementPct ? salesKpi.achievementPct >= 100 : false} />
+              <Metric label="فروش مشاهده‌شده" value={salesKpi.actual===null ? "نامشخص" : formatCurrency(salesKpi.actual)} note="فاکتورهای در دسترس دوره" sparkline={observedSalesTrend} />
+              <Metric label="هدف مصوب فروش" value={salesKpi.target===null ? "نامشخص" : formatCurrency(salesKpi.target)} note="بودجه مصوب سازمان" />
+              <Metric label="درصد تحقق هدف" value={salesKpi.achievementPct == null ? 'هدف ثبت نشده' : pf(salesKpi.achievementPct / 100)} note="شاخص عملکرد شاخص کلیدی" />
               <Metric label="فاصله تا هدف" value={salesKpi.gap == null ? '—' : `${formatCurrency(salesKpi.gap)}`} note="کسری فروش دوره" />
               <Metric label="پیش‌بینی پایان دوره" value={(() => {
                 const totalDays = period === '90d' ? 90 : period === 'all' ? null : 365;
-                if (totalDays == null) return 'نامشخص';
+                if (totalDays == null || salesKpi.actual===null) return 'نامشخص';
                 const dates = invoices.map(i => String(i.date || '').slice(0, 10)).filter(d => d.length === 10).sort();
                 let elapsed: number | null = null;
                 if (dates.length >= 2) {
@@ -996,10 +979,10 @@ export function ReportEnginePanels({ state, visibleInvoices, visiblePayments, vi
                   if (Number.isFinite(c) && Number.isFinite(a) && a >= c) elapsed = Math.max(1, Math.round((a - c) / 86400000) + 1);
                 }
                 if (elapsed == null || elapsed <= 0) return 'نامشخص';
-                const proj = projectPeriodEnd(salesKpi.actual || 0, elapsed, totalDays);
+                const proj = projectPeriodEnd(salesKpi.actual, elapsed, totalDays);
                 return proj == null ? 'نامشخص' : formatCurrency(proj);
               })()} note="برآورد خطی از داده واقعی دوره" />
-              <Metric label="میانگین ارزش فاکتور" value={`${formatCurrency(invoices.length ? Math.round((salesKpi.actual || 0) / invoices.length) : 0)}`} note={`تعداد: ${invoices.length} فاکتور`} />
+              <Metric label="میانگین ارزش فاکتور" value={salesKpi.actual===null || !invoices.length ? "نامشخص" : formatCurrency(Math.round(salesKpi.actual / invoices.length))} note={`${nf(invoices.length)} فاکتور مشاهده‌شده`} />
             </div>
 
             <div className="p-3.5 bg-canvas rounded-xl border border-border space-y-2">
@@ -1049,7 +1032,7 @@ export function ReportEnginePanels({ state, visibleInvoices, visiblePayments, vi
               <Metric label="تعداد اقلام کاتالوگ" value={state.externalProducts?.length || 0} note="کالاهای تعریف‌شده در سامانه مالی" />
               <Metric label="پرفروش‌ترین محصول" value={productShareRows[0]?.key || '—'} note="بیشترین سهم ریالی" />
               <Metric label="پوشش بهای تمام‌شده" value={(() => { const lines = (state.quotes || []).flatMap(q => q.lines || []).filter(l => Number(l.quantity) > 0); const complete = lines.filter(l => Number.isFinite(Number(l.costPrice)) && Number(l.costPrice) > 0).length; return lines.length ? pf(complete / lines.length) : 'نامشخص'; })()} note="اقلام با بهای معتبر" />
-              <Metric label="میانگین حاشیه سود سبد" value="نامشخص" note="برای محاسبه، بهای معتبر اقلام لازم است" trend="up" />
+              <Metric label="میانگین حاشیه سود سبد" value="نامشخص" note="برای محاسبه، بهای معتبر اقلام لازم است" />
             </div>
 
             <div className="rounded-xl border border-warning/25 bg-warning-soft/50 p-3.5 text-xs leading-6 text-text-secondary">
@@ -1170,7 +1153,7 @@ export function ReportEnginePanels({ state, visibleInvoices, visiblePayments, vi
         {selected === 5 && (
           <div className="space-y-4">
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-              <Metric label="سهم ۲۰٪ مشتریان برتر" value={pf(topShare)} note="تمرکز پارتو ۸۰/۲۰" trend="up" />
+              <Metric label="سهم ۲۰٪ مشتریان برتر" value={pf(topShare)} note="تمرکز پارتو ۸۰/۲۰" />
               <Metric label="تعداد کل خریداران" value={nf(paretoRows.rows.length)} note="مشتریان دارای فاکتور" />
               <Metric label="کل فروش مبنا" value={formatCurrency(paretoRows.total)} note="ریال" />
               <Metric label="شاخص تمرکز" value={customerHhi == null ? 'نامشخص' : nf(customerHhi)} note="محاسبه بر اساس سهم واقعی فروش مشتریان" />
@@ -1201,7 +1184,7 @@ export function ReportEnginePanels({ state, visibleInvoices, visiblePayments, vi
             <div id="report-kpis" className="grid grid-cols-2 sm:grid-cols-4 gap-2" data-tour-primary>
               <Metric label="ویزیت‌های برنامه‌ریزی‌شده" value={nf(visits.planned)} note="کل برنامه‌ها" />
               <Metric label="مراجعات انجام‌شده" value={nf(visits.actual)} note="ثبت ورود در محل" />
-              <Metric label="ویزیت‌های با سفارش" value={nf(visits.withOrder)} note="موفقیت‌آمیز" trend="up" />
+              <Metric label="ویزیت‌های با سفارش" value={nf(visits.withOrder)} note="موفقیت‌آمیز" />
               <Metric label="سهم موقعیت مکانی معتبر" value={pf(visits.gpsVerifiedShare)} note="تأییدشده با موقعیت‌یاب" />
             </div>
 
@@ -1261,7 +1244,7 @@ export function ReportEnginePanels({ state, visibleInvoices, visiblePayments, vi
 
             <div id="report-kpis" className="grid grid-cols-2 sm:grid-cols-4 gap-2" data-tour-primary>
               <Metric label="کل مطالبات (مانده دفتری)" value={ledgerReceivables.kind === 'OK' ? `${formatCurrency(ledgerReceivables.debtorTotal)} ریال` : ledgerReceivables.kind === 'LOADING' ? '…' : 'نامشخص'} note="Σبدهکار − Σبستانکار تفصیلی×معین؛ بستانکارها جدا" />
-              <Metric label="مطالبات سررسیدگذشته (تخمینی)" value={hasAgingEstimate ? `${formatCurrency(agingEstimate.items.filter(r => r.days > 0).reduce((sum, r) => sum + r.amount, 0))} ریال` : 'نامشخص'} note="از آخرین فاکتور به عقب؛ بدون تخصیص CRM" isPositive={false} />
+              <Metric label="مطالبات سررسیدگذشته (تخمینی)" value={hasAgingEstimate ? `${formatCurrency(agingEstimate.items.filter(r => r.days > 0).reduce((sum, r) => sum + r.amount, 0))} ریال` : 'نامشخص'} note="از آخرین فاکتور به عقب؛ بدون تخصیص CRM" />
               <Metric label="مشتریان بدهکار" value={ledgerReceivables.kind === 'OK' ? nf(ledgerReceivables.debtorCount) : 'نامشخص'} note="بر پایهٔ مانده دفتری" />
               <Metric
                 label="بررسی تخصیص دریافت‌ها"
@@ -1328,48 +1311,14 @@ export function ReportEnginePanels({ state, visibleInvoices, visiblePayments, vi
           </div>
         )}
 
-        {selected === 8 && (() => {
-          const cashReceipts = reportPayments.filter(p => p.status === 'CLEARED');
-          const paidExpenses = reportExpenses.filter(e => e.status === 'PAID');
-          const upcomingCheques = reportCheques.filter(c => !c.isGuarantee);
-          const totalIn = cashReceipts.reduce((s, p) => s + (Number(p.amount) || 0), 0);
-          const totalOut = paidExpenses.reduce((s, e) => s + (Number(e.amount) || 0), 0);
-          const netCash = totalIn - totalOut;
-
-          return (
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                <Metric label="دریافتی‌های تسویه‌شده" value={`${formatCurrency(totalIn)} ریال`} note="ورودی نقد و حواله" trend="up" isPositive={true} />
-                <Metric label="مخارج پرداخت‌شده" value={`${formatCurrency(totalOut)} ریال`} note="خروجی هزینه‌ها" isPositive={false} />
-                <Metric label="خالص جریان نقد دوره" value={`${formatCurrency(netCash)} ریال`} note="مازاد نقدینگی عملیاتی" trend={netCash >= 0 ? 'up' : 'down'} isPositive={netCash >= 0} />
-                <Metric label="چک‌های صیادی آتی" value={`${upcomingCheques.length} فقره`} note="اسناد در جریان" />
-              </div>
-
-              <div className="p-3.5 bg-surface rounded-xl border border-border space-y-2">
-                <h5 className="text-xs font-bold text-text-main">آبشار تحلیل جریان نقدینگی</h5>
-                <ProfitWaterfallChart 
-                  steps={[
-                    { label: 'وصولی‌های نقدی و حواله', amount: totalIn, type: 'POSITIVE' },
-                    { label: 'هزینه‌های جاری و حقوق', amount: totalOut, type: 'NEGATIVE' },
-                    { label: 'خالص جریان نقد عملیاتی', amount: netCash, type: 'SUBTOTAL' }
-                  ]}
-                />
-              </div>
-
-              <div className="rounded-xl border border-warning/25 bg-warning-soft/50 p-3 text-xs space-y-1">
-                <span className="font-bold text-warning block">محدودیت پوشش نقدینگی و پیش‌بینی</span>
-                <p className="text-caption leading-6 text-text-secondary">مانده ابتدای دوره از منبع بانکی تأییدشده در دسترس نیست؛ بنابراین پیش‌بینی کسری/مازاد رسمی ارائه نمی‌شود. ارقام بالا فقط جمع دریافت‌های تسویه‌شده و هزینه‌های پرداخت‌شده در داده‌های مجاز سامانه هستند و جایگزین مانده حساب بانکی یا پیش‌بینی خزانه نیستند.</p>
-              </div>
-            </div>
-          );
-        })()}
+        {selected === 8 && <CashFlowPanel />}
 
         {selected === 9 && (
           <div className="space-y-4">
             <div id="report-kpis" className="grid grid-cols-2 sm:grid-cols-4 gap-2" data-tour-primary>
               <Metric label="کل اسناد مذاکره" value={nf(negotiationStats.funnel.negotiable)} note="پیش‌نویس‌های فروش" />
               <Metric label="پیشنهادهای مصوب" value={nf(negotiationStats.funnel.proposed)} note="ارائه‌شده به مشتری" />
-              <Metric label="نرخ برد مذاکره" value={pf(negotiationStats.successRate)} note="تبدیل به قرارداد" trend="up" isPositive={true} />
+              <Metric label="نرخ برد مذاکره" value={pf(negotiationStats.successRate)} note="تبدیل به قرارداد" />
               <Metric label="مبلغ اعمال‌شده در سامانه مالی" value={`${formatCurrency(negotiationStats.erpAppliedAmount || 0)} ریال`} note="فاکتورهای قطعی" />
             </div>
 
@@ -1397,7 +1346,7 @@ export function ReportEnginePanels({ state, visibleInvoices, visiblePayments, vi
             <div id="report-kpis" className="grid grid-cols-2 sm:grid-cols-4 gap-2" data-tour-primary>
               <Metric label="سفارشات آماده ارسال" value={nf(deliveries.funnel.ready)} note="حواله‌های انبار" />
               <Metric label="بارگیری ناوگان" value={nf(deliveries.funnel.loaded)} note="در حال توزیع" />
-              <Metric label="تحویل کامل و موفق" value={nf(deliveries.funnel.deliveredFull)} note="وصول رسید موزع" trend="up" isPositive={true} />
+              <Metric label="تحویل کامل و موفق" value={nf(deliveries.funnel.deliveredFull)} note="وصول رسید موزع" />
               <Metric label="نرخ تحویل به‌موقع" value={deliveries.onTimeRate == null ? 'نامشخص' : pf(deliveries.onTimeRate)} note={`${nf(deliveries.onTimeBasis)} تحویل دارای موعد و زمان تحویل معتبر`} />
             </div>
 

@@ -47,7 +47,7 @@ function validPeriod(from: string, to: string) {
     && from <= to && Date.parse(to) - Date.parse(from) <= 365 * DAY;
 }
 
-function trendOption(rows: MoneyCashRow[], period: MoneyPeriod, granularity: Granularity, complete: boolean) {
+function cashTrendPeriods(rows: MoneyCashRow[], period: MoneyPeriod, granularity: Granularity, complete: boolean) {
   const byDate = new Map(rows.map(row => [row.date,row]));
   const buckets = new Map<string, { label: string; inflow: number; outflow: number }>();
   for (let date = period.from; date <= period.to; date = shift(date, 1)) {
@@ -62,7 +62,10 @@ function trendOption(rows: MoneyCashRow[], period: MoneyPeriod, granularity: Gra
     bucket.outflow += Number(row?.outflow ?? 0);
     buckets.set(key, bucket);
   }
-  const columns = [...buckets.values()];
+  return [...buckets.values()];
+}
+
+function trendOption(columns:ReturnType<typeof cashTrendPeriods>) {
   const options = ledgerTrendOption(columns.map(row => row.label), [
     { name: 'ورود وجه', values: columns.map(row => row.inflow), colorToken: '--c-forest' },
     { name: 'خروج وجه', values: columns.map(row => row.outflow), colorToken: '--c-burgundy' },
@@ -157,12 +160,14 @@ export function MoneyIntelligencePanel() {
   }
 
   const ready = report && (report.status === 'AVAILABLE' || report.status === 'PARTIAL') ? report : null;
+  const chartPeriods=ready ? cashTrendPeriods(ready.trend,period,granularity,ready.periodCovered) : [];
+  const comparablePeriods=ready?.status==='AVAILABLE' && ready.periodCovered ? chartPeriods.slice(-12) : [];
   const reason = report && 'reason' in report ? report.reason : undefined;
   const review = () => open({ mode: 'review', title: 'اسناد و گردش نیازمند بررسی' });
   const metrics = ready ? [
     { label: 'ماندهٔ دفتری پایان دوره', amount: ready.cash.closing, mode: 'balance', key: 'CASH' },
-    { label: 'دریافت‌های تفکیک‌شده', amount: ready.cash.inflow, mode: 'cash', key: 'IN' },
-    { label: 'پرداخت‌های تفکیک‌شده', amount: ready.cash.outflow, mode: 'cash', key: 'OUT' },
+    { label: 'دریافت‌های تفکیک‌شده', amount: ready.cash.inflow, mode: 'cash', key: 'IN', sparkline:comparablePeriods.map(row=>row.inflow) },
+    { label: 'پرداخت‌های تفکیک‌شده', amount: ready.cash.outflow, mode: 'cash', key: 'OUT', sparkline:comparablePeriods.map(row=>row.outflow) },
     { label: 'سود خالص دفتری', amount: ready.netProfit, mode: 'profit' },
   ] as const : [];
   const bridgeSteps = ready && ready.netProfit !== null && ready.cash.net !== null ? [
@@ -204,9 +209,11 @@ export function MoneyIntelligencePanel() {
         <EmptyState surface="finance_money" title={reason ?? 'دریافت گزارش نقدینگی از سرور ممکن نیست'}
           actionLabel={query.error ? 'تلاش دوباره' : undefined} onAction={query.error ? () => void query.refetch() : undefined} compact />
       </Card> : <>
-        <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
-          {metrics.map(metric => <div key={metric.label} title={money(metric.amount)}>
+        <div className="grid grid-cols-2 items-stretch gap-2 lg:grid-cols-4">
+          {metrics.map(metric => <div className="min-w-0" key={metric.label} title={money(metric.amount)}>
             <KpiCard label={metric.label} value={compact(metric.amount)} density="compact"
+              sparkline={'sparkline' in metric ? metric.sparkline : undefined}
+              sparklineLabel={'sparkline' in metric ? `روند ${metric.label} بر اساس تفکیک زمانی انتخاب‌شده` : undefined}
               onClick={metric.amount === null ? undefined : () => open({ title: metric.label, mode: metric.mode,
                 key: 'key' in metric ? metric.key : undefined })} />
           </div>)}
@@ -231,7 +238,7 @@ export function MoneyIntelligencePanel() {
               variant={option.key === granularity ? 'soft' : 'ghost'} aria-pressed={option.key === granularity}
               onClick={() => setGranularity(option.key)}>{option.label}</Button>)}
           </div>
-          <EChartCard title="روند ورود و خروج وجه دفتری" option={trendOption(ready.trend, period, granularity, ready.periodCovered)}
+          <EChartCard title="روند ورود و خروج وجه دفتری" option={trendOption(chartPeriods)}
             empty={!ready.trend.length} sourceLabel="دفتر کل ERP" periodLabel="مبالغ به ریال" />
           <Card padding="md" className="space-y-1">
             <Button type="button" size="sm" variant="outline"
@@ -252,7 +259,13 @@ export function MoneyIntelligencePanel() {
         <Card padding="md" className="space-y-3">
           <h3 className="font-bold">چرا سود با نقدینگی فرق دارد؟</h3>
           <p className="text-caption text-text-secondary">سود هنگام شناسایی درآمد و هزینه ثبت می‌شود. در این آبشار، تغییر ماندهٔ حساب‌های غیرنقدی، سود خالص را به تغییر وجه نقد دفتری وصل می‌کند. اثر هر حساب می‌تواند شامل گردش نقدی و غیرنقدی باشد.</p>
-          {biggestUse && <p className="text-sm">بزرگ‌ترین اثر کاهنده در این بازه مربوط به «{roles[biggestUse.role]}» با اثر {money(biggestUse.amount)} است.</p>}
+          {biggestUse && <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-canvas p-2.5">
+            <div className="min-w-0 space-y-1">
+              <p className="text-sm font-semibold">بیشترین اثر کاهنده · {roles[biggestUse.role] || 'سایر تغییرات'}</p>
+              <p className="text-caption text-text-secondary">{money(biggestUse.amount)} اثر دفتری در این بازه. برای بررسی علت، گردش‌های این حساب را باز کنید.</p>
+            </div>
+            <Button type="button" size="sm" variant="outline" onClick={()=>open({title:roles[biggestUse.role] || 'سایر تغییرات',mode:'role',key:biggestUse.role})}>مشاهدهٔ ریز گردش</Button>
+          </div>}
           {bridgeSteps.length === 0 ? <p className="text-sm text-text-secondary">آبشار پس از پوشش کامل و کنترل کدینگ این دوره قابل محاسبه است.</p> : <>
             <EChartCard title="از سود خالص تا تغییر وجه نقد" option={financialWaterfallOption(bridgeSteps.map(step => ({
               ...step, amount: Number(step.amount),

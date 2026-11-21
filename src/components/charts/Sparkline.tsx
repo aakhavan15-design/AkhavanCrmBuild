@@ -46,30 +46,3 @@ export function Sparkline({
     </svg>
   );
 }
-
-/** Mini halo sparkline for compact cards & rows (e.g. 48px - 72px) */
-export function MiniHaloSparkline({
-  trend = 'up',
-  isPositive = true,
-}: {
-  trend?: 'up' | 'down' | 'flat';
-  isPositive?: boolean;
-  className?: string;
-}) {
-  const color = isPositive ? 'var(--c-success)' : 'var(--c-danger)';
-  const values =
-    trend === 'up'
-      ? [8, 12, 10, 16, 14, 22, 26]
-      : trend === 'down'
-      ? [26, 22, 24, 16, 18, 11, 7]
-      : [14, 15, 14, 16, 14, 15, 14];
-
-  return (
-    <Sparkline
-      values={values}
-      color={color}
-      width={46}
-      height={22}
-    />
-  );
-}
