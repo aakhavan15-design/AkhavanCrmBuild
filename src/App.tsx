@@ -1,6 +1,6 @@
 import React, { Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
-import { useAppStore } from './lib/storage';
+import { useAppStore, withoutPrivateSnapshot } from './lib/storage';
 import { playNotificationSound } from './lib/sound';
 import { bridgeInAppToSystem } from './lib/webPush';
 import { useWorkflowEngine } from './hooks/useWorkflowEngine';
@@ -193,7 +193,7 @@ function AppContent() {
   };
   if (location.pathname !== '/login' && location.pathname !== '/apply' && !AuthService.isAuthenticated()) return <Navigate to="/login" replace state={{ from: location.pathname }} />;
   if (location.pathname === '/login') return <div className="crm-workspace" data-ui-density="compact"><LoginWorkspace state={state} tenantName={getTenantName(state)} logoUrl={state.settings?.orgConfig?.logoUrl} applyEnabled={onboardingConfig.enabled} onAuthenticated={afterLogin} /></div>;
-  if (location.pathname === '/apply') return <div className="crm-workspace" data-ui-density="compact"><ApplyPage state={state} updateState={updateState} /></div>;
+  if (location.pathname === '/apply') return <div className="crm-workspace" data-ui-density="compact"><ApplyPage state={state} /></div>;
 
   const currentUser = state.users?.find(u => u.id === state.currentUserId);
   const currentRole = state.roles?.find(r => r.id === currentUser?.roleId);
@@ -244,7 +244,7 @@ function AppContent() {
     <>
       <LiveAnnouncer />
       <Layout
-        onLogout={() => { track(AnalyticsEvents.LOGOUT); stopStateSync(); AuthService.clearSession(); navigate('/login', { replace: true }); }}
+        onLogout={() => { track(AnalyticsEvents.LOGOUT); stopStateSync(); AuthService.clearSession(); updateState(withoutPrivateSnapshot); navigate('/login', { replace: true }); }}
         onOpenSearch={() => setIsSearchOpen(true)}
         onOpenNotifications={() => setIsNotificationsOpen(true)}
         notifications={visibleNotifications}

@@ -338,7 +338,7 @@ export function LoginWorkspace({
                   ورود به حساب کاربری
                 </span>
 
-                <div className="flex items-center gap-0.5 sm:gap-1 p-0.5 sm:p-1 rounded-lg border border-white/15 bg-white/5 backdrop-blur-md self-start xs:self-auto shrink-0 max-w-full">
+                {import.meta.env.DEV && (                <div className="flex items-center gap-0.5 sm:gap-1 p-0.5 sm:p-1 rounded-lg border border-white/15 bg-white/5 backdrop-blur-md self-start xs:self-auto shrink-0 max-w-full">
                   <button
                     type="button"
                     onClick={() => setActiveTab('LOGIN')}
@@ -363,6 +363,7 @@ export function LoginWorkspace({
                     <span>حساب‌ها</span>
                   </button>
                 </div>
+                )}
               </div>
 
               {/* تب ۱: فرم ورود */}
@@ -455,7 +456,7 @@ export function LoginWorkspace({
               )}
 
               {/* تب ۲: اطلاعات حساب‌های پیش‌فرض */}
-              {activeTab === 'DEMO_INFO' && (
+              {import.meta.env.DEV && activeTab === 'DEMO_INFO' && (
                 <div className="mt-2 space-y-1.5">
                   <div className="space-y-1">
                     <div

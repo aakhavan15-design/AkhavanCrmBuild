@@ -92,7 +92,20 @@ export class StateSyncEngine {
     const request = ++this.snapshotRequest;
     const snapshot = await this.provider.getStateSnapshot();
     if (generation !== this.generation || request !== this.snapshotRequest) return false;
-    const { patch, index } = mergeSnapshot(this.store.getState().state, snapshot, this.index, this.registry);
+    const current = this.store.getState().state;
+    const { patch, index } = mergeSnapshot(current, snapshot, this.index, this.registry);
+    const revoked = new Set(snapshot.hiddenCollections ?? []);
+    for (const name of ['groups', 'messages', 'onboardingApplications', 'attachments'] as const) {
+      if (revoked.has(name)) {
+        patch[name] = [];
+        delete index.collections[name];
+      }
+    }
+    // A revoked conversation must lose both synced messages and local compositions linked to it.
+    if (patch.groups) {
+      const visibleIds = new Set(patch.groups.map(group => group.id));
+      patch.messages = (patch.messages ?? current.messages ?? []).filter(message => visibleIds.has(message.groupId));
+    }
     this.index = index;
     this.suppress = true;
     try {

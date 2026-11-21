@@ -181,6 +181,7 @@ export function ProfileWorkspace({ state, updateState, setActiveTab }: ProfileWo
           </form>
         </Card>
 
+        {import.meta.env.DEV && (
         <Card id="profile-switch" padding="lg" className="space-y-4 bg-surface border-border/80">
           <h3 className="font-bold text-base text-text-main flex items-center gap-2">
             <RefreshCw className="w-4 h-4 text-primary" /> سوییچ سریع بین کاربران سازمانی (RBAC Simulator)
@@ -219,6 +220,7 @@ export function ProfileWorkspace({ state, updateState, setActiveTab }: ProfileWo
             })}
           </div>
         </Card>
+        )}
       </div>
     </div>
   );

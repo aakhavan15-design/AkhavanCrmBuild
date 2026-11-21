@@ -173,9 +173,27 @@ export interface CashFlowDataResult {
   reason?: string;
 }
 
+export interface PublicRecruitmentConfig {
+  company: string;
+  requiredDocs: Array<{ key: string; label: string; required: boolean }>;
+  requireNationalId: boolean;
+  desiredRoles: string[];
+}
+
+export interface PublicApplicationSubmission {
+  requestId: string;
+  fields: Record<string, unknown>;
+  documents: Array<{ kind: string; fileName: string; fileType: string; fileSize: number; base64Data: string }>;
+}
+
+export interface PublicApplicationReceipt { id: string; status: 'ACCEPTED' }
+
 export interface DataProvider {
   name: 'CLIENT_INDEXEDDB' | 'SQLSERVER_BACKEND';
   
+  getPublicRecruitment(): Promise<PublicRecruitmentConfig>;
+  submitPublicApplication(input: PublicApplicationSubmission): Promise<PublicApplicationReceipt>;
+
   // Accounts
   getAccounts(filter?: any, pagination?: PaginationParams): Promise<PaginatedResult<Account>>;
   getAccountById(id: string): Promise<Account | null>;
@@ -250,6 +268,12 @@ const MAX_PNL_JOURNAL_PAGES = 100;
  * 1. پیاده‌سازی ارائه‌دهنده داده سمت کلاینت (IndexedDB / Local-first)
  */
 export class ClientStorageDataProvider implements DataProvider {
+  async getPublicRecruitment(): Promise<PublicRecruitmentConfig> {
+    throw new Error('دریافت درخواست همکاری نیازمند اتصال به سرور است.');
+  }
+  async submitPublicApplication(): Promise<PublicApplicationReceipt> {
+    throw new Error('درخواست ارسال نشد. اتصال سرور را بررسی کنید.');
+  }
   async getFifoSaleEvidence(): Promise<FifoSaleEvidence> {
     return { status: 'UNAVAILABLE', coverage: 'UNVERIFIED', items: [], hasMore: false };
   }
@@ -618,6 +642,18 @@ export class ClientStorageDataProvider implements DataProvider {
  * 2. پیاده‌سازی ارائه‌دهنده داده مستقیم به Backend سرور و SQL Server
  */
 export class HttpBackendDataProvider implements DataProvider {
+  async getPublicRecruitment(): Promise<PublicRecruitmentConfig> {
+    return this.request('/public/recruitment/config');
+  }
+  async submitPublicApplication(input: PublicApplicationSubmission): Promise<PublicApplicationReceipt> {
+    const receipt = await this.request<PublicApplicationReceipt>('/public/recruitment/applications', {
+      method: 'POST', body: JSON.stringify(input),
+    });
+    if (receipt?.status !== 'ACCEPTED' || receipt.id !== input.requestId) {
+      throw new Error('رسید معتبر از سرور دریافت نشد. دوباره تلاش کنید.');
+    }
+    return receipt;
+  }
   async getFifoSaleEvidence(documentId: string, source: string, periodStart: string): Promise<FifoSaleEvidence> {
     try {
       const query = new URLSearchParams({ source, periodStart });

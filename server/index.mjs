@@ -9,6 +9,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import fs from 'node:fs';
 import { createEntityService, FileEntityDriver, MssqlEntityDriver, MemoryEntityDriver } from './entityStore.mjs';
+import { createPublicRecruitment } from './publicRecruitment.mjs';
 import { buildReportStatus } from './reportStatus.mjs';
 import { getVapidPublicKey, saveSubscription, removeSubscription, sendPushToUser, initPushModule } from './pushStore.mjs';
 import { recordId } from '../src/lib/stateModel.mjs';
@@ -33,8 +34,13 @@ app.use((_req, res, next) => {
 });
 const smallJson = express.json({ limit: '256kb', strict: true });
 const stateJson = express.json({ limit: '1mb', strict: true });   // /state/* carries record batches (Persian text is 2-3 bytes/char)
+const recruitmentJson = express.json({ limit: '15mb', strict: true });
 const docJson = express.json({ limit: '10mb', strict: true });     // /api/v1/documents/* carries high-res photos and scanned PDFs
 app.use((req, res, next) => {
+  if (req.method === 'POST' && /^\/api\/v1\/public\/recruitment\/applications\/?$/i.test(req.path)) {
+    if (!attemptRecruitment(req.ip)) return res.status(429).json({ error: { message: 'تعداد تلاش‌ها زیاد است. کمی بعد دوباره امتحان کنید.' } });
+    return recruitmentJson(req, res, next);
+  }
   if (req.path.startsWith('/api/v1/documents/')) return docJson(req, res, next);
   if (req.path.startsWith('/api/v1/state/')) return stateJson(req, res, next);
   return smallJson(req, res, next);
@@ -45,6 +51,17 @@ app.use((req, res, next) => {
   res.set('cache-control', 'no-store');
   next();
 });
+
+const recruitmentAttempts = new Map();
+let recruitmentWindow = 0;
+function attemptRecruitment(ip) {
+  const window = Math.floor(Date.now() / (10 * 60 * 1000));
+  if (window !== recruitmentWindow) { recruitmentWindow = window; recruitmentAttempts.clear(); }
+  const attempts = recruitmentAttempts.get(ip) || 0;
+  if (attempts >= 12 || recruitmentAttempts.size >= 2000) return false;
+  recruitmentAttempts.set(ip, attempts + 1);
+  return true;
+}
 
 const requiredEnv = ['SQLSERVER_HOST', 'SQLSERVER_DATABASE', 'SQLSERVER_USER', 'SQLSERVER_PASSWORD', 'AUTH_TOKEN_SECRET'];
 const missingEnv = requiredEnv.filter((key) => !process.env[key]);
@@ -731,6 +748,20 @@ app.get('/api/v1/integrations/erp/sync-overview', authenticate,
     res.json({ status: result.recordset.length ? 'AVAILABLE' : 'EMPTY', items: result.recordset });
   }),
 );
+
+const publicRecruitment = createPublicRecruitment({
+  sql, run: withTenantContext, tenantId: process.env.PUBLIC_RECRUITMENT_TENANT_ID,
+});
+app.get('/api/v1/public/recruitment/config', wrap(async (req, res) => {
+  const config = await publicRecruitment.config();
+  if (!config) return bad(req, res, 503, 'RECRUITMENT_UNAVAILABLE', 'دریافت درخواست همکاری در حال حاضر فعال نیست.');
+  res.json(config);
+}));
+app.post('/api/v1/public/recruitment/applications', wrap(async (req, res) => {
+  const result = await publicRecruitment.submit(req.body);
+  if (!result.receipt) return bad(req, res, result.status, 'RECRUITMENT_NOT_ACCEPTED', result.message);
+  res.status(result.status).json(result.receipt);
+}));
 
 app.get('/api/v1/state/snapshot', authenticate, guardEntityDriver, wrap(async (req, res) => {
   const requested = typeof req.query.includeEmpty === 'string' ? req.query.includeEmpty.split(',') : [];

@@ -10,21 +10,36 @@ import { getOfflineQueue, retryFailedOfflineOperations } from './offline';
 
 const STORAGE_VERSION = 19;
 const demoSeedPreference = import.meta.env?.VITE_ENABLE_DEMO_DATA;
-const INCLUDE_DEMO_SEED = demoSeedPreference === 'true'
-  || (demoSeedPreference !== 'false' && import.meta.env?.DEV === true);
+const INCLUDE_DEMO_SEED = import.meta.env.DEV && demoSeedPreference !== 'false';
 const STORAGE_NAME = 'akhavan_app_state';
 const SYNC_CHANNEL_NAME = 'akhavan_state_sync_channel';
 
 const MAX_LOG_RECORDS = 1000;
 const MAX_NOTIFICATIONS = 200;
 
+export function withoutPrivateSnapshot(state: AppState): AppState {
+  return { ...state, groups: [], messages: [], onboardingApplications: [],
+    attachments: state.attachments?.filter(item => item.entityType !== 'APPLICATION'),
+    notifications: state.notifications?.filter(item => item.linkTab !== 'groups' && !item.recipientId) };
+}
+
+function sanitizePersistedSnapshot(value: string): string {
+  if (import.meta.env.DEV) return value;
+  const persisted = JSON.parse(value);
+  if (persisted.state?.state) persisted.state.state = withoutPrivateSnapshot(persisted.state.state);
+  return JSON.stringify(persisted);
+}
+
 const idbStorage: StateStorage = {
   getItem: async (name: string): Promise<string | null> => {
     const value = await idbGet<string>(name);
-    return typeof value === 'string' ? value : null;
+    if (typeof value !== 'string') return null;
+    const sanitized = sanitizePersistedSnapshot(value);
+    if (sanitized !== value) await idbSet(name, sanitized);
+    return sanitized;
   },
   setItem: async (name: string, value: string): Promise<void> => {
-    await idbSet(name, value);
+    await idbSet(name, sanitizePersistedSnapshot(value));
   },
   removeItem: async (name: string): Promise<void> => {
     await idbDel(name);
@@ -150,7 +165,7 @@ const ensureStateIntegrity = (incomingState: AppState): AppState => {
   };
 };
 
-const broadcastChannel = typeof window !== 'undefined' && typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel(SYNC_CHANNEL_NAME) : null;
+const broadcastChannel = import.meta.env.DEV && typeof window !== 'undefined' && typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel(SYNC_CHANNEL_NAME) : null;
 
 export const useAppStore = create<AppStore>()(
   persist(

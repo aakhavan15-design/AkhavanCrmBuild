@@ -3,6 +3,7 @@
 // data is always persisted, and `profile()` reports which typed columns the product actually needs next.
 // Drivers: memory (tests), file (local dev without SQL Server), mssql (production, RLS via SESSION_CONTEXT).
 import fs from 'node:fs';
+import { CHAT_COLLECTIONS, isConversationMember, canChangeConversation, canChangeConversationMessage } from './conversationScope.mjs';
 import path from 'node:path';
 import {
   splitState, policyOf, recordId, classify, isMarkedFixture, checkIntegrity, profileCollections, SINGLETON_PREFIX,
@@ -110,6 +111,18 @@ export class MssqlEntityDriver {
             AND (LOWER(record.CollectionName)<>N'tasks' OR EXISTS (
               SELECT 1 FROM security.fn_TaskEntityScope(record.TenantId,record.JsonDoc,'VIEW')
             ))
+            AND (LOWER(record.CollectionName) NOT IN (N'groups',N'messages') OR EXISTS (
+              SELECT 1 FROM sync.EntityStore AS conversation
+              CROSS APPLY OPENJSON(conversation.JsonDoc,'$.memberIds') AS membership
+              WHERE conversation.TenantId=record.TenantId AND conversation.CollectionName=N'groups'
+                AND conversation.IsDeleted=0
+                AND conversation.EntityId=CASE WHEN record.CollectionName=N'groups' THEN record.EntityId ELSE JSON_VALUE(record.JsonDoc,'$.groupId') END
+                AND TRY_CONVERT(uniqueidentifier, membership.value)=TRY_CONVERT(uniqueidentifier,SESSION_CONTEXT(N'UserId'))
+            ))
+            AND (LOWER(record.CollectionName)<>N'attachments' OR
+              ISNULL(JSON_VALUE(record.JsonDoc,'$.entityType'),N'')<>N'APPLICATION' OR EXISTS (
+                SELECT 1 FROM security.fn_RecordReadScope(record.TenantId,N'users.manage',NULL,NULL,NULL,NULL)
+              ))
             AND (LOWER(record.CollectionName)<>N'notifications' OR (
               (LEN(JSON_VALUE(record.JsonDoc,'$.recipientId'))=36
                 AND TRY_CONVERT(uniqueidentifier,JSON_VALUE(record.JsonDoc,'$.recipientId'))=TRY_CONVERT(uniqueidentifier,SESSION_CONTEXT(N'UserId')))
@@ -142,9 +155,18 @@ export class MssqlEntityDriver {
       const rejected = [];
       // Link changes run after their source rows are saved and before source rows are removed.
       const isAllocation = row => row.c.toLowerCase() === 'paymentallocations';
+      const groupChanges = row => row.c === 'groups';
+      if (rows.some(row => CHAT_COLLECTIONS.has(row.c))) {
+        await new sql.Request(tx).input('resource', sql.NVarChar(255), `conversation-write:${tenantId}`)
+          .query(`DECLARE @result int;
+            EXEC @result=sys.sp_getapplock @Resource=@resource,@LockMode='Exclusive',@LockOwner='Transaction',@LockTimeout=8000;
+            IF @result<0 THROW 50409,N'Could not acquire conversation write lock.',1;`);
+      }
       const partitions = [
         rows.filter(row => isAllocation(row) && row.d),
-        rows.filter(row => !isAllocation(row)),
+        rows.filter(row => row.c === 'groups' && !row.d),
+        rows.filter(row => row.c !== 'groups' && !isAllocation(row)),
+        rows.filter(row => row.c === 'groups' && row.d),
         rows.filter(row => isAllocation(row) && !row.d),
       ];
       for (const partition of partitions) {
@@ -237,6 +259,45 @@ export class MssqlEntityDriver {
             }
             chunk = chunk.filter((_, index) => !skipped.has(index));
           }
+          const privateRows = chunk.filter(row => CHAT_COLLECTIONS.has(row.c) || row.c === 'attachments');
+          if (privateRows.length) {
+            const stored = (await new sql.Request(tx).input('tenantId', sql.UniqueIdentifier, tenantId)
+              .input('rows', sql.NVarChar(sql.MAX), JSON.stringify(privateRows))
+              .query(`WITH incoming AS (
+                  SELECT c,i,j FROM OPENJSON(@rows) WITH (c nvarchar(80),i nvarchar(200),j nvarchar(max))
+                )
+                SELECT record.CollectionName,record.EntityId,record.JsonDoc,record.IsDeleted
+                FROM sync.EntityStore AS record WITH (UPDLOCK,HOLDLOCK)
+                WHERE record.TenantId=@tenantId AND EXISTS (
+                  SELECT 1 FROM incoming AS item
+                  LEFT JOIN sync.EntityStore AS message
+                    ON message.TenantId=@tenantId AND message.CollectionName=N'messages' AND message.EntityId=item.i
+                  WHERE (record.CollectionName=item.c AND record.EntityId=item.i)
+                     OR (item.c=N'messages' AND record.CollectionName=N'groups'
+                       AND record.EntityId IN (JSON_VALUE(item.j,'$.groupId'),JSON_VALUE(message.JsonDoc,'$.groupId')))
+                )`)).recordset;
+            const records = new Map(stored.map(row => [`${row.CollectionName}:${row.EntityId}`, {
+              json: JSON.parse(row.JsonDoc), deleted: Boolean(row.IsDeleted),
+            }]));
+            chunk = chunk.filter(row => {
+              if (!CHAT_COLLECTIONS.has(row.c) && row.c !== 'attachments') return true;
+              const previous = records.get(`${row.c}:${row.i}`);
+              const next = row.d ? null : JSON.parse(row.j);
+              let allowed;
+              if (row.c === 'groups') {
+                allowed = !previous?.deleted && canChangeConversation(previous?.json, next, userId, row.d);
+              } else if (row.c === 'messages') {
+                const group = records.get(`groups:${previous?.json?.groupId ?? next?.groupId}`);
+                allowed = !previous?.deleted && !group?.deleted
+                  && canChangeConversationMessage(group?.json, previous?.json, next, userId, row.d);
+              } else {
+                // Applicant documents are written atomically by the recruitment endpoint.
+                allowed = previous?.json?.entityType !== 'APPLICATION' && next?.entityType !== 'APPLICATION';
+              }
+              if (!allowed) rejected.push({ collection: row.c, id: row.i, reason: 'FORBIDDEN_SCOPE' });
+              return allowed;
+            });
+          }
           const scoped = chunk.flatMap((row, index) =>
             scopedCollections.has(row.c.toLowerCase()) ? [{ ...row, index }] : []
           );
@@ -317,7 +378,17 @@ export function createEntityService({ driver, registry, hasPermission, excludeFi
     const collections = {};
     const hidden = [];
     // Preserve the distinction between a permitted empty collection and a hidden source.
-    const storedCollections = { ...full.collections };
+    const visibleGroups = (full.collections.groups || []).filter(group =>
+      isConversationMember(group, auth.userId) && (!excludeFixtures || !isMarkedFixture(group)));
+    const visibleGroupIds = new Set(visibleGroups.map(group => group.id));
+    const mayReadApplications = await can(auth, 'users.manage');
+    const storedCollections = {
+      ...full.collections,
+      groups: visibleGroups,
+      messages: (full.collections.messages || []).filter(message => visibleGroupIds.has(message.groupId)),
+      attachments: (full.collections.attachments || []).filter(item =>
+        item.entityType !== 'APPLICATION' || mayReadApplications),
+    };
     for (const name of includeEmptyCollections) storedCollections[name] ??= [];
     for (const [name, list] of Object.entries(storedCollections)) {
       if (await canRead(name)) {
@@ -329,6 +400,8 @@ export function createEntityService({ driver, registry, hasPermission, excludeFi
           !isMarkedFixture(value, key) && !(Array.isArray(value) && value.some(row => isMarkedFixture(row)))
         ))
       : full.singletons;
+    for (const name of Object.keys(singletons)) if (CHAT_COLLECTIONS.has(name.toLowerCase()) || name.toLowerCase() === 'attachments'
+      || name.toLowerCase() === 'onboardingapplications') delete singletons[name];
     return { collections, singletons, serverVersion: full.version, hiddenCollections: hidden, generatedAt: now() };
   }
 
@@ -338,13 +411,15 @@ export function createEntityService({ driver, registry, hasPermission, excludeFi
     const rejected = [];
     let total = 0;
     const writable = new Map();
+    const privateNames = new Map(['groups', 'messages', 'attachments', 'onboardingApplications'].map(name => [name.toLowerCase(), name]));
+    const canonical = name => !privateNames.has(name.toLowerCase()) || privateNames.get(name.toLowerCase()) === name;
     const canWrite = async (name) => {
       const code = policyOf(name, registry).write;
       if (!writable.has(code)) writable.set(code, await can(auth, code));
       return writable.get(code);
     };
     for (const [name, list] of Object.entries(change?.upserts || {})) {
-      if (!NAME_RE.test(name) || !Array.isArray(list)) { rejected.push({ collection: name, reason: 'INVALID_COLLECTION' }); continue; }
+      if (!NAME_RE.test(name) || !canonical(name) || !Array.isArray(list)) { rejected.push({ collection: name, reason: 'INVALID_COLLECTION' }); continue; }
       if (!(await canWrite(name))) { rejected.push({ collection: name, reason: 'FORBIDDEN', count: list.length }); continue; }
       for (const rec of list) {
         const id = recordId(rec, name, registry);
@@ -355,12 +430,12 @@ export function createEntityService({ driver, registry, hasPermission, excludeFi
       }
     }
     for (const [name, ids] of Object.entries(allowDeletes ? (change?.deletes || {}) : {})) {
-      if (!NAME_RE.test(name) || !Array.isArray(ids)) { rejected.push({ collection: name, reason: 'INVALID_COLLECTION' }); continue; }
+      if (!NAME_RE.test(name) || !canonical(name) || !Array.isArray(ids)) { rejected.push({ collection: name, reason: 'INVALID_COLLECTION' }); continue; }
       if (!(await canWrite(name))) { rejected.push({ collection: name, reason: 'FORBIDDEN', count: ids.length }); continue; }
       deletes[name] = ids.filter((id) => typeof id === 'string' && id.length > 0 && id.length <= 200); total += deletes[name].length;
     }
     for (const [key, value] of Object.entries(change?.singletons || {})) {
-      if (!NAME_RE.test(key)) { rejected.push({ collection: key, reason: 'INVALID_SINGLETON' }); continue; }
+      if (!NAME_RE.test(key) || privateNames.has(key.toLowerCase())) { rejected.push({ collection: key, reason: 'INVALID_SINGLETON' }); continue; }
       const code = policyOf(key, registry).write;
       // singletons (settings, locale, flags) follow the strictest write rule: settings.manage
       const needed = code === 'authenticated' ? 'authenticated' : code;
