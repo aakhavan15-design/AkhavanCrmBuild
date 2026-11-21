@@ -16,6 +16,7 @@ import { CustomDatePicker } from '../ui/CustomDatePicker';
 import { EmptyState } from '../ui/EmptyState';
 import { Input, Textarea } from '../ui/Input';
 import { LoadingState } from '../ui/LoadingState';
+import { Modal } from '../ui/Modal';
 import { SearchableSelect } from '../ui/SearchableSelect';
 import { TaskRequestFiles } from './TaskRequestFiles';
 import { QuickTaskRequest, RequestPeople } from './QuickTaskRequest';
@@ -32,6 +33,13 @@ const actionLabels:Record<string,string> = {
   PRIORITY:'تغییر اهمیت',WATCHERS:'مدیریت ناظران',APPROVE:'تأیید',REJECT:'رد با توضیح',CONDITION:'ثبت شرط',
   SATISFY:'تأیید مستقل اجرای شرط',ERP_INVOICE:'تطبیق فاکتور رسمی',CANCEL:'لغو',REVISE:'بازبینی نسخه',
   DUE_DATE:'تغییر یا برداشتن مهلت',DECLINE_INQUIRY:'رد استعلام با توضیح',
+};
+const confirmations:Record<string,string> = {
+  APPROVE:'تصمیم به نسخهٔ فعلی درخواست ثبت می‌شود. با تکمیل تأییدهای لازم، گردش به مرحلهٔ بعد می‌رود.',
+  REJECT:'پرونده با نتیجهٔ «ردشده» بسته می‌شود و توضیح در تاریخچه ثبت خواهد شد.',
+  SATISFY:'با ثبت این تصمیم، شاهد انجام شرط تأیید می‌شود و پرونده به مرحلهٔ تصمیم بازمی‌گردد.',
+  ERP_INVOICE:'فاکتور رسمی پس از تطبیق در سرور به درخواست پیوند می‌خورد و پرونده بسته می‌شود.',
+  CANCEL:'درخواست بسته می‌شود و اعضای مجاز گردش از لغو آن مطلع می‌شوند.',
 };
 const kindLabel=(kind:string)=>requestKinds.find(item=>item.value===kind)?.label ?? 'درخواست کاری';
 const time = new Intl.DateTimeFormat('fa-IR',{timeZone:'Asia/Tehran',hour:'2-digit',minute:'2-digit'});
@@ -139,6 +147,7 @@ export function TaskRequestSheet({id,viewer,accounts,onClose,onChanged}:{
   const [nextAction,setNextAction]=useState('');
   const [rates,setRates]=useState<Record<string,string>>({});
   const [busy,setBusy]=useState(false);
+  const [confirming,setConfirming]=useState(false);
   const [actionError,setActionError]=useState('');
   const pending=useRef<{key:string;id:string}|null>(null);
 
@@ -185,6 +194,7 @@ export function TaskRequestSheet({id,viewer,accounts,onClose,onChanged}:{
       pending.current=null;
       onChanged();
       if (!saved.task) {onClose();return;}
+      setConfirming(false);
       setAction('');setNote('');setNextAction('');setCondition('');setPaymentTerms('');setPriceClass('');setRates({});
       await refetch();
     } catch (reason) {
@@ -207,6 +217,17 @@ export function TaskRequestSheet({id,viewer,accounts,onClose,onChanged}:{
     setAdjustedDueDate(task?.dueDate ?? '');
   };
   const available=record?.permissions.actions.filter(value=>!record.stale || !['APPROVE','CONDITION','SATISFY'].includes(value)) ?? [];
+  if (confirming && confirmations[action]) return <Modal isOpen size="sm" title={actionLabels[action]}
+    onClose={()=>{if (!busy) setConfirming(false);}} footer={<div className="flex flex-wrap justify-end gap-2">
+      <Button type="button" variant="ghost" disabled={busy} onClick={()=>setConfirming(false)}>بازگشت به اقدام</Button>
+      <Button type="button" variant={action==='REJECT' || action==='CANCEL' ? 'danger' : 'primary'} disabled={!available.includes(action)}
+        loading={busy} onClick={()=>void submit()}>ثبت نهایی</Button>
+    </div>}>
+    <p className="text-sm">{confirmations[action]}</p>
+    {record?.orderMargin && action==='APPROVE' && record.orderMargin.sign!=='AT_FLOOR_OR_HIGHER' &&
+      <p className="mt-2 text-sm text-warning">حاشیهٔ ثبت‌شدهٔ اقلام {formatDecimalString(record.orderMargin.percent)}٪ است. شرایط قیمت یا ارسال را بررسی کنید.</p>}
+    {actionError && <p role="alert" className="mt-2 text-sm text-danger">{actionError}</p>}
+  </Modal>;
   return <BottomSheet isOpen onClose={()=>{if(!busy)onClose();}} title={task?.title ?? 'پروندهٔ درخواست'}
     subtitle={task && req ? `${kindLabel(req.kind)} · ${requestStatusLabels[task.status] ?? task.status}` : undefined}>
     {error ? <EmptyState surface="task_request_detail" title="دریافت پرونده ممکن نیست" description={error.message}
@@ -233,6 +254,14 @@ export function TaskRequestSheet({id,viewer,accounts,onClose,onChanged}:{
         {record.stale && !req.invoice && <p role="status" className="rounded-xl bg-warning-soft p-2 text-caption text-warning">سفارش پس از ثبت این نسخه تغییر کرده است؛ تصمیم جدید به بازبینی نیاز دارد.</p>}
         {record.order && <details className="rounded-xl border border-border p-2">
           <summary className="min-h-11 cursor-pointer content-center font-semibold">سفارش {record.order.number} · {formatDecimalString(record.order.total)} {record.order.currency==='IRR' ? 'ریال' : record.order.currency}</summary>
+          {record.orderMargin && <div className="space-y-1 py-2 text-caption">
+            <p className={record.orderMargin.sign==='AT_FLOOR_OR_HIGHER' ? 'font-semibold' : 'font-semibold text-warning'}>
+              حاشیهٔ ثبت‌شدهٔ اقلام {formatDecimalString(record.orderMargin.percent)}٪ · کف سیاست {formatDecimalString(String(record.orderMargin.floorPercent))}٪
+            </p>
+            {record.orderMargin.sign!=='AT_FLOOR_OR_HIGHER' && <p>برای تصمیم، قیمت، تخفیف و شرایط ارسال را بررسی کنید.</p>}
+            <p className="text-text-secondary">بر مبنای خالص ردیف‌ها و بهای ثبت‌شدهٔ سفارش. هزینهٔ توزیع و اثر مرجوعی در این شاخص لحاظ نشده است.</p>
+          </div>}
+          {record.order.profitCompleteness && !record.orderMargin && <p className="py-2 text-caption text-text-secondary">حاشیهٔ اقلام نامشخص است. بهای ثبت‌شده یا خالص ردیف‌ها برای این محاسبه کافی نیست.</p>}
           <ul className="divide-y divide-border text-caption">
             {record.order.lines.map(line=><li key={line.number} className="space-y-1 py-2">
               <p className="font-semibold wrap-break-word">{line.title} · <bdi>{line.product}</bdi></p>
@@ -272,7 +301,11 @@ export function TaskRequestSheet({id,viewer,accounts,onClose,onChanged}:{
           </ol>
         </section>
         {available.length>0 && <SearchableSelect label="اقدام" value={action} options={available.map(value=>({value,label:actionLabels[value] ?? value}))} onChange={choose} />}
-        {action && action!=='REVISE' && <form className="space-y-2" onSubmit={event=>{event.preventDefault();void submit();}}>
+        {action && action!=='REVISE' && <form className="space-y-2" onSubmit={event=>{
+          event.preventDefault();
+          if (confirmations[action]) {setActionError('');setConfirming(true);}
+          else void submit();
+        }}>
           {action==='REFER' && <RequestPeople viewer={viewer} label="مسئول جدید" values={assignee} onChange={setAssignee}/>}
           {action==='PRIORITY' && <SearchableSelect label="اهمیت جدید" value={priority} options={requestPriorities.map(item=>({...item}))}
             onChange={value=>setPriority(value as RequestPriority)}/>}

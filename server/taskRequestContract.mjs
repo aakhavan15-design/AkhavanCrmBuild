@@ -249,3 +249,21 @@ export function validateOrderPriceAuthorization(order,authorization,today) {
   }
   return totals.size ? null : 'هیچ قلم مجوز قیمت در سفارش یافت نشد.';
 }
+
+/** Margin of the recorded sale lines only; allocation of future distribution and returns is independent. */
+export function summarizeOrderMargin(order, floorPercent) {
+  if (order?.profitCompleteness!=='KNOWN' || order.lines.length===0 || !Number.isFinite(floorPercent) || floorPercent<0 || floorPercent>100 ||
+      order.lines.some(line=>![line.total,line.cost].every(value=>typeof value==='string' && /^\d+(?:\.\d{1,4})?$/.test(value)))) return null;
+  let net=0n, cost=0n;
+  for (const line of order.lines) {
+    net+=fixedUnits(line.total);
+    cost+=fixedUnits(line.cost);
+  }
+  if (net<=0n) return null;
+  const margin=net-cost;
+  const sign=margin<0n ? '-' : '';
+  const absolute=margin<0n ? -margin : margin;
+  const percentHundredths=(absolute*10000n+net/2n)/net;
+  return {percent:`${sign}${percentHundredths/100n}.${String(percentHundredths%100n).padStart(2,'0')}`,
+    floorPercent,sign:margin<0n ? 'LOSS' : margin*1000000n<net*BigInt(Math.round(floorPercent*10000)) ? 'BELOW_FLOOR' : 'AT_FLOOR_OR_HIGHER'};
+}

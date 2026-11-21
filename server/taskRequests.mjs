@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { appendTaskActivity } from '../src/services/taskActivity.ts';
-import { applyRequestCommand, approvals, availableActions, commandInput, isRequestId, kinds, policyInput, requestInput, validateOrderPriceAuthorization, uuid } from './taskRequestContract.mjs';
+import { getMetricThresholds } from '../src/lib/metricConfig.ts';
+import { applyRequestCommand, approvals, availableActions, commandInput, isRequestId, kinds, policyInput, requestInput, summarizeOrderMargin, validateOrderPriceAuthorization, uuid } from './taskRequestContract.mjs';
 
 const digest = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const failure = (status,code,message) => Object.assign(new Error(message),{status,code});
@@ -65,7 +66,8 @@ const orderSql = `
 SELECT o.SalesOrderId AS id,o.AccountId AS accountId,o.OrderNumber AS number,o.StatusCode AS status,o.CurrencyCode AS currency,
  o.OrderDate AS [date],CONVERT(varchar(48),o.Subtotal) AS subtotal,CONVERT(varchar(48),o.DiscountTotal) AS discount,
  CONVERT(varchar(48),o.NetAmount) AS total,CONVERT(varchar(18),o.RowVersion,1) AS [version],
- o.SourceSystemCode AS source,o.ExternalOrderId AS externalId
+ o.SourceSystemCode AS source,o.ExternalOrderId AS externalId,
+ CASE WHEN @cost=1 THEN o.ProfitCompletenessCode END AS profitCompleteness
 FROM crm.SalesOrder o WITH(HOLDLOCK)
 WHERE o.TenantId=@tenantId AND o.AccountId=@accountId AND o.SalesOrderId=@orderId AND o.DeletedAtUtc IS NULL;
 SELECT l.LineNumber AS number,l.ExternalProductId AS product,l.ProductNameSnapshot AS title,l.UnitCode AS unit,
@@ -78,7 +80,8 @@ WHERE l.TenantId=@tenantId AND l.SalesOrderId=@orderId ORDER BY l.LineNumber;`;
 
 function orderFingerprint(order) {
   if (!order) return null;
-  return digest({...order,lines:order.lines.map(({cost:_cost,margin:_margin,...row}) => row)});
+  const {profitCompleteness:_completeness,...snapshot}=order;
+  return digest({...snapshot,lines:order.lines.map(({cost:_cost,margin:_margin,...row}) => row)});
 }
 
 export function createTaskRequests({sql,run}) {
@@ -463,7 +466,13 @@ export function createTaskRequests({sql,run}) {
       const customer=await customerContext(tx,auth,row.task);
       const links=request.links.filter(item=>item.type!=='ORDER');
       const linkedDocuments=links.length ? await financeReferences(tx,auth,row.task.accountId,{links}) : [];
-      return {...present(row,auth),account:account ? {id:account.id,name:account.name}:null,order,stale,customer,linkedDocuments,
+      let orderMargin=null;
+      if (order && account?.seesCost) {
+        const settings=(await input(tx,auth).query(`SELECT ISNULL(JSON_QUERY(JsonDoc,'$.orgConfig'),'{}') AS orgConfig
+          FROM sync.EntityStore WHERE TenantId=@tenantId AND CollectionName=N'__singleton__' AND EntityId=N'settings' AND IsDeleted=0;`)).recordset[0];
+        orderMargin=summarizeOrderMargin(order,getMetricThresholds({orgConfig:JSON.parse(settings?.orgConfig ?? '{}')}).quoteMarginFloorPercent);
+      }
+      return {...present(row,auth),account:account ? {id:account.id,name:account.name}:null,order,orderMargin,stale,customer,linkedDocuments,
         participants:Object.fromEntries(participants.recordset.map(p => [p.id.toLowerCase(),p.name]))};
     }),
 

@@ -21,6 +21,7 @@ export interface TaskRequestSummary {
 }
 export interface TaskRequestOrder {
   id: string; number: string; status: string; currency: string; total: string; discount: string; source?:string|null;
+  profitCompleteness?:'KNOWN'|'PARTIAL'|'UNKNOWN'|null;
   lines: { number: number; product: string; title: string; quantity: string; unit?: string; price: string;
     discount: string; total: string; cost?: string | null; margin?: string | null }[];
 }
@@ -38,6 +39,7 @@ export interface TaskRequestRecord {
   version: string;
   permissions: {canFiles:boolean;canUpload?:boolean;canWatch:boolean;isWatcher:boolean;isManager:boolean;actions:string[]};
   assignee?:string; creator?:string; account?:{id:string;name:string}|null; order?:TaskRequestOrder|null;
+  orderMargin?:{percent:string;floorPercent:number;sign:'LOSS'|'BELOW_FLOOR'|'AT_FLOOR_OR_HIGHER'}|null;
   customer?:{
     finance:{creditLimit:string|null;currency:string}|null;
     orders:{number:string;date:string;currency:string;amount:string}[];

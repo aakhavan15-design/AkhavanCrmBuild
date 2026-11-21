@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { applyRequestCommand, availableActions, commandInput, policyInput, requestInput, validateOrderPriceAuthorization } from '../server/taskRequestContract.mjs';
+import { applyRequestCommand, availableActions, commandInput, policyInput, requestInput, summarizeOrderMargin, validateOrderPriceAuthorization } from '../server/taskRequestContract.mjs';
 
 const creator='11111111-1111-4111-8111-111111111111';
 const manager='22222222-2222-4222-8222-222222222222';
@@ -79,6 +79,15 @@ test('a deadline update requires a changed or removed date and preserves approva
   assert.equal(updated.dueDate,null);
   assert.equal(updated.managedRequest.contentRevision,2);
   assert.equal(updated.status,'PENDING_APPROVAL');
+});
+
+test('order margin requires complete recorded costs and uses an exact net-sales denominator',()=>{
+  const order={profitCompleteness:'KNOWN',lines:[{total:'9007199254740993.0000',cost:'9007199254740993.0001'}]};
+  assert.equal(summarizeOrderMargin(order,15).sign,'LOSS');
+  assert.equal(summarizeOrderMargin({...order,lines:[{total:'100.0000',cost:'85.0001'}]},15).sign,'BELOW_FLOOR');
+  assert.equal(summarizeOrderMargin({...order,lines:[{total:'100.0000',cost:'85.0000'}]},15).sign,'AT_FLOOR_OR_HIGHER');
+  assert.equal(summarizeOrderMargin({...order,profitCompleteness:'PARTIAL'},15),null);
+  assert.equal(summarizeOrderMargin({...order,lines:[{total:'100',cost:null}]},15),null);
 });
 
 test('information goes back to the requester and an authorized assignee can close or decline routine pricing',()=>{
