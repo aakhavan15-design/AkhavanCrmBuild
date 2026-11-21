@@ -8,9 +8,13 @@ const fail = (status, message) => ({ status, message });
 
 export function createCollectionActions({ sql, run }) {
   return async (auth, accountId, body) => {
-    const { requestId, kind, dueDate, followUp } = body || {};
+    const { requestId, kind, dueDate, followUp, assigneeId } = body || {};
     if (!uuid.test(accountId) || typeof requestId !== 'string' || !uuid.test(requestId)
       || !['FOLLOW_UP', 'PROMISE'].includes(kind)) return fail(400, 'شناسه یا نوع پیگیری معتبر نیست.');
+    if (assigneeId !== undefined && (kind !== 'FOLLOW_UP' || typeof assigneeId !== 'string' || !uuid.test(assigneeId))) {
+      return fail(400, 'شناسهٔ مسئول پیگیری معتبر نیست.');
+    }
+    const targetAssignee = assigneeId || auth.userId;
     const day = typeof dueDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dueDate) ? new Date(`${dueDate}T00:00:00Z`) : null;
     if (!day || !Number.isFinite(day.getTime()) || day.toISOString().slice(0, 10) !== dueDate) {
       return fail(400, 'تاریخ پیگیری یا تعهد معتبر نیست.');
@@ -28,7 +32,10 @@ export function createCollectionActions({ sql, run }) {
     }
     const needTask = kind === 'FOLLOW_UP' || followUp === true;
     const collection = kind === 'PROMISE' ? 'collectionPromises' : 'tasks';
-    const fingerprint = createHash('sha256').update(JSON.stringify({ accountId, kind, dueDate, note, contact, method, cheque, amount, needTask })).digest('hex');
+    const inputs = { accountId, kind, dueDate, note, contact, method, cheque, amount, needTask };
+    const fingerprint = createHash('sha256').update(JSON.stringify(
+      targetAssignee.toLowerCase() === auth.userId.toLowerCase() ? inputs : { ...inputs, targetAssignee }
+    )).digest('hex');
 
     return run(auth, async tx => {
       const access = (await new sql.Request(tx).input('tenantId', sql.UniqueIdentifier, auth.tenantId)
@@ -41,13 +48,25 @@ export function createCollectionActions({ sql, run }) {
             AND EXISTS (SELECT 1 FROM security.fn_RecordReadScope(account.TenantId,N'accounts.view',account.OwnerUserId,account.BranchId,account.TerritoryId,account.TeamId))`)).recordset[0];
       if (!access) return fail(403, 'مجوز ثبت پیگیری برای این مشتری را ندارید.');
 
+      if (targetAssignee.toLowerCase() !== auth.userId.toLowerCase()) {
+        const assignmentAllowed = (await new sql.Request(tx)
+          .input('tenantId', sql.UniqueIdentifier, auth.tenantId)
+          .input('assigneeId', sql.UniqueIdentifier, targetAssignee)
+          .query(`SELECT TOP (1) 1 AS Allowed FROM core.AppUser AS employee
+            CROSS JOIN (VALUES(N'tasks.assign'),(N'internal.manage'),(N'accounts.edit')) AS permission(Code)
+            CROSS APPLY security.fn_RecordReadScope(employee.TenantId,permission.Code,
+              employee.UserId,employee.BranchId,employee.TerritoryId,employee.TeamId) AS entitlement
+            WHERE employee.TenantId=@tenantId AND employee.UserId=@assigneeId AND employee.IsActive=1`)).recordset.length;
+        if (!assignmentAllowed) return fail(403, 'ارجاع به این کاربر در محدودهٔ مجوز شما نیست.');
+      }
+
       const now = new Date().toISOString();
       const task = {
         id: kind === 'FOLLOW_UP' ? requestId : `${requestId}-follow-up`,
         title: `پیگیری وصول مطالبات: ${access.Name}`,
         description: note || 'با مشتری تماس بگیرید و وضعیت پیگیری وصول را ثبت کنید.',
         accountId, customerId: accountId, dueDate, type: 'CALL', priority: 'HIGH', status: 'OPEN',
-        assigneeType: 'USER', assigneeId: auth.userId, ownerId: auth.userId, assignedTo: auth.userId,
+        assigneeType: 'USER', assigneeId: targetAssignee, ownerId: targetAssignee, assignedTo: targetAssignee,
         createdBy: auth.userId, createdAt: now, branchId: access.BranchId, territoryId: access.TerritoryId, teamId: access.TeamId,
       };
       if (needTask) {

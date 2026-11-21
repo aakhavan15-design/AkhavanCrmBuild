@@ -178,6 +178,7 @@ export interface AccountDirectoryPage { items: Account[]; page: number; pageSize
 export interface CollectionActionInput {
   requestId: string;
   kind: 'FOLLOW_UP' | 'PROMISE';
+  assigneeId?: string;
   dueDate: string;
   note?: string;
   promisedAmount?: number;

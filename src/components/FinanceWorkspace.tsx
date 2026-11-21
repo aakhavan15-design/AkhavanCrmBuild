@@ -44,6 +44,7 @@ import { ChartCard } from './charts/ChartCard';
 import { DonutChart } from './charts/DonutChart';
 import { formatMoney, formatMoneyCompact } from '../lib/format';
 import { LineChart } from './charts/LineChart';
+import { CollectionWorkbench } from './finance/CollectionWorkbench';
 import { CollectionActionDialog } from './finance/CollectionActionDialog';
 import { ProfitLossWidget } from './finance/ProfitLossWidget';
 import { 
@@ -153,8 +154,8 @@ export function FinanceWorkspace({ state, updateState }: FinanceWorkspaceProps) 
   const ledgerAccounts = (state.accounts || []).filter(account => canOn('finance', 'VIEW', getFinanceRecordScope({ accountId: account.id })));
   const ledgerLineCount = Array.isArray(state.journalLines) ? state.journalLines.length : 0;
   const { data: ledgerBalances, error: ledgerError, loading: ledgerLoading, refetch: refreshLedgerBalances } = useDataQuery(
-    async provider => (canSeeLedger ? provider.getDetailSubsidiaryBalances() : null),
-    [canSeeLedger, ledgerLineCount]
+    async provider => (canSeeLedger ? provider.getDetailSubsidiaryBalances({ byPeriod: activeTab === 'collection' }) : null),
+    [canSeeLedger, ledgerLineCount, activeTab === 'collection']
   );
   // F0-14: a failed provider request is UNAVAILABLE, never a perpetual LOADING state.
   const ledgerResult = canSeeLedger
@@ -567,41 +568,17 @@ export function FinanceWorkspace({ state, updateState }: FinanceWorkspaceProps) 
         </div>
       )}
 
-      {/* کارتابل مطالبات و وصول */}
-      {activeTab === 'collection' && (
-        <div className="space-y-2.5">
-          <div className="space-y-2">
-            {collectionData.profiles.map(p => (
-              <div 
-                key={p.accountId}
-                className="p-3 bg-surface border border-border rounded-xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3"
-              >
-                <div>
-                  <div className="flex items-center gap-2">
-                    <strong className="text-xs font-bold text-text-main">{p.accountName}</strong>
-                    <span className="px-1.5 py-0.2 rounded text-micro font-bold bg-danger-soft text-danger">
-                      ریسک {p.riskScore}٪
-                    </span>
-                  </div>
-                  <div className="text-caption text-text-secondary mt-1 flex items-center gap-3">
-                    <span>مانده معوق: <strong className="font-mono text-danger">{p.overdueBalance.toLocaleString('fa-IR')} ریال</strong></span>
-                    <span>تأخیر: {p.maxDaysOverdue} روز</span>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2 self-end sm:self-auto">
-                  {can('finance', 'EDIT') && <Button variant="soft" size="xs" onClick={() => setCollectionAction({ kind: 'PROMISE', profile: p })}>
-                    ثبت تعهد
-                  </Button>}
-                  {can('tasks', 'CREATE') && <Button variant="outline" size="xs" onClick={() => setCollectionAction({ kind: 'FOLLOW_UP', profile: p })}>
-                    پیگیری در تقویم
-                  </Button>}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+      {activeTab === 'collection' && <CollectionWorkbench
+        state={state} accounts={ledgerAccounts} profiles={collectionData.profiles} balances={ledgerResult}
+        aging={agingEstimate.customers} today={today} loading={ledgerLoading} onRetry={() => void refreshLedgerBalances()}
+        canPromise={accountId => canOn('finance', 'EDIT', getFinanceRecordScope({ accountId }))}
+        canFollowUp={can('tasks', 'CREATE')}
+        assignees={state.users.filter(user => (user.isActive ?? user.active) !== false &&
+          (user.id === state.currentUserId || canOn('tasks', 'ASSIGN', {
+            ownerId: user.id, branchId: user.branchId, territoryId: user.territoryId, teamId: user.teamId, tenantId: user.tenantId,
+          }))).map(user => ({ id: user.id, name: user.name }))}
+        onAction={(kind, profile) => setCollectionAction({ kind, profile })} onNotice={setNotice}
+      />}
 
       {/* مودال‌های عملیاتی */}
       {showPaymentOrder && canCreatePaymentOrder && (
