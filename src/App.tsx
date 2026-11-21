@@ -176,7 +176,7 @@ function AppContent() {
         quotes: '/quotes',
         finance: '/finance',
         internal_automation: '/internal_automation',
-        groups: '/groups'
+        groups: n.conversationId ? `/groups?c=${encodeURIComponent(n.conversationId)}` : '/groups'
       };
       navigate(routeMap[n.linkTab] || `/${n.linkTab}`, { replace });
     }

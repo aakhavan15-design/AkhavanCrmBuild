@@ -398,11 +398,18 @@ export function createEntityService({ driver, registry, hasPermission, excludeFi
     const mayReadApplications = await can(auth, 'users.manage');
     const storedCollections = {
       ...Object.fromEntries(Object.entries(full.collections).filter(([name]) =>
-        !['groups', 'messages', 'attachments', 'onboardingapplications', 'collectionpromises'].includes(name.toLowerCase()))),
+        !['groups', 'messages', 'attachments', 'notifications', 'onboardingapplications', 'collectionpromises'].includes(name.toLowerCase()))),
       onboardingApplications: full.collections.onboardingApplications || [],
       collectionPromises: full.collections.collectionPromises || [],
       groups: visibleGroups,
       messages: (full.collections.messages || []).filter(message => visibleGroupIds.has(message.groupId)),
+      notifications: (full.collections.notifications || []).flatMap(item => {
+        if (item.recipientId && item.recipientId !== auth.userId) return [];
+        if (item.linkTab !== 'groups') return [item];
+        if (item.recipientId !== auth.userId) return [];
+        if (item.conversationId) return visibleGroupIds.has(item.conversationId) ? [item] : [];
+        return [{ ...item, title: 'اعلان گفت‌وگو', message: 'برای مشاهدهٔ گفت‌وگوهای مجاز وارد چت شوید.' }];
+      }),
       attachments: (full.collections.attachments || []).filter(item =>
         item.entityType !== 'APPLICATION' || mayReadApplications),
     };

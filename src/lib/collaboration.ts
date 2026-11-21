@@ -74,6 +74,7 @@ export function processMessageMentions(
         read: false,
         createdAt: new Date().toISOString(),
         linkTab: 'groups',
+        conversationId: message.groupId,
         recipientId: m.id
       });
     }

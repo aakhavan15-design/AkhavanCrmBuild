@@ -42,6 +42,7 @@ type ConversationMessage = GroupMessage & {
 type LinkableRecord = { id: ID; name?: string; title?: string; subject?: string; number?: string; quoteNumber?: string };
 
 const MAX_FILE = 1.5 * 1024 * 1024;
+const MAX_SQL_ATTACHMENTS = 600 * 1024;
 const fa = (n: number) => n.toLocaleString('fa-IR');
 const timeOf = (iso: string) => new Date(iso).toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit' });
 const dayOf = (iso: string) => new Intl.DateTimeFormat('fa-IR', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date(iso));
@@ -200,7 +201,14 @@ export function GroupsWorkspace({ state, updateState }: Props) {
   const readFiles = (list: FileList | null) => {
     if (!list) return; setFileError('');
     const session = attachmentSession.current;
-    Array.from(list).slice(0, 4 - files.length).forEach(f => {
+    const selected = Array.from(list).slice(0, 4 - files.length);
+    if (syncStatus.isSqlActive && [...files, ...selected.map(file => ({ fileSize: file.size }))]
+      .reduce((size, file) => size + file.fileSize, 0) > MAX_SQL_ATTACHMENTS) {
+      setFileError('مجموع حجم پیوست‌های یک پیام باید کمتر از ۶۰۰ کیلوبایت باشد.');
+      if (fileRef.current) fileRef.current.value = '';
+      return;
+    }
+    selected.forEach(f => {
       if (f.size > MAX_FILE) { setFileError(`«${f.name}» بزرگ‌تر از ۱٫۵ مگابایت است و اضافه نشد.`); return; }
       const r = new FileReader();
       r.onload = () => {
@@ -227,6 +235,10 @@ export function GroupsWorkspace({ state, updateState }: Props) {
       setEditing(null); setText(''); haptics.light(); return;
     }
     if (!content && !attachedEntity && files.length === 0) return;
+    if (syncStatus.isSqlActive && files.reduce((size, file) => size + file.fileSize, 0) > MAX_SQL_ATTACHMENTS) {
+      setFileError('مجموع پیوست‌ها بیش از سقف ۶۰۰ کیلوبایت است.');
+      return;
+    }
     const mentions = pendingMentions.filter(p => content.includes(p.display) && activeGroup.memberIds.includes(p.id) && (userOf(p.id)?.isActive ?? userOf(p.id)?.active) !== false);
     const msg: ConversationMessage = {
       id: generateId(), groupId: activeGroup.id, senderId: me, content, mentions, entityMentions: pendingEntityMentions.filter(ref => content.includes(`@${ref.displayText}`) && referenceScope.get(ref.entityType, ref.entityId)), relatedEntity: attachedEntity,
@@ -238,7 +250,7 @@ export function GroupsWorkspace({ state, updateState }: Props) {
       processMessageMentions(msg, nameOf(activeGroup), state, d);
       if (activeGroup.kind === 'DIRECT') {
         const other = activeGroup.memberIds.find((i: string) => i !== me);
-        if (other) { if (!d.notifications) d.notifications = []; d.notifications.push({ id: generateId(), title: 'پیام جدید', message: `${userOf(me)?.name || 'همکار'}: ${(content || 'پیوست').slice(0, 60)}`, type: 'INFO', read: false, createdAt: new Date().toISOString(), linkTab: 'groups', recipientId: other }); }
+        if (other) { if (!d.notifications) d.notifications = []; d.notifications.push({ id: generateId(), title: 'پیام جدید', message: `${userOf(me)?.name || 'همکار'}: ${(content || 'پیوست').slice(0, 60)}`, type: 'INFO', read: false, createdAt: new Date().toISOString(), linkTab: 'groups', conversationId: activeGroup.id, recipientId: other }); }
       }
     });
     setText(''); setAttachedEntity(undefined); setFiles([]); setReplyTo(null); setPendingMentions([]); setPendingEntityMentions([]); setMentionQuery(null); haptics.selection();
@@ -522,7 +534,7 @@ export function GroupsWorkspace({ state, updateState }: Props) {
               {fileError && <p role="alert" className="text-caption font-bold text-danger">{fileError}</p>}
               <div className="flex items-end gap-1.5">
                 <input ref={fileRef} type="file" multiple hidden onChange={e => readFiles(e.target.files)} />
-                <button onClick={() => fileRef.current?.click()} disabled={files.length >= 4 || !!editing} aria-label="پیوست فایل" title="پیوست فایل (حداکثر ۴ فایل، هر کدام ۱٫۵ مگابایت)" className="se-float-btn se-interactive se-pressable shrink-0 disabled:opacity-40"><Paperclip size={18} /></button>
+                <button onClick={() => fileRef.current?.click()} disabled={files.length >= 4 || !!editing} aria-label="پیوست فایل" title={syncStatus.isSqlActive ? 'حداکثر چهار فایل، مجموع ۶۰۰ کیلوبایت' : 'حداکثر چهار فایل، هرکدام ۱٫۵ مگابایت'} className="se-float-btn se-interactive se-pressable shrink-0 disabled:opacity-40"><Paperclip size={18} /></button>
                 <button onClick={() => { setPickQuery(''); setModal('record'); }} disabled={!!editing} aria-label="اتصال رکورد سامانه" title="اتصال رکورد سامانه" className="se-float-btn se-interactive se-pressable shrink-0 disabled:opacity-40"><Building2 size={18} /></button>
                 <Textarea ref={inputRef} rows={1} value={text} aria-label="متن پیام" placeholder="پیام بنویسید… (@ برای منشن، اینتر برای ارسال)"
                   onChange={e => onTextChange(e.target.value, e.target.selectionStart)}

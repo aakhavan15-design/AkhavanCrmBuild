@@ -15,6 +15,7 @@ export type AppNotification = {
   read?: boolean;
   recipientId?: string;
   linkTab?: string;
+  conversationId?: string;
   entityId?: string;
   createdAt?: string;
 };

@@ -1,7 +1,7 @@
 import { tokenize } from '../src/lib/persianText.ts';
 
-const sqlSearchText = expression => `LOWER(TRANSLATE(REPLACE(REPLACE(${expression}, NCHAR(8204), N' '), NCHAR(160), N' '),
-  N'يىك۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩',N'ییک01234567890123456789'))`;
+const sqlSearchText = expression => `LOWER(TRANSLATE(REPLACE(REPLACE(REPLACE(${expression}, NCHAR(8204), N' '), NCHAR(160), N' '), NCHAR(1600), N''),
+  N'يىئكؤأإآٱة۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩',N'یییکوااااه01234567890123456789'))`;
 
 export function createAccountDirectory({ sql, run, excludeFixtures }) {
   return async (auth, query, requestedPage) => {
@@ -32,7 +32,7 @@ export function createAccountDirectory({ sql, run, excludeFixtures }) {
             AND ISNULL(JSON_VALUE(account.JsonDoc,'$.enforcement'),N'')<>N'CRM_TEST_ONLY'))
           AND EXISTS (SELECT 1 FROM security.fn_EntityAccountScope(
             account.TenantId,N'accounts.view',account.EntityId,account.JsonDoc,account.UpdatedByUserId))
-          AND NOT EXISTS (SELECT 1 FROM OPENJSON(@terms) AS term WHERE CHARINDEX(term.value,search.Combined)=0)
+          AND NOT EXISTS (SELECT 1 FROM OPENJSON(@terms) AS term WHERE CHARINDEX(term.value COLLATE Persian_100_CI_AI,search.Combined COLLATE Persian_100_CI_AI)=0)
         ORDER BY CASE WHEN search.Name=@phrase THEN 0 WHEN search.Code=@phrase THEN 1
           WHEN CHARINDEX(@phrase,search.Name)=1 THEN 2 ELSE 3 END, fields.DisplayName,account.EntityId
         OFFSET @offset ROWS FETCH NEXT @take ROWS ONLY`));

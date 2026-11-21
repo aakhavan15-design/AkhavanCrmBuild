@@ -1,4 +1,3 @@
-import { formatNumber } from '../lib/format';
 import { ChartCard } from './charts/ChartCard';
 import { WorkspaceViewSwitcher } from './shared/WorkspaceViewSwitcher';
 import React, { useMemo, useState } from 'react';
@@ -18,7 +17,7 @@ import { InventoryTab, PurchasingTab, CreditTab, OperationsReportsTab } from './
 import { Button } from './ui/Button';
 import { Badge } from './ui/Badge';
 import { formatRialOrUnknown, formatCurrency } from '../lib/utils';
-import { formatMoneyCompact, formatCount } from '../lib/format';
+import { formatMoneyCompact, formatCount, formatNumber } from '../lib/format';
 import { getPersianStatusLabel } from '../lib/labels';
 import { VerdictStrip } from './shared/VerdictStrip';
 import { DonutChart } from './charts/DonutChart';

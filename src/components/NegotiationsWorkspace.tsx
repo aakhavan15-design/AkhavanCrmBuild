@@ -204,8 +204,7 @@ export function NegotiationsWorkspace({ state, updateState }: { state: AppState;
           <EmptyState surface="negotiations_workspace" 
             icon={<TrendingUp className="w-8 h-8 text-text-secondary opacity-50" />} 
             title="فرصتی یافت نشد" 
-            description="فرصت تجاری جدید برای پیشبرد مذاکرات ثبت کنید." 
-            actionLabel="فرصت جدید"
+            description={can('opportunities', 'CREATE') ? 'برای ثبت فرصت از + هدر استفاده کنید یا فیلتر را تغییر دهید.' : 'عبارت جست‌وجو یا فیلتر را تغییر دهید.'}
           />
         )}
       </div>
