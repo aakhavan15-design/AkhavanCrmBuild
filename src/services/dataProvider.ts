@@ -1180,6 +1180,7 @@ export class HttpBackendDataProvider implements DataProvider {
     const params = new URLSearchParams({ from: period.from, to: period.to, page: String(filter.page) });
     if (filter.state) params.set('state',filter.state);
     if (filter.operation) params.set('operation',filter.operation);
+    if (filter.returnReason!==undefined) params.set('returnReason',filter.returnReason);
     if (filter.search) params.set('search',filter.search);
     return this.request<JournalCoveragePage>(`/finance/journal-coverage?${params}`);
   }

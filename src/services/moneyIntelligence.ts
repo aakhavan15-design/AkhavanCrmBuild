@@ -121,16 +121,18 @@ export interface MoneyEvidencePage {
 
 export type JournalOperation = 'SALES_INVOICE' | 'SALES_RETURN' | 'PAYMENT';
 export type JournalCoverageStatus = 'VALID' | 'MULTIPLE' | 'LATE' | 'PENDING' | 'INVALID' | 'VOID' | 'MISSING' | 'NOT_OBSERVED';
-export interface JournalCoverageFilter { operation?: JournalOperation; state?: JournalCoverageStatus; search?: string; page: number }
+export interface JournalCoverageFilter { operation?: JournalOperation; state?: JournalCoverageStatus; search?: string; returnReason?:string; page: number }
 export interface JournalCoverageRow {
   operation: JournalOperation; externalId: string; documentNumber?: string; date: string;
   currency: string | null; amount: Amount; accountTitle?: string; coverageStatus: JournalCoverageStatus;
+  returnReason?:string|null;
   validCount: number; lateCount: number;
   documents: { id: string; number: string; date: string; quality: string }[];
 }
 export interface JournalCoveragePage {
   status: 'AVAILABLE' | 'UNAVAILABLE'; verifiedThrough?: string | null; sourceSystem?: string;
   items: JournalCoverageRow[]; hasMore: boolean; counts: { coverageStatus: JournalCoverageStatus; count: number }[];
+  returnReasons?:{reason:string|null;count:number}[];
 }
 
 export interface JournalFollowUpEvidence {

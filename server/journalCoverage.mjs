@@ -5,9 +5,11 @@ const coverageStates = new Set(['VALID','MULTIPLE','LATE','PENDING','INVALID','V
 
 export function coverageFilter(query) {
   const operation = query.operation ?? null, state = query.state ?? null, search = query.search ?? '';
+  const returnReason = query.returnReason ?? null;
   if ((operation!==null && !operationKinds.has(operation)) || (state!==null && !coverageStates.has(state))
-      || typeof search!=='string' || search.length>100) return null;
-  return { operation, state, search: search.trim() };
+      || typeof search!=='string' || search.length>100 || (returnReason!==null &&
+        (operation!=='SALES_RETURN' || typeof returnReason!=='string' || returnReason.length>120))) return null;
+  return { operation, state, search: search.trim(), ...(returnReason!==null ? {returnReason} : {}) };
 }
 
 const operationCoverageSql = `
@@ -19,22 +21,24 @@ WHERE s.TenantId=@tenantId AND EXISTS(SELECT 1 FROM security.fn_RecordReadScope(
 
 SELECT * INTO #operations FROM (
   SELECT 'SALES_INVOICE' AS operation,i.ExternalInvoiceId AS externalId,i.InvoiceNumber AS documentNumber,i.InvoiceDate AS operationDate,
-    i.CurrencyCode,i.GrossAmount AS amount,i.AccountId,i.StatusCode,i.SourceSystemCode
+    i.CurrencyCode,i.GrossAmount AS amount,i.AccountId,i.StatusCode,i.SourceSystemCode,CAST(NULL AS nvarchar(120)) AS returnReason
   FROM crm.InvoiceMirror i JOIN #scope s ON s.SourceSystemCode=i.SourceSystemCode
-  WHERE i.TenantId=@tenantId AND i.IsVoided=0 AND i.InvoiceDate BETWEEN @from AND @to
+  WHERE i.TenantId=@tenantId AND i.IsVoided=0 AND i.DeletedAtUtc IS NULL AND i.InvoiceDate BETWEEN @from AND @to
   UNION ALL
-  SELECT 'SALES_RETURN',r.ExternalReturnId,NULL,r.ReturnDate,i.CurrencyCode,r.TotalAmount,r.AccountId,r.StatusCode,r.SourceSystemCode
+  SELECT 'SALES_RETURN',r.ExternalReturnId,NULL,r.ReturnDate,i.CurrencyCode,r.TotalAmount,r.AccountId,r.StatusCode,r.SourceSystemCode,
+    COALESCE(NULLIF(r.ReasonCode,''),NULLIF(r.ReasonSourceCode,N''))
   FROM crm.SalesReturnMirror r JOIN #scope s ON s.SourceSystemCode=r.SourceSystemCode
   LEFT JOIN crm.InvoiceMirror i ON i.TenantId=r.TenantId AND i.SourceSystemCode=r.SourceSystemCode AND i.InvoiceMirrorId=r.InvoiceMirrorId
+    AND i.IsVoided=0 AND i.DeletedAtUtc IS NULL AND i.AccountId=r.AccountId
   WHERE r.TenantId=@tenantId AND r.IsVoided=0 AND r.ReturnDate BETWEEN @from AND @to
   UNION ALL
-  SELECT 'PAYMENT',p.ExternalPaymentId,p.ReferenceNumber,p.PaymentDate,p.CurrencyCode,p.Amount,p.AccountId,p.StatusCode,p.SourceSystemCode
+  SELECT 'PAYMENT',p.ExternalPaymentId,p.ReferenceNumber,p.PaymentDate,p.CurrencyCode,p.Amount,p.AccountId,p.StatusCode,p.SourceSystemCode,NULL
   FROM crm.PaymentMirror p JOIN #scope s ON s.SourceSystemCode=p.SourceSystemCode
   WHERE p.TenantId=@tenantId AND p.IsVoided=0 AND p.PaymentDate BETWEEN @from AND @to
 ) o
 WHERE (@operation IS NULL OR o.operation=@operation) AND (@externalId IS NULL OR o.externalId=@externalId);
 
-SELECT DISTINCT o.operation,o.externalId,l.JournalEntryMirrorId
+SELECT DISTINCT o.operation,o.externalId,l.JournalEntryMirrorId,o.SourceSystemCode
 INTO #linked
 FROM #operations o JOIN crm.JournalSourceLink l ON l.TenantId=@tenantId AND l.SourceSystemCode=o.SourceSystemCode
   AND l.OperationType=o.operation AND l.ExternalOperationId=o.externalId;
@@ -42,7 +46,7 @@ CREATE INDEX IX_linked ON #linked(operation,externalId);
 
 SELECT l.operation,l.externalId,e.JournalEntryMirrorId,e.DocumentNumber,e.AccountingDate,e.JournalQuality
 INTO #evidence FROM #linked l
-JOIN analytics.vw_FinancialJournalState e ON e.TenantId=@tenantId AND e.JournalEntryMirrorId=l.JournalEntryMirrorId;
+JOIN analytics.vw_FinancialJournalState e ON e.TenantId=@tenantId AND e.SourceSystemCode=l.SourceSystemCode AND e.JournalEntryMirrorId=l.JournalEntryMirrorId;
 
 WITH linkedQuality AS (
   SELECT operation,externalId,
@@ -86,25 +90,31 @@ SELECT SourceSystemCode AS sourceSystem,CONVERT(char(10),JournalLinksVerifiedThr
 SELECT coverageStatus,COUNT_BIG(*) AS [count] FROM #classified GROUP BY coverageStatus;
 SELECT c.operation,c.externalId,c.documentNumber,CONVERT(char(10),c.operationDate,126) AS [date],c.CurrencyCode AS currency,
   CASE WHEN c.CurrencyCode IS NOT NULL THEN CONVERT(varchar(48),c.amount) END AS amount,
-  c.accountTitle,c.coverageStatus,c.validCount,c.lateCount,
+  c.accountTitle,c.coverageStatus,c.validCount,c.lateCount,c.returnReason,
   (SELECT TOP (5) JournalEntryMirrorId AS id,DocumentNumber AS number,CONVERT(char(10),AccountingDate,126) AS [date],JournalQuality AS quality
     FROM #evidence e WHERE e.operation=c.operation AND e.externalId=c.externalId
     ORDER BY e.AccountingDate DESC,e.JournalEntryMirrorId FOR JSON PATH) AS documents
 FROM #classified c
 WHERE (@state IS NULL OR c.coverageStatus=@state)
+  AND (@returnReason IS NULL OR COALESCE(c.returnReason,N'')=@returnReason)
   AND (@search='' OR CHARINDEX(@search,c.externalId)>0 OR CHARINDEX(@search,c.documentNumber)>0 OR CHARINDEX(@search,c.accountTitle)>0)
 ORDER BY c.operationDate DESC,c.operation,c.externalId
-OFFSET @offset ROWS FETCH NEXT 26 ROWS ONLY;`;
+OFFSET @offset ROWS FETCH NEXT 26 ROWS ONLY;
 
-async function readCoverageInTransaction(sql, tx, auth, { from,to,page,operation,state,search,externalId = null }) {
+SELECT TOP(8) returnReason AS reason,COUNT_BIG(*) AS [count]
+FROM #classified WHERE @operation='SALES_RETURN' AND operation='SALES_RETURN' AND coverageStatus='VALID'
+GROUP BY returnReason ORDER BY [count] DESC,returnReason;`;
+
+async function readCoverageInTransaction(sql, tx, auth, { from,to,page,operation,state,search,externalId = null,returnReason = null }) {
   const result = await new sql.Request(tx).input('tenantId',sql.UniqueIdentifier,auth.tenantId)
     .input('from',sql.Date,new Date(from)).input('to',sql.Date,new Date(to))
     .input('offset',sql.Int,(page-1)*25).input('operation',sql.VarChar(20),operation)
-    .input('state',sql.VarChar(20),state).input('search',sql.NVarChar(100),search)
+    .input('state',sql.VarChar(20),state).input('search',sql.NVarChar(100),search).input('returnReason',sql.NVarChar(120),returnReason)
     .input('externalId',sql.NVarChar(200),externalId).query(operationCoverageSql);
-  const [sources,counts,rows] = result.recordsets;
+  const [sources,counts,rows,returnReasons=[]] = result.recordsets;
   if (!sources.length) return { status:'UNAVAILABLE', counts: [], items:[], hasMore:false };
   return { status:'AVAILABLE', ...sources[0], counts: counts.map(row => ({ ...row,count:Number(row.count) })),
+    returnReasons:returnReasons.map(row=>({...row,count:Number(row.count)})),
     items: rows.slice(0,25).map(row => ({ ...row,documents: JSON.parse(row.documents ?? '[]') })),
     hasMore: page<1000 && rows.length>25 };
 }

@@ -47,10 +47,11 @@ function JournalDocument({ selected, onClose }: { selected: Document; onClose: (
   </BottomSheet>;
 }
 
-export function JournalCoveragePanel({ period, canFollowUp }: { period: MoneyPeriod; canFollowUp: boolean }) {
-  const [active,setActive] = useState(false);
-  const [operation,setOperation] = useState<JournalOperation | ''>('');
+export function JournalCoveragePanel({ period, canFollowUp, focusReturns=false }: { period: MoneyPeriod; canFollowUp: boolean; focusReturns?:boolean }) {
+  const [active,setActive] = useState(focusReturns);
+  const [operation,setOperation] = useState<JournalOperation | ''>(focusReturns ? 'SALES_RETURN' : '');
   const [state,setState] = useState<JournalCoverageStatus | ''>('');
+  const [returnReason,setReturnReason]=useState<string|undefined>();
   const [page,setPage] = useState(1);
   const [draft,setDraft] = useState('');
   const [search,setSearch] = useState('');
@@ -70,19 +71,19 @@ export function JournalCoveragePanel({ period, canFollowUp }: { period: MoneyPer
       setPending(null);
     }
   }
-  const requestKey = JSON.stringify([period.from,period.to,operation,state,page,search]);
+  const requestKey = JSON.stringify([period.from,period.to,operation,state,page,search,returnReason]);
   const { data,loading,error,refetch } = useDataQuery(async provider => active ? {
-    requestKey, result: await provider.getJournalCoverage(period,{ operation: operation || undefined,state: state || undefined,search,page }),
+    requestKey, result: await provider.getJournalCoverage(period,{ operation: operation || undefined,state: state || undefined,search,returnReason,page }),
   } : null,[active,requestKey]);
   const result = data?.requestKey===requestKey ? data.result : null;
 
-  return <details className="rounded-2xl border border-border bg-surface p-3" onToggle={event => setActive(event.currentTarget.open)}>
-    <summary className="min-h-11 cursor-pointer content-center text-sm font-bold">پوشش اسناد حسابداری و مغایرت عملیات</summary>
+  return <details open={focusReturns ? active : undefined} className="rounded-2xl border border-border bg-surface p-3" onToggle={event => setActive(event.currentTarget.open)}>
+    <summary className="min-h-11 cursor-pointer content-center text-sm font-bold">{focusReturns ? 'مرجوعی‌های ERP و مرجع سند' : 'پوشش اسناد حسابداری و مغایرت عملیات'}</summary>
     {active && <div className="space-y-3">
       <p className="text-caption text-text-secondary">فروش، برگشت فروش و دریافت یا پرداخت بر اساس پیوند رسمی ERP به سند گزارش می‌شوند. در دورهٔ فاقد پوشش تأییدشده، نبود پیوند فقط «سند مشاهده نشده» است.</p>
       <div className="grid gap-2 sm:grid-cols-2">
-        <SearchableSelect label="عملیات" options={options(operations,'همهٔ عملیات')} value={operation}
-          onChange={value => { setOperation(value as JournalOperation | ''); setPage(1); }} />
+        {!focusReturns && <SearchableSelect label="عملیات" options={options(operations,'همهٔ عملیات')} value={operation}
+          onChange={value => { setOperation(value as JournalOperation | ''); setPage(1); }} />}
         <SearchableSelect label="وضعیت سند" options={options(statuses,'همهٔ وضعیت‌ها')} value={state}
           onChange={value => { setState(value as JournalCoverageStatus | ''); setPage(1); }} />
       </div>
@@ -96,6 +97,16 @@ export function JournalCoveragePanel({ period, canFollowUp }: { period: MoneyPer
         : result.status==='UNAVAILABLE' ? <EmptyState surface="finance_journal_control" title="منبع مالی برای این گزارش تنظیم نشده است" compact />
         : <>
           {result.verifiedThrough && <p className="text-caption text-text-secondary">آخرین تاریخ گواهی پوشش {formatAppDate(result.verifiedThrough)}</p>}
+          {focusReturns && (result.returnReasons?.length ? <div className="space-y-2">
+            <h4 className="text-sm font-semibold">دلایل ثبت‌شده در برگشت‌های دارای یک سند معتبر</h4>
+            {result.returnReasons.map(row=><button type="button" key={row.reason ?? ''}
+              className="min-h-11 w-full rounded-lg px-2 text-start text-caption hover:bg-hover" aria-pressed={returnReason===(row.reason ?? '')}
+              onClick={()=>{setReturnReason(current=>current===(row.reason ?? '') ? undefined : row.reason ?? '');setState('VALID');setPage(1);}}>
+              <div className="flex justify-between gap-2"><bdi className="wrap-break-word">{row.reason || 'علت ثبت نشده'}</bdi><span>{formatCount(row.count)} سند</span></div>
+              <progress className="w-full accent-primary" aria-label={row.reason || 'علت ثبت نشده'} value={row.count} max={result.returnReasons?.[0].count ?? row.count} />
+            </button>)}
+            {returnReason!==undefined && <Button type="button" size="sm" variant="ghost" onClick={()=>{setReturnReason(undefined);setPage(1);}}>پاک کردن فیلتر علت</Button>}
+          </div> : <p className="text-caption">در این بازه، برگشت فروش با یک سند معتبر مشاهده نشد.</p>)}
           {result.counts.length>0 && <div className="flex flex-wrap gap-1" aria-label="شمار عملیات به تفکیک وضعیت">
             {result.counts.map(row => <Button key={row.coverageStatus} type="button" size="sm" variant={state===row.coverageStatus ? 'soft' : 'ghost'}
               aria-pressed={state===row.coverageStatus} onClick={() => { setState(state===row.coverageStatus ? '' : row.coverageStatus); setPage(1); }}>
@@ -114,6 +125,7 @@ export function JournalCoveragePanel({ period, canFollowUp }: { period: MoneyPer
                 </div>
                 <p className="text-text-secondary">{row.accountTitle && `${row.accountTitle} · `}
                   {row.amount===null ? 'مبلغ نامشخص' : <>{formatDecimalString(row.amount)} <bdi>{row.currency==='IRR' ? 'ریال' : row.currency}</bdi></>}</p>
+                {row.operation==='SALES_RETURN' && <p className="text-text-secondary">علت ثبت‌شده <bdi>{row.returnReason || 'نامشخص'}</bdi></p>}
                 {row.documents.length>0 && <div className="flex flex-wrap gap-1" aria-label="اسناد مرتبط">
                   {row.documents.map(item => item.quality==='VALID' ? <Button key={item.id} type="button" size="sm" variant="outline"
                     onClick={() => setDocument(item)}>آرتیکل‌های سند {item.number}</Button> :

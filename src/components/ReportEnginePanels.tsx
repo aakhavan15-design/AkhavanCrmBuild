@@ -9,7 +9,6 @@ import {
   lifecycleSegments, 
   pareto, 
   rfm, 
-  returnsAnalytics, 
   topPercentShare, 
   visitFunnel,
   targetAchievement,
@@ -30,21 +29,19 @@ import { negotiationEffectiveness } from '../lib/negotiationErpLifecycle';
 import { DonutChart, FunnelChart } from './charts';
 import { ReceivablesLifoPanel } from './reports/ReceivablesLifoPanel';
 import { PurchaseCycleFollowUp } from './reports/PurchaseCycleFollowUp';
+import { JournalCoveragePanel } from './finance/JournalCoveragePanel';
 import { LineChart } from './charts/LineChart';
 import { ProfitWaterfallChart } from './charts/ProfitWaterfallChart';
 import { DrilldownSheet, DrilldownRow } from './shared/DrilldownSheet';
 import { DocumentDetailModal, DocumentDetailData } from './shared/DocumentDetailModal';
-import { ArrowUpRight, Download, Filter, Layers, CheckSquare, ShieldCheck, ShieldAlert } from 'lucide-react';
+import { ArrowUpRight, Download, Filter, Layers, ShieldCheck, ShieldAlert } from 'lucide-react';
 import { resolveDataSourceStatus, sourceStatusNote, DATA_SOURCE_STATUS_LABELS } from '../lib/dataTrust';
-import type { AppState, Invoice, Payment, Cheque, Account, Quote, ExternalProduct, Task } from '../types';
+import type { AppState, Invoice, Payment, Cheque, Account, Quote, ExternalProduct } from '../types';
 import { MiniHaloSparkline } from './charts/Sparkline';
 import { InputControl } from './ui/Input';
 import { Button } from './ui/Button';
 import { FilterChip } from './ui/Tabs';
-import { toast } from './ui/Toast';
 import { resolveSellerKey } from '../services/receivableReports';
-import { generateId } from '../lib/utils';
-import { enqueueOptimisticMutation } from '../lib/optimisticMutation';
 
 type ExpenseLike = {
   id?: string;
@@ -86,14 +83,6 @@ type DeliveryEventLike = {
   expectedDeliveryAt?: string;
   deliveredAt?: string;
   status?: string;
-  [key: string]: unknown;
-};
-
-type SalesReturnLike = {
-  id?: string;
-  date?: string;
-  amount?: number | string;
-  financialDocumentConfirmed?: boolean;
   [key: string]: unknown;
 };
 
@@ -394,37 +383,6 @@ export function ReportEnginePanels({ state, visibleInvoices, visiblePayments, vi
     assignments: (state.zoneAssignments || []) as Array<Record<string, unknown>>
   }), [state.externalProducts, state.salesOrders, state.geoZones, state.zoneAssignments]);
 
-  const handleCreateReportTask = (title: string, desc: string) => {
-    const uid = state.currentUserId;
-    if (!uid) {
-      toast.error('کاربر جاری نامشخص است؛ امکان ثبت وظیفه وجود ندارد.');
-      return;
-    }
-    const id = generateId('task');
-    const payload = {
-      id,
-      title,
-      description: desc,
-      dueDate: new Date(Date.now() + 86400000 * 3).toISOString().split('T')[0],
-      status: 'OPEN',
-      priority: 'HIGH',
-      ownerId: uid,
-      assigneeType: 'USER',
-      assigneeId: uid,
-      createdAt: new Date().toISOString(),
-      createdBy: uid,
-      source: 'REPORT_ENGINE'
-    };
-    void enqueueOptimisticMutation({
-      action: 'CREATE',
-      entityType: 'TASK',
-      entityId: id,
-      payload,
-      alwaysQueue: true
-    });
-    toast.success(`وظیفه «${title}» در صف ثبت و همگام‌سازی قرار گرفت.`);
-  };
-
   const salesKpi = useMemo(() => {
     const totalSales = invoices.reduce((s, i) => s + Number(i.totalAmount || 0), 0);
     const fromMonth = cutoff ? cutoff.slice(0, 7) : '0000-00';
@@ -516,26 +474,6 @@ export function ReportEnginePanels({ state, visibleInvoices, visiblePayments, vi
       exceptionReason: (rec.exceptionReason || rec.failureReason || rec.delayReason || undefined) as string | undefined
     };
   })), [state.deliveryEvents, cutoff, asOf]);
-
-  const returns = useMemo(() => {
-    const periodReturns = (state.salesReturns || []).filter((r: SalesReturnLike) => {
-      const rec = r as Record<string, unknown>;
-      const returnDate = String(rec.createdAt || rec.date || rec.returnDate || '').slice(0, 10);
-      return r.financialDocumentConfirmed === true && Boolean(returnDate) && (!cutoff || returnDate >= cutoff) && returnDate <= asOf;
-    });
-    return {
-      ...returnsAnalytics(periodReturns.map((r: SalesReturnLike) => {
-        const rec = r as Record<string, unknown>;
-        return {
-          amount: Number.isFinite(Number(rec.amount)) ? Number(rec.amount) : null,
-          quantity: Number.isFinite(Number(rec.quantity)) ? Number(rec.quantity) : null,
-          reason: rec.reason as string | undefined,
-          effective: true
-        };
-      }), invoices.reduce((sum, invoice) => sum + Math.max(0, Number(invoice.totalAmount) || 0), 0), null),
-      confirmedCount: periodReturns.length
-    };
-  }, [state.salesReturns, invoices, cutoff, asOf]);
 
   const canReviewAllocations = selected === 7 && canSeeLedger && canReport('payments', 'VIEW');
   const { serverVersion } = useDataSyncStatus();
@@ -1485,35 +1423,13 @@ export function ReportEnginePanels({ state, visibleInvoices, visiblePayments, vi
         )}
 
         {selected === 11 && (
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-              <Metric label="تعداد پرونده‌های مرجوعی" value={nf(returns.returnedQuantity)} note="اقلام عودتی" />
-              <Metric label="ارزش ریالی مرجوعی‌ها" value={`${formatCurrency(returns.returnedAmount || 0)} ریال`} note="خسارت ثبت‌شده" isPositive={false} />
-              <Metric label="نرخ نشت مرجوعی به فروش" value={returns.amountRate == null ? 'نامشخص' : pf(returns.amountRate)} note="استاندارد: کمتر از ۲.۵٪" />
-              <Metric label="اسناد مرجوعی تأییدشده مالی" value={nf(returns.confirmedCount)} note="دارای تأیید مالی ثبت‌شده در منبع" />
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div className="p-3.5 bg-surface rounded-xl border border-border space-y-2">
-                <h5 className="text-xs font-bold text-text-main">پارتو علل اصلی مرجوعی کالا</h5>
-                <Bars rows={returns.reasons.rows} />
-              </div>
-
-              <div className="p-3.5 bg-surface rounded-xl border border-border space-y-3 flex flex-col justify-between">
-                <div>
-                  <h5 className="text-xs font-bold text-text-main">اقدامات پیشگیرانه کاهش مرجوعی</h5>
-                  <p className="text-caption text-text-secondary leading-relaxed mt-2">
-                    اقدام اصلاحی باید بر اساس علت‌های ثبت‌شده در پرونده‌های مرجوعی انتخاب شود. اگر علت یا سند تأیید مالی موجود نباشد، سهم علت‌ها و میزان اثر اقدام قابل اعلام نیست.
-                  </p>
-                </div>
-                <div>
-                  <Button variant="primary" className="w-full" type="button" onClick={() => handleCreateReportTask('بازرسی استانداردهای چیدمان ناوگان توزیع', 'بررسی ضربه‌گیرها و نحوه چیدمان کارتن‌های بارگیری‌شده به منظور مهار خسارت')} >
-                    <CheckSquare size={14} />
-                    <span>ثبت وظیفه بازرسی کیفی در سامانه</span>
-                  </Button>
-                </div>
-              </div>
-            </div>
+          <div className="space-y-3">
+            <p className="text-caption text-text-secondary">دلایل ثبت‌شده و شواهد مالی را به تفکیک پرونده بررسی کنید. نرخ مرجوعی و اثر آن بر سود به پوشش قابل مقایسهٔ فروش و برگشت نیاز دارد.</p>
+            {canSeeLedger ? <JournalCoveragePanel key={`${state.currentUserId}:${cutoff}:${asOf}`} focusReturns
+              period={{from:cutoff ?? new Date(Date.parse(asOf)-365*86400000).toISOString().slice(0,10),to:asOf,dimension:'category'}}
+              canFollowUp={canReport('finance','EDIT') && canReport('tasks','CREATE')} />
+              : <p className="text-caption">مشاهدهٔ ریز ارتباط با دفتر کل به دسترسی مالی نیاز دارد.</p>}
+            {cutoff===null && <p className="text-caption text-text-secondary">ریز اسناد این نما به ۳۶۶ روز اخیر محدود است.</p>}
           </div>
         )}
 
