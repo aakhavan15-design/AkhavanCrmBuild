@@ -32,7 +32,7 @@ import { journalQueryParams } from '../lib/ledgerQueryParams.mjs';
 import { readCustomerProposalReceipt, type CustomerProposalReceipt } from '../lib/customerProposal';
 import { applyTaskWorkflow, type TaskWorkflowInput } from './taskWorkflow';
 import type { LedgerBalanceOptions, LedgerBookFilter, LedgerBookPage, LedgerBookSource } from './officialLedger';
-import type { JournalCoverageFilter, JournalCoveragePage, MoneyEvidenceFilter, MoneyEvidencePage, MoneyPeriod, MoneyReport } from './moneyIntelligence';
+import type { JournalCoverageFilter, JournalCoveragePage, JournalFollowUpEvidence, JournalOperation, MoneyEvidenceFilter, MoneyEvidencePage, MoneyPeriod, MoneyReport } from './moneyIntelligence';
 
 export type TaskWorkflowCommand = Omit<TaskWorkflowInput, 'actorId' | 'at'> & { version: string };
 export interface TaskWorkflowRecord { task: Task; version: string }
@@ -298,6 +298,8 @@ export interface DataProvider {
   getCashFlowData(): Promise<CashFlowDataResult>;
   getMoneyReport(period: MoneyPeriod): Promise<MoneyReport>;
   getJournalCoverage(period: MoneyPeriod, filter: JournalCoverageFilter): Promise<JournalCoveragePage>;
+  getJournalFollowUpEvidence(taskId: string): Promise<JournalFollowUpEvidence>;
+  createJournalCoverageFollowUp(period: MoneyPeriod, operation: JournalOperation, externalId: string): Promise<{ id: string; replayed: boolean }>;
   getMoneyEvidence(period: MoneyPeriod, filter: MoneyEvidenceFilter): Promise<MoneyEvidencePage>;
 
   // HR & Payroll
@@ -634,6 +636,14 @@ export class ClientStorageDataProvider implements DataProvider {
       (d.advanceRequests || []).forEach(a => { if (settledAdvanceIds.includes(a.id)) a.status = 'SETTLED'; });
     });
     return run;
+  }
+
+  async getJournalFollowUpEvidence(): Promise<JournalFollowUpEvidence> {
+    throw new Error('دریافت شاهد مالی به سرور نیاز دارد.');
+  }
+
+  async createJournalCoverageFollowUp(): Promise<{ id: string; replayed: boolean }> {
+    throw new Error('ثبت پیگیری مالی به سرور نیاز دارد.');
   }
 
   async getJournalCoverage(): Promise<JournalCoveragePage> {
@@ -1068,6 +1078,16 @@ export class HttpBackendDataProvider implements DataProvider {
     return this.request<PayrollRun>('/payroll/runs', {
       method: 'POST',
       body: JSON.stringify({ periodMonth: month, dailyBasis: basis })
+    });
+  }
+
+  async getJournalFollowUpEvidence(taskId: string): Promise<JournalFollowUpEvidence> {
+    return this.request<JournalFollowUpEvidence>(`/finance/journal-coverage/follow-up/${encodeURIComponent(taskId)}`);
+  }
+
+  async createJournalCoverageFollowUp(period: MoneyPeriod, operation: JournalOperation, externalId: string): Promise<{ id: string; replayed: boolean }> {
+    return this.request<{ id: string; replayed: boolean }>('/finance/journal-coverage/follow-up',{
+      method:'POST',body:JSON.stringify({from:period.from,to:period.to,operation,externalId}),
     });
   }
 

@@ -131,3 +131,18 @@ export interface JournalCoveragePage {
   status: 'AVAILABLE' | 'UNAVAILABLE'; verifiedThrough?: string | null; sourceSystem?: string;
   items: JournalCoverageRow[]; hasMore: boolean; counts: { coverageStatus: JournalCoverageStatus; count: number }[];
 }
+
+export interface JournalFollowUpEvidence {
+  source: string;
+  operation: JournalOperation;
+  externalId: string;
+  status: JournalCoverageStatus;
+  date: string;
+  period: { from: string; to: string };
+  documents: JournalCoverageRow['documents'];
+  amount: Amount;
+  currency: string | null;
+  verifiedThrough: string | null;
+  reason: string;
+  recordedAt: string;
+}

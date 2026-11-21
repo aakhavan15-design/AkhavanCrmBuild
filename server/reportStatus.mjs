@@ -14,7 +14,7 @@ export async function buildReportStatus({ reportId, tenantId, asOfDate, driverKi
   } catch (err) {
     return { ...base, status: 'UNAVAILABLE', reason: 'QUERY_FAILED', errorCode: String(err?.code || err?.name || 'ERROR'), dataTrust: { isAuthoritative: false, provenance: null, sourceTables: REPORT_SOURCE_TABLES } };
   }
-  const counts = Object.values(coverage);
-  const status = counts.every(n => n > 0) ? 'READY' : counts.every(n => !(n > 0)) ? 'EMPTY' : 'PARTIAL';
-  return { ...base, status, coverage, dataTrust: { isAuthoritative: status === 'READY', provenance: 'SQLSERVER_CANONICAL_MIRROR', sourceTables: REPORT_SOURCE_TABLES } };
+  const status = Object.values(coverage).some(n => n > 0) ? 'PARTIAL' : 'EMPTY';
+  return { ...base, status, coverage, reason:status==='PARTIAL' ? 'SOURCE_ROWS_ONLY' : 'EMPTY_SOURCE',
+    dataTrust: { isAuthoritative:false, provenance:'SQLSERVER_CANONICAL_MIRROR', sourceTables:REPORT_SOURCE_TABLES } };
 }

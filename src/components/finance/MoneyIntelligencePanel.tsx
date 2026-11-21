@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { formatCount, formatDecimalString, formatMoneyCompact } from '../../lib/format';
 import { formatAppDate, getJalaliDate, toLocalDateISO } from '../../lib/utils';
 import { useDataQuery } from '../../hooks/useDataProvider';
+import { RBACService } from '../../lib/rbac';
 import { useAppStore } from '../../lib/storage';
 import { useDataSyncStatus } from '../../services/dataSyncController';
 import type { MoneyCashRow, MoneyDimension, MoneyGroup, MoneyPeriod } from '../../services/moneyIntelligence';
@@ -117,6 +118,10 @@ function MoneyGroups({ rows, dimension, open }: {
 
 export function MoneyIntelligencePanel() {
   const viewer = useAppStore(store => store.state.currentUserId);
+  const canFollowUp = useAppStore(store => {
+    const rbac = new RBACService(store.state);
+    return rbac.can('finance','EDIT') && rbac.can('tasks','CREATE');
+  });
   const { serverVersion } = useDataSyncStatus();
   const [params, setParams] = useSearchParams();
   const defaultTo = toLocalDateISO();
@@ -310,7 +315,7 @@ export function MoneyIntelligencePanel() {
           {ready.fifo.closing === null && <p className="text-caption text-text-secondary">ارزش FIFO پس از تطبیق ارزش‌گذاری منتشرشده با موجودی ERP در همان تاریخ نمایش داده می‌شود.</p>}
         </Card>
       </>}
-      <JournalCoveragePanel key={`${from}:${to}`} period={period} />
+      <JournalCoveragePanel key={`${viewer}:${from}:${to}`} period={period} canFollowUp={canFollowUp} />
       {evidence?.requestKey === requestKey && <MoneyEvidenceSheet key={JSON.stringify(evidence.selection)}
         period={period} selection={evidence.selection} onSelect={open} onClose={() => setEvidence(null)} />}
     </section>

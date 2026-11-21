@@ -1,3 +1,4 @@
+import { JournalFollowUpTaskEvidence } from './finance/JournalCoveragePanel';
 import { useCan } from '../hooks/useCan';
 import { useDataQuery } from '../hooks/useDataProvider';
 import { getActiveDataProvider, type TaskWorkflowRecord } from '../services/dataProvider';
@@ -564,6 +565,7 @@ export function TasksWorkspace({ state, updateState }: TasksWorkspaceProps) {
                 {task.blockReason && <div className="mt-1 text-xs text-danger">مانع: {task.blockReason}</div>}
               </div>
               <WorkflowTimeline nodes={buildTaskCirculation(task)} title="مسیر گردش کار (قابل مشاهده)" />
+              {typeof task.financeReviewRef==='string' && can('finance','VIEW') && <JournalFollowUpTaskEvidence taskId={String(task.id)} />}
               <BpmnLiteFlow nodes={buildTaskCirculation(task)} title="نمای فرآیند وظیفه" />
               {(task.activityHistory || []).length > 0 && <div className="rounded-xl border border-border bg-surface p-2.5 space-y-2">
                 <strong className="block text-caption text-text-main">سابقه گردش کار</strong>

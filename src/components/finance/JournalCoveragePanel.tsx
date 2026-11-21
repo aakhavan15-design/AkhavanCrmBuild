@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { getActiveDataProvider } from '../../services/dataProvider';
 import { useDataQuery } from '../../hooks/useDataProvider';
 import { formatCount, formatDecimalString } from '../../lib/format';
 import { formatAppDate } from '../../lib/utils';
@@ -46,7 +47,7 @@ function JournalDocument({ selected, onClose }: { selected: Document; onClose: (
   </BottomSheet>;
 }
 
-export function JournalCoveragePanel({ period }: { period: MoneyPeriod }) {
+export function JournalCoveragePanel({ period, canFollowUp }: { period: MoneyPeriod; canFollowUp: boolean }) {
   const [active,setActive] = useState(false);
   const [operation,setOperation] = useState<JournalOperation | ''>('');
   const [state,setState] = useState<JournalCoverageStatus | ''>('');
@@ -54,6 +55,21 @@ export function JournalCoveragePanel({ period }: { period: MoneyPeriod }) {
   const [draft,setDraft] = useState('');
   const [search,setSearch] = useState('');
   const [document,setDocument] = useState<Document | null>(null);
+  const [pending,setPending] = useState<string | null>(null);
+  const [messages,setMessages] = useState<Record<string,{ok:boolean;text:string}>>({});
+  async function createFollowUp(row:JournalCoverageRow, key:string) {
+    setPending(key);
+    try {
+      const receipt = await getActiveDataProvider().createJournalCoverageFollowUp(period,row.operation,row.externalId);
+      if (!receipt.id) throw new Error('ثبت وظیفه تأیید نشد.');
+      const message = receipt.replayed ? 'این پیگیری قبلاً در وظایف ثبت شده است.' : 'پیگیری در وظایف شما ثبت شد.';
+      setMessages(current => ({...current,[key]:{ok:true,text:message}}));
+    } catch (error) {
+      setMessages(current => ({...current,[key]:{ok:false,text:error instanceof Error ? error.message : 'ثبت پیگیری انجام نشد.'}}));
+    } finally {
+      setPending(null);
+    }
+  }
   const requestKey = JSON.stringify([period.from,period.to,operation,state,page,search]);
   const { data,loading,error,refetch } = useDataQuery(async provider => active ? {
     requestKey, result: await provider.getJournalCoverage(period,{ operation: operation || undefined,state: state || undefined,search,page }),
@@ -88,7 +104,10 @@ export function JournalCoveragePanel({ period }: { period: MoneyPeriod }) {
           </div>}
           {!result.items.length ? <EmptyState surface="finance_journal_control" title="عملیات منطبق یافت نشد" compact /> :
             <ul className="divide-y divide-border">
-              {result.items.map(row => <li key={`${row.operation}:${row.externalId}`} className="space-y-1 py-2 text-caption">
+              {result.items.map(row => {
+                const key = JSON.stringify([row.operation,row.externalId,row.coverageStatus]);
+                const message = messages[key];
+                return <li key={key} className="space-y-1 py-2 text-caption">
                 <div className="flex flex-wrap justify-between gap-2">
                   <p className="font-bold wrap-break-word">{operations[row.operation]} <bdi>{row.documentNumber || row.externalId}</bdi> · {formatAppDate(row.date)}</p>
                   <p>{statuses[row.coverageStatus]}</p>
@@ -101,7 +120,13 @@ export function JournalCoveragePanel({ period }: { period: MoneyPeriod }) {
                     <span key={item.id} className="text-text-secondary">سند <bdi>{item.number}</bdi> · نیازمند بررسی</span>)}
                 </div>}
                 {row.validCount+row.lateCount>row.documents.length && <p className="text-text-secondary">شواهد این ردیف حداکثر پنج سند اخیر را نشان می‌دهد.</p>}
-              </li>)}
+                {canFollowUp && ['LATE','INVALID','VOID','MISSING','NOT_OBSERVED'].includes(row.coverageStatus) && !message?.ok &&
+                  <Button type="button" size="sm" variant="outline" disabled={pending!==null} onClick={() => void createFollowUp(row,key)}>
+                    {pending===key ? 'در حال ثبت…' : 'ثبت وظیفهٔ پیگیری برای من'}
+                  </Button>}
+                {message && <p role={message.ok ? 'status' : 'alert'} className={message.ok ? 'text-success' : 'text-danger'}>{message.text}</p>}
+              </li>;
+              })}
             </ul>}
           <nav aria-label="صفحه‌بندی پوشش اسناد" className="flex items-center justify-between gap-2">
             <Button type="button" variant="ghost" disabled={page<=1} onClick={() => setPage(page-1)}>قبلی</Button>
@@ -111,5 +136,29 @@ export function JournalCoveragePanel({ period }: { period: MoneyPeriod }) {
         </>}
       {document && <JournalDocument key={document.id} selected={document} onClose={() => setDocument(null)} />}
     </div>}
+  </details>;
+}
+
+
+export function JournalFollowUpTaskEvidence({ taskId }: { taskId: string }) {
+  const [open,setOpen] = useState(false);
+  const { data,loading,error,refetch } = useDataQuery(async provider => open
+    ? { taskId, evidence:await provider.getJournalFollowUpEvidence(taskId) } : null,
+    [open,taskId]);
+  const evidence = data?.taskId===taskId ? data.evidence : null;
+  return <details className="rounded-xl border border-border p-2" onToggle={event => setOpen(event.currentTarget.open)}>
+    <summary className="min-h-11 cursor-pointer content-center font-bold">شاهد مالی ثبت‌شده</summary>
+    {open && (error
+      ? <EmptyState surface="finance_journal_control" title="شاهد مالی در دسترس نیست"
+        actionLabel="تلاش دوباره" onAction={() => void refetch()} compact />
+      : loading || !evidence ? <LoadingState label="در حال دریافت شاهد مالی" />
+      : <div className="space-y-1 p-2 text-caption">
+        <p className="font-bold">{statuses[evidence.status]}</p>
+        <p>{evidence.reason}</p>
+        <p className="wrap-break-word">{operations[evidence.operation]} <bdi>{evidence.externalId}</bdi> · {formatAppDate(evidence.date)}</p>
+        {evidence.amount!==null && <p>مبلغ عملیات {formatDecimalString(evidence.amount)} <bdi>{evidence.currency==='IRR' ? 'ریال' : evidence.currency}</bdi></p>}
+        {evidence.documents.length>0 && <p>اسناد مرتبط {evidence.documents.map(item => item.number).join('، ')}</p>}
+        <p className="text-text-secondary">وضعیت هنگام ایجاد وظیفه · {formatAppDate(evidence.recordedAt)}</p>
+      </div>)}
   </details>;
 }

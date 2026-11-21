@@ -14,7 +14,7 @@ import { createInvoiceFifoEvidence } from './invoiceFifoEvidence.mjs';
 import { createCollectionReceiptEvidence } from './collectionReceiptEvidence.mjs';
 import { createTreasuryFlowReader } from './treasuryFlow.mjs';
 import { createMoneyIntelligenceReader, parseMoneyReportQuery } from './moneyIntelligence.mjs';
-import { createJournalCoverageReader, coverageFilter } from './journalCoverage.mjs';
+import { createJournalCoverageReader, createJournalCoverageFollowUp, createJournalFollowUpEvidenceReader, coverageFilter } from './journalCoverage.mjs';
 import { createCollectionActions } from './collectionActions.mjs';
 import { createPublicRecruitment } from './publicRecruitment.mjs';
 import { buildReportStatus } from './reportStatus.mjs';
@@ -809,6 +809,27 @@ app.get('/api/v1/finance/journal-coverage', authenticate, requirePermission('fin
     if (!period || !filter) return bad(req, res, 400, 'INVALID_COVERAGE_FILTER', 'بازه یا فیلتر پوشش اسناد معتبر نیست.');
     if (entityDriverKind!=='mssql') return bad(req, res, 503, 'JOURNAL_SOURCE_UNAVAILABLE', 'آینهٔ اسناد ERP در دسترس نیست.');
     res.json(await readJournalCoverage(req.auth, { ...period, ...filter }));
+  }));
+
+const submitJournalCoverageFollowUp = createJournalCoverageFollowUp({sql,run:withTenantContext});
+app.post('/api/v1/finance/journal-coverage/follow-up', authenticate, requirePermission('finance.manage',{organizationWide:true}),
+  wrap(async (req,res) => {
+    const period = parseMoneyReportQuery(req.body ?? {});
+    if (!period || entityDriverKind!=='mssql') {
+      return bad(req,res,400,'INVALID_COVERAGE_FILTER','بازهٔ پیگیری یا منبع اسناد معتبر نیست.');
+    }
+    const result = await submitJournalCoverageFollowUp(req.auth,{ ...period,operation:req.body.operation,externalId:req.body.externalId },req.correlationId);
+    if (!result.id) return bad(req,res,result.status,'JOURNAL_FOLLOW_UP_REJECTED',result.message);
+    res.status(result.status).json({id:result.id,replayed:result.replayed});
+  }));
+
+const readJournalFollowUpEvidence = createJournalFollowUpEvidenceReader({sql,run:withTenantContext});
+app.get('/api/v1/finance/journal-coverage/follow-up/:id', authenticate, requirePermission('finance.VIEW',{organizationWide:true}),
+  wrap(async (req,res) => {
+    res.set('Cache-Control','private, no-store');
+    const evidence = entityDriverKind==='mssql' ? await readJournalFollowUpEvidence(req.auth,req.params.id) : null;
+    if (!evidence) return bad(req,res,404,'FOLLOW_UP_EVIDENCE_UNAVAILABLE','شاهد مجاز پیگیری پیدا نشد.');
+    res.json(evidence);
   }));
 
 const collectionReceiptEvidence = createCollectionReceiptEvidence({ sql, run: withTenantContext });

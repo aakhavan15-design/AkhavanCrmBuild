@@ -10,14 +10,15 @@ assert.equal(r.status, 'UNAVAILABLE'); assert.equal(r.dataTrust.isAuthoritative,
 // خطای Query → UNAVAILABLE، بدون نشت پیام خطا
 r = await buildReportStatus({ ...base, driverKind: 'mssql', probe: async () => { const e = new Error('secret host db1'); e.code = 'ETIMEOUT'; throw e; } });
 assert.equal(r.status, 'UNAVAILABLE'); assert.equal(r.errorCode, 'ETIMEOUT'); assert.ok(!JSON.stringify(r).includes('secret'));
-// جدول‌ها خالی → EMPTY؛ ناقص → PARTIAL؛ کامل → READY
+// وجود ردیف فقط شاهد دسترسی به منبع است و انتشار گزارش را ثابت نمی‌کند.
 r = await buildReportStatus({ ...base, driverKind: 'mssql', probe: async () => 0 });
 assert.equal(r.status, 'EMPTY'); assert.equal(r.dataTrust.isAuthoritative, false);
 let i = 0;
 r = await buildReportStatus({ ...base, driverKind: 'mssql', probe: async () => (i++ === 0 ? 5 : 0) });
 assert.equal(r.status, 'PARTIAL'); assert.equal(r.dataTrust.isAuthoritative, false);
 r = await buildReportStatus({ ...base, driverKind: 'mssql', probe: async () => 3 });
-assert.equal(r.status, 'READY'); assert.equal(r.dataTrust.isAuthoritative, true);
+assert.equal(r.status, 'PARTIAL'); assert.equal(r.dataTrust.isAuthoritative, false);
+assert.equal(r.reason,'SOURCE_ROWS_ONLY'); assert.equal(r.reportDataAvailable,false);
 assert.deepEqual(Object.keys(r.coverage), REPORT_SOURCE_TABLES);
 
 const idx = readFileSync('server/index.mjs', 'utf8');
