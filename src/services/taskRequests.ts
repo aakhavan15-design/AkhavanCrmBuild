@@ -6,7 +6,7 @@ export interface TaskPriceItem { productId: string; price: string; quantity: str
 export interface TaskRequestInput {
   requestId: string; kind: TaskRequestKind; title: string; description: string; priority: RequestPriority;
   assigneeId: string; accountId: string | null; dueDate: string | null; confidential: boolean; watchers: string[];
-  links: TaskRequestLink[]; priceItems: TaskPriceItem[];
+  links: TaskRequestLink[]; priceAuthorizationId?:string|null; priceItems: TaskPriceItem[];
 }
 export interface TaskRequestSummary {
   id: string; title: string; status: string; priority: RequestPriority; assigneeId: string; assignee?: string;
@@ -25,8 +25,8 @@ export interface TaskRequestRecord {
     activityHistory: {id:string; actorId:string; at:string; summary:string; details?:string}[];
     managedRequest: {
       kind: TaskRequestKind; contentRevision: number; confidential: boolean; watchers:string[]; links:TaskRequestLink[];
-      seenBy:string[]; priceItems:TaskPriceItem[]; activeApprovers:string[];
-      assignedAt:string; invoice?:{id:string;number:string;date:string;source:string}; condition?: {text:string; evidence?:string | null}; authorization?: {expiresOn:string;maxUses:number;items:TaskPriceItem[]};
+      seenBy:string[]; priceAuthorizationId?:string|null; priceItems:TaskPriceItem[]; activeApprovers:string[];
+      assignedAt:string; invoice?:{id:string;number:string;date:string;source:string}; condition?: {text:string; evidence?:string | null}; authorization?: {expiresOn:string;maxUses:number;usedOrders?:string[];items:TaskPriceItem[]};
     };
   };
   version: string;

@@ -1,4 +1,5 @@
 import { appendTaskActivity } from '../src/services/taskActivity.ts';
+import { fixedUnits } from './financialFeedContract.mjs';
 import { applyTaskWorkflow } from '../src/services/taskWorkflow.ts';
 
 export const kinds = new Set(['GENERAL','PRICE_INQUIRY','PRICE_PERMISSION','ORDER_APPROVAL','FINANCE','COLLECTION','COMMERCE','HR']);
@@ -25,6 +26,7 @@ export function requestInput(body) {
   if (!title || title.length<3 || description===null || !watchers || !Array.isArray(refs) || refs.length>5 ||
     !refs.every(x => linkKinds.has(x?.type) && uuid(x.id)) || !Array.isArray(items) || items.length>30 ||
     !items.every(x => uuid(x?.productId) && decimal(x.quantity,12,6) && decimal(x.price,15,4))) return null;
+  if (body.priceAuthorizationId!=null && (body.kind!=='ORDER_APPROVAL' || !isRequestId(body.priceAuthorizationId))) return null;
   if (['PRICE_INQUIRY','PRICE_PERMISSION','ORDER_APPROVAL','COLLECTION'].includes(body.kind) && !body.accountId) return null;
   const links = refs.map(x => ({type:x.type,id:x.id.toLowerCase()}));
   if (new Set(links.map(x => `${x.type}:${x.id}`)).size!==links.length) return null;
@@ -32,7 +34,7 @@ export function requestInput(body) {
     || (body.kind==='PRICE_PERMISSION' && (!items.length || new Set(items.map(x => x.productId.toLowerCase())).size!==items.length))
     || (body.kind!=='PRICE_PERMISSION' && items.length)) return null;
   return { requestId:body.requestId.toLowerCase(),kind:body.kind,title,description,priority:body.priority,assigneeId:body.assigneeId.toLowerCase(),
-    accountId:body.accountId?.toLowerCase() ?? null,dueDate:body.dueDate ?? null,confidential:body.confidential,watchers,links,
+    accountId:body.accountId?.toLowerCase() ?? null,priceAuthorizationId:body.priceAuthorizationId ?? null,dueDate:body.dueDate ?? null,confidential:body.confidential,watchers,links,
     priceItems:items.map(x => ({productId:x.productId.toLowerCase(),quantity:x.quantity,price:x.price})) };
 }
 
@@ -172,7 +174,7 @@ export function applyRequestCommand(task, access, command, actor, now, context =
       if (last && req.kind==='PRICE_PERMISSION') {
         if (!command.expiresOn || command.expiresOn<now.slice(0,10) || command.maxUses===null) return fail('تاریخ اعتبار و سقف دفعات استفاده لازم است.');
         if (command.priceItems?.some(x => !req.priceItems.some(y => y.productId===x.productId))) return fail('قیمت اصلاح‌شده با اقلام درخواست هم‌خوان نیست.');
-        authorization={ customer:task.accountId,revision:req.contentRevision,expiresOn:command.expiresOn,maxUses:command.maxUses,
+        authorization={ customer:task.accountId,source:req.priceSource,usedOrders:[],revision:req.contentRevision,expiresOn:command.expiresOn,maxUses:command.maxUses,
           priceClass:command.priceClass || null,paymentTerms:command.paymentTerms || null,
           items:req.priceItems.map(x => ({...x,price:command.priceItems?.find(y => y.productId===x.productId)?.price ?? x.price})) };
       }
@@ -187,6 +189,7 @@ export function applyRequestCommand(task, access, command, actor, now, context =
           data.authorization=authorization;
           next.status='APPROVED';
           if (req.kind==='ORDER_APPROVAL') {
+            if (req.priceAuthorizationId && context.priceAuthorizationChecked!==true) return fail('مصرف مجوز قیمت به‌طور معتبر کنترل نشده است.');
             if (!req.policy.accountingUserId || !context.accountingName) return fail('مسئول مالی معتبر برای تحویل سفارش مشخص نیست.');
             next.assigneeId=req.policy.accountingUserId;next.assignedTo=req.policy.accountingUserId;
             data.assigneeName=context.accountingName;data.assignedAt=now;data.seenBy=[];
@@ -201,4 +204,32 @@ export function applyRequestCommand(task, access, command, actor, now, context =
   if (!Object.hasOwn(actions,action)) return fail('اقدام ناشناخته است.');
   const [event,summary] = actions[action];
   return { ok:true,task:appendTaskActivity(next,{id:command.commandId,action:event,actorId:actor,at:now,summary,details:note || command.condition || undefined}) };
+}
+
+
+/** Applies only the specifically authorized items. Unsupported settlement evidence fails closed. */
+export function validateOrderPriceAuthorization(order,authorization,today) {
+  if (!authorization || !order?.id || !order.source || order.source!==authorization.source ||
+      String(order.accountId).toLowerCase()!==authorization.customer || order.currency!=='IRR') {
+    return 'مجوز قیمت به همین مشتری، منبع و ارز مربوط نیست.';
+  }
+  if (authorization.expiresOn<today) return 'اعتبار مجوز قیمت پایان یافته است.';
+  if (order.discount && fixedUnits(order.discount)!==0n) return 'اثر تخفیف جمع سفارش باید قبل از مصرف مجوز بررسی شود.';
+  if (authorization.paymentTerms) return 'برای مصرف این مجوز مشروط، شرایط تسویهٔ ساختاریافتهٔ ERP لازم است.';
+  const used=authorization.usedOrders ?? [];
+  if (!used.includes(order.id) && used.length>=authorization.maxUses) return 'سقف استفاده از مجوز قیمت تکمیل شده است.';
+  const approved=new Map(authorization.items.map(item => [item.externalId,item]));
+  if (approved.size!==authorization.items.length) return 'نگاشت اقلام مجوز معتبر نیست.';
+  const totals=new Map();
+  for (const line of order.lines) {
+    if (!approved.has(line.product)) continue;
+    const item=approved.get(line.product);
+    if (!item.unit || item.unit!==line.unit || fixedUnits(item.price)!==fixedUnits(line.price) || fixedUnits(line.discount)!==0n) {
+      return 'واحد، فی یا تخفیف یکی از اقلام با محدودهٔ مجوز قیمت هم‌خوان نیست.';
+    }
+    const amount=(totals.get(line.product) ?? 0n)+fixedUnits(line.quantity,6);
+    if (amount>fixedUnits(item.quantity,6)) return 'مقدار سفارش بیش از مقدار مجاز است.';
+    totals.set(line.product,amount);
+  }
+  return totals.size ? null : 'هیچ قلم مجوز قیمت در سفارش یافت نشد.';
 }

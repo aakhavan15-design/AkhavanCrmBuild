@@ -194,7 +194,7 @@ export function TaskRequestSheet({id,viewer,accounts,onClose,onChanged}:{
 
   if (action==='REVISE' && task && req) return <QuickTaskRequest open viewer={viewer} accounts={accounts} onClose={()=>setAction('')}
     onSaved={()=>{}} initial={{kind:req.kind,title:task.title,description:task.description,priority:task.priority,accountId:task.accountId,
-      assigneeId:task.assigneeId,watchers:req.watchers,links:req.links,priceItems:req.priceItems,dueDate:task.dueDate,confidential:req.confidential}}
+      assigneeId:task.assigneeId,watchers:req.watchers,links:req.links,priceAuthorizationId:req.priceAuthorizationId,priceItems:req.priceItems,dueDate:task.dueDate,confidential:req.confidential}}
     submitRevision={input=>submit(input)}/>;
 
   const choose=(value:string)=>{
@@ -239,7 +239,7 @@ export function TaskRequestSheet({id,viewer,accounts,onClose,onChanged}:{
           <summary className="min-h-11 cursor-pointer content-center font-semibold">اقلام و حدود قیمت</summary>
           <ul className="divide-y divide-border text-caption">{(req.authorization?.items ?? req.priceItems).map(item=>
             <li key={item.productId} className="py-2">{item.title || 'کالا'} · {formatDecimalString(item.quantity)} {item.unit} · فی {formatDecimalString(item.price)} ریال</li>)}</ul>
-          {req.authorization && <p className="text-caption">اعتبار تا {formatAppDate(req.authorization.expiresOn)} · سقف {formatCount(req.authorization.maxUses)} بار</p>}
+          {req.authorization && <p className="text-caption">اعتبار تا {formatAppDate(req.authorization.expiresOn)} · سقف {formatCount(req.authorization.maxUses)} بار · مصرف‌شده {formatCount(req.authorization.usedOrders?.length ?? 0)} بار</p>}
         </details>}
         <CustomerRequestContext record={record}/>
         {record.permissions.canFiles && <TaskRequestFiles id={id} canUpload={Boolean(record.permissions.canUpload)}

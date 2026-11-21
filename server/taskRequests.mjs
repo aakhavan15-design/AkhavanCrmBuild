@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { appendTaskActivity } from '../src/services/taskActivity.ts';
-import { applyRequestCommand, approvals, availableActions, commandInput, isRequestId, kinds, policyInput, requestInput, uuid } from './taskRequestContract.mjs';
+import { applyRequestCommand, approvals, availableActions, commandInput, isRequestId, kinds, policyInput, requestInput, validateOrderPriceAuthorization, uuid } from './taskRequestContract.mjs';
 
 const digest = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const failure = (status,code,message) => Object.assign(new Error(message),{status,code});
@@ -40,7 +40,7 @@ CROSS APPLY security.fn_TaskRequestGrant(@tenantId,@actor,N'accounts.view',a.Own
 WHERE a.TenantId=@tenantId AND a.AccountId=@accountId;`;
 
 const orderSql = `
-SELECT o.SalesOrderId AS id,o.OrderNumber AS number,o.StatusCode AS status,o.CurrencyCode AS currency,
+SELECT o.SalesOrderId AS id,o.AccountId AS accountId,o.OrderNumber AS number,o.StatusCode AS status,o.CurrencyCode AS currency,
  o.OrderDate AS [date],CONVERT(varchar(48),o.Subtotal) AS subtotal,CONVERT(varchar(48),o.DiscountTotal) AS discount,
  CONVERT(varchar(48),o.NetAmount) AS total,CONVERT(varchar(18),o.RowVersion,1) AS [version],
  o.SourceSystemCode AS source,o.ExternalOrderId AS externalId
@@ -120,6 +120,36 @@ export function createTaskRequests({sql,run}) {
     return {...result.recordsets[0][0],lines:result.recordsets[1]};
   }
 
+  async function checkPriceAuthorization(tx,auth,task,forUse,commandId) {
+    const grantId=task.managedRequest.priceAuthorizationId;
+    const grant=await get(tx,auth,grantId,forUse);
+    const permission=grant.task.managedRequest;
+    const authorization=permission.authorization;
+    if (grant.task.status!=='APPROVED' || permission.kind!=='PRICE_PERMISSION' || authorization?.revision!==permission.contentRevision) {
+      throw invalid('مجوز قیمت فعلی و تأییدشده در دسترس نیست.');
+    }
+    const sourcePolicy=await approvedPolicy(tx,auth,'PRICE_PERMISSION');
+    if (sourcePolicy.id!==permission.policy?.id || sourcePolicy.version!==permission.policy?.version) {
+      throw conflict('نسخهٔ سیاست مجوز قیمت تغییر کرده است.');
+    }
+    const order=await readOrder(tx,auth,task);
+    const today=new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Tehran',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+    const problem=validateOrderPriceAuthorization(order,authorization,today);
+    if (problem) throw invalid(problem);
+    if (!forUse || authorization.usedOrders?.includes(order.id)) return;
+    const usedOrders=[...(authorization.usedOrders ?? []),order.id];
+    const updated=appendTaskActivity({...grant.task,managedRequest:{...permission,authorization:{...authorization,usedOrders}}},
+      {id:commandId,action:'PRICE_USED',actorId:actorId(auth),summary:'مصرف مجوز در تأیید سفارش ثبت شد'});
+    const persisted=await requestById(tx,auth,grantId).input('version',sql.VarChar(20),grant.version)
+      .input('task',sql.NVarChar(sql.MAX),JSON.stringify(updated)).query(`
+        UPDATE sync.EntityStore SET JsonDoc=@task,Version=Version+1,UpdatedAtUtc=SYSUTCDATETIME(),UpdatedByUserId=@actor
+        OUTPUT inserted.EntityId WHERE TenantId=@tenantId AND CollectionName=N'tasks' AND EntityId=@id
+          AND IsDeleted=0 AND Version=TRY_CONVERT(bigint,@version);`);
+    if (persisted.recordset.length!==1) throw conflict('مجوز قیمت هم‌زمان تغییر کرده است.');
+    await writeAudit(tx,auth,grantId,commandId,'TASK_REQUEST_PRICE_USED',digest([grantId,order.id,permission.contentRevision]),
+      {orderId:order.id,orderRequestId:task.id,priceRevision:permission.contentRevision,uses:usedOrders.length});
+  }
+
   async function verifyContent(tx,auth,value,task) {
     if (value.accountId) {
       const account = (await input(tx,auth).input('accountId',sql.UniqueIdentifier,value.accountId).query(accountSql)).recordset[0];
@@ -146,7 +176,7 @@ export function createTaskRequests({sql,run}) {
     }
     if (value.priceItems.length) {
       const result = await input(tx,auth).input('items',sql.NVarChar(sql.MAX),JSON.stringify(value.priceItems)).query(`
-        SELECT CONVERT(varchar(36),p.ExternalProductKey) AS id,p.ProductName AS title,p.BaseUnitCode AS unit,p.SourceSystemCode AS source
+        SELECT CONVERT(varchar(36),p.ExternalProductKey) AS id,p.ProductName AS title,p.BaseUnitCode AS unit,p.SourceSystemCode AS source,p.ExternalProductId AS externalId
         FROM OPENJSON(@items) WITH(productId uniqueidentifier) item
         JOIN crm.ExternalProduct p ON p.TenantId=@tenantId AND p.ExternalProductKey=item.productId AND p.IsActive=1;`);
       if (result.recordset.length!==value.priceItems.length) throw invalid('یک کالا در کاتالوگ معتبر ERP یافت نشد.');
@@ -154,7 +184,7 @@ export function createTaskRequests({sql,run}) {
       if (sources.length!==1) throw invalid('همهٔ اقلام یک مجوز باید به یک کاتالوگ ERP تعلق داشته باشند.');
       task.managedRequest.priceSource=sources[0];
       const products = new Map(result.recordset.map(p => [p.id.toLowerCase(),p]));
-      task.managedRequest.priceItems=value.priceItems.map(item => ({...item,title:products.get(item.productId).title,unit:products.get(item.productId).unit}));
+      task.managedRequest.priceItems=value.priceItems.map(item => ({...item,title:products.get(item.productId).title,unit:products.get(item.productId).unit,externalId:products.get(item.productId).externalId}));
     }
   }
 
@@ -238,7 +268,7 @@ export function createTaskRequests({sql,run}) {
       status:approverPolicy ? 'PENDING_APPROVAL' : 'OPEN', type:'REQUEST',result:'',completedAt:null,
       nextAction:approverPolicy ? 'بررسی و تصمیم مرحلهٔ جاری' : 'رسیدگی به درخواست و ثبت پاسخ',
       activityHistory:previous?.activityHistory ?? [],
-      managedRequest:{ kind:value.kind,confidential:value.confidential,watchers:value.watchers,links:value.links,
+      managedRequest:{ kind:value.kind,priceAuthorizationId:value.priceAuthorizationId,confidential:value.confidential,watchers:value.watchers,links:value.links,
         priceItems:value.priceItems,assigneeName:owner.name,assignedAt:now,contentRevision:(previous?.managedRequest.contentRevision ?? 0)+1,
         policy:approverPolicy,step:0,activeApprovers:approverPolicy?.steps[0].members ?? [],seenBy:[],decisions:[],condition:null,authorization:null },
     };
@@ -249,6 +279,7 @@ export function createTaskRequests({sql,run}) {
       throw invalid('ایجادکننده نمی‌تواند در سیاست تأیید همین درخواست تصمیم‌گیر باشد.');
     }
     await verifyWatchers(tx,auth,task);
+    if (task.managedRequest.priceAuthorizationId) await checkPriceAuthorization(tx,auth,task,false);
     return task;
   }
 
@@ -473,6 +504,15 @@ export function createTaskRequests({sql,run}) {
               GROUP BY m.SourceSystemCode HAVING COUNT_BIG(*)=1;`);
           if (classResult.recordset.length!==1) throw invalid('کلاس قیمت با کد یکتا و مصوب ERP یافت نشد.');
         }
+        const active=current.task.managedRequest;
+        if (command.action==='APPROVE' && active.kind==='ORDER_APPROVAL' && active.priceAuthorizationId) {
+          if (!availableActions(current.task,current,actorId(auth)).includes('APPROVE')) throw forbidden();
+          const step=active.policy.steps[active.step];
+          const last=active.step+1===active.policy.steps.length &&
+            active.decisions.filter(item=>item.step===active.step).length+1>=step.required;
+          await checkPriceAuthorization(tx,auth,current.task,last,command.commandId);
+          context.priceAuthorizationChecked=true;
+        }
         const applied=applyRequestCommand(current.task,current,command,actorId(auth),now,context);
         if (!applied.ok) throw failure(422,'REQUEST_TRANSITION_REJECTED',applied.error);
         const task={...applied.task,createFingerprint:current.task.createFingerprint};
@@ -570,12 +610,24 @@ export function createTaskRequests({sql,run}) {
     },
 
     resources: (auth,query) => {
-      if (!['ORDER','PRODUCT'].includes(query.type) || !uuid(query.accountId)
+      if (!['ORDER','PRODUCT','PRICE_AUTHORIZATION'].includes(query.type) || !uuid(query.accountId)
          || (query.search!==undefined && (typeof query.search!=='string' || query.search.length>80))) throw invalid('مرجع انتخاب معتبر نیست.');
       return run(auth,async tx => {
         const access=(await input(tx,auth).input('accountId',sql.UniqueIdentifier,query.accountId).query(accountSql)).recordset[0];
         if (!access) throw forbidden();
         const type=query.type;
+        if (type==='PRICE_AUTHORIZATION') {
+          const result=await input(tx,auth).input('accountId',sql.UniqueIdentifier,query.accountId)
+            .input('search',sql.NVarChar(80),query.search?.trim() ?? '').query(`SELECT TOP(60) task.EntityId AS id,JSON_VALUE(task.JsonDoc,'$.title') AS title
+              FROM sync.EntityStore task CROSS APPLY security.fn_TaskRequestAccess(task.TenantId,@actor,task.JsonDoc)
+              WHERE task.TenantId=@tenantId AND task.CollectionName=N'tasks' AND task.EntityId LIKE N'taskreq-%' AND task.IsDeleted=0
+                AND TRY_CONVERT(uniqueidentifier,JSON_VALUE(task.JsonDoc,'$.accountId'))=@accountId
+                AND JSON_VALUE(task.JsonDoc,'$.status')='APPROVED'
+                AND JSON_VALUE(task.JsonDoc,'$.managedRequest.kind')='PRICE_PERMISSION'
+                AND (@search=N'' OR CHARINDEX(@search,JSON_VALUE(task.JsonDoc,'$.title'))>0)
+              ORDER BY task.UpdatedAtUtc DESC,task.EntityId;`);
+          return {items:result.recordset};
+        }
         const statement=type==='ORDER' ? `SELECT TOP(60) o.SalesOrderId AS id,o.OrderNumber AS title,o.OrderDate AS [date]
           FROM crm.SalesOrder o JOIN crm.Account a ON a.TenantId=o.TenantId AND a.AccountId=o.AccountId
           CROSS APPLY security.fn_TaskRequestGrant(@tenantId,@actor,N'quotes.view',a.OwnerUserId,a.BranchId,a.TerritoryId,a.TeamId,0)

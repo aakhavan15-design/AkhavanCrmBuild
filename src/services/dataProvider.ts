@@ -288,7 +288,7 @@ export interface DataProvider {
   submitTaskRequest(input:TaskRequestInput): Promise<TaskRequestRecord>;
   changeTaskRequest(id:string,input:TaskRequestCommand): Promise<TaskRequestRecord | {task:null;version:string}>;
   getTaskRequestDirectory(search:string): Promise<{items:{id:string;name:string}[]}>;
-  getTaskRequestResources(type:'ORDER'|'PRODUCT',accountId:string,search:string): Promise<{items:{id:string;title:string;unit?:string;sku?:string}[]}>;
+  getTaskRequestResources(type:'ORDER'|'PRODUCT'|'PRICE_AUTHORIZATION',accountId:string,search:string): Promise<{items:{id:string;title:string;unit?:string;sku?:string}[]}>;
   getTaskRequestPolicies(): Promise<{items:(TaskRequestApprovalPolicy & {kind:TaskRequestPolicyKind})[]}>;
   saveTaskRequestPolicy(kind:TaskRequestPolicyKind,policy:TaskRequestApprovalPolicy): Promise<TaskRequestApprovalPolicy>;
 
@@ -1052,7 +1052,7 @@ export class HttpBackendDataProvider implements DataProvider {
   async getTaskRequestDirectory(search:string): Promise<{items:{id:string;name:string}[]}> {
     return this.request(`/tasks/request-directory?${new URLSearchParams({search})}`);
   }
-  async getTaskRequestResources(type:'ORDER'|'PRODUCT',accountId:string,search:string): Promise<{items:{id:string;title:string;unit?:string;sku?:string}[]}> {
+  async getTaskRequestResources(type:'ORDER'|'PRODUCT'|'PRICE_AUTHORIZATION',accountId:string,search:string): Promise<{items:{id:string;title:string;unit?:string;sku?:string}[]}> {
     return this.request(`/tasks/request-resources?${new URLSearchParams({type,accountId,search})}`);
   }
   async getTaskRequestPolicies(): Promise<{items:(TaskRequestApprovalPolicy & {kind:TaskRequestPolicyKind})[]}> {

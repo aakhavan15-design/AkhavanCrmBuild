@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { applyRequestCommand, availableActions, commandInput, policyInput, requestInput } from '../server/taskRequestContract.mjs';
+import { applyRequestCommand, availableActions, commandInput, policyInput, requestInput, validateOrderPriceAuthorization } from '../server/taskRequestContract.mjs';
 
 const creator='11111111-1111-4111-8111-111111111111';
 const manager='22222222-2222-4222-8222-222222222222';
@@ -47,4 +47,18 @@ test('permits three importance levels and rejects incomplete exception prices or
   assert.equal(requestInput(input).priority,'URGENT');
   assert.equal(requestInput({...input,priceItems:[]}),null);
   assert.equal(policyInput({steps:[{members:[manager],required:1},{members:[manager],required:1}]}),null);
+});
+
+
+test('price authorization checks item, unit, expiry, discount and remaining uses before the final decision',()=>{
+  const order={id:manager,source:'erp',accountId:creator,currency:'IRR',discount:'0',
+    lines:[{product:'product-1',quantity:'1.25',price:'4000.1250',unit:'EA',discount:'0'}]};
+  const grant={source:'erp',customer:creator,expiresOn:'2026-11-22',maxUses:1,usedOrders:[],
+    items:[{externalId:'product-1',quantity:'2.0000',price:'4000.125',unit:'EA'}]};
+  assert.equal(validateOrderPriceAuthorization(order,grant,'2026-11-21'),null);
+  assert.equal(validateOrderPriceAuthorization(order,{...grant,usedOrders:[manager]},'2026-11-21'),null);
+  assert.match(validateOrderPriceAuthorization(order,{...grant,usedOrders:[second]},'2026-11-21'),/سقف/);
+  assert.match(validateOrderPriceAuthorization({...order,discount:'10'},grant,'2026-11-21'),/تخفیف/);
+  assert.match(validateOrderPriceAuthorization(order,grant,'2026-11-23'),/اعتبار/);
+  assert.match(validateOrderPriceAuthorization(order,{...grant,paymentTerms:'چک یک‌ماهه'},'2026-11-21'),/تسویه/);
 });

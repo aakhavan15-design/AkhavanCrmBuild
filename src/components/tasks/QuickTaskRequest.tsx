@@ -42,7 +42,7 @@ export function RequestPeople({viewer,values,onChange,label,multiple=false}:{
 }
 
 function ResourceControl({type,accountId,value,chosenLabel,onSelect,label}:{
-  type:'ORDER'|'PRODUCT'; accountId:string; value:string; chosenLabel?:string;
+  type:'ORDER'|'PRODUCT'|'PRICE_AUTHORIZATION'; accountId:string; value:string; chosenLabel?:string;
   onSelect:(id:string,label:string)=>void; label:string;
 }) {
   const [search,setSearch]=useState('');
@@ -51,6 +51,7 @@ function ResourceControl({type,accountId,value,chosenLabel,onSelect,label}:{
     accountId,items:(await provider.getTaskRequestResources(type,accountId,search)).items,
   } : null,[accountId,type,search]);
   const options=(data?.accountId===accountId ? data.items : []).map(item=>({value:item.id,label:item.sku ? `${item.title} · ${item.sku}` : item.title}));
+  if (type==='PRICE_AUTHORIZATION') options.unshift({value:'',label:'بدون مجوز ویژهٔ مرتبط'});
   if (value && chosenLabel && !options.some(option=>option.value===value)) options.push({value,label:chosenLabel});
   return <SearchableSelect label={label} value={value} options={options} loading={loading} error={error?.message} onSearch={onSearch}
     onChange={id=>onSelect(id,options.find(item=>item.value===id)?.label ?? '')} />;
@@ -72,8 +73,8 @@ export function QuickTaskRequest({open,viewer,accounts,onClose,onSaved,initial,s
   const set=<K extends keyof TaskRequestInput,>(key:K,value:TaskRequestInput[K])=>setDraft(current=>({...current,[key]:value}));
   const locked=Boolean(submitRevision);
   const needsAccount=['PRICE_INQUIRY','PRICE_PERMISSION','ORDER_APPROVAL','COLLECTION'].includes(draft.kind);
-  const updateKind=(kind:TaskRequestKind)=>setDraft(current=>({...current,kind,links:[],priceItems:[]}));
-  const selectAccount=(accountId:string)=>setDraft(current=>({...current,accountId:accountId || null,links:[],priceItems:[]}));
+  const updateKind=(kind:TaskRequestKind)=>setDraft(current=>({...current,kind,links:[],priceAuthorizationId:null,priceItems:[]}));
+  const selectAccount=(accountId:string)=>setDraft(current=>({...current,accountId:accountId || null,links:[],priceAuthorizationId:null,priceItems:[]}));
   const order=draft.links.find(item=>item.type==='ORDER');
 
   async function submit() {
@@ -136,6 +137,9 @@ export function QuickTaskRequest({open,viewer,accounts,onClose,onSaved,initial,s
       </div>
       {draft.kind==='ORDER_APPROVAL' && draft.accountId && <ResourceControl type="ORDER" accountId={draft.accountId} label="سفارش مرتبط" value={order?.id ?? ''} chosenLabel={orderLabel}
         onSelect={(id,label)=>{setOrderLabel(label);set('links',[...draft.links.filter(item=>item.type!=='ORDER'),{type:'ORDER',id}]);}} />}
+      {draft.kind==='ORDER_APPROVAL' && draft.accountId && <ResourceControl type="PRICE_AUTHORIZATION" accountId={draft.accountId}
+        label="مجوز قیمت ویژهٔ مرتبط (اختیاری)" value={draft.priceAuthorizationId ?? ''} chosenLabel="مجوز انتخاب‌شده"
+        onSelect={id=>set('priceAuthorizationId',id || null)}/>}
       {draft.kind==='PRICE_PERMISSION' && draft.accountId && <fieldset className="space-y-2 rounded-xl border border-border p-2">
         <legend className="px-1 font-semibold">اقلام مجوز قیمت</legend>
         {draft.priceItems.map((item,index)=><div key={index} className="grid gap-2 rounded-lg border border-border p-2 sm:grid-cols-2">
