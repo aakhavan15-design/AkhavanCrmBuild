@@ -31,6 +31,7 @@ import { queryJournalLines, buildDetailBalancesResult, type JournalLineFilter, t
 import { journalQueryParams } from '../lib/ledgerQueryParams.mjs';
 import { readCustomerProposalReceipt, type CustomerProposalReceipt } from '../lib/customerProposal';
 import { applyTaskWorkflow, type TaskWorkflowInput } from './taskWorkflow';
+import type { LedgerBalanceOptions, LedgerBookFilter, LedgerBookPage, LedgerBookSource } from './officialLedger';
 import type { JournalCoverageFilter, JournalCoveragePage, MoneyEvidenceFilter, MoneyEvidencePage, MoneyPeriod, MoneyReport } from './moneyIntelligence';
 
 export type TaskWorkflowCommand = Omit<TaskWorkflowInput, 'actorId' | 'at'> & { version: string };
@@ -177,7 +178,7 @@ export interface PaginatedResult<T> {
 }
 
 export interface LedgerPnlDataResult {
-  status: LedgerResultStatus | 'RESTRICTED';
+  status: LedgerResultStatus | 'RESTRICTED' | 'PARTIAL';
   source: 'CLIENT_INDEXEDDB' | 'SQLSERVER_BACKEND';
   journalLines: Array<Record<string, unknown>>;
   coaMirror: CoaMirror[];
@@ -290,8 +291,10 @@ export interface DataProvider {
   
   // Ledger: گردش و مانده تفکیکی تفصیلی × معین (قانون اساسی §C؛ فقط از این مسیر خوانده شود)
   getJournalLines(filter?: JournalLineFilter, pagination?: PaginationParams): Promise<JournalLinePage>;
-  getDetailSubsidiaryBalances(options?: { detailKey?: string; byPeriod?: boolean }): Promise<DetailBalancesResult>;
-  getLedgerPnlData(filter?: Pick<JournalLineFilter, 'fromDate' | 'toDate' | 'periodCode'>): Promise<LedgerPnlDataResult>;
+  getLedgerSources(): Promise<{ items: LedgerBookSource[] }>;
+  getLedgerBooks(filter: LedgerBookFilter): Promise<LedgerBookPage>;
+  getDetailSubsidiaryBalances(options?: LedgerBalanceOptions): Promise<DetailBalancesResult>;
+  getLedgerPnlData(filter?: Pick<JournalLineFilter, 'fromDate' | 'toDate' | 'periodCode' | 'source' | 'currency'>): Promise<LedgerPnlDataResult>;
   getCashFlowData(): Promise<CashFlowDataResult>;
   getMoneyReport(period: MoneyPeriod): Promise<MoneyReport>;
   getJournalCoverage(period: MoneyPeriod, filter: JournalCoverageFilter): Promise<JournalCoveragePage>;
@@ -399,11 +402,17 @@ export class ClientStorageDataProvider implements DataProvider {
     return queryJournalLines((this.getState() as any).journalLines, filter, pagination);
   }
 
-  async getDetailSubsidiaryBalances(options?: { detailKey?: string; byPeriod?: boolean }): Promise<DetailBalancesResult> {
+  async getLedgerSources(): Promise<{ items: LedgerBookSource[] }> { return { items: [] }; }
+
+  async getLedgerBooks(): Promise<LedgerBookPage> {
+    return { status:'UNAVAILABLE',reason:'مرور دفتر رسمی از منبع SQL Server در دسترس است.',items:[],hasMore:false };
+  }
+
+  async getDetailSubsidiaryBalances(options?: LedgerBalanceOptions): Promise<DetailBalancesResult> {
     return buildDetailBalancesResult((this.getState() as any).journalLines, 'CLIENT_INDEXEDDB', options);
   }
 
-  async getLedgerPnlData(filter?: Pick<JournalLineFilter, 'fromDate' | 'toDate' | 'periodCode'>): Promise<LedgerPnlDataResult> {
+  async getLedgerPnlData(filter?: Pick<JournalLineFilter, 'fromDate' | 'toDate' | 'periodCode' | 'source' | 'currency'>): Promise<LedgerPnlDataResult> {
     const st = this.getState() as unknown as Record<string, unknown>;
     const coaMirror = Array.isArray(st.coaMirror) ? (st.coaMirror as CoaMirror[]) : [];
     const journalLines: Array<Record<string, unknown>> = [];
@@ -859,52 +868,41 @@ export class HttpBackendDataProvider implements DataProvider {
     return this.request<JournalLinePage>(`/ledger/journal-lines?${journalQueryParams(filter, pagination)}`);
   }
 
-  async getDetailSubsidiaryBalances(options?: { detailKey?: string; byPeriod?: boolean }): Promise<DetailBalancesResult> {
+  async getLedgerSources(): Promise<{ items: LedgerBookSource[] }> {
+    return this.request<{ items: LedgerBookSource[] }>('/ledger/sources');
+  }
+
+  async getLedgerBooks(filter: LedgerBookFilter): Promise<LedgerBookPage> {
+    const params = new URLSearchParams({ from:filter.from,to:filter.to,page:String(filter.page) });
+    for (const key of ['source','currency','role','search'] as const) {
+      const value = filter[key];
+      if (value) params.set(key,value);
+    }
+    return this.request<LedgerBookPage>(`/ledger/books?${params}`);
+  }
+
+  async getDetailSubsidiaryBalances(options?: LedgerBalanceOptions): Promise<DetailBalancesResult> {
     try {
       const q = new URLSearchParams();
       if (options?.detailKey) q.set('detailKey', options.detailKey);
       if (options?.byPeriod) q.set('byPeriod', '1');
+      if (options?.source) q.set('source',options.source);
+      if (options?.currency) q.set('currency',options.currency);
+      if (options?.role) q.set('role',options.role);
       return await this.request<DetailBalancesResult>(`/ledger/balances?${q.toString()}`);
     } catch (e) {
       return { status: 'UNAVAILABLE', source: 'SQLSERVER_BACKEND', balances: [], reason: e instanceof Error ? e.message : 'ledger endpoint unavailable' };
     }
   }
 
-  async getLedgerPnlData(filter?: Pick<JournalLineFilter, 'fromDate' | 'toDate' | 'periodCode'>): Promise<LedgerPnlDataResult> {
+  async getLedgerPnlData(filter?: Pick<JournalLineFilter, 'fromDate' | 'toDate' | 'periodCode' | 'source' | 'currency'>): Promise<LedgerPnlDataResult> {
     try {
-      const snapshot = await this.getStateSnapshot();
-      const hidden = Array.isArray(snapshot.hiddenCollections) ? snapshot.hiddenCollections : [];
-      if (hidden.includes('coaMirror') || hidden.includes('journalLines')) {
-        return {
-          status: 'RESTRICTED',
-          source: this.name,
-          journalLines: [],
-          coaMirror: [],
-          reason: 'دسترسی به کدینگ یا اسناد دفتر کل مجاز نیست.'
-        };
-      }
-      const coaMirror = Array.isArray(snapshot.collections?.coaMirror)
-        ? (snapshot.collections.coaMirror as CoaMirror[])
-        : [];
       const q = new URLSearchParams();
-      if (filter?.fromDate) q.set('fromDate', filter.fromDate);
-      if (filter?.toDate) q.set('toDate', filter.toDate);
-      const payload = await this.request<{
-        status?: string;
-        journalLines?: Array<Record<string, unknown>>;
-        reason?: string;
-      }>(`/ledger/pnl?${q.toString()}`);
-      const journalLines = Array.isArray(payload?.journalLines) ? payload.journalLines : [];
-      const status = (payload?.status === 'RESTRICTED' || payload?.status === 'UNAVAILABLE')
-        ? payload.status
-        : (journalLines.length || coaMirror.length ? 'LIVE' : 'EMPTY');
-      return {
-        status: status as LedgerPnlDataResult['status'],
-        source: this.name,
-        journalLines,
-        coaMirror,
-        reason: payload?.reason
-      };
+      for (const key of ['fromDate','toDate','periodCode','source','currency'] as const) {
+        const value = filter?.[key];
+        if (value) q.set(key,value);
+      }
+      return await this.request<LedgerPnlDataResult>(`/ledger/pnl?${q}`);
     } catch (e) {
       return {
         status: e instanceof Error && 'status' in e && e.status === 403 ? 'RESTRICTED' : 'UNAVAILABLE',

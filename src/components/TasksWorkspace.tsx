@@ -131,7 +131,7 @@ export function TasksWorkspace({ state, updateState }: TasksWorkspaceProps) {
   const activeTasks = useMemo(() => visibleTasks.filter(task => !['COMPLETED','CANCELLED','CANCELED','VOID','DELETED'].includes(String(task.status || '').toUpperCase()) && (!activeAccountId || task.accountId === activeAccountId || task.customerId === activeAccountId)), [visibleTasks, activeAccountId]);
   const canSeeCollectionLedger = can('finance', 'VIEW');
   const ledgerLineTotal = Array.isArray(state.journalLines) ? state.journalLines.length : 0;
-  const { data: collectionLedger, error: collectionLedgerError } = useDataQuery(async provider => (canSeeCollectionLedger ? provider.getDetailSubsidiaryBalances() : null), [canSeeCollectionLedger, ledgerLineTotal]);
+  const { data: collectionLedger, error: collectionLedgerError } = useDataQuery(async provider => (canSeeCollectionLedger ? provider.getDetailSubsidiaryBalances({ role:'RECEIVABLE' }) : null), [canSeeCollectionLedger, ledgerLineTotal]);
   const availableCollectionLedger = collectionLedgerError
     ? { status: 'UNAVAILABLE' as const, source: getActiveDataProvider().name, balances: [], reason: collectionLedgerError.message }
     : collectionLedger;

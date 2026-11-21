@@ -15,7 +15,7 @@ describe('F0-14: Ledger P&L consumers must use DataProvider without silent local
     assert.match(src, /class HttpBackendDataProvider[\s\S]*async getLedgerPnlData\(/);
     assert.match(src, /status:\s*'RESTRICTED'/);
     assert.match(src, /status:\s*'UNAVAILABLE'/);
-    assert.match(src, /MAX_PNL_JOURNAL_PAGES/);
+    assert.match(src, /request<LedgerPnlDataResult>\(`\/ledger\/pnl\?/);
   });
 
   it('ReportEnginePanels routes both ledger P&L and ledger balances through DataProvider and guards errors', () => {
@@ -25,7 +25,7 @@ describe('F0-14: Ledger P&L consumers must use DataProvider without silent local
     assert.match(src, /provider\.getLedgerPnlData\(/);
     assert.match(src, /ledgerPnlError/);
     assert.match(src, /refreshLedgerPnl/);
-    assert.match(src, /provider\.getDetailSubsidiaryBalances\(\)/);
+    assert.match(src, /provider\.getDetailSubsidiaryBalances\(\{\s*\.\.\.ledgerScope,role:'RECEIVABLE'/);
     assert.match(src, /ledgerBalancesError/);
     assert.match(src, /availableLedgerBalances/);
     assert.match(src, /refreshLedgerBalances/);
@@ -35,11 +35,22 @@ describe('F0-14: Ledger P&L consumers must use DataProvider without silent local
     const src = read('src/components/finance/ProfitLossWidget.tsx');
     assert.equal(src.includes('?.journalLines, (state'), false, 'must not read state.journalLines directly into buildLedgerPnlInputs');
     assert.match(src, /new RBACService\(effectiveState\)\.can\('finance', 'VIEW'\)/);
-    assert.match(src, /provider\.getLedgerPnlData\(\)/);
+    assert.match(src, /provider\.getLedgerPnlData\(\{\s*\.\.\.scope,/);
     assert.match(src, /ledgerPnlError/);
     assert.match(src, /refreshPnl/);
     assert.match(src, /status === 'RESTRICTED'/);
     assert.match(src, /status === 'UNAVAILABLE'/);
+  });
+
+  it('SQL classifications drive P&L even when the vendor uses unrelated account codes', () => {
+    const { rawLines, accounts } = buildLedgerPnlInputs([
+      { accountCode:'native/A1',reportBucketCode:'GROSS_SALES',nature:'CREDIT',
+        documentDate:'2026-04-05',debitAmount:'0',creditAmount:'10000' },
+    ], []);
+    assert.equal(computeLedgerPnl(rawLines,accounts,DEFAULT_REPORT_BUCKETS).values.GROSS_SALES,10000);
+    const sql = read('server/officialLedgerReads.mjs');
+    assert.match(sql,/analytics\.vw_FinancialJournalArticle/);
+    assert.match(sql,/GROUP BY ReportBucketCode,NatureCode,AccountingDate/);
   });
 
   it('GeoIntelligenceWorkspace and TasksWorkspace guard detail-balance provider errors against stale data', () => {

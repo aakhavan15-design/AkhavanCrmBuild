@@ -13,9 +13,14 @@ export function parseJournalQuery(query = {}) {
     }
     filter.journalId = query.journalId;
   }
-  if (query.unmapped !== undefined) {
-    if (!['true', 'false', '1', '0'].includes(String(query.unmapped))) throw new RangeError('INVALID_unmapped');
-    filter.unmapped = ['true', '1'].includes(String(query.unmapped));
+  for (const key of ['unmapped','withoutDetail','activityOnly']) {
+    if (query[key] === undefined) continue;
+    if (typeof query[key]!=='string' || !['true','false','1','0'].includes(query[key])) throw new RangeError(`INVALID_${key}`);
+    filter[key] = ['true','1'].includes(query[key]);
+  }
+  if (query.role !== undefined) {
+    if (!['RECEIVABLE','PAYABLE'].includes(query.role)) throw new RangeError('INVALID_ROLE');
+    filter.role = query.role;
   }
   for (const key of ['fromDate', 'toDate']) {
     if (query[key] === undefined) continue;

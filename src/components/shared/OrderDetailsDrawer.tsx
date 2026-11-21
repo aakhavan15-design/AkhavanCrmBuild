@@ -74,7 +74,7 @@ export function OrderDetailsDrawer({
   const canSeeLedger = canDrawer('finance', 'VIEW');
   const ledgerLineCount = Array.isArray(state.journalLines) ? state.journalLines.length : 0;
   const { data: ledgerBalances, error: ledgerError } = useDataQuery(
-    async provider => (canSeeLedger && isOpen && quote ? provider.getDetailSubsidiaryBalances() : null),
+    async provider => (canSeeLedger && isOpen && quote ? provider.getDetailSubsidiaryBalances({ role:'RECEIVABLE' }) : null),
     [canSeeLedger, isOpen, quote?.id, ledgerLineCount]
   );
   // Never reuse a stale balance after a failed provider refresh.

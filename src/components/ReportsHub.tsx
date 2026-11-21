@@ -1,3 +1,5 @@
+import { useLedgerBookScope } from '../hooks/useLedgerBookScope';
+import { LedgerBookSourceSelect } from './finance/LedgerBookSourceSelect';
 import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -526,7 +528,8 @@ function LedgerReceivablesReport({ state, accounts, canViewPayments }: {
 }) {
   const navigate = useNavigate();
   const { serverVersion } = useDataSyncStatus();
-  const ledger = useDataQuery(provider => provider.getDetailSubsidiaryBalances({ byPeriod: true }), [state.currentUserId, serverVersion]);
+  const {scope} = useLedgerBookScope();
+  const ledger = useDataQuery(provider => provider.getDetailSubsidiaryBalances({ ...scope,byPeriod:true,role:'RECEIVABLE' }), [state.currentUserId,serverVersion,scope?.source,scope?.currency]);
   const creditNotes = useDataQuery(provider => provider.getCreditNoteEvidence(), [state.currentUserId, serverVersion]);
   const allocations = useDataQuery(
     provider => canViewPayments ? provider.getPaymentAllocations() : Promise.resolve(null),
@@ -554,6 +557,8 @@ function LedgerReceivablesReport({ state, accounts, canViewPayments }: {
   return (
     <section className="space-y-3" aria-label="گزارش مطالبات دفتری">
       <SectionHeader title="مطالبات دفتری" />
+      <LedgerBookSourceSelect viewer={state.currentUserId} />
+      {result?.asOf && <p className="text-caption text-text-secondary">ماندهٔ گواهی‌شده تا {formatAppDate(result.asOf)}</p>}
       {ledger.loading && <p role="status" className="text-xs text-text-secondary">در حال دریافت ماندهٔ دفتری…</p>}
       {!ledger.loading && (ledger.error || result?.status === 'UNAVAILABLE') && (
         <div role="alert" className="flex flex-wrap items-center gap-2 text-xs text-danger">

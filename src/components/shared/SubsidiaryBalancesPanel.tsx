@@ -1,7 +1,8 @@
+import type { JournalLineFilter } from '../../lib/receivableReconciliation';
 import React, { useState } from 'react';
 import { useDataQuery } from '../../hooks/useDataProvider';
 import { resolveCustomerBalanceView, balanceNature, type SubsidiaryBalance, type BalanceNature } from '../../lib/receivableReconciliation';
-import { formatCount, formatMoney } from '../../lib/format';
+import { formatCount, formatDecimalString, formatMoney } from '../../lib/format';
 import { Button } from '../ui/Button';
 import { formatAppDate, formatCurrency, cn } from '../../lib/utils';
 import { Card } from '../ui/Card';
@@ -21,15 +22,11 @@ export interface SubsidiaryBalancesPanelProps {
   refreshKey?: number;
 }
 
-function Movements({ detailKey, row, locale }: { detailKey: string; row: SubsidiaryBalance; locale?: unknown }) {
+export function LedgerMovementList({ filter, locale, unit = 'ریال' }: { filter: JournalLineFilter; locale?: unknown; unit?: string }) {
   const [page, setPage] = useState(1);
+  const request = JSON.stringify(filter);
   const { data, loading, error, refetch } = useDataQuery(
-    provider => provider.getJournalLines({
-      detailKey,
-      ...(row.subsidiaryCode ? { subsidiaryCode: row.subsidiaryCode } : { unmapped: true }),
-      ...(row.periodCode ? { periodCode: row.periodCode } : {}),
-    }, { page, pageSize: 20 }),
-    [detailKey, row.subsidiaryCode, row.periodCode, page],
+    provider => provider.getJournalLines(filter, { page, pageSize: 20 }), [request,page],
   );
   if (error) return <div role="alert" className="flex flex-wrap items-center gap-2 py-2 text-caption text-danger">
     <span>گردش در دسترس نیست.</span>
@@ -40,8 +37,9 @@ function Movements({ detailKey, row, locale }: { detailKey: string; row: Subsidi
   if (!items.length) return <p className="py-2 text-caption text-text-secondary">گردشی در این محدوده یافت نشد.</p>;
   const money = (value: unknown) => {
     if (value == null || value === '') return 'نامشخص';
+    if (typeof value==='string') return `${formatDecimalString(value)} ${unit}`;
     const amount = Number(value);
-    return Number.isFinite(amount) ? formatMoney(amount) : 'نامشخص';
+    return Number.isFinite(amount) ? formatMoney(amount,unit) : 'نامشخص';
   };
   return (
     <div className="space-y-1">
@@ -95,7 +93,11 @@ export function SubsidiaryBalanceDetails({ detailKey, rows, byPeriod = false, lo
               {label}{value}
             </button>}
         {expanded && <div className="mt-1 rounded-lg bg-canvas/60 px-2">
-          <Movements key={id} detailKey={detailKey} row={row} locale={locale} />
+          <LedgerMovementList key={id} locale={locale} filter={{
+            detailKey, source:row.source, currency:row.currency,
+            ...(row.subsidiaryCode ? { subsidiaryCode:row.subsidiaryCode } : { unmapped:true }),
+            ...(row.periodCode ? { periodCode:row.periodCode } : {}),
+          }} />
         </div>}
       </div>;
     })}

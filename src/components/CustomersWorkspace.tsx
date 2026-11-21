@@ -54,7 +54,7 @@ export function CustomersWorkspace({ state, updateState }: CustomersWorkspacePro
   // مانده = Σ بدهکار − Σ بستانکار به‌ازای (تفصیلی × معین) از مسیر DataProvider (نه خواندن مستقیم state)؛ بدون مجوز مالی اصلاً درخواست نمی‌شود
   const journalLineCount = Array.isArray((state as { journalLines?: unknown[] }).journalLines) ? (state as { journalLines?: unknown[] }).journalLines!.length : 0;
   const { data: detailBalances, error: balancesError } = useDataQuery(
-    async provider => (canSeeBalance ? provider.getDetailSubsidiaryBalances() : null),
+    async provider => (canSeeBalance ? provider.getDetailSubsidiaryBalances({ role:'RECEIVABLE' }) : null),
     [canSeeBalance, journalLineCount]
   );
   const navigate = useNavigate();

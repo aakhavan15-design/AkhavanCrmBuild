@@ -47,6 +47,9 @@ import { LineChart } from './charts/LineChart';
 import { InvoiceFifoSheet } from './finance/InvoiceFifoSheet';
 import { CollectionWorkbench } from './finance/CollectionWorkbench';
 import { CollectionActionDialog } from './finance/CollectionActionDialog';
+import { useLedgerBookScope } from '../hooks/useLedgerBookScope';
+import { LedgerBookSourceSelect } from './finance/LedgerBookSourceSelect';
+import { LedgerBooksPanel } from './finance/LedgerBooksPanel';
 import { ProfitLossWidget } from './finance/ProfitLossWidget';
 import { MoneyIntelligencePanel } from './finance/MoneyIntelligencePanel';
 import { CashFlowPanel } from './finance/CashFlowPanel';
@@ -158,14 +161,16 @@ export function FinanceWorkspace({ state, updateState }: FinanceWorkspaceProps) 
   const ledgerAccounts = (state.accounts || []).filter(account => canOn('finance', 'VIEW', getFinanceRecordScope({ accountId: account.id })));
   const ledgerLineCount = Array.isArray(state.journalLines) ? state.journalLines.length : 0;
   const ledgerByPeriod = activeTab === 'collection';
+  const {scope:ledgerScope} = useLedgerBookScope();
+  const ledgerScopeKey = JSON.stringify(ledgerScope ?? null);
   const { data: ledgerSnapshot, error: ledgerError, loading: ledgerLoading, refetch: refreshLedgerBalances } = useDataQuery(
     async provider => canSeeLedger ? {
-      viewer: state.currentUserId, byPeriod: ledgerByPeriod,
-      balances: await provider.getDetailSubsidiaryBalances({ byPeriod: ledgerByPeriod }),
+      viewer: state.currentUserId, byPeriod: ledgerByPeriod,ledgerScopeKey,
+      balances: await provider.getDetailSubsidiaryBalances({ ...ledgerScope,byPeriod: ledgerByPeriod,role:'RECEIVABLE' }),
     } : null,
-    [canSeeLedger, state.currentUserId, ledgerLineCount, ledgerByPeriod],
+    [canSeeLedger, state.currentUserId, ledgerLineCount, ledgerByPeriod,ledgerScopeKey],
   );
-  const ledgerBalances = canSeeLedger && ledgerSnapshot?.viewer === state.currentUserId && ledgerSnapshot?.byPeriod === ledgerByPeriod
+  const ledgerBalances = canSeeLedger && ledgerSnapshot?.viewer === state.currentUserId && ledgerSnapshot?.byPeriod === ledgerByPeriod && ledgerSnapshot.ledgerScopeKey===ledgerScopeKey
     ? ledgerSnapshot.balances : null;
   // F0-14: a failed provider request is UNAVAILABLE, never a perpetual LOADING state.
   const ledgerResult = canSeeLedger
@@ -330,6 +335,8 @@ export function FinanceWorkspace({ state, updateState }: FinanceWorkspaceProps) 
         )}
       </section>
 
+      {canSeeLedger && (activeTab==='collection' || activeTab==='overview') && <LedgerBookSourceSelect viewer={state.currentUserId} />}
+
       {/* نوار حکم ۸ ثانیه‌ای مالی */}
       <VerdictStrip
         verdict={totalOverdue === null ? 'سررسید مطالبات نامشخص است؛ مانده بدهکار یا فاکتور ERP برای تخمین موجود نیست' : totalOverdue > 0 ? `حدود ${(totalOverdue).toLocaleString('fa-IR')} ریال از مطالبات (تخمینی) سررسیدگذشته است` : `وضعیت تسویه و وصولی‌ها در شرایط مطلوب قرار دارد`}
@@ -451,6 +458,7 @@ export function FinanceWorkspace({ state, updateState }: FinanceWorkspaceProps) 
       {activeTab === 'overview' && (
         <div id="fin-trend" data-tour-primary>
           <ProfitLossWidget state={state} />
+          {canSeeLedger && <LedgerBooksPanel viewer={state.currentUserId} />}
         </div>
       )}
 

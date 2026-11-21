@@ -22,7 +22,7 @@ import { getVapidPublicKey, saveSubscription, removeSubscription, sendPushToUser
 import { recordId } from '../src/lib/stateModel.mjs';
 import { projectLedgerBalances } from './ledgerBalances.mjs';
 import { parseJournalQuery } from './ledgerJournalQuery.mjs';
-import { buildLedgerPnlSql, bindPnlRequest } from './ledgerPnlQuery.mjs';
+import { createOfficialLedgerReader, parseLedgerSource } from './officialLedgerReads.mjs';
 import { createTaskWorkflowStore, parseTaskWorkflowInput, TaskWorkflowError } from './taskWorkflowStore.mjs';
 import { creditNoteEvidenceSql, projectCreditNoteEvidence, CREDIT_NOTE_EVIDENCE_LIMIT } from './creditNoteEvidence.mjs';
 
@@ -631,69 +631,46 @@ app.get('/api/v1/finance/invoices/:id/fifo', authenticate, requirePermission('fi
     res.json(await readInvoiceFifoEvidence(req.auth, req.params.id));
   }));
 
-// F0-14: tenant-scoped, permission-protected SQL ledger projection; no local fallback.
-app.get('/api/v1/ledger/balances', authenticate, requirePermission('finance.VIEW'), wrap(async (req, res) => {
-  const detailKey = req.query.detailKey == null ? null : String(req.query.detailKey);
-  if (detailKey !== null && (!detailKey.trim() || detailKey.length > 120)) return bad(req, res, 400, 'INVALID_FILTER', 'کد تفصیلی نامعتبر است.');
-  if (req.query.byPeriod != null && !['0', '1'].includes(String(req.query.byPeriod))) return bad(req, res, 400, 'INVALID_FILTER', 'فیلتر دوره نامعتبر است.');
-  const byPeriod = req.query.byPeriod === '1';
-  const result = await withTenantContext(req.auth, async (transaction) => {
-    const query = new sql.Request(transaction).input('tenantId', sql.UniqueIdentifier, req.auth.tenantId);
-    if (detailKey) query.input('detailKey', sql.NVarChar(120), detailKey);
-    return query.query(`SELECT b.ExternalDetailCode, b.ExternalAccountCode,
-      ${byPeriod ? "fp.ExternalPeriodCode" : "CAST(NULL AS nvarchar(120))"} AS ExternalPeriodCode,
-      SUM(b.TotalDebit) AS TotalDebit, SUM(b.TotalCredit) AS TotalCredit,
-      SUM(b.CountedLineCount) AS CountedLineCount, SUM(b.UnmappedStatusLineCount) AS UnmappedStatusLineCount
-      FROM analytics.vw_DetailSubsidiaryBalance b
-      LEFT JOIN crm.FiscalPeriod fp ON fp.FiscalPeriodId=b.FiscalPeriodId AND fp.TenantId=b.TenantId
-      WHERE b.TenantId=@tenantId ${detailKey ? "AND b.ExternalDetailCode=@detailKey" : ""}
-        AND EXISTS (SELECT 1 FROM security.fn_LedgerDetailReadScope(b.TenantId,b.SourceSystemCode,b.ExternalDetailCode))
-      GROUP BY b.ExternalDetailCode, b.ExternalAccountCode ${byPeriod ? ", fp.ExternalPeriodCode" : ""}`);
-  });
-  res.json(projectLedgerBalances(result.recordset, { detailKey, byPeriod }));
+const officialLedger = createOfficialLedgerReader({ sql, run: withTenantContext });
+app.get('/api/v1/ledger/sources', authenticate, requirePermission('finance.VIEW'), wrap(async (req,res) => {
+  res.set('Cache-Control','private, no-store');
+  res.json(await officialLedger.sources(req.auth,{source:null,currency:null}));
 }));
 
-// Aggregated P&L lines (GROUP BY account code + month); only P&L prefixes; numbered + IncludeInBalance.
-app.get('/api/v1/ledger/pnl', authenticate, requirePermission('finance.VIEW', { organizationWide: true }), wrap(async (req, res) => {
-  const fromRaw = req.query.fromDate == null ? null : String(req.query.fromDate).trim();
-  const toRaw = req.query.toDate == null ? null : String(req.query.toDate).trim();
-  const iso = (s) => s && /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null;
-  const fromDate = iso(fromRaw);
-  const toDate = iso(toRaw);
-  if (fromRaw && !fromDate) return bad(req, res, 400, 'INVALID_FILTER', 'fromDate باید ISO (YYYY-MM-DD) باشد.');
-  if (toRaw && !toDate) return bad(req, res, 400, 'INVALID_FILTER', 'toDate باید ISO (YYYY-MM-DD) باشد.');
-  if (fromDate && toDate && fromDate > toDate) return bad(req, res, 400, 'INVALID_FILTER', 'fromDate نباید بعد از toDate باشد.');
+app.get('/api/v1/ledger/balances', authenticate, requirePermission('finance.VIEW'), wrap(async (req,res) => {
+  res.set('Cache-Control','private, no-store');
+  const scope = parseLedgerSource(req.query);
+  const detailKey = req.query.detailKey ?? null;
+  const role = req.query.role ?? null;
+  if (!scope || (detailKey!==null && (typeof detailKey!=='string' || !detailKey.trim() || detailKey.length>120))
+      || (req.query.byPeriod!=null && !['0','1'].includes(req.query.byPeriod))
+      || (role!==null && !['RECEIVABLE','PAYABLE'].includes(role))) {
+    return bad(req,res,400,'INVALID_FILTER','شرکت، ارز یا فیلتر مانده معتبر نیست.');
+  }
+  const byPeriod = req.query.byPeriod==='1';
+  const result = await officialLedger.balances(req.auth,{ ...scope,detailKey,role,byPeriod });
+  if (result.blocked) return res.json({ ...result.blocked,source:'SQLSERVER_BACKEND',balances:[] });
+  res.json(projectLedgerBalances(result.rows,{detailKey,byPeriod,scope:result.source}));
+}));
 
-  // Prefixes aligned with client COA_PREFIX_BUCKETS / PNL_ACCOUNT_PREFIXES
-  const prefixes = ['41', '42', '51', '52'];
-  const { sqlText } = buildLedgerPnlSql(prefixes, { maxRows: 5000 });
+app.get('/api/v1/ledger/pnl', authenticate, requirePermission('finance.VIEW', { organizationWide:true }), wrap(async (req,res) => {
+  res.set('Cache-Control','private, no-store');
+  const scope = parseLedgerSource(req.query);
+  let parsed;
+  try { parsed = parseJournalQuery(req.query); }
+  catch { return bad(req,res,400,'INVALID_FILTER','بازه یا فیلتر سود و زیان معتبر نیست.'); }
+  if (!scope) return bad(req,res,400,'INVALID_SOURCE','شرکت یا ارز دفتر معتبر نیست.');
+  res.json(await officialLedger.pnl(req.auth,{ ...scope,...parsed.filter }));
+}));
 
-  const result = await withTenantContext(req.auth, async (transaction) => {
-    const request = new sql.Request(transaction);
-    request.input('tenantId', sql.UniqueIdentifier, req.auth.tenantId);
-    request.input('fromDate', sql.Date, fromDate);
-    request.input('toDate', sql.Date, toDate);
-    prefixes.forEach((p, i) => request.input(`pfx${i}`, sql.NVarChar(20), p));
-    return request.query(sqlText);
-  });
-
-  const rows = (result.recordset || []).map(r => ({
-    accountCode: r.accountCode,
-    periodMonth: r.periodMonth,
-    documentDate: r.documentDate ? String(r.documentDate).slice(0, 10) : (r.periodMonth ? r.periodMonth + '-01' : null),
-    debitAmount: Number(r.debitAmount) || 0,
-    creditAmount: Number(r.creditAmount) || 0,
-    lineCount: Number(r.lineCount) || 0,
-    status: 'POSTED'
-  }));
-
-  res.json({
-    status: rows.length ? 'LIVE' : 'EMPTY',
-    source: 'SQLSERVER_BACKEND',
-    journalLines: rows,
-    coaMirror: [], // client merges from snapshot / local mirror when needed
-    rowCount: rows.length
-  });
+app.get('/api/v1/ledger/books', authenticate, requirePermission('finance.VIEW',{organizationWide:true}), wrap(async (req,res) => {
+  res.set('Cache-Control','private, no-store');
+  const scope = parseLedgerSource(req.query), period = parseMoneyReportQuery(req.query);
+  const role = req.query.role ?? null;
+  if (!scope || !period || (role!==null && !['RECEIVABLE','PAYABLE'].includes(role))) {
+    return bad(req,res,400,'INVALID_FILTER','شرکت، بازه یا فیلتر دفتر معتبر نیست.');
+  }
+  res.json(await officialLedger.books(req.auth,{ ...scope,...period,role }));
 }));
 
 // F0-14: read-only journal drill-down using the existing DataProvider contract.
@@ -703,6 +680,8 @@ app.get('/api/v1/ledger/journal-lines', authenticate, requirePermission('finance
   try { parsed = parseJournalQuery(req.query); }
   catch { return bad(req, res, 400, 'INVALID_FILTER', 'فیلتر یا صفحه‌بندی گردش حساب نامعتبر است.'); }
   const { filter, page, pageSize } = parsed;
+  const scope = parseLedgerSource(req.query);
+  if (!scope) return bad(req,res,400,'INVALID_SOURCE','شرکت یا ارز دفتر معتبر نیست.');
   const result = await withTenantContext(req.auth, async (transaction) => {
     const request = new sql.Request(transaction)
       .input('tenantId', sql.UniqueIdentifier, req.auth.tenantId)
@@ -711,6 +690,17 @@ app.get('/api/v1/ledger/journal-lines', authenticate, requirePermission('finance
     const conditions = ['jl.TenantId=@tenantId', 'je.TenantId=@tenantId', "je.JournalQuality='VALID'",
       'EXISTS (SELECT 1 FROM security.fn_LedgerDetailReadScope(jl.TenantId,jl.SourceSystemCode,jl.ExternalDetailCode))',
       'jl.SourceSystemCode=je.SourceSystemCode'];
+    if (scope.source) { request.input('source',sql.VarChar(40),scope.source); conditions.push('je.SourceSystemCode=@source'); }
+    if (scope.currency) { request.input('currency',sql.Char(3),scope.currency); conditions.push('je.CurrencyCode=@currency'); }
+    if (filter.withoutDetail) conditions.push("NULLIF(jl.ExternalDetailCode,N'') IS NULL");
+    if (filter.role) {
+      request.input('role',sql.VarChar(32),filter.role);
+      conditions.push('EXISTS(SELECT 1 FROM analytics.vw_FinancialJournalArticle article WHERE article.TenantId=jl.TenantId AND article.JournalLineMirrorId=jl.JournalLineMirrorId AND article.MoneyRoleCode=@role)');
+    }
+    if (filter.activityOnly) conditions.push(`NOT EXISTS (SELECT 1 FROM analytics.MoneyReportSource p
+      JOIN core.AppUser approver ON approver.UserId=p.ApprovedBy AND approver.TenantId=p.TenantId
+      WHERE p.TenantId=je.TenantId AND p.SourceSystemCode=je.SourceSystemCode AND je.CurrencyCode='IRR'
+        AND p.OpeningDocumentTypeCode=je.DocumentTypeCode)`);
     if (filter.journalId) { request.input('journalId', sql.UniqueIdentifier, filter.journalId); conditions.push('je.JournalEntryMirrorId=@journalId'); }
     if (filter.detailKey) { request.input('detailKey', sql.NVarChar(120), filter.detailKey); conditions.push('jl.ExternalDetailCode=@detailKey'); }
     if (filter.subsidiaryCode) { request.input('subsidiaryCode', sql.NVarChar(120), filter.subsidiaryCode); conditions.push('jl.ExternalAccountCode=@subsidiaryCode'); }
@@ -727,7 +717,7 @@ app.get('/api/v1/ledger/journal-lines', authenticate, requirePermission('finance
       jl.ExternalAccountCode AS subsidiaryCode, je.ExternalPeriodCode AS periodCode,
       je.DocumentNumber AS documentNumber, je.AccountingDate AS date,
       CONVERT(varchar(48),jl.DebitAmount) AS debitAmount, CONVERT(varchar(48),jl.CreditAmount) AS creditAmount,
-      je.CurrencyCode AS currencyCode,jl.SourceLineNumber AS lineNumber,jl.ExternalJournalLineId AS externalLineId,
+      je.CurrencyCode AS currencyCode,je.SourceSystemCode AS sourceSystem,jl.SourceLineNumber AS lineNumber,jl.ExternalJournalLineId AS externalLineId,
       jl.Description AS description, je.StatusCode AS status
       ${from} ORDER BY je.AccountingDate DESC, je.DocumentNumber DESC, jl.JournalLineMirrorId DESC
       OFFSET @offset ROWS FETCH NEXT @pageSize ROWS ONLY;`);

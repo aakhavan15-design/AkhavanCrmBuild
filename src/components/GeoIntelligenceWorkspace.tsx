@@ -174,7 +174,7 @@ export function GeoIntelligenceWorkspace({ state, updateState }: Props) {
 
   const canSeeZoneLedger = can('finance', 'VIEW');
   const zoneLedgerLines = Array.isArray(state.journalLines) ? state.journalLines.length : 0;
-  const { data: zoneLedger, error: zoneLedgerError } = useDataQuery(async provider => (canSeeZoneLedger ? provider.getDetailSubsidiaryBalances() : null), [canSeeZoneLedger, zoneLedgerLines]);
+  const { data: zoneLedger, error: zoneLedgerError } = useDataQuery(async provider => (canSeeZoneLedger ? provider.getDetailSubsidiaryBalances({ role:'RECEIVABLE' }) : null), [canSeeZoneLedger, zoneLedgerLines]);
   const availableZoneLedger = zoneLedgerError
     ? { status: 'UNAVAILABLE' as const, source: getActiveDataProvider().name, balances: [], reason: zoneLedgerError.message }
     : zoneLedger;

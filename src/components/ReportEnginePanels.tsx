@@ -19,6 +19,8 @@ import {
 import { reconcileReceivables, summarizeCustomerLedgerReceivables } from '../lib/receivableReconciliation';
 import { buildAgingBuckets, estimateLedgerAging, buildLedgerAgingInputs, estimateInvoiceRemaining } from '../services/agingBuckets';
 import { useCan } from '../hooks/useCan';
+import { useLedgerBookScope } from '../hooks/useLedgerBookScope';
+import { LedgerBookSourceSelect } from './finance/LedgerBookSourceSelect';
 import { useDataQuery } from '../hooks/useDataProvider';
 import { useDataSyncStatus } from '../services/dataSyncController';
 import { getActiveDataProvider } from '../services/dataProvider';
@@ -276,6 +278,7 @@ export function ReportEnginePanels({ state, visibleInvoices, visiblePayments, vi
   const asOf = new Date().toISOString().slice(0,10);
   const cutoff = period === 'all' ? null : new Date(Date.now() - (period === '90d' ? 90 : 365) * 86400000).toISOString().slice(0,10);
 
+  const {scope:ledgerScope} = useLedgerBookScope();
   const pnlFetchFrom = useMemo(() => {
     if (period === 'all' || !cutoff) return undefined;
     const periodDays = period === '90d' ? 90 : 365;
@@ -291,8 +294,8 @@ export function ReportEnginePanels({ state, visibleInvoices, visiblePayments, vi
   const ledgerLineCount = Array.isArray(state.journalLines) ? state.journalLines.length : 0;
 
   const { data: ledgerPnlData, error: ledgerPnlError, loading: ledgerPnlLoading, refetch: refreshLedgerPnl } = useDataQuery(
-    async provider => (canSeeLedger ? provider.getLedgerPnlData({ fromDate: pnlFetchFrom, toDate: asOf }) : null),
-    [canSeeLedger, pnlFetchFrom, asOf]
+    async provider => (canSeeLedger ? provider.getLedgerPnlData({ ...ledgerScope,fromDate: pnlFetchFrom, toDate: asOf }) : null),
+    [canSeeLedger,state.currentUserId,pnlFetchFrom,asOf,ledgerScope?.source,ledgerScope?.currency]
   );
 
   const effectivePnlData = useMemo(() => {
@@ -544,8 +547,8 @@ export function ReportEnginePanels({ state, visibleInvoices, visiblePayments, vi
   }, [canReviewAllocations, allocationsLoading, allocationError, paymentAllocations, reportInvoices, reportPayments]);
 
   const { data: ledgerBalances, error: ledgerBalancesError, refetch: refreshLedgerBalances } = useDataQuery(
-    async provider => (canSeeLedger ? provider.getDetailSubsidiaryBalances() : null),
-    [canSeeLedger, ledgerLineCount]
+    async provider => (canSeeLedger ? provider.getDetailSubsidiaryBalances({ ...ledgerScope,role:'RECEIVABLE' }) : null),
+    [canSeeLedger,state.currentUserId,ledgerLineCount,ledgerScope?.source,ledgerScope?.currency]
   );
 
   const availableLedgerBalances = useMemo(() => {
@@ -763,6 +766,8 @@ export function ReportEnginePanels({ state, visibleInvoices, visiblePayments, vi
 
         {selected === 1 && (
           <div className="space-y-4">
+            {canSeeLedger && <LedgerBookSourceSelect viewer={state.currentUserId} />}
+            {effectivePnlData?.status==='PARTIAL' && <p role="status" className="text-caption text-warning">بخشی از پوشش دوره یا نگاشت کدینگ گواهی نشده است.</p>}
             {effectivePnlData?.status === 'RESTRICTED' && (
               <div role="status" className="rounded-xl border border-border bg-canvas px-3 py-3 text-xs text-text-secondary flex items-center gap-2">
                 <ShieldAlert size={15} className="text-warning shrink-0" />

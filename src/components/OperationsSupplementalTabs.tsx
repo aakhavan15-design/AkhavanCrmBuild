@@ -246,7 +246,7 @@ export function CreditTab({ state }: { state: AppState }) {
   const cheques = state.cheques?.filter(cheque => financeCustomers.has(cheque.customerId));
 
   const ledger = useDataQuery(
-    provider => canViewFinance ? provider.getDetailSubsidiaryBalances() : Promise.resolve(null),
+    provider => canViewFinance ? provider.getDetailSubsidiaryBalances({ role:'RECEIVABLE' }) : Promise.resolve(null),
     [canViewFinance, state.currentUserId, serverVersion]
   );
   const allocations = useDataQuery(

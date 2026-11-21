@@ -5,12 +5,13 @@ import { useTheme } from '../../theme/ThemeProvider';
 import { TrendingUp, ShieldAlert } from 'lucide-react';
 import { Card } from '../ui/Card';
 import { AppState } from '../../types';
-import { formatCurrency } from '../../lib/utils';
+import { formatCurrency, toLocalDateISO } from '../../lib/utils';
 import { buildLedgerPnlInputs, pnlSeriesByJalali } from '../../lib/ledgerPnl';
 import { DEFAULT_REPORT_BUCKETS } from '../../lib/accountingMapping';
 import { EmptyState } from '../ui/EmptyState';
 import { useAppStore } from '../../lib/storage';
 import { RBACService } from '../../lib/rbac';
+import { useLedgerBookScope } from '../../hooks/useLedgerBookScope';
 import { useDataQuery } from '../../hooks/useDataProvider';
 import { getActiveDataProvider } from '../../services/dataProvider';
 
@@ -24,6 +25,11 @@ export function ProfitLossWidget({ state, height = 240 }: ProfitLossWidgetProps)
   const [period, setPeriod] = useState<'monthly' | 'quarterly' | 'annual'>('monthly');
   const storeState = useAppStore(s => s.state);
   const effectiveState = state ?? storeState;
+  const {scope} = useLedgerBookScope();
+  const asOf = toLocalDateISO();
+  const start = new Date(asOf);
+  start.setUTCFullYear(start.getUTCFullYear()-4);
+  const from = start.toISOString().slice(0,10);
   const canSeeLedger = useMemo(() => (effectiveState ? new RBACService(effectiveState).can('finance', 'VIEW') : false), [effectiveState]);
 
   // کلید تازه‌سازی فقط برای باطل‌شدن کش پس از تغییر مخزن؛ منبع داده همیشه DataProvider است (F0-14)
@@ -35,8 +41,8 @@ export function ProfitLossWidget({ state, height = 240 }: ProfitLossWidgetProps)
     : 0;
 
   const { data: ledgerPnlData, error: ledgerPnlError, loading: ledgerPnlLoading, refetch: refreshPnl } = useDataQuery(
-    async provider => (canSeeLedger ? provider.getLedgerPnlData() : null),
-    [canSeeLedger, journalLineCount, coaCount]
+    async provider => (canSeeLedger ? provider.getLedgerPnlData({ ...scope,fromDate:from,toDate:asOf }) : null),
+    [canSeeLedger,effectiveState?.currentUserId, journalLineCount, coaCount,scope?.source,scope?.currency,from,asOf]
   );
 
   const resolvedPnlData = useMemo(() => {
@@ -132,6 +138,7 @@ export function ProfitLossWidget({ state, height = 240 }: ProfitLossWidgetProps)
         </div>
       </div>
 
+      {resolvedPnlData?.status === 'PARTIAL' && <p role="status" className="text-caption text-warning">این روند فقط از آرتیکل‌های معتبر و نگاشت‌شدهٔ مشاهده‌شده محاسبه شده است. پوشش کامل دوره یا کدینگ گواهی نشده است.</p>}
       {resolvedPnlData?.status === 'RESTRICTED' ? (
         <div role="status" className="rounded-xl border border-border bg-canvas px-3 py-4 text-xs text-text-secondary flex items-center gap-2">
           <ShieldAlert size={15} className="text-warning shrink-0" />

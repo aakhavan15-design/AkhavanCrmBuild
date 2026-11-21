@@ -118,9 +118,10 @@ export function computeCustomerLedgerBalances(journalLines: unknown): Map<string
  * (نه مانده ساختگی و نه ادغام در یک معین). کد معین عیناً از ERP است؛ CRM کد اختراع نمی‌کند. */
 export type BalanceNature = 'DEBIT' | 'CREDIT' | 'SETTLED';
 export const balanceNature = (balance: number): BalanceNature => (balance > 0 ? 'DEBIT' : balance < 0 ? 'CREDIT' : 'SETTLED');
-export interface SubsidiaryBalance { subsidiaryCode: string | null; periodCode: string | null; debit: number; credit: number; balance: number; nature: BalanceNature; lineCount: number }
+export interface SubsidiaryBalance { source?: string; currency?: string; subsidiaryCode: string | null; periodCode: string | null; debit: number; credit: number; balance: number; nature: BalanceNature; lineCount: number }
 export interface DetailBalance {
   detailKey: string;
+  accountId?: string | null;
   subsidiaries: SubsidiaryBalance[];
   /** تجمیع همهٔ ترکیب‌ها (فقط نمایش جمع؛ جایگزین مانده‌های تفکیکی نیست) */
   total: { debit: number; credit: number; balance: number; nature: BalanceNature; lineCount: number };
@@ -160,15 +161,16 @@ export function computeDetailSubsidiaryBalances(journalLines: unknown, options: 
 }
 
 /* ───────── قرارداد خواندن گردش و مانده (مصرف‌شده توسط DataProvider؛ F0-14) ───────── */
-export interface JournalLineFilter { journalId?: string; detailKey?: string; subsidiaryCode?: string; /** فقط سطرهای فاقد کد معین (سطل «فاقد نگاشت») */ unmapped?: boolean; periodCode?: string; fromDate?: string; toDate?: string }
+export interface JournalLineFilter { journalId?: string; source?: string; currency?: string; withoutDetail?: boolean; role?: 'RECEIVABLE' | 'PAYABLE'; activityOnly?: boolean; detailKey?: string; subsidiaryCode?: string; /** فقط سطرهای فاقد کد معین (سطل «فاقد نگاشت») */ unmapped?: boolean; periodCode?: string; fromDate?: string; toDate?: string }
 export interface JournalLinePage { items: Array<Record<string, unknown>>; total: number; page: number; pageSize: number; totalPages: number }
 export type LedgerResultStatus = 'LIVE' | 'EMPTY' | 'UNAVAILABLE';
-export interface DetailBalancesResult { status: LedgerResultStatus; source: 'CLIENT_INDEXEDDB' | 'SQLSERVER_BACKEND'; balances: DetailBalance[]; reason?: string }
+export interface DetailBalancesResult { status: LedgerResultStatus; source: 'CLIENT_INDEXEDDB' | 'SQLSERVER_BACKEND'; balances: DetailBalance[]; sourceSystem?: string; currency?: string; asOf?: string | null; reason?: string }
 
 const lineVal = (r: Record<string, unknown>, keys: string[]) => { for (const k of keys) { const v = r[k]; if (v !== undefined && v !== null && String(v).trim() !== '') return String(v).trim(); } return ''; };
 export function queryJournalLines(lines: unknown, filter: JournalLineFilter = {}, pagination: { page?: number; pageSize?: number } = {}): JournalLinePage {
   const all = (Array.isArray(lines) ? lines : []).filter((r): r is Record<string, unknown> => !!r && typeof r === 'object')
     .filter(r => {
+      if (filter.withoutDetail && lineVal(r, ['detailAccountId','externalDetailCode','detailCode','accountId','customerId'])) return false;
       if (filter.journalId && lineVal(r, ['journalId','journalEntryMirrorId'])!==filter.journalId) return false;
       if (filter.detailKey && lineVal(r, ['detailAccountId', 'externalDetailCode', 'detailCode', 'accountId', 'customerId']) !== filter.detailKey) return false;
       if (filter.subsidiaryCode && lineVal(r, ['subsidiaryCode', 'externalAccountCode', 'ledgerAccountCode']) !== filter.subsidiaryCode) return false;
@@ -213,9 +215,15 @@ export function resolveCustomerBalanceView(result: DetailBalancesResult | null |
   if (result.status === 'UNAVAILABLE') return { kind: 'UNAVAILABLE', reason: result.reason };
   const keys = customerDetailKeys(account);
   let found: DetailBalance | undefined;
-  for (const key of keys) {
-    found = result.balances.find(balance => balance.detailKey === key);
-    if (found) break;
+  if (result.source === 'SQLSERVER_BACKEND' && result.sourceSystem) {
+    const matches = result.balances.filter(balance => balance.accountId != null && balance.accountId === account.id);
+    const explicit = account.externalDetailCode ? matches.find(balance => balance.detailKey === account.externalDetailCode) : undefined;
+    found = explicit ?? (matches.length === 1 ? matches[0] : undefined);
+  } else {
+    for (const key of keys) {
+      found = result.balances.find(balance => balance.detailKey === key);
+      if (found) break;
+    }
   }
   if (!found) return { kind: 'NO_LEDGER' };
   const unmappedCount = found.subsidiaries.filter(x => x.subsidiaryCode === null).length;
