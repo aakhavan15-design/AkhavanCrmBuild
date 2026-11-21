@@ -1,6 +1,7 @@
+import { PrintQuoteButton } from '../PrintLayouts';
 import { getActiveDataProvider } from '../../services/dataProvider';
 import React, { useState, useMemo } from 'react';
-import { X, ArrowRight, Printer, BarChart2, Building2, User, Calendar, CreditCard, ShieldCheck, CheckCircle2, AlertTriangle, Package, Clock, FileText, Send, Sparkles } from 'lucide-react';
+import { X, ArrowRight, BarChart2, Building2, User, Calendar, CreditCard, ShieldCheck, CheckCircle2, AlertTriangle, Package, Clock, FileText, Send, Sparkles } from 'lucide-react';
 import { AppState, Quote, ID } from '../../types';
 import { formatCurrency, formatAppDate } from '../../lib/utils';
 import { getPersianStatusLabel } from '../../lib/labels';
@@ -172,14 +173,6 @@ export function OrderDetailsDrawer({
                 <BarChart2 size={16} />
               </button>
             )}
-            <button
-              type="button"
-              onClick={() => window.print()}
-              className="w-8 h-8 rounded-full bg-canvas text-text-secondary hover:text-text-main flex items-center justify-center hover:bg-border/60 transition-colors cursor-pointer"
-              title="چاپ پیش‌فاکتور"
-            >
-              <Printer size={16} />
-            </button>
             <button
               type="button"
               onClick={onClose}
@@ -571,14 +564,7 @@ export function OrderDetailsDrawer({
             بازگشت به فهرست
           </Button>
           <div className="flex items-center gap-2">
-            <Button
-              variant="primary"
-              size="sm"
-              onClick={() => window.print()}
-              icon={<Printer size={14} />}
-            >
-              چاپ پیش‌فاکتور
-            </Button>
+            <PrintQuoteButton quote={quote} state={state} />
           </div>
         </div>
       </aside>

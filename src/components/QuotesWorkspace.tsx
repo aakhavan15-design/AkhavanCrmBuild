@@ -13,7 +13,7 @@ import { Card } from './ui/Card';
 import { Button } from './ui/Button';
 import { EmptyState } from './ui/EmptyState';
 import { Modal } from './ui/Modal';
-import { FileText, Send, CheckCircle2, AlertTriangle, Plus, Trash2, Printer, Sparkles, Building2, Layers, BarChart2, Search, X } from 'lucide-react';
+import { FileText, Send, CheckCircle2, AlertTriangle, Plus, Trash2, Sparkles, Building2, Layers, BarChart2, Search, X } from 'lucide-react';
 import { CustomerInvoicePrint } from './PrintLayouts';
 import { ProfitModal } from './ProfitModal';
 import { QuoteWizardModal } from './QuoteWizardModal';
@@ -25,6 +25,7 @@ import { IntentSurface } from './shared/IntentSurface';
 import { useDeepLinkCreate } from '../hooks/useDeepLinkCreate';
 import { toast } from './ui/Toast';
 import { TrendIndicator } from './charts/TrendIndicator';
+import { PrintQuoteButton } from './PrintLayouts';
 import { OrderDetailsDrawer } from './shared/OrderDetailsDrawer';
 import { InputControl } from './ui/Input';
 
@@ -825,10 +826,7 @@ export function QuotesWorkspace({ state, updateState }: QuotesWorkspaceProps) {
                     <span className="hidden sm:inline">تحلیل سود</span>
                   </Button>
 
-                  <Button variant="outline" onClick={() => window.print()} title="چاپ سفارش">
-                    <Printer className="w-4 h-4" />
-                    <span className="hidden sm:inline">چاپ</span>
-                  </Button>
+                  <PrintQuoteButton quote={activeQuote} state={state} />
                 </div>
               </div>
 

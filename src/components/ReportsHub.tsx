@@ -5,7 +5,9 @@ import {
   FileText, Target, Truck, RotateCcw, ClipboardList, Banknote, ArrowRight, Flame
 } from 'lucide-react';
 import type { Account, AppState, Invoice, NavigationTab, Payment } from '../types';
-import { cn, formatAppDate } from '../lib/utils';
+import { csvRows } from '../lib/tableEngine';
+import { downloadCsv } from '../lib/browserExport';
+import { cn, formatAppDate, toLocalDateISO } from '../lib/utils';
 import { formatMoneyCompact, formatCount, formatPercent } from '../lib/format';
 import { ExportMenuButton } from './ui/ExportMenuButton';
 import { KpiCard } from './charts/KpiCard';
@@ -218,35 +220,20 @@ export function ReportsHub({ state, canViewFinance, canViewPayments, receivableA
   const periodLabel = periodMeta.label;
   const activeDef = REPORT_DEFS.find((r) => r.id === activeReport);
 
-  const exportCurrentReport = (fileFormat: 'csv' | 'excel') => {
-    let content = 'عنوان,مقدار\n';
-    content += `حوزه گزارش,"${domainMeta.label}"\n`;
-    content += `بازه زمانی,"${periodLabel}"\n`;
-    content += `مجموع فروش واقعی,"${metrics.totalSales}"\n`;
-    content += `مجموع دریافت‌های تسویه‌شده,"${metrics.totalPaid}"\n`;
-    content += `تعداد فاکتورها,"${metrics.invoiceCount}"\n`;
-    content += `تعداد پیش‌فاکتورها,"${metrics.quoteCount}"\n`;
-
-    if (activeDef) {
-      content += `گزارش فعال,"${activeDef.label}"\n`;
-    }
-
-    if (metrics.leaderboard.length > 0) {
-      content += '\nرتبه‌بندی فروشندگان:\nنام,فروش (ریال)\n';
-      metrics.leaderboard.forEach(r => {
-        content += `"${r.name}",${r.amount}\n`;
-      });
-    }
-
-    const blob = new Blob(['\uFEFF' + content], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `report_${domain}_${period}_${new Date().toISOString().slice(0, 10)}.${fileFormat === 'excel' ? 'csv' : 'csv'}`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+  const exportCurrentReport = () => {
+    const content = csvRows([
+      ['عنوان', 'مقدار'],
+      ['حوزه گزارش', domainMeta.label],
+      ['بازه زمانی', periodLabel],
+      ['مجموع فروش (ریال)', metrics.hasInvoiceData ? metrics.totalSales : null],
+      ['مجموع دریافت‌های تسویه‌شده (ریال)', metrics.hasPaymentData ? metrics.totalPaid : null],
+      ['تعداد فاکتورها', metrics.invoiceCount],
+      ['تعداد پیش‌فاکتورها', metrics.quoteCount],
+      ...(activeDef ? [['گزارش فعال', activeDef.label]] : []),
+      ...(metrics.leaderboard.length > 0
+        ? [['نام فروشنده', 'فروش (ریال)'], ...metrics.leaderboard.map(row => [row.name, row.amount])] : []),
+    ]);
+    downloadCsv(content, `report_${domain}_${period}_${toLocalDateISO()}`);
   };
 
   return (
@@ -266,8 +253,7 @@ export function ReportsHub({ state, canViewFinance, canViewPayments, receivableA
           </Select>
         </div>
         <ExportMenuButton
-          onExportExcel={() => exportCurrentReport('excel')}
-          onExportCsv={() => exportCurrentReport('csv')}
+          onExportCsv={exportCurrentReport}
         />
       </div>}
 

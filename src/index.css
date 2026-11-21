@@ -1147,8 +1147,13 @@
   .crm-dialog-viewport :is(.animate-in) { animation: none; }
 }
 
+#crm-print-root { display: none; }
+
 /* Physical paper always uses the semantic paper palette, including when the app is dark. */
 @media print {
+  body:has(> #crm-print-root) > :not(#crm-print-root) { display: none !important; }
+  body:has(> #crm-print-root) { overflow: visible !important; }
+  #crm-print-root { display: block; }
   .crm-print-document {
     --c-canvas: var(--c-print-canvas);
     --c-surface: var(--c-print-paper);

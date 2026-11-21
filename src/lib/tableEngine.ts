@@ -110,16 +110,18 @@ export function paginate<T>(rows: readonly T[], page: number, pageSize: number):
 /** جلوگیری از CSV/Formula injection در Excel: سلولهایی که با = + - @ یا tab/CR شروع میشوند با ' خنثی میشوند. */  
 export function csvCell(value: CellValue): string {  
   let text = toText(value);  
-  if (/^[\u0000-\u0020\uFEFF]*[=+\-@]/.test(text) && !(typeof value === 'number' && Number.isFinite(value))) text = `'${text}`;  
+  if (/^(?:[\t\r\n]|[\u0000-\u0020\uFEFF]*[=+\-@])/.test(text) && !(typeof value === 'number' && Number.isFinite(value))) text = `'${text}`;
   return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;  
 }  
   
+export function csvRows(rows: readonly (readonly CellValue[])[]): string {
+  return '\uFEFF' + rows.map(row => row.map(csvCell).join(',')).join('\r\n');
+}
+
 /** خروجی CSV با BOM (برای نمایش درست فارسی در Excel) و CRLF. فقط ستونهای قابلخروجی و انتخابشده. */  
 export function toCsv<T>(rows: readonly T[], columns: readonly ColumnAccessor<T>[], columnIds?: readonly string[]): string {  
   const cols = columns.filter(c => c.exportable !== false && (!columnIds || columnIds.includes(c.id)));  
-  const lines = [cols.map(c => csvCell(c.header)).join(',')];  
-  for (const row of rows) lines.push(cols.map(c => csvCell((c.exportValue || c.value)(row))).join(','));  
-  return '\uFEFF' + lines.join('\r\n');  
+  return csvRows([cols.map(c => c.header), ...rows.map(row => cols.map(c => (c.exportValue || c.value)(row)))]);
 }  
   
 /** وضعیت انتخاب گروهی با پشتیبانی از انتخاب بازهای (Shift+Click). */  

@@ -3,6 +3,7 @@ import {
   ArrowDown, ArrowUp, ArrowUpDown, Check, ChevronLeft, ChevronRight, Columns3, Download,
   Minus, Rows3, X
 } from 'lucide-react';
+import { downloadCsv } from '../../lib/browserExport';
 import { cn, normalizePersianText, toLocalDateISO } from '../../lib/utils';
 import {
   ColumnAccessor, FilterGroup, FilterSelection, SortState, applyFilters, facetCounts, headerCheckState,
@@ -287,11 +288,7 @@ export function DataTable<T>(props: DataTableProps<T>) {
   });
   const exportRows = (list: readonly T[], label: string) => {
     const csv = toCsv(list, columns, visibleColumns.map(c => c.id));
-    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
-    const a = document.createElement('a');
-    a.href = url; a.download = `${exportFileName}_${toLocalDateISO()}.csv`;
-    document.body.appendChild(a); a.click(); a.remove();
-    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    downloadCsv(csv, `${exportFileName}_${toLocalDateISO()}`);
     setNotice(`خروجی ${fa(list.length)} ردیف (${label}) با ستونهای نمایان آماده شد.`);
   };
 

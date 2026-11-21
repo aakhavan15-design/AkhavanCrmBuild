@@ -23,7 +23,7 @@ export function ChartCard({ title, periodLabel, children, onClick, onExportExcel
     return () => document.removeEventListener('mousedown', onDoc);
   }, [menuOpen]);
   return (
-    <div className={cn('rounded-2xl border border-[var(--c-border)] bg-[var(--c-surface)] overflow-hidden', onClick && 'cursor-pointer hover:border-[var(--c-primary)]/40', className)} onClick={onClick} style={height ? { minHeight: height } : undefined}>
+    <div className={cn('rounded-2xl border border-[var(--c-border)] bg-[var(--c-surface)] relative min-w-0', onClick && 'cursor-pointer hover:border-[var(--c-primary)]/40', className)} onClick={onClick} style={height ? { minHeight: height } : undefined}>
       <div className="flex items-center justify-between gap-2 px-4 pt-3 pb-1">
         <div className="min-w-0 flex-1">
           <h3 className="wrap-break-word text-sm font-semibold text-text-main">

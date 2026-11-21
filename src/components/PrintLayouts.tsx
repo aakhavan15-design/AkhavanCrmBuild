@@ -1,5 +1,6 @@
 import { formatCount, formatNumber, formatMoney } from '../lib/format';
-import React from 'react';
+import React, { useRef } from 'react';
+import { printDocument } from '../lib/browserExport';
 import { Quote, AppState, Payslip, UserAccount, SalaryProfile } from '../types';
 import { formatCurrency, formatAppDate } from '../lib/utils';
 import { getTenantName } from '../lib/orgPolicy';
@@ -12,19 +13,21 @@ interface PrintProps {
   user?: UserAccount;
   salaryProfile?: SalaryProfile;
   state: AppState;
+  showAction?: boolean;
 }
 
-export function CustomerInvoicePrint({ quote, state }: PrintProps) {
+export function CustomerInvoicePrint({ quote, state, showAction = true }: PrintProps) {
+  const documentRef = useRef<HTMLDivElement>(null);
   if (!quote) return null;
   const customer = (state.accounts || state.customers || []).find(
     a => a.id === (quote.accountId || quote.customerId)
   );
 
   return (
-    <div className="crm-print-document bg-surface text-text-main p-6 rounded-2xl border border-border text-xs space-y-4" dir="rtl" id="print-area-invoice">
+    <div ref={documentRef} className="crm-print-document bg-surface text-text-main p-6 rounded-2xl border border-border text-xs space-y-4" dir="rtl">
       <div className="flex justify-between items-start border-b border-border pb-4">
         <div>
-          <h2 className="text-base font-black text-text-main">پیش‌فاکتور رسمی فروش کالا و خدمات</h2>
+          <h2 className="text-base font-black text-text-main">پیش‌فاکتور فروش کالا و خدمات</h2>
           <span className="text-caption text-text-secondary font-bold block mt-1">{getTenantName(state) ? `${getTenantName(state)} · ` : ''}AKHAVAN CRM</span>
         </div>
         <div className="text-left font-mono text-caption">
@@ -81,23 +84,36 @@ export function CustomerInvoicePrint({ quote, state }: PrintProps) {
         </div>
       )}
 
-      <div className="pt-2 text-center print:hidden">
-        <Button variant="primary" onClick={() => window.print()} >
-          <Printer className="w-4 h-4" /> چاپ پیش‌فاکتور رسمی (A4)
+      {showAction && <div className="pt-2 text-center print:hidden">
+        <Button variant="primary" onClick={() => printDocument(documentRef.current)} >
+          <Printer className="w-4 h-4" /> چاپ پیش‌فاکتور
         </Button>
-      </div>
+      </div>}
     </div>
   );
 }
 
+export function PrintQuoteButton({ quote, state }: { quote: Quote; state: AppState }) {
+  const printable = useRef<HTMLDivElement>(null);
+  return (
+    <>
+      <Button type="button" variant="outline" size="sm" onClick={() => printDocument(
+        printable.current?.querySelector<HTMLElement>('.crm-print-document') ?? null)}
+        icon={<Printer size={15} />}>چاپ پیش‌فاکتور</Button>
+      <div hidden ref={printable}><CustomerInvoicePrint quote={quote} state={state} showAction={false} /></div>
+    </>
+  );
+}
+
 export function PayslipPrint({ payslip, user, salaryProfile, state }: PrintProps) {
+  const documentRef = useRef<HTMLDivElement>(null);
   if (!payslip || !user) return null;
 
   const earnings = payslip.lines.filter(l => l.isCredit);
   const deductions = payslip.lines.filter(l => !l.isCredit);
 
   return (
-    <div className="crm-print-document bg-surface text-text-main p-6 rounded-2xl border border-border text-xs space-y-5" dir="rtl" id="print-area-payslip">
+    <div ref={documentRef} className="crm-print-document bg-surface text-text-main p-6 rounded-2xl border border-border text-xs space-y-5" dir="rtl" id="print-area-payslip">
       {/* هدر فیش حقوقی */}
       <div className="flex justify-between items-start border-b border-slate-400 pb-4">
         <div>
@@ -182,7 +198,7 @@ export function PayslipPrint({ payslip, user, salaryProfile, state }: PrintProps
       </div>
 
       <div className="pt-4 text-center print:hidden">
-        <Button variant="primary" onClick={() => window.print()} >
+        <Button variant="primary" onClick={() => printDocument(documentRef.current)} >
           <Printer className="w-4 h-4" /> چاپ فیش حقوقی (A4)
         </Button>
       </div>
