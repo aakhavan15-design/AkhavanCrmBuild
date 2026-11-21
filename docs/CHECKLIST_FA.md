@@ -712,6 +712,7 @@
 - [ ] F14-01 ممیزی یکپارچه DataProvider/DataSyncController/ETL/SQL و اتصال دیتابیس تجمیعی ERP؛ تعیین منبع، نسخه، مجوز read-only، tenant/branch و پیش‌نیازهای واقعی. خروجی: نقشه مسیر داده و موارد BLOCKED.
 - [ ] F14-02 انتخاب و پیاده‌سازی روش Change Detection پس از بررسی قابلیت واقعی DB (CDC/Change Tracking/Timestamp/Snapshot)؛ تشخیص Insert/Update/Delete با checkpoint و آزمون قطع/وصل.
 - [~] F14-03 تکمیل Sync Run/Event و checkpoint: batch ID، زمان، checksum، شمارش new/updated/deleted/rejected، خطا، retry و idempotent replay.
+  - **IMPLEMENTED — NOT TESTED:** Migrationهای ۰۴۰–۰۴۱ و ورودی `scripts/import-erp-financial-feed.mjs` کدینگ رسمی، دوره، تفصیلی و روابط و سند/آرتیکل را در جداول موجود منتشر می‌کنند. کنترل مستقل ERP، نسخهٔ مرتب حتی بدون UpdatedAt، cursor، قرنطینهٔ کل دسته، نگهداری Raw، محافظت از نسخهٔ قدیمی و اتصال دقیق سند به چند عملیات ثبت شده‌اند. دسته/کدینگ ناسالم هیچ سندی منتشر نمی‌کند. حساب‌های از پیش واردشده با نقش مصوب حفظ می‌شوند و سند قدیمی بدون نسخه نیازمند تعیین مبنا است. قرارداد Adapter اختصاصی، دادهٔ واقعی SQL/ERP و اجرای QA همچنان NOT VERIFIED است.
 - [ ] F14-04 اجرای خودکار Ruleهای وابسته پس از Sync موفق/جزئی؛ جلوگیری از اجرای غیرضروری کل کاتالوگ و ثبت نسخه قانون/داده مبنا.
 - [ ] F14-05 ممیزی و تکمیل مدل پایدار Finding در SQL؛ ابتدا جست‌وجوی جدول‌های هم‌معنا و Migrationهای موجود؛ طراحی کلید منطقی یکتا و tenant-scoped.
 - [ ] F14-06 پیاده‌سازی Finding Evidence و نگهداری before/after، اسناد منبع، شواهد، confidence، source lineage و محدودیت پوشش.

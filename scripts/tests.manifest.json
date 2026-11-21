@@ -22,6 +22,10 @@
     "flags": []
   },
   {
+    "file": "tests/financialFeedContracts.test.mjs",
+    "flags": []
+  },
+  {
     "file": "tests/dataQueryRaceContracts.test.mjs",
     "flags": []
   },
