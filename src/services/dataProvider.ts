@@ -31,7 +31,7 @@ import { queryJournalLines, buildDetailBalancesResult, type JournalLineFilter, t
 import { journalQueryParams } from '../lib/ledgerQueryParams.mjs';
 import { readCustomerProposalReceipt, type CustomerProposalReceipt } from '../lib/customerProposal';
 import { applyTaskWorkflow, type TaskWorkflowInput } from './taskWorkflow';
-import type { MoneyEvidenceFilter, MoneyEvidencePage, MoneyPeriod, MoneyReport } from './moneyIntelligence';
+import type { JournalCoverageFilter, JournalCoveragePage, MoneyEvidenceFilter, MoneyEvidencePage, MoneyPeriod, MoneyReport } from './moneyIntelligence';
 
 export type TaskWorkflowCommand = Omit<TaskWorkflowInput, 'actorId' | 'at'> & { version: string };
 export interface TaskWorkflowRecord { task: Task; version: string }
@@ -294,6 +294,7 @@ export interface DataProvider {
   getLedgerPnlData(filter?: Pick<JournalLineFilter, 'fromDate' | 'toDate' | 'periodCode'>): Promise<LedgerPnlDataResult>;
   getCashFlowData(): Promise<CashFlowDataResult>;
   getMoneyReport(period: MoneyPeriod): Promise<MoneyReport>;
+  getJournalCoverage(period: MoneyPeriod, filter: JournalCoverageFilter): Promise<JournalCoveragePage>;
   getMoneyEvidence(period: MoneyPeriod, filter: MoneyEvidenceFilter): Promise<MoneyEvidencePage>;
 
   // HR & Payroll
@@ -624,6 +625,10 @@ export class ClientStorageDataProvider implements DataProvider {
       (d.advanceRequests || []).forEach(a => { if (settledAdvanceIds.includes(a.id)) a.status = 'SETTLED'; });
     });
     return run;
+  }
+
+  async getJournalCoverage(): Promise<JournalCoveragePage> {
+    return { status: 'UNAVAILABLE', items: [], counts: [], hasMore: false };
   }
 
   async getMoneyReport(): Promise<MoneyReport> {
@@ -1066,6 +1071,14 @@ export class HttpBackendDataProvider implements DataProvider {
       method: 'POST',
       body: JSON.stringify({ periodMonth: month, dailyBasis: basis })
     });
+  }
+
+  async getJournalCoverage(period: MoneyPeriod, filter: JournalCoverageFilter): Promise<JournalCoveragePage> {
+    const params = new URLSearchParams({ from: period.from, to: period.to, page: String(filter.page) });
+    if (filter.state) params.set('state',filter.state);
+    if (filter.operation) params.set('operation',filter.operation);
+    if (filter.search) params.set('search',filter.search);
+    return this.request<JournalCoveragePage>(`/finance/journal-coverage?${params}`);
   }
 
   async getMoneyReport(period: MoneyPeriod): Promise<MoneyReport> {

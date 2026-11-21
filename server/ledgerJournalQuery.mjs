@@ -7,6 +7,12 @@ export function parseJournalQuery(query = {}) {
     if (typeof query[key] !== 'string' || !query[key].trim() || query[key].length > 120) throw new RangeError(`INVALID_${key}`);
     filter[key] = query[key].trim();
   }
+  if (query.journalId !== undefined) {
+    if (typeof query.journalId!=='string' || !/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(query.journalId)) {
+      throw new RangeError('INVALID_JOURNAL');
+    }
+    filter.journalId = query.journalId;
+  }
   if (query.unmapped !== undefined) {
     if (!['true', 'false', '1', '0'].includes(String(query.unmapped))) throw new RangeError('INVALID_unmapped');
     filter.unmapped = ['true', '1'].includes(String(query.unmapped));

@@ -14,6 +14,7 @@ import { Card } from '../ui/Card';
 import { CustomDatePicker } from '../ui/CustomDatePicker';
 import { EmptyState } from '../ui/EmptyState';
 import { SearchableSelect } from '../ui/SearchableSelect';
+import { JournalCoveragePanel } from './JournalCoveragePanel';
 import { MoneyEvidenceSheet, type MoneyEvidenceSelection } from './MoneyEvidenceSheet';
 
 const DAY = 86_400_000;
@@ -290,6 +291,14 @@ export function MoneyIntelligencePanel() {
                 onClick={() => open({ title: 'ارزش موجودی ابتدای دوره', mode: 'fifo', key: 'opening' })}>ارزش موجودی ابتدای دوره</Button>
               <span className="tabular-nums">{money(ready.fifo.opening)}</span>
             </li>
+            <li className="flex flex-wrap items-center justify-between gap-1">
+              <Button type="button" size="sm" variant="ghost" disabled={ready.inventoryReconciliation.book===null}
+                onClick={() => open({ title: 'ماندهٔ موجودی در دفتر ERP', mode: 'balance', key: 'INVENTORY' })}>ماندهٔ موجودی در دفتر ERP</Button>
+              <span className="tabular-nums">{money(ready.inventoryReconciliation.book)}</span>
+            </li>
+            <li className="flex flex-wrap items-center justify-between gap-1 py-2">
+              <span>اختلاف ارزش FIFO با دفتر ERP</span><span className="tabular-nums">{money(ready.inventoryReconciliation.difference)}</span>
+            </li>
             <li className="flex flex-wrap items-center justify-between gap-1 py-2">
               <span>سرمایهٔ در گردش عملیاتی پایان دوره</span><span className="tabular-nums">{money(ready.workingCapital.closing)}</span>
             </li>
@@ -301,6 +310,7 @@ export function MoneyIntelligencePanel() {
           {ready.fifo.closing === null && <p className="text-caption text-text-secondary">ارزش FIFO پس از تطبیق ارزش‌گذاری منتشرشده با موجودی ERP در همان تاریخ نمایش داده می‌شود.</p>}
         </Card>
       </>}
+      <JournalCoveragePanel key={`${from}:${to}`} period={period} />
       {evidence?.requestKey === requestKey && <MoneyEvidenceSheet key={JSON.stringify(evidence.selection)}
         period={period} selection={evidence.selection} onSelect={open} onClose={() => setEvidence(null)} />}
     </section>

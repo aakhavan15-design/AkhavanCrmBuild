@@ -60,6 +60,7 @@ export type MoneyReport = {
   unallocated: Amount;
   unallocatedDocuments: number;
   fifo: MoneyPosition;
+  inventoryReconciliation: { book: Amount; fifo: Amount; difference: Amount };
   workingCapital: MoneyPosition & { change: Amount };
 };
 export interface MoneyJournalLine {
@@ -114,4 +115,19 @@ export interface MoneyCashAccount extends MoneyPosition {
 export interface MoneyEvidencePage {
   items: (MoneyJournalLine | MoneyInventoryPosition | MoneyBankControl | MoneyCashAccount)[];
   hasMore: boolean;
+}
+
+
+export type JournalOperation = 'SALES_INVOICE' | 'SALES_RETURN' | 'PAYMENT';
+export type JournalCoverageStatus = 'VALID' | 'MULTIPLE' | 'LATE' | 'PENDING' | 'INVALID' | 'VOID' | 'MISSING' | 'NOT_OBSERVED';
+export interface JournalCoverageFilter { operation?: JournalOperation; state?: JournalCoverageStatus; search?: string; page: number }
+export interface JournalCoverageRow {
+  operation: JournalOperation; externalId: string; documentNumber?: string; date: string;
+  currency: string | null; amount: Amount; accountTitle?: string; coverageStatus: JournalCoverageStatus;
+  validCount: number; lateCount: number;
+  documents: { id: string; number: string; date: string; quality: string }[];
+}
+export interface JournalCoveragePage {
+  status: 'AVAILABLE' | 'UNAVAILABLE'; verifiedThrough?: string | null; sourceSystem?: string;
+  items: JournalCoverageRow[]; hasMore: boolean; counts: { coverageStatus: JournalCoverageStatus; count: number }[];
 }

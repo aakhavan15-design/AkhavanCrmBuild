@@ -160,7 +160,7 @@ export function computeDetailSubsidiaryBalances(journalLines: unknown, options: 
 }
 
 /* ───────── قرارداد خواندن گردش و مانده (مصرف‌شده توسط DataProvider؛ F0-14) ───────── */
-export interface JournalLineFilter { detailKey?: string; subsidiaryCode?: string; /** فقط سطرهای فاقد کد معین (سطل «فاقد نگاشت») */ unmapped?: boolean; periodCode?: string; fromDate?: string; toDate?: string }
+export interface JournalLineFilter { journalId?: string; detailKey?: string; subsidiaryCode?: string; /** فقط سطرهای فاقد کد معین (سطل «فاقد نگاشت») */ unmapped?: boolean; periodCode?: string; fromDate?: string; toDate?: string }
 export interface JournalLinePage { items: Array<Record<string, unknown>>; total: number; page: number; pageSize: number; totalPages: number }
 export type LedgerResultStatus = 'LIVE' | 'EMPTY' | 'UNAVAILABLE';
 export interface DetailBalancesResult { status: LedgerResultStatus; source: 'CLIENT_INDEXEDDB' | 'SQLSERVER_BACKEND'; balances: DetailBalance[]; reason?: string }
@@ -169,6 +169,7 @@ const lineVal = (r: Record<string, unknown>, keys: string[]) => { for (const k o
 export function queryJournalLines(lines: unknown, filter: JournalLineFilter = {}, pagination: { page?: number; pageSize?: number } = {}): JournalLinePage {
   const all = (Array.isArray(lines) ? lines : []).filter((r): r is Record<string, unknown> => !!r && typeof r === 'object')
     .filter(r => {
+      if (filter.journalId && lineVal(r, ['journalId','journalEntryMirrorId'])!==filter.journalId) return false;
       if (filter.detailKey && lineVal(r, ['detailAccountId', 'externalDetailCode', 'detailCode', 'accountId', 'customerId']) !== filter.detailKey) return false;
       if (filter.subsidiaryCode && lineVal(r, ['subsidiaryCode', 'externalAccountCode', 'ledgerAccountCode']) !== filter.subsidiaryCode) return false;
       if (filter.unmapped === true && lineVal(r, ['subsidiaryCode', 'externalAccountCode', 'ledgerAccountCode'])) return false;

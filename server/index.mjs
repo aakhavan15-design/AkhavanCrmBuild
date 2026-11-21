@@ -14,6 +14,7 @@ import { createInvoiceFifoEvidence } from './invoiceFifoEvidence.mjs';
 import { createCollectionReceiptEvidence } from './collectionReceiptEvidence.mjs';
 import { createTreasuryFlowReader } from './treasuryFlow.mjs';
 import { createMoneyIntelligenceReader, parseMoneyReportQuery } from './moneyIntelligence.mjs';
+import { createJournalCoverageReader, coverageFilter } from './journalCoverage.mjs';
 import { createCollectionActions } from './collectionActions.mjs';
 import { createPublicRecruitment } from './publicRecruitment.mjs';
 import { buildReportStatus } from './reportStatus.mjs';
@@ -707,28 +708,28 @@ app.get('/api/v1/ledger/journal-lines', authenticate, requirePermission('finance
       .input('tenantId', sql.UniqueIdentifier, req.auth.tenantId)
       .input('offset', sql.Int, (page - 1) * pageSize)
       .input('pageSize', sql.Int, pageSize);
-    const conditions = ['jl.TenantId=@tenantId', 'je.TenantId=@tenantId', 'je.IsVoided=0',
+    const conditions = ['jl.TenantId=@tenantId', 'je.TenantId=@tenantId', "je.JournalQuality='VALID'",
       'EXISTS (SELECT 1 FROM security.fn_LedgerDetailReadScope(jl.TenantId,jl.SourceSystemCode,jl.ExternalDetailCode))',
-      "NULLIF(LTRIM(RTRIM(je.DocumentNumber)), '') IS NOT NULL", 'sm.IncludeInBalance=1'];
+      'jl.SourceSystemCode=je.SourceSystemCode'];
+    if (filter.journalId) { request.input('journalId', sql.UniqueIdentifier, filter.journalId); conditions.push('je.JournalEntryMirrorId=@journalId'); }
     if (filter.detailKey) { request.input('detailKey', sql.NVarChar(120), filter.detailKey); conditions.push('jl.ExternalDetailCode=@detailKey'); }
     if (filter.subsidiaryCode) { request.input('subsidiaryCode', sql.NVarChar(120), filter.subsidiaryCode); conditions.push('jl.ExternalAccountCode=@subsidiaryCode'); }
-    if (filter.periodCode) { request.input('periodCode', sql.NVarChar(120), filter.periodCode); conditions.push('fp.ExternalPeriodCode=@periodCode'); }
+    if (filter.periodCode) { request.input('periodCode', sql.NVarChar(120), filter.periodCode); conditions.push('je.ExternalPeriodCode=@periodCode'); }
     if (filter.unmapped === true) conditions.push("(jl.ExternalAccountCode IS NULL OR LTRIM(RTRIM(jl.ExternalAccountCode))='')");
     if (filter.unmapped === false) conditions.push("NULLIF(LTRIM(RTRIM(jl.ExternalAccountCode)), '') IS NOT NULL");
-    if (filter.fromDate) { request.input('fromDate', sql.Date, filter.fromDate); conditions.push('je.DocumentDate>=@fromDate'); }
-    if (filter.toDate) { request.input('toDate', sql.Date, filter.toDate); conditions.push('je.DocumentDate<=@toDate'); }
+    if (filter.fromDate) { request.input('fromDate', sql.Date, filter.fromDate); conditions.push('je.AccountingDate>=@fromDate'); }
+    if (filter.toDate) { request.input('toDate', sql.Date, filter.toDate); conditions.push('je.AccountingDate<=@toDate'); }
     const from = `FROM crm.JournalLineMirror jl
-      JOIN crm.JournalEntryMirror je ON je.JournalEntryMirrorId=jl.JournalEntryMirrorId AND je.TenantId=jl.TenantId
-      JOIN crm.JournalStatusMap sm ON sm.TenantId=je.TenantId AND sm.SourceSystemCode=je.SourceSystemCode AND sm.ExternalStatusCode=je.StatusCode
-      LEFT JOIN crm.FiscalPeriod fp ON fp.FiscalPeriodId=je.FiscalPeriodId AND fp.TenantId=je.TenantId
+      JOIN analytics.vw_FinancialJournalState je ON je.JournalEntryMirrorId=jl.JournalEntryMirrorId AND je.TenantId=jl.TenantId
       WHERE ${conditions.join(' AND ')}`;
     return request.query(`SELECT COUNT_BIG(1) AS Total ${from};
       SELECT jl.JournalLineMirrorId AS id, jl.ExternalDetailCode AS detailKey,
-      jl.ExternalAccountCode AS subsidiaryCode, fp.ExternalPeriodCode AS periodCode,
-      je.DocumentNumber AS documentNumber, je.DocumentDate AS date,
-      jl.DebitAmount AS debitAmount, jl.CreditAmount AS creditAmount,
+      jl.ExternalAccountCode AS subsidiaryCode, je.ExternalPeriodCode AS periodCode,
+      je.DocumentNumber AS documentNumber, je.AccountingDate AS date,
+      CONVERT(varchar(48),jl.DebitAmount) AS debitAmount, CONVERT(varchar(48),jl.CreditAmount) AS creditAmount,
+      je.CurrencyCode AS currencyCode,jl.SourceLineNumber AS lineNumber,jl.ExternalJournalLineId AS externalLineId,
       jl.Description AS description, je.StatusCode AS status
-      ${from} ORDER BY je.DocumentDate DESC, je.DocumentNumber DESC, jl.JournalLineMirrorId DESC
+      ${from} ORDER BY je.AccountingDate DESC, je.DocumentNumber DESC, jl.JournalLineMirrorId DESC
       OFFSET @offset ROWS FETCH NEXT @pageSize ROWS ONLY;`);
   });
   const total = Number(result.recordsets?.[0]?.[0]?.Total || 0);
@@ -807,6 +808,17 @@ app.get('/api/v1/finance/money-intelligence', authenticate, requirePermission('f
     const filter = parseMoneyReportQuery(req.query);
     if (!filter) return bad(req, res, 400, 'INVALID_MONEY_FILTER', 'بازه یا فیلتر گزارش معتبر نیست.');
     res.json(await readMoneyIntelligence(req.auth, filter));
+  }));
+
+const readJournalCoverage = createJournalCoverageReader({ sql, run: withTenantContext });
+app.get('/api/v1/finance/journal-coverage', authenticate, requirePermission('finance.VIEW', { organizationWide: true }),
+  wrap(async (req, res) => {
+    res.set('Cache-Control', 'private, no-store');
+    const period = parseMoneyReportQuery(req.query);
+    const filter = coverageFilter(req.query);
+    if (!period || !filter) return bad(req, res, 400, 'INVALID_COVERAGE_FILTER', 'بازه یا فیلتر پوشش اسناد معتبر نیست.');
+    if (entityDriverKind!=='mssql') return bad(req, res, 503, 'JOURNAL_SOURCE_UNAVAILABLE', 'آینهٔ اسناد ERP در دسترس نیست.');
+    res.json(await readJournalCoverage(req.auth, { ...period, ...filter }));
   }));
 
 const collectionReceiptEvidence = createCollectionReceiptEvidence({ sql, run: withTenantContext });

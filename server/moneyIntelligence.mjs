@@ -44,23 +44,20 @@ WHERE s.TenantId=@tenantId AND EXISTS
 `;
 
 const prepare = `
-SELECT e.JournalEntryMirrorId AS journalId,e.SourceSystemCode,e.DocumentDate AS [date],
+SELECT e.JournalEntryMirrorId AS journalId,e.SourceSystemCode,e.AccountingDate AS [date],
   e.ExternalJournalId,e.DocumentNumber,e.DocumentTypeCode,e.SyncedAtUtc,
   CAST(CASE WHEN e.DocumentTypeCode=p.OpeningDocumentTypeCode THEN 1 ELSE 0 END AS bit) AS isOpening,
   CAST(CASE WHEN EXISTS(SELECT 1 FROM OPENJSON(p.ClosingDocumentTypes) x WHERE x.type=1 AND x.value=e.DocumentTypeCode)
     AND e.DocumentTypeCode<>p.OpeningDocumentTypeCode THEN 1 ELSE 0 END AS bit) AS isClosing,
   CASE WHEN e.CurrencyCode<>'IRR' THEN 'CURRENCY'
-       WHEN sm.ExternalStatusCode IS NULL THEN 'STATUS'
-       WHEN NULLIF(LTRIM(RTRIM(e.DocumentNumber)),N'') IS NULL THEN 'NUMBER'
+       WHEN e.JournalQuality<>'VALID' THEN e.JournalQuality
        ELSE NULL END AS issue
 INTO #documents
 FROM #profile p
-JOIN crm.JournalEntryMirror e ON e.TenantId=@tenantId AND e.SourceSystemCode=p.SourceSystemCode
-LEFT JOIN crm.JournalStatusMap sm ON sm.TenantId=e.TenantId AND sm.SourceSystemCode=e.SourceSystemCode
-  AND sm.ExternalStatusCode=e.StatusCode
-WHERE e.IsVoided=0 AND (sm.IncludeInBalance=1 OR sm.ExternalStatusCode IS NULL)
-  AND e.DocumentDate>=p.OpeningDate AND e.DocumentDate<=@to
-  AND (e.DocumentTypeCode<>p.OpeningDocumentTypeCode OR e.DocumentDate=p.OpeningDate);
+JOIN analytics.vw_FinancialJournalState e ON e.TenantId=@tenantId AND e.SourceSystemCode=p.SourceSystemCode
+WHERE e.JournalQuality NOT IN ('VOID','PENDING')
+  AND e.AccountingDate>=p.OpeningDate AND e.AccountingDate<=@to
+  AND (e.DocumentTypeCode<>p.OpeningDocumentTypeCode OR e.AccountingDate=p.OpeningDate);
 CREATE UNIQUE CLUSTERED INDEX IX_documents ON #documents(journalId);
 
 SELECT l.JournalLineMirrorId AS lineId,d.journalId,d.[date],d.isOpening,
@@ -385,6 +382,8 @@ export function projectMoneyReport(result, filter) {
   const movement = field => observed || periodCovered ? decimal(sum(trend, field)) : null;
   const closingKnown = openingKnown && periodCovered;
   const cash = roles.get('CASH');
+  const inventory = roles.get('INVENTORY');
+  const bookInventory = closingKnown ? inventory?.closing ?? null : null;
   const mixed = Number(meta.mixedDocuments);
   const netProfit = periodCovered ? decimal(sum(balances.filter(row => profitRoles.has(row.role)), 'effect')) : null;
 
@@ -423,6 +422,10 @@ export function projectMoneyReport(result, filter) {
       repeatCount: Number(row.repeatCount) })),
     unallocated: unallocatedRows[0]?.amount ?? (periodCovered ? '0' : null),
     unallocatedDocuments: Number(unallocatedRows[0]?.documents ?? 0),
+    inventoryReconciliation: {
+      book: bookInventory, fifo: fifo.closing?.amount ?? null,
+      difference: bookInventory !== null && fifo.closing ? decimal(parseAmount(fifo.closing.amount)-parseAmount(bookInventory)) : null,
+    },
     fifo: { opening: fifo.opening?.amount ?? null, closing: fifo.closing?.amount ?? null },
     workingCapital: {
       opening: workingOpening, closing: workingClosing,

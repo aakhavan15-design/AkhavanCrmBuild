@@ -13,7 +13,7 @@ import { FifoLayerDialog } from './FifoInventoryPanel';
 export type MoneyEvidenceSelection = Omit<MoneyEvidenceFilter, 'page' | 'search'> & { title: string };
 const issueLabels: Record<string, string> = {
   CURRENCY: 'ارز خارج از مبنای ریال', STATUS: 'وضعیت بدون نگاشت', NUMBER: 'بدون شمارهٔ معتبر',
-  LINES: 'بدون ردیف', UNBALANCED: 'سند نامتوازن', MAPPING: 'کدینگ ناقص یا مبهم', CLOSING_CASH: 'گردش نقدی در سند بستن حساب‌ها',
+  LINES: 'بدون ردیف', PERIOD: 'دورهٔ مالی نامعتبر', UNBALANCED: 'سند نامتوازن', MAPPING: 'کدینگ ناقص یا مبهم', CLOSING_CASH: 'گردش نقدی در سند بستن حساب‌ها',
 };
 
 export function MoneyEvidenceSheet({ selection, period, onClose, onSelect }: {
