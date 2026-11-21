@@ -351,6 +351,71 @@ export function createTaskRequests({sql,run}) {
   };
 
   return {
+    reportingLines: auth => run(auth,async tx => {
+      const result=await input(tx,auth).query(`SELECT CONVERT(varchar(36),UserId) AS id,DisplayName AS name,
+        CONVERT(varchar(36),ManagerUserId) AS managerId FROM core.AppUser
+        WHERE TenantId=@tenantId AND IsActive=1 ORDER BY DisplayName,UserId;`);
+      return {items:result.recordset};
+    }),
+
+    changeReportingLine(auth,userId,body) {
+      if (!uuid(userId) || !uuid(body?.commandId) || !(body.managerId===null || uuid(body.managerId)) ||
+          !(body.expectedManagerId===null || uuid(body.expectedManagerId))) throw invalid('شناسه یا نسخهٔ سرپرستی معتبر نیست.');
+      const reason=typeof body.reason==='string' ? body.reason.trim() : '';
+      if (!reason || reason.length>600) throw invalid('دلیل تغییر سرپرست را وارد کنید.');
+      return run(auth,async tx => {
+        const result=await input(tx,auth).input('user',sql.UniqueIdentifier,userId).input('manager',sql.UniqueIdentifier,body.managerId)
+          .input('expected',sql.UniqueIdentifier,body.expectedManagerId).input('command',sql.NVarChar(100),body.commandId.toLowerCase())
+          .input('fingerprint',sql.VarChar(64),digest([userId.toLowerCase(),body.managerId?.toLowerCase(),body.expectedManagerId?.toLowerCase(),reason]))
+          .input('reason',sql.NVarChar(600),reason).query(`
+            DECLARE @lockStatus int,@lockResource nvarchar(100)=CONCAT('organization-reporting-lines:',@tenantId);
+            EXEC @lockStatus=sys.sp_getapplock @Resource=@lockResource,@LockMode='Exclusive',@LockOwner='Transaction',@LockTimeout=5000;
+            IF @lockStatus<0 BEGIN SELECT 'BUSY' AS outcome; RETURN; END;
+            IF NOT EXISTS(SELECT 1 FROM security.fn_TaskRequestGrant(@tenantId,@actor,N'users.manage',NULL,NULL,NULL,NULL,1))
+              BEGIN SELECT 'FORBIDDEN' AS outcome; RETURN; END;
+
+            DECLARE @entityId nvarchar(120)=LOWER(CONVERT(nvarchar(36),@user)),@prior varchar(64),@priorActor uniqueidentifier;
+            SELECT @prior=JSON_VALUE(DetailsJson,'$.fingerprint'),@priorActor=ActorUserId FROM security.AuditEvent
+              WHERE TenantId=@tenantId AND EventType=N'USER_MANAGER_UPDATED' AND EntityId=@entityId AND CorrelationId=@command;
+            IF @prior IS NOT NULL
+              BEGIN SELECT CASE WHEN @prior=@fingerprint AND @priorActor=@actor THEN 'REPLAY' ELSE 'STALE' END AS outcome; RETURN; END;
+
+            DECLARE @current uniqueidentifier,@found bit=0;
+            SELECT @current=ManagerUserId,@found=1 FROM core.AppUser WITH(UPDLOCK,HOLDLOCK)
+              WHERE TenantId=@tenantId AND UserId=@user AND IsActive=1;
+            IF @found=0 OR (@manager IS NOT NULL AND NOT EXISTS(SELECT 1 FROM core.AppUser
+              WHERE TenantId=@tenantId AND UserId=@manager AND IsActive=1))
+              BEGIN SELECT 'UNKNOWN' AS outcome; RETURN; END;
+            IF @current<>@expected OR (@current IS NULL AND @expected IS NOT NULL) OR (@current IS NOT NULL AND @expected IS NULL)
+              BEGIN SELECT 'STALE' AS outcome; RETURN; END;
+            IF @current=@manager OR (@current IS NULL AND @manager IS NULL)
+              BEGIN SELECT 'UNCHANGED' AS outcome; RETURN; END;
+
+            DECLARE @seen TABLE (UserId uniqueidentifier PRIMARY KEY);
+            DECLARE @next uniqueidentifier=@manager;
+            WHILE @next IS NOT NULL
+            BEGIN
+              IF @next=@user OR EXISTS(SELECT 1 FROM @seen WHERE UserId=@next)
+                BEGIN SELECT 'CYCLE' AS outcome; RETURN; END;
+              INSERT @seen(UserId) VALUES(@next);
+              SET @next=(SELECT ManagerUserId FROM core.AppUser WHERE TenantId=@tenantId AND UserId=@next);
+            END;
+
+            UPDATE core.AppUser SET ManagerUserId=@manager WHERE TenantId=@tenantId AND UserId=@user;
+            DECLARE @details nvarchar(max)=(SELECT @current AS previousManagerId,@manager AS managerId,@reason AS reason,@fingerprint AS fingerprint
+              FOR JSON PATH,INCLUDE_NULL_VALUES,WITHOUT_ARRAY_WRAPPER);
+            INSERT security.AuditEvent(TenantId,ActorUserId,CorrelationId,EventType,EntityType,EntityId,OutcomeCode,DetailsJson)
+              VALUES(@tenantId,@actor,@command,N'USER_MANAGER_UPDATED',N'USER',@entityId,'SUCCESS',@details);
+            SELECT 'UPDATED' AS outcome;`);
+        const outcome=result.recordset[0]?.outcome;
+        if (outcome==='FORBIDDEN') throw forbidden();
+        if (outcome==='UNKNOWN') throw invalid('کاربر یا سرپرست فعال در همین سازمان پیدا نشد.');
+        if (outcome==='CYCLE') throw invalid('این تغییر باعث ایجاد چرخه در زنجیرهٔ سرپرستی می‌شود.');
+        if (outcome!=='UPDATED' && outcome!=='REPLAY' && outcome!=='UNCHANGED') throw conflict('سرپرستی هم‌زمان تغییر کرده است. وضعیت تازه را دریافت کنید.');
+        return {replayed:outcome==='REPLAY',changed:outcome==='UPDATED'};
+      });
+    },
+
     async create(auth,body) {
       const value=requestInput(body);
       if (!value) throw invalid('عنوان، مسئول، نوع یا اطلاعات ضروری درخواست معتبر نیست.');

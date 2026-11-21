@@ -6,6 +6,8 @@ export type TaskFinancialReference = Exclude<TaskRequestLink['type'], 'ORDER'>;
 export type TaskRequestResource = TaskRequestLink['type'] | 'PRODUCT' | 'PRICE_AUTHORIZATION';
 export interface TaskLinkedDocument {type:TaskFinancialReference;id:string;title:string;date:string;source:string;voided:boolean}
 export const taskDocumentLabels:Record<TaskFinancialReference,string> = {INVOICE:'فاکتور',CHEQUE:'چک'};
+export interface ReportingLine {id:string;name:string;managerId:string|null}
+export interface ReportingLineChange {commandId:string;managerId:string|null;expectedManagerId:string|null;reason:string}
 export interface TaskPriceItem { productId: string; price: string; quantity: string; title?: string; unit?: string }
 export interface TaskRequestInput {
   requestId: string; kind: TaskRequestKind; title: string; description: string; priority: RequestPriority;

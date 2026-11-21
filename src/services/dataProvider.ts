@@ -1,4 +1,4 @@
-import type { TaskRequestApprovalPolicy, TaskRequestCommand, TaskRequestFile, TaskRequestInput, TaskRequestPolicyKind,
+import type { ReportingLine, ReportingLineChange, TaskRequestApprovalPolicy, TaskRequestCommand, TaskRequestFile, TaskRequestInput, TaskRequestPolicyKind,
   TaskRequestRecord, TaskRequestPage, TaskRequestView, TaskRequestResource } from './taskRequests';
 import type { 
   AppState, 
@@ -289,6 +289,8 @@ export interface DataProvider {
   changeTaskRequest(id:string,input:TaskRequestCommand): Promise<TaskRequestRecord | {task:null;version:string}>;
   getTaskRequestDirectory(search:string): Promise<{items:{id:string;name:string}[]}>;
   getTaskRequestResources(type:TaskRequestResource,accountId:string,search:string): Promise<{items:{id:string;title:string;unit?:string;sku?:string}[]}>;
+  getReportingLines(): Promise<{items:ReportingLine[]}>;
+  changeReportingLine(userId:string,input:ReportingLineChange): Promise<{changed:boolean;replayed:boolean}>;
   getTaskRequestPolicies(): Promise<{items:(TaskRequestApprovalPolicy & {kind:TaskRequestPolicyKind})[]}>;
   saveTaskRequestPolicy(kind:TaskRequestPolicyKind,policy:TaskRequestApprovalPolicy): Promise<TaskRequestApprovalPolicy>;
 
@@ -557,6 +559,8 @@ export class ClientStorageDataProvider implements DataProvider {
   async changeTaskRequest(): Promise<TaskRequestRecord> { throw new Error('گردش درخواست به اتصال سرور نیاز دارد.'); }
   async getTaskRequestDirectory(): Promise<{items:{id:string;name:string}[]}> { return {items:[]}; }
   async getTaskRequestResources(): Promise<{items:{id:string;title:string;unit?:string;sku?:string}[]}> { return {items:[]}; }
+  async getReportingLines(): Promise<{items:ReportingLine[]}> { return {items:[]}; }
+  async changeReportingLine(): Promise<{changed:boolean;replayed:boolean}> { throw new Error('ثبت سرپرستی سازمانی به سرور نیاز دارد.'); }
   async getTaskRequestPolicies(): Promise<{items:(TaskRequestApprovalPolicy & {kind:TaskRequestPolicyKind})[]}> { return {items:[]}; }
   async saveTaskRequestPolicy(): Promise<TaskRequestApprovalPolicy> { throw new Error('ثبت سیاست تأیید به اتصال سرور نیاز دارد.'); }
 
@@ -1054,6 +1058,12 @@ export class HttpBackendDataProvider implements DataProvider {
   }
   async getTaskRequestResources(type:TaskRequestResource,accountId:string,search:string): Promise<{items:{id:string;title:string;unit?:string;sku?:string}[]}> {
     return this.request(`/tasks/request-resources?${new URLSearchParams({type,accountId,search})}`);
+  }
+  async getReportingLines(): Promise<{items:ReportingLine[]}> {
+    return this.request('/organization/reporting-lines');
+  }
+  async changeReportingLine(userId:string,input:ReportingLineChange): Promise<{changed:boolean;replayed:boolean}> {
+    return this.request(`/organization/reporting-lines/${encodeURIComponent(userId)}`,{method:'PUT',body:JSON.stringify(input)});
   }
   async getTaskRequestPolicies(): Promise<{items:(TaskRequestApprovalPolicy & {kind:TaskRequestPolicyKind})[]}> {
     return this.request('/tasks/request-policies');

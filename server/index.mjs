@@ -894,6 +894,10 @@ app.get('/api/v1/tasks/requests',authenticate,taskRequestRoute(req => taskReques
 app.post('/api/v1/tasks/requests',authenticate,taskRequestRoute(req => taskRequests.create(req.auth,req.body)));
 app.get('/api/v1/tasks/request-directory',authenticate,taskRequestRoute(req => taskRequests.users(req.auth,req.query.search ?? '')));
 app.get('/api/v1/tasks/request-resources',authenticate,taskRequestRoute(req => taskRequests.resources(req.auth,req.query)));
+app.get('/api/v1/organization/reporting-lines',authenticate,requirePermission('users.manage',{organizationWide:true}),
+  taskRequestRoute(req => taskRequests.reportingLines(req.auth)));
+app.put('/api/v1/organization/reporting-lines/:userId',authenticate,requirePermission('users.manage',{organizationWide:true}),
+  taskRequestRoute(req => taskRequests.changeReportingLine(req.auth,req.params.userId,req.body)));
 app.get('/api/v1/tasks/request-policies',authenticate,requirePermission('settings.manage',{organizationWide:true}),
   taskRequestRoute(req => taskRequests.readPolicies(req.auth)));
 app.put('/api/v1/tasks/request-policies/:kind',authenticate,requirePermission('settings.manage',{organizationWide:true}),

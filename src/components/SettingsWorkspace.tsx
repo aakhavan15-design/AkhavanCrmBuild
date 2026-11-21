@@ -34,6 +34,8 @@ import { PERMISSION_LABELS } from '../lib/rbac';
 import { getPersianStatusLabel } from '../lib/labels';
 import { DemoDataPanel } from './DemoDataPanel';
 import { ApprovalChainConfigPanel } from './settings/ApprovalChainConfigPanel';
+import { ReportingLineSettings } from './settings/ReportingLineSettings';
+import { getActiveDataProvider } from '../services/dataProvider';
 
 interface SettingsWorkspaceProps {
   state: AppState;
@@ -42,6 +44,7 @@ interface SettingsWorkspaceProps {
 
 export function SettingsWorkspace({ state, updateState }: SettingsWorkspaceProps) {
   const { can, denied, rbac } = useCan(state, updateState);
+  const serverReportingLines=getActiveDataProvider().name==='SQLSERVER_BACKEND';
   // بخش فعال و زیربخش کاربران از آدرس (?tab=…&sub=…) خوانده می‌شود تا منوی سلسله‌مراتبی مستقیم به آن‌ها پیوند دهد.
   const [tabParam, setTabParam] = useTabParam(SETTINGS_TABS, 'org');
   type SettingsTab = 'ORG' | 'USERS' | 'GROUPS' | 'LOCALE' | 'INTEGRATIONS' | 'AGENTS' | 'RULES';
@@ -1384,6 +1387,7 @@ export function SettingsWorkspace({ state, updateState }: SettingsWorkspaceProps
 
           {userSubTab === 'LIST' && (
             <div className="space-y-4">
+              {serverReportingLines && can('users','EDIT') && <ReportingLineSettings key={state.currentUserId}/>}
               <div className="flex justify-end">
                 <Button variant="primary" size="sm" onClick={() => setShowUserModal(true)} icon={<UserPlus className="w-4 h-4"/>}>کاربر جدید</Button>
               </div>
@@ -1413,11 +1417,11 @@ export function SettingsWorkspace({ state, updateState }: SettingsWorkspaceProps
                             </>
                           )}
                         </div>
-                        <label className="mt-2 flex flex-wrap items-center gap-2 text-xs text-text-secondary">سرپرست مستقیم
+                        {!serverReportingLines && <label className="mt-2 flex flex-wrap items-center gap-2 text-xs text-text-secondary">سرپرست مستقیم
                           <Select aria-label={`سرپرست مستقیم ${u.name}`} disabled={!can('users','EDIT')} value={u.managerId || ''} onChange={e => handleUpdateUserManager(u.id, e.target.value)} className="min-w-40">
                             <option value="">بدون سرپرست مستقیم</option>{(state.users || []).filter(candidate => candidate.id !== u.id && (candidate.isActive ?? candidate.active) !== false).map(candidate => <option key={candidate.id} value={candidate.id}>{candidate.name}</option>)}
                           </Select>
-                        </label>
+                        </label>}
                       </div>
                       <button onClick={() => { if (!can('users', 'EDIT')) return denied('تعویض کاربر فعال'); updateState(draft => { draft.currentUserId = u.id; }); }} className={`text-xs px-3 py-1.5 rounded-lg font-bold cursor-pointer transition-colors ${u.id === state.currentUserId ? 'bg-primary text-white' : 'bg-white border border-border text-text-main hover:bg-canvas'}`}>
                         {u.id === state.currentUserId ? 'فعال' : 'تغییر کاربر'}
