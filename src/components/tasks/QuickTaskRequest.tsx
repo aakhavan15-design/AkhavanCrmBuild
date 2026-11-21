@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react';
 import { useDataQuery } from '../../hooks/useDataProvider';
 import { toLatinDigits } from '../../lib/digits';
 import { getActiveDataProvider } from '../../services/dataProvider';
-import { requestKinds, requestPriorities, type RequestPriority, type TaskRequestInput, type TaskRequestKind, type TaskRequestRecord } from '../../services/taskRequests';
+import { requestKinds, requestPriorities, taskDocumentLabels, type RequestPriority, type TaskFinancialReference, type TaskRequestInput, type TaskRequestKind, type TaskRequestRecord, type TaskRequestResource } from '../../services/taskRequests';
 import type { Account } from '../../types';
 import { BottomSheet } from '../ui/BottomSheet';
 import { Button } from '../ui/Button';
@@ -12,6 +12,8 @@ import { SearchableSelect } from '../ui/SearchableSelect';
 import { RequestFilePicker, type QueuedRequestFile } from './TaskRequestFiles';
 
 type Option = {value:string;label:string};
+const financialTypes: TaskFinancialReference[] = ['INVOICE','CHEQUE'];
+const allowsDocuments = (kind: TaskRequestKind) => ['FINANCE','COLLECTION','ORDER_APPROVAL'].includes(kind);
 
 export function RequestPeople({viewer,values,onChange,label,multiple=false}:{
   viewer:string; values:string[]; onChange:(values:string[])=>void; label:string; multiple?:boolean;
@@ -41,30 +43,33 @@ export function RequestPeople({viewer,values,onChange,label,multiple=false}:{
   </div>;
 }
 
-function ResourceControl({type,accountId,value,chosenLabel,onSelect,label}:{
-  type:'ORDER'|'PRODUCT'|'PRICE_AUTHORIZATION'; accountId:string; value:string; chosenLabel?:string;
-  onSelect:(id:string,label:string)=>void; label:string;
+function ResourceControl({type,accountId,value,chosenLabel,onSelect,label,excluded=[]}:{
+  type:TaskRequestResource; accountId:string; value:string; chosenLabel?:string;
+  onSelect:(id:string,label:string)=>void; label:string; excluded?:string[];
 }) {
   const [search,setSearch]=useState('');
-  const onSearch=useCallback((value:string)=>setSearch(value.slice(0,80)),[]);
+  const onSearch=useCallback((value:string)=>setSearch(toLatinDigits(value).slice(0,80)),[]);
   const {data,loading,error}=useDataQuery(async provider => accountId ? {
     accountId,items:(await provider.getTaskRequestResources(type,accountId,search)).items,
   } : null,[accountId,type,search]);
-  const options=(data?.accountId===accountId ? data.items : []).map(item=>({value:item.id,label:item.sku ? `${item.title} · ${item.sku}` : item.title}));
+  const options=(data?.accountId===accountId ? data.items : []).filter(item=>!excluded.includes(item.id))
+    .map(item=>({value:item.id,label:item.sku ? `${item.title} · ${item.sku}` : item.title}));
   if (type==='PRICE_AUTHORIZATION') options.unshift({value:'',label:'بدون مجوز ویژهٔ مرتبط'});
   if (value && chosenLabel && !options.some(option=>option.value===value)) options.push({value,label:chosenLabel});
-  return <SearchableSelect label={label} value={value} options={options} loading={loading} error={error?.message} onSearch={onSearch}
+  return <SearchableSelect label={label} value={value} options={options} loading={loading} error={error?.message} onSearch={onSearch} minQueryLength={0}
     onChange={id=>onSelect(id,options.find(item=>item.value===id)?.label ?? '')} />;
 }
 
-export function QuickTaskRequest({open,viewer,accounts,onClose,onSaved,initial,submitRevision}:{
+export function QuickTaskRequest({open,viewer,accounts,onClose,onSaved,initial,initialLinkLabels,submitRevision}:{
   open:boolean;viewer:string;accounts:Account[];onClose:()=>void;onSaved:(id:string,record:TaskRequestRecord)=>void;initial?:Partial<TaskRequestInput>;
+  initialLinkLabels?:Record<string,string>;
   submitRevision?:(input:TaskRequestInput)=>Promise<void>;
 }) {
   const empty=():TaskRequestInput=>({requestId:crypto.randomUUID(),kind:'GENERAL',title:'',description:'',priority:'NORMAL',
     accountId:null,assigneeId:viewer,dueDate:null,confidential:false,watchers:[],links:[],priceItems:[],...initial});
   const [draft,setDraft]=useState<TaskRequestInput>(empty);
-  const [orderLabel,setOrderLabel]=useState('');
+  const [linkLabels,setLinkLabels]=useState(initialLinkLabels ?? {});
+  const [showDocuments,setShowDocuments]=useState(Boolean(initial?.links?.some(item=>item.type!=='ORDER')));
   const [files,setFiles]=useState<QueuedRequestFile[]>([]);
   const [savedRequest,setSavedRequest]=useState<TaskRequestRecord|null>(null);
   const [busy,setBusy]=useState(false);
@@ -73,9 +78,21 @@ export function QuickTaskRequest({open,viewer,accounts,onClose,onSaved,initial,s
   const set=<K extends keyof TaskRequestInput,>(key:K,value:TaskRequestInput[K])=>setDraft(current=>({...current,[key]:value}));
   const locked=Boolean(submitRevision);
   const needsAccount=['PRICE_INQUIRY','PRICE_PERMISSION','ORDER_APPROVAL','COLLECTION'].includes(draft.kind);
-  const updateKind=(kind:TaskRequestKind)=>setDraft(current=>({...current,kind,links:[],priceAuthorizationId:null,priceItems:[]}));
-  const selectAccount=(accountId:string)=>setDraft(current=>({...current,accountId:accountId || null,links:[],priceAuthorizationId:null,priceItems:[]}));
+  const updateKind=(kind:TaskRequestKind)=>setDraft(current=>current.kind===kind ? current : {...current,kind,
+    links:current.links.filter(item=>item.type==='ORDER' ? kind==='ORDER_APPROVAL' : allowsDocuments(kind)),priceAuthorizationId:null,priceItems:[]});
+  const selectAccount=(accountId:string)=>setDraft(current=>current.accountId===(accountId || null) ? current :
+    {...current,accountId:accountId || null,links:[],priceAuthorizationId:null,priceItems:[]});
   const order=draft.links.find(item=>item.type==='ORDER');
+  const documents=draft.links.flatMap(({type,id})=>type==='ORDER' ? [] : [{type,id}]);
+
+  function addDocument(type:TaskFinancialReference,id:string,label:string) {
+    setDraft(current=>{
+      const limit=current.kind==='ORDER_APPROVAL' ? 4 : 5;
+      if (current.links.filter(link=>link.type!=='ORDER').length>=limit || current.links.some(link=>link.type===type && link.id===id)) return current;
+      return {...current,links:[...current.links,{type,id}]};
+    });
+    setLinkLabels(previous=>({...previous,[`${type}:${id}`]:label}));
+  }
 
   async function submit() {
     if (busy) return;
@@ -84,6 +101,7 @@ export function QuickTaskRequest({open,viewer,accounts,onClose,onSaved,initial,s
       setError('عنوان، مسئول و مشتری موردنیاز را مشخص کنید.'); return;
     }
     if (draft.kind==='ORDER_APPROVAL' && !order) {setError('سفارش مرتبط را انتخاب کنید.');return;}
+    if (draft.links.length>5) {setError('حداکثر پنج پیوند، شامل سفارش مرتبط، می‌توان ثبت کرد.');return;}
     if (draft.kind==='PRICE_PERMISSION' && (!draft.priceItems.length || draft.priceItems.some(item=>!item.productId || !item.price || !item.quantity))) {
       setError('کالا، مقدار و فی پیشنهادی هر قلم را وارد کنید.');return;
     }
@@ -100,7 +118,7 @@ export function QuickTaskRequest({open,viewer,accounts,onClose,onSaved,initial,s
           await provider.uploadTaskRequestFile(saved.task.id,item.file,item.id);
           setFiles(current=>current.filter(file=>file.id!==item.id));
         }
-        setDraft(empty());setSavedRequest(null);
+        setDraft(empty());setLinkLabels(initialLinkLabels ?? {});setSavedRequest(null);
         onSaved(saved.task.id,saved);
       }
     } catch (reason) {
@@ -135,11 +153,32 @@ export function QuickTaskRequest({open,viewer,accounts,onClose,onSaved,initial,s
           onChange={selectAccount} />
         <RequestPeople viewer={viewer} label="مسئول رسیدگی" values={[draft.assigneeId]} onChange={values=>set('assigneeId',values[0])} />
       </div>
-      {draft.kind==='ORDER_APPROVAL' && draft.accountId && <ResourceControl type="ORDER" accountId={draft.accountId} label="سفارش مرتبط" value={order?.id ?? ''} chosenLabel={orderLabel}
-        onSelect={(id,label)=>{setOrderLabel(label);set('links',[...draft.links.filter(item=>item.type!=='ORDER'),{type:'ORDER',id}]);}} />}
+      {draft.kind==='ORDER_APPROVAL' && draft.accountId && <ResourceControl key={`order:${draft.accountId}`} type="ORDER" accountId={draft.accountId} label="سفارش مرتبط" value={order?.id ?? ''}
+        chosenLabel={order ? linkLabels[`ORDER:${order.id}`] || 'سفارش پیوندخورده' : undefined}
+        onSelect={(id,label)=>{setLinkLabels(previous=>({...previous,[`ORDER:${id}`]:label}));set('links',[...documents,{type:'ORDER',id}]);}} />}
       {draft.kind==='ORDER_APPROVAL' && draft.accountId && <ResourceControl type="PRICE_AUTHORIZATION" accountId={draft.accountId}
         label="مجوز قیمت ویژهٔ مرتبط (اختیاری)" value={draft.priceAuthorizationId ?? ''} chosenLabel="مجوز انتخاب‌شده"
         onSelect={id=>set('priceAuthorizationId',id || null)}/>}
+      {draft.accountId && allowsDocuments(draft.kind) && <div className="space-y-2">
+        <Button type="button" variant="ghost" size="sm" aria-expanded={showDocuments} onClick={()=>setShowDocuments(previous=>!previous)}>
+          اسناد مالی مرتبط
+        </Button>
+        {showDocuments && <>
+          {documents.length>0 && <ul className="space-y-1 text-sm">{documents.map(({type,id})=>{
+            const label=linkLabels[`${type}:${id}`] || 'سند پیوندخورده';
+            return <li key={`${type}:${id}`} className="flex items-center justify-between gap-2">
+              <span>{taskDocumentLabels[type]} · <bdi>{label}</bdi></span>
+              <Button type="button" variant="ghost" size="sm" aria-label={`حذف پیوند ${label}`}
+                onClick={()=>set('links',draft.links.filter(link=>link.id!==id || link.type!==type))}>حذف</Button>
+            </li>;
+          })}</ul>}
+          {documents.length<(draft.kind==='ORDER_APPROVAL' ? 4 : 5) && <div className="grid gap-2 sm:grid-cols-2">
+            {financialTypes.map(type=><ResourceControl key={`${type}:${draft.accountId}`} type={type} accountId={draft.accountId!} value=""
+              label={`افزودن ${taskDocumentLabels[type]}`} excluded={documents.filter(link=>link.type===type).map(link=>link.id)}
+              onSelect={(id,label)=>addDocument(type,id,label)} />)}
+          </div>}
+        </>}
+      </div>}
       {draft.kind==='PRICE_PERMISSION' && draft.accountId && <fieldset className="space-y-2 rounded-xl border border-border p-2">
         <legend className="px-1 font-semibold">اقلام مجوز قیمت</legend>
         {draft.priceItems.map((item,index)=><div key={index} className="grid gap-2 rounded-lg border border-border p-2 sm:grid-cols-2">

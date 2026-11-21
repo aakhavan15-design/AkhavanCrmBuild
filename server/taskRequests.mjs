@@ -37,7 +37,24 @@ SELECT a.AccountId AS id,a.Name AS name,
  THEN 1 ELSE 0 END AS bit) AS seesCost
 FROM crm.Account a
 CROSS APPLY security.fn_TaskRequestGrant(@tenantId,@actor,N'accounts.view',a.OwnerUserId,a.BranchId,a.TerritoryId,a.TeamId,0) scope
-WHERE a.TenantId=@tenantId AND a.AccountId=@accountId;`;
+WHERE a.TenantId=@tenantId AND a.AccountId=@accountId AND a.DeletedAtUtc IS NULL;`;
+
+const financeReferencesSql = `
+WITH documentRefs AS (
+  SELECT 'INVOICE' AS type,InvoiceMirrorId AS id,InvoiceNumber AS title,InvoiceDate AS [date],SourceSystemCode AS source,IsVoided AS voided
+  FROM crm.InvoiceMirror WHERE TenantId=@tenantId AND AccountId=@accountId AND DeletedAtUtc IS NULL
+  UNION ALL
+  SELECT 'CHEQUE',ChequeMirrorId,ChequeNumber,DueDate,SourceSystemCode,IsVoided
+  FROM crm.ChequeMirror WHERE TenantId=@tenantId AND AccountId=@accountId
+)
+SELECT TOP(60) r.type,r.id,r.title,CONVERT(char(10),r.[date],126) AS [date],r.source,r.voided
+FROM documentRefs r JOIN crm.Account a ON a.TenantId=@tenantId AND a.AccountId=@accountId AND a.DeletedAtUtc IS NULL
+CROSS APPLY security.fn_TaskRequestGrant(@tenantId,@actor,N'accounts.view',a.OwnerUserId,a.BranchId,a.TerritoryId,a.TeamId,0)
+CROSS APPLY security.fn_TaskRequestGrant(@tenantId,@actor,N'finance.view',a.OwnerUserId,a.BranchId,a.TerritoryId,a.TeamId,0)
+WHERE (@type IS NULL OR r.type=@type)
+  AND (@links IS NULL OR EXISTS(SELECT 1 FROM OPENJSON(@links) WITH(type varchar(20),id uniqueidentifier) l WHERE l.type=r.type AND l.id=r.id))
+  AND (@search=N'' OR CHARINDEX(@search,r.title)>0)
+ORDER BY r.[date] DESC,r.type,r.id;`;
 
 const orderSql = `
 SELECT o.SalesOrderId AS id,o.AccountId AS accountId,o.OrderNumber AS number,o.StatusCode AS status,o.CurrencyCode AS currency,
@@ -45,7 +62,7 @@ SELECT o.SalesOrderId AS id,o.AccountId AS accountId,o.OrderNumber AS number,o.S
  CONVERT(varchar(48),o.NetAmount) AS total,CONVERT(varchar(18),o.RowVersion,1) AS [version],
  o.SourceSystemCode AS source,o.ExternalOrderId AS externalId
 FROM crm.SalesOrder o WITH(HOLDLOCK)
-WHERE o.TenantId=@tenantId AND o.AccountId=@accountId AND o.SalesOrderId=@orderId;
+WHERE o.TenantId=@tenantId AND o.AccountId=@accountId AND o.SalesOrderId=@orderId AND o.DeletedAtUtc IS NULL;
 SELECT l.LineNumber AS number,l.ExternalProductId AS product,l.ProductNameSnapshot AS title,l.UnitCode AS unit,
  CONVERT(varchar(48),l.Quantity) AS quantity,CONVERT(varchar(48),l.UnitPrice) AS price,
  CONVERT(varchar(48),l.DiscountAmount) AS discount,CONVERT(varchar(48),l.NetLineAmount) AS total,
@@ -120,6 +137,13 @@ export function createTaskRequests({sql,run}) {
     return {...result.recordsets[0][0],lines:result.recordsets[1]};
   }
 
+  async function financeReferences(tx,auth,accountId,{type=null,search='',links=null}={}) {
+    const result=await input(tx,auth).input('accountId',sql.UniqueIdentifier,accountId)
+      .input('type',sql.VarChar(20),type).input('search',sql.NVarChar(80),search)
+      .input('links',sql.NVarChar(sql.MAX),links ? JSON.stringify(links) : null).query(financeReferencesSql);
+    return result.recordset;
+  }
+
   async function checkPriceAuthorization(tx,auth,task,forUse,commandId) {
     const grantId=task.managedRequest.priceAuthorizationId;
     const grant=await get(tx,auth,grantId,forUse);
@@ -155,18 +179,11 @@ export function createTaskRequests({sql,run}) {
       const account = (await input(tx,auth).input('accountId',sql.UniqueIdentifier,value.accountId).query(accountSql)).recordset[0];
       if (!account) throw forbidden();
     } else if (value.links.length) throw invalid('برای پیوند رکورد مالی یا فروش، ابتدا مشتری را مشخص کنید.');
-    if (value.links.some(item => item.type!=='ORDER')) {
-      const refs = await input(tx,auth).input('accountId',sql.UniqueIdentifier,value.accountId)
-        .input('links',sql.NVarChar(sql.MAX),JSON.stringify(value.links.filter(item => item.type!=='ORDER'))).query(`
-          SELECT COUNT_BIG(*) AS granted
-          FROM OPENJSON(@links) WITH(type varchar(20),id uniqueidentifier) l
-          JOIN crm.Account a ON a.TenantId=@tenantId AND a.AccountId=@accountId
-          CROSS APPLY security.fn_TaskRequestGrant(@tenantId,@actor,N'finance.view',a.OwnerUserId,a.BranchId,a.TerritoryId,a.TeamId,0) scope
-          WHERE (l.type='INVOICE' AND EXISTS(SELECT 1 FROM crm.InvoiceMirror i WHERE i.TenantId=@tenantId AND i.AccountId=@accountId AND i.InvoiceMirrorId=l.id))
-             OR (l.type='CHEQUE' AND EXISTS(SELECT 1 FROM crm.ChequeMirror c WHERE c.TenantId=@tenantId AND c.AccountId=@accountId AND c.ChequeMirrorId=l.id));`);
-      if (Number(refs.recordset[0]?.granted)!==value.links.filter(item => item.type!=='ORDER').length) throw forbidden();
-      // A generic request cannot use financial references to bypass financial visibility.
+    const links=value.links.filter(item => item.type!=='ORDER');
+    if (links.length) {
       if (!['FINANCE','COLLECTION','ORDER_APPROVAL'].includes(value.kind)) throw invalid('این نوع درخواست پیوند سند مالی نمی‌پذیرد.');
+      const refs=await financeReferences(tx,auth,value.accountId,{links});
+      if (refs.length!==links.length) throw forbidden();
     }
     if (value.links.some(item => item.type==='ORDER')) {
       if (value.kind!=='ORDER_APPROVAL') throw invalid('پیوند رسمی سفارش در درخواست تأیید سفارش ثبت می‌شود.');
@@ -215,7 +232,7 @@ export function createTaskRequests({sql,run}) {
           HAVING COUNT_BIG(*)=1
         ) state
         WHERE i.TenantId=@tenantId AND i.SourceSystemCode=@source AND i.ExternalSourceOrderId=@externalOrder
-          AND i.AccountId=@accountId AND i.IsVoided=0 AND state.status IN('POSTED','FINAL');`);
+          AND i.AccountId=@accountId AND i.DeletedAtUtc IS NULL AND i.IsVoided=0 AND state.status IN('POSTED','FINAL');`);
     return result.recordset.length===1 ? result.recordset[0] : null;
   }
 
@@ -231,7 +248,7 @@ export function createTaskRequests({sql,run}) {
         o.CurrencyCode AS currency,CONVERT(varchar(48),o.NetAmount) AS amount
       FROM crm.SalesOrder o JOIN crm.Account a ON a.TenantId=o.TenantId AND a.AccountId=o.AccountId
       CROSS APPLY security.fn_TaskRequestGrant(@tenantId,@actor,N'quotes.view',a.OwnerUserId,a.BranchId,a.TerritoryId,a.TeamId,0)
-      WHERE o.TenantId=@tenantId AND o.AccountId=@accountId AND o.StatusCode NOT IN('DRAFT','CANCELLED')
+      WHERE o.TenantId=@tenantId AND o.AccountId=@accountId AND o.DeletedAtUtc IS NULL AND o.StatusCode NOT IN('DRAFT','CANCELLED')
       ORDER BY o.OrderDate DESC,o.SalesOrderId;
 
       SELECT TOP(5) c.ChequeNumber AS number,CONVERT(char(10),c.DueDate,126) AS dueDate,c.IsBounced AS bounced,
@@ -374,7 +391,9 @@ export function createTaskRequests({sql,run}) {
           FROM core.AppUser u WHERE u.TenantId=@tenantId AND EXISTS(SELECT 1 FROM OPENJSON(@identities) members
             WHERE TRY_CONVERT(uniqueidentifier,members.value)=u.UserId);`);
       const customer=await customerContext(tx,auth,row.task);
-      return {...present(row,auth),account:account ? {id:account.id,name:account.name}:null,order,stale,customer,
+      const links=request.links.filter(item=>item.type!=='ORDER');
+      const linkedDocuments=links.length ? await financeReferences(tx,auth,row.task.accountId,{links}) : [];
+      return {...present(row,auth),account:account ? {id:account.id,name:account.name}:null,order,stale,customer,linkedDocuments,
         participants:Object.fromEntries(participants.recordset.map(p => [p.id.toLowerCase(),p.name]))};
     }),
 
@@ -614,12 +633,15 @@ export function createTaskRequests({sql,run}) {
     },
 
     resources: (auth,query) => {
-      if (!['ORDER','PRODUCT','PRICE_AUTHORIZATION'].includes(query.type) || !uuid(query.accountId)
+      if (!['ORDER','PRODUCT','PRICE_AUTHORIZATION','INVOICE','CHEQUE'].includes(query.type) || !uuid(query.accountId)
          || (query.search!==undefined && (typeof query.search!=='string' || query.search.length>80))) throw invalid('مرجع انتخاب معتبر نیست.');
       return run(auth,async tx => {
         const access=(await input(tx,auth).input('accountId',sql.UniqueIdentifier,query.accountId).query(accountSql)).recordset[0];
         if (!access) throw forbidden();
         const type=query.type;
+        if (type==='INVOICE' || type==='CHEQUE') {
+          return {items:await financeReferences(tx,auth,query.accountId,{type,search:query.search?.trim() ?? ''})};
+        }
         if (type==='PRICE_AUTHORIZATION') {
           const result=await input(tx,auth).input('accountId',sql.UniqueIdentifier,query.accountId)
             .input('search',sql.NVarChar(80),query.search?.trim() ?? '').query(`SELECT TOP(60) task.EntityId AS id,JSON_VALUE(task.JsonDoc,'$.title') AS title
@@ -635,7 +657,7 @@ export function createTaskRequests({sql,run}) {
         const statement=type==='ORDER' ? `SELECT TOP(60) o.SalesOrderId AS id,o.OrderNumber AS title,o.OrderDate AS [date]
           FROM crm.SalesOrder o JOIN crm.Account a ON a.TenantId=o.TenantId AND a.AccountId=o.AccountId
           CROSS APPLY security.fn_TaskRequestGrant(@tenantId,@actor,N'quotes.view',a.OwnerUserId,a.BranchId,a.TerritoryId,a.TeamId,0)
-          WHERE o.TenantId=@tenantId AND o.AccountId=@accountId AND o.StatusCode NOT IN('CANCELLED','REJECTED','SENT_TO_ERP','CONFIRMED')
+          WHERE o.TenantId=@tenantId AND o.AccountId=@accountId AND o.DeletedAtUtc IS NULL AND o.StatusCode NOT IN('CANCELLED','REJECTED','SENT_TO_ERP','CONFIRMED')
             AND (@search=N'' OR CHARINDEX(@search,o.OrderNumber)>0)
           ORDER BY o.OrderDate DESC,o.SalesOrderId;`
         : `SELECT TOP(60) p.ExternalProductKey AS id,p.ProductName AS title,p.BaseUnitCode AS unit,p.SKU AS sku

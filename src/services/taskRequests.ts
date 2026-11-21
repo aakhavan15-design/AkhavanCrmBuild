@@ -2,6 +2,10 @@ export type TaskRequestKind = 'GENERAL' | 'PRICE_INQUIRY' | 'PRICE_PERMISSION' |
 export type RequestPriority = 'NORMAL' | 'HIGH' | 'URGENT';
 export type TaskRequestView = 'ALL' | 'MINE' | 'CREATED' | 'WATCHING' | 'TEAM' | 'WAITING' | 'OVERDUE' | 'CLOSED';
 export interface TaskRequestLink { type: 'ORDER' | 'INVOICE' | 'CHEQUE'; id: string }
+export type TaskFinancialReference = Exclude<TaskRequestLink['type'], 'ORDER'>;
+export type TaskRequestResource = TaskRequestLink['type'] | 'PRODUCT' | 'PRICE_AUTHORIZATION';
+export interface TaskLinkedDocument {type:TaskFinancialReference;id:string;title:string;date:string;source:string;voided:boolean}
+export const taskDocumentLabels:Record<TaskFinancialReference,string> = {INVOICE:'فاکتور',CHEQUE:'چک'};
 export interface TaskPriceItem { productId: string; price: string; quantity: string; title?: string; unit?: string }
 export interface TaskRequestInput {
   requestId: string; kind: TaskRequestKind; title: string; description: string; priority: RequestPriority;
@@ -38,6 +42,7 @@ export interface TaskRequestRecord {
     cheques:{number:string;dueDate:string;bounced:boolean;sourceState:string|null}[];
     promises:{dueDate:string|null;status:string|null}[];
   }|null;
+  linkedDocuments?:TaskLinkedDocument[];
   participants?:Record<string,string>; stale?:boolean; approval?:{index:number;total:number;required:number;received:number}|null;
 }
 export interface TaskRequestCommand {

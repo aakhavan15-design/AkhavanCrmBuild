@@ -6,7 +6,7 @@ import { formatAppDate } from '../../lib/utils';
 import { resolveCustomerBalanceView } from '../../lib/receivableReconciliation';
 import { toLatinDigits } from '../../lib/digits';
 import { getActiveDataProvider } from '../../services/dataProvider';
-import { requestKinds, requestPriorities, requestStatusLabels, type RequestPriority, type TaskRequestCommand,
+import { requestKinds, requestPriorities, requestStatusLabels, taskDocumentLabels, type RequestPriority, type TaskRequestCommand,
   type TaskRequestInput, type TaskRequestRecord, type TaskRequestView } from '../../services/taskRequests';
 import type { Account } from '../../types';
 import { BottomSheet } from '../ui/BottomSheet';
@@ -195,6 +195,8 @@ export function TaskRequestSheet({id,viewer,accounts,onClose,onChanged}:{
   if (action==='REVISE' && task && req) return <QuickTaskRequest open viewer={viewer} accounts={accounts} onClose={()=>setAction('')}
     onSaved={()=>{}} initial={{kind:req.kind,title:task.title,description:task.description,priority:task.priority,accountId:task.accountId,
       assigneeId:task.assigneeId,watchers:req.watchers,links:req.links,priceAuthorizationId:req.priceAuthorizationId,priceItems:req.priceItems,dueDate:task.dueDate,confidential:req.confidential}}
+    initialLinkLabels={Object.fromEntries([...(record?.linkedDocuments ?? []).map(item=>[`${item.type}:${item.id}`,item.title]),
+      ...(record?.order ? [[`ORDER:${record.order.id}`,record.order.number]] : [])])}
     submitRevision={input=>submit(input)}/>;
 
   const choose=(value:string)=>{
@@ -234,6 +236,17 @@ export function TaskRequestSheet({id,viewer,accounts,onClose,onChanged}:{
               {line.cost!=null && <p>بهای تمام‌شده {formatDecimalString(line.cost)} · حاشیهٔ مبلغی {formatDecimalString(line.margin)}</p>}
             </li>)}
           </ul>
+        </details>}
+        {req.links.some(link=>link.type!=='ORDER') && <details className="rounded-xl border border-border p-2">
+          <summary className="min-h-11 cursor-pointer content-center font-semibold">اسناد مالی مرتبط</summary>
+          <ul className="divide-y divide-border text-caption">
+            {(record.linkedDocuments ?? []).map(item=><li key={`${item.type}:${item.id}`} className="py-2">
+              {taskDocumentLabels[item.type]} <bdi>{item.title}</bdi> · {item.type==='CHEQUE' ? 'سررسید' : 'تاریخ سند'} {formatAppDate(item.date)}
+              {item.voided && ' · ابطال‌شده در ERP'}
+            </li>)}
+          </ul>
+          {(record.linkedDocuments?.length ?? 0)<req.links.filter(link=>link.type!=='ORDER').length &&
+            <p className="text-caption">اطلاعات یک یا چند سند پیوندخورده در دسترس نیست.</p>}
         </details>}
         {req.priceItems.length>0 && <details className="rounded-xl border border-border p-2">
           <summary className="min-h-11 cursor-pointer content-center font-semibold">اقلام و حدود قیمت</summary>

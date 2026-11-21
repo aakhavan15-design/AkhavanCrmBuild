@@ -145,6 +145,7 @@ export function RecordTaskAction({
     {managed ? <QuickTaskRequest key={`${state.currentUserId}:${record?.id ?? ''}`} open={open} viewer={state.currentUserId || ''} accounts={accounts}
       initial={{accountId:accountId || null,kind:linkType==='ORDER' ? 'ORDER_APPROVAL' : linkType ? 'FINANCE' : 'GENERAL',
         links:linkType && record ? [{type:linkType,id:record.id}] : []}}
+      initialLinkLabels={linkType && record ? {[`${linkType}:${record.id}`]:record.display} : undefined}
       onClose={()=>setOpen(false)} onSaved={(id,saved)=>{
         setOpen(false);
         onCreated?.({...saved.task,dueDate:saved.task.dueDate ?? undefined});
