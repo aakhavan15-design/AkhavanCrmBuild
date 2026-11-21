@@ -173,6 +173,18 @@ export interface CashFlowDataResult {
   reason?: string;
 }
 
+export interface CollectionActionInput {
+  requestId: string;
+  kind: 'FOLLOW_UP' | 'PROMISE';
+  dueDate: string;
+  note?: string;
+  promisedAmount?: number;
+  contactPerson?: string;
+  paymentMethod?: string;
+  sayadChequeNumber?: string;
+  followUp?: boolean;
+}
+
 export interface PublicRecruitmentConfig {
   company: string;
   requiredDocs: Array<{ key: string; label: string; required: boolean }>;
@@ -216,6 +228,7 @@ export interface DataProvider {
   changeTaskWorkflow(id: string, command: TaskWorkflowCommand): Promise<TaskWorkflowRecord>;
   
   // Finance
+  submitCollectionAction(accountId: string, input: CollectionActionInput): Promise<{ id: string }>;
   getInvoices(filter?: any, pagination?: PaginationParams): Promise<PaginatedResult<Invoice>>;
   getPayments(filter?: any, pagination?: PaginationParams): Promise<PaginatedResult<Payment>>;
   getCheques(filter?: any, pagination?: PaginationParams): Promise<PaginatedResult<Cheque>>;
@@ -268,6 +281,9 @@ const MAX_PNL_JOURNAL_PAGES = 100;
  * 1. پیاده‌سازی ارائه‌دهنده داده سمت کلاینت (IndexedDB / Local-first)
  */
 export class ClientStorageDataProvider implements DataProvider {
+  async submitCollectionAction(): Promise<{ id: string }> {
+    throw new Error('ثبت پیگیری وصول نیازمند اتصال به سرور است.');
+  }
   async getPublicRecruitment(): Promise<PublicRecruitmentConfig> {
     throw new Error('دریافت درخواست همکاری نیازمند اتصال به سرور است.');
   }
@@ -642,6 +658,15 @@ export class ClientStorageDataProvider implements DataProvider {
  * 2. پیاده‌سازی ارائه‌دهنده داده مستقیم به Backend سرور و SQL Server
  */
 export class HttpBackendDataProvider implements DataProvider {
+  async submitCollectionAction(accountId: string, input: CollectionActionInput): Promise<{ id: string }> {
+    const receipt = await this.request<{ id: string; status: string }>(`/finance/collections/${encodeURIComponent(accountId)}/actions`, {
+      method: 'POST', body: JSON.stringify(input),
+    });
+    if (receipt?.status !== 'RECORDED' || receipt.id !== input.requestId) {
+      throw new Error('تأیید معتبر ثبت دریافت نشد. دوباره تلاش کنید.');
+    }
+    return receipt;
+  }
   async getPublicRecruitment(): Promise<PublicRecruitmentConfig> {
     return this.request('/public/recruitment/config');
   }

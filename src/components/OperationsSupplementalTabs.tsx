@@ -6,6 +6,7 @@ import { Card } from './ui/Card';
 import { FifoInventoryPanel } from './finance/FifoInventoryPanel';
 import { Button } from './ui/Button';
 import { Badge, StatusBadge } from './ui/Badge';
+import { SearchableSelect } from './ui/SearchableSelect';
 import { Input, Select } from './ui/Input';
 import { guard, requireActiveUser, useCan } from '../hooks/useCan';
 import { calculateProfitability, buildOperationsMetrics, calculateCreditMetrics, analyzeReturns } from '../lib/operationsEngine';
@@ -75,13 +76,10 @@ export function InventoryTab({ state }: { state: AppState }) {
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         <Input label="جست‌وجوی کالا" value={query} placeholder="نام، کد، گروه یا برند"
           onChange={event => { setQuery(event.target.value); setPage(1); }} />
-        <div>
-          <label htmlFor="inventory-brand" className="mb-1 block text-xs font-bold text-text-main">برند</label>
-          <Select id="inventory-brand" value={brand} onChange={event => { setBrand(event.target.value); setPage(1); }}>
-            <option value="">همهٔ برندها</option>
-            {brands.map(value => <option key={value} value={value}>{value}</option>)}
-          </Select>
-        </div>
+        <SearchableSelect label="برند" inputId="inventory-brand" value={brand}
+          onChange={value => { setBrand(value); setPage(1); }}
+          options={[{ value: '', label: 'همهٔ برندها' }, ...brands.map(value => ({ value, label: value }))]}
+          placeholder="همهٔ برندها" />
       </div>
       {visibleProducts.length === 0 ? (
         <EmptyState surface="operations"
@@ -120,11 +118,11 @@ export function InventoryTab({ state }: { state: AppState }) {
                       {tax === null ? 'نامشخص' : tax === 0 ? <Badge variant="success">معاف (۰٪)</Badge> : `${tax.toLocaleString('fa-IR')}٪`}
                     </td>
                     <td className="p-3">
-                      {stock === null ? 'نامشخص' : stock.toLocaleString('fa-IR')}
+                      {stock === null ? 'نامشخص' : formatNumber(stock)}
                       {stock !== null && asOf && <span className="mt-1 block whitespace-nowrap text-text-secondary">{asOf}</span>}
                     </td>
                     <td className="p-3" data-testid="product-fifo-value">{money(fifo)}</td>
-                    <td className="p-3">{minimum === null ? 'تعریف نشده' : minimum.toLocaleString('fa-IR')}</td>
+                    <td className="p-3">{minimum === null ? 'تعریف نشده' : formatNumber(minimum)}</td>
                     <td className="p-3">
                       {stock === null ? <Badge variant="neutral">بدون داده معتبر</Badge>
                         : minimum === null ? <Badge variant="neutral">آستانه تعریف نشده</Badge>
@@ -141,7 +139,7 @@ export function InventoryTab({ state }: { state: AppState }) {
       {totalPages > 1 && (
         <nav aria-label="صفحه‌بندی کاتالوگ" className="flex flex-wrap items-center justify-between gap-2">
           <Button size="sm" variant="outline" disabled={activePage === 1} onClick={() => setPage(activePage - 1)}>قبلی</Button>
-          <span className="text-xs text-text-secondary">صفحهٔ {activePage.toLocaleString('fa-IR')} از {totalPages.toLocaleString('fa-IR')}</span>
+          <span className="text-xs text-text-secondary">صفحهٔ {formatNumber(activePage)} از {formatNumber(totalPages)}</span>
           <Button size="sm" variant="outline" disabled={activePage === totalPages} onClick={() => setPage(activePage + 1)}>بعدی</Button>
         </nav>
       )}

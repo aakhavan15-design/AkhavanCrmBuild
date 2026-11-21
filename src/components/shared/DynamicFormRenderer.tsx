@@ -1,3 +1,4 @@
+import { getPersianEntityLabel, getPersianStatusLabel } from '../../lib/labels';
 import React, { useState, useEffect, useRef } from 'react';
 import { Textarea, Checkbox } from '../ui/Input';
 import { 
@@ -360,7 +361,7 @@ export function DynamicFormRenderer({
                     const next = `${current.slice(0,start)}@${entity.displayText} ${current.slice(end)}`;
                     setFormValues(previous => ({ ...previous, [field.name]: next, mentions: [...((previous.mentions as Record<string, unknown>[]) || []).filter((m: Record<string, unknown>) => !(m.entityType === entity.entityType && m.entityId === entity.entityId)), createMentionReference(entity)] }));
                     setMentionMenu(null);
-                  }}><span className="min-w-0"><span className="block text-xs font-bold text-text-main">{entity.displayText}</span><span className="block text-micro text-text-secondary">{entity.entityType} · {entity.subtitle || entity.entityId}</span></span><span className="shrink-0 text-micro text-text-secondary">{entity.source}</span></button>)}
+                  }}><span className="min-w-0"><span className="block text-xs font-bold text-text-main">{entity.displayText}</span><span className="block text-micro text-text-secondary">{getPersianEntityLabel(entity.entityType)}{entity.subtitle ? ` · ${entity.subtitle}` : ''}</span></span><span className="shrink-0 text-micro text-text-secondary">{getPersianStatusLabel(entity.source)}</span></button>)}
                 </div>
               )}
 

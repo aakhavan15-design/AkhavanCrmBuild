@@ -41,10 +41,10 @@ import { DemoTrustBanner, isAuthoritativeActionAllowed } from './shared/DemoTrus
 import { CustomDatePicker } from './ui/CustomDatePicker';
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip as RechartsTooltip } from 'recharts';
 import { LineChart } from './charts/LineChart';
+import { CollectionActionDialog } from './finance/CollectionActionDialog';
 import { ProfitLossWidget } from './finance/ProfitLossWidget';
 import { 
   evaluateAllCustomerCollections, 
-  generateCollectionTaskForAccount, 
   CustomerCollectionProfile 
 } from '../services/collectionEngine';
 import { DOCUMENT_TYPE_LABELS, buildPaymentFormPrefill, type CapturedDocumentType, type IntakePrefillPayload } from '../lib/documentCapture';
@@ -67,12 +67,7 @@ export function FinanceWorkspace({ state, updateState }: FinanceWorkspaceProps) 
   const activeArea = areaOf(FINANCE_AREAS, activeTab);
   const [notice, setNotice] = useState<string | null>(null);
 
-  const [showPromiseModal, setShowPromiseModal] = useState(false);
-  const [selectedProfileForPromise, setSelectedProfileForPromise] = useState<CustomerCollectionProfile | null>(null);
-  const [showAutoTaskModal, setShowAutoTaskModal] = useState(false);
-  const [selectedProfileForTask, setSelectedProfileForTask] = useState<CustomerCollectionProfile | null>(null);
-  const [autoTaskDueDate, setAutoTaskDueDate] = useState(new Date(Date.now() + 86400000 * 2).toISOString().split('T')[0]);
-  const [autoTaskNote, setAutoTaskNote] = useState('');
+  const [collectionAction, setCollectionAction] = useState<{ kind: 'PROMISE' | 'FOLLOW_UP'; profile: CustomerCollectionProfile } | null>(null);
 
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [showPaymentOrder, setShowPaymentOrder] = useState(false);
@@ -668,12 +663,12 @@ export function FinanceWorkspace({ state, updateState }: FinanceWorkspaceProps) 
                 </div>
 
                 <div className="flex items-center gap-2 self-end sm:self-auto">
-                  <Button variant="soft" size="xs" onClick={() => { setSelectedProfileForPromise(p); setShowPromiseModal(true); }} >
+                  {can('finance', 'EDIT') && <Button variant="soft" size="xs" onClick={() => setCollectionAction({ kind: 'PROMISE', profile: p })}>
                     ثبت تعهد
-                  </Button>
-                  <Button variant="outline" size="xs" onClick={() => { setSelectedProfileForTask(p); setAutoTaskNote(`پیگیری فوری مطالبات ${p.overdueBalance.toLocaleString('fa-IR')} ریال.`); setShowAutoTaskModal(true); }} >
-                    پیگیری تقویم
-                  </Button>
+                  </Button>}
+                  {can('tasks', 'CREATE') && <Button variant="outline" size="xs" onClick={() => setCollectionAction({ kind: 'FOLLOW_UP', profile: p })}>
+                    پیگیری در تقویم
+                  </Button>}
                 </div>
               </div>
             ))}
@@ -711,16 +706,11 @@ export function FinanceWorkspace({ state, updateState }: FinanceWorkspaceProps) 
         </Modal>
       )}
 
-      {showPromiseModal && selectedProfileForPromise && (
-        <Modal 
-          isOpen={showPromiseModal} 
-          onClose={() => { setShowPromiseModal(false); setSelectedProfileForPromise(null); }} 
-          title={`ثبت تعهد پرداخت: ${selectedProfileForPromise.accountName}`}
-          footer={<Button type="button" variant="secondary" onClick={() => { setShowPromiseModal(false); setSelectedProfileForPromise(null); }}>بازگشت به مطالبات</Button>}
-        >
-          <p role="status" className="text-sm leading-relaxed text-text-secondary">ثبت تعهد پرداخت برای این مشتری در حال حاضر در دسترس نیست.</p>
-        </Modal>
-      )}
+      {collectionAction && <CollectionActionDialog
+        kind={collectionAction.kind} profile={collectionAction.profile} canCreateTask={can('tasks', 'CREATE')}
+        onClose={() => setCollectionAction(null)}
+        onRecorded={message => { setNotice(message); setCollectionAction(null); }}
+      />}
 
       {/* مودال ورود هوشمند اسناد با هوش مصنوعی (OCR) */}
       <DocumentIntakeDrawer

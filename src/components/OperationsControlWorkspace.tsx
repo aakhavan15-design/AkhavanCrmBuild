@@ -180,10 +180,10 @@ export function OperationsControlWorkspace({ state, updateState }: Props) {
     };
 
     return returnsAnalysis.map(item => {
-      const meta = labelsMap[item.reasonCode] || { label: item.reasonCode, color: 'var(--c-chart-1)' };
+      const meta = labelsMap[item.reasonCode] || labelsMap.UNKNOWN;
       return {
         label: meta.label,
-        value: item.amount || item.count || 1,
+        value: item.count,
         color: meta.color
       };
     });
@@ -421,8 +421,8 @@ export function OperationsControlWorkspace({ state, updateState }: Props) {
                   size={150}
                   thickness={16}
                   segments={returnCausesSegments}
-                  centerLabel="کل مبالغ"
-                  centerValue={money(totalReturns)}
+                  centerLabel="تعداد برگشتی"
+                  centerValue={formatCount(returnCausesSegments.reduce((sum, segment) => sum + segment.value, 0))}
                 />
               </div>
             </Card>

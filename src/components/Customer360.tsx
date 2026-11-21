@@ -1,3 +1,4 @@
+import { formatCount } from '../lib/format';
 import { guard, requireActiveUser } from '../hooks/useCan';
 import React, { useState, useMemo } from 'react';
 import { FinancialContextPanel, ContextToggle } from './shared/FinancialContextPanel';
@@ -41,7 +42,7 @@ interface Customer360Props {
   setActiveTab?: (tab: string) => void;
 }
 
-const fa = (value: number) => value.toLocaleString('fa-IR');
+const fa = formatCount;
 
 const receiptStatusLabel = (status: unknown) => {
   const labels: Record<string, string> = {
@@ -465,7 +466,7 @@ export function Customer360({ customer, state, onBack, updateState, setActiveTab
               </span>
               <span className="text-micro opacity-80">ریال</span>
             </div>
-            <span className="text-micro opacity-80 mt-0.5 block">{accountQuotes.length.toLocaleString('fa-IR')} فقره پیش‌فاکتور</span>
+            <span className="text-micro opacity-80 mt-0.5 block">{formatCount(accountQuotes.length)} فقره پیش‌فاکتور</span>
           </div>
 
           <div className="p-3 rounded-xl border border-border bg-surface flex flex-col justify-between">
@@ -480,7 +481,7 @@ export function Customer360({ customer, state, onBack, updateState, setActiveTab
               </SecureField>
               <span className="text-micro text-text-secondary">ریال</span>
             </div>
-            <span className="text-micro text-text-secondary mt-0.5 block">{customerInvoices.length.toLocaleString('fa-IR')} فاکتور معتبر</span>
+            <span className="text-micro text-text-secondary mt-0.5 block">{formatCount(customerInvoices.length)} فاکتور معتبر</span>
           </div>
 
           <div id="acc-churn-card" data-tour-primary className="p-3 rounded-xl border border-border bg-surface flex flex-col justify-between">
@@ -530,9 +531,9 @@ export function Customer360({ customer, state, onBack, updateState, setActiveTab
         <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pt-1 border-b border-border">
           {[
             { id: 'OVERVIEW', label: 'خلاصه و هویت' },
-            { id: 'TIMELINE', label: `گاه‌شمار و تاریخچه (${unifiedTimeline.length.toLocaleString('fa-IR')})` },
-            { id: 'DEALS', label: `سفارش‌ها و مذاکرات (${(accountQuotes.length + accountOpportunities.length).toLocaleString('fa-IR')})` },
-            { id: 'FINANCE_SUPPORT', label: `مالی و خدمات (${(customerInvoices.length + accountCases.length).toLocaleString('fa-IR')})` }
+            { id: 'TIMELINE', label: `گاه‌شمار و تاریخچه (${formatCount(unifiedTimeline.length)})` },
+            { id: 'DEALS', label: `سفارش‌ها و مذاکرات (${formatCount((accountQuotes.length + accountOpportunities.length))})` },
+            { id: 'FINANCE_SUPPORT', label: `مالی و خدمات (${formatCount((customerInvoices.length + accountCases.length))})` }
           ].map(hub => (
             <button
               key={hub.id}

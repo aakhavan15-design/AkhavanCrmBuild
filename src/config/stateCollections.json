@@ -331,6 +331,7 @@
         "zoneId": "geoZones"
       }
     },
+    "collectionPromises": { "profile": "finance", "refs": { "accountId": "accounts" } },
     "onboardingApplications": {
       "profile": "recruitment"
     },

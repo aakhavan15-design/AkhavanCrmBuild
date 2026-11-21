@@ -12,7 +12,7 @@ import {
 const NAME_RE = /^[A-Za-z][A-Za-z0-9_]{0,79}$/;
 export const LIMITS = Object.freeze({ maxRecordBytes: 1_000_000, maxChangeRecords: 5000, maxBootstrapRecords: 50000 });
 const PARTY_COLLECTIONS = ['accounts', 'customers'];
-const FINANCIAL_PARTY_COLLECTIONS = ['invoices', 'payments', 'cheques', 'paymentallocations', 'creditnotes'];
+const FINANCIAL_PARTY_COLLECTIONS = ['invoices', 'payments', 'cheques', 'paymentallocations', 'creditnotes', 'collectionpromises'];
 const sqlCollectionList = names => names.map(name => `N'${name}'`).join(',');
 const scopedCollections = new Set([...PARTY_COLLECTIONS, ...FINANCIAL_PARTY_COLLECTIONS]);
 const taskWorkflowFields = sqlCollectionList([
@@ -383,7 +383,10 @@ export function createEntityService({ driver, registry, hasPermission, excludeFi
     const visibleGroupIds = new Set(visibleGroups.map(group => group.id));
     const mayReadApplications = await can(auth, 'users.manage');
     const storedCollections = {
-      ...full.collections,
+      ...Object.fromEntries(Object.entries(full.collections).filter(([name]) =>
+        !['groups', 'messages', 'attachments', 'onboardingapplications', 'collectionpromises'].includes(name.toLowerCase()))),
+      onboardingApplications: full.collections.onboardingApplications || [],
+      collectionPromises: full.collections.collectionPromises || [],
       groups: visibleGroups,
       messages: (full.collections.messages || []).filter(message => visibleGroupIds.has(message.groupId)),
       attachments: (full.collections.attachments || []).filter(item =>
@@ -411,7 +414,7 @@ export function createEntityService({ driver, registry, hasPermission, excludeFi
     const rejected = [];
     let total = 0;
     const writable = new Map();
-    const privateNames = new Map(['groups', 'messages', 'attachments', 'onboardingApplications'].map(name => [name.toLowerCase(), name]));
+    const privateNames = new Map(['groups', 'messages', 'attachments', 'onboardingApplications', 'collectionPromises'].map(name => [name.toLowerCase(), name]));
     const canonical = name => !privateNames.has(name.toLowerCase()) || privateNames.get(name.toLowerCase()) === name;
     const canWrite = async (name) => {
       const code = policyOf(name, registry).write;
@@ -419,6 +422,7 @@ export function createEntityService({ driver, registry, hasPermission, excludeFi
       return writable.get(code);
     };
     for (const [name, list] of Object.entries(change?.upserts || {})) {
+      if (name.toLowerCase() === 'collectionpromises') { rejected.push({ collection: name, reason: 'FORBIDDEN_CONTRACT' }); continue; }
       if (!NAME_RE.test(name) || !canonical(name) || !Array.isArray(list)) { rejected.push({ collection: name, reason: 'INVALID_COLLECTION' }); continue; }
       if (!(await canWrite(name))) { rejected.push({ collection: name, reason: 'FORBIDDEN', count: list.length }); continue; }
       for (const rec of list) {
@@ -430,6 +434,7 @@ export function createEntityService({ driver, registry, hasPermission, excludeFi
       }
     }
     for (const [name, ids] of Object.entries(allowDeletes ? (change?.deletes || {}) : {})) {
+      if (name.toLowerCase() === 'collectionpromises') { rejected.push({ collection: name, reason: 'FORBIDDEN_CONTRACT' }); continue; }
       if (!NAME_RE.test(name) || !canonical(name) || !Array.isArray(ids)) { rejected.push({ collection: name, reason: 'INVALID_COLLECTION' }); continue; }
       if (!(await canWrite(name))) { rejected.push({ collection: name, reason: 'FORBIDDEN', count: ids.length }); continue; }
       deletes[name] = ids.filter((id) => typeof id === 'string' && id.length > 0 && id.length <= 200); total += deletes[name].length;

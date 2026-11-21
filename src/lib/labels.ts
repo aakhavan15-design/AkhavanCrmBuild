@@ -43,6 +43,15 @@ const BUSINESS_EVENT_LABELS: Record<string, string> = {
 const BUSINESS_ENTITY_LABELS: Record<string, string> = {
   CAMPAIGN: 'کمپین', OPPORTUNITY: 'فرصت فروش', QUOTE: 'پیش‌فاکتور', TASK: 'وظیفه', CUSTOMER: 'مشتری', PAYMENT: 'رسید دریافت وجه',
 };
+export function getPersianEntityLabel(entityType: string): string {
+  const extras: Record<string, string> = {
+    ACCOUNT: 'حساب مشتری', STAFF: 'همکار', USER: 'کاربر', CHECK: 'چک', CHEQUE: 'چک',
+    PRODUCT: 'کالا', CASE: 'پروندهٔ خدمات', REQUEST: 'درخواست سازمانی', GROUP: 'گروه کاری',
+  };
+  const key = entityType.toUpperCase();
+  return BUSINESS_ENTITY_LABELS[key] || extras[key] || SUPPLEMENTAL_LABELS[key] || 'رکورد سامانه';
+}
+
 export function getPersianBusinessEventTitle(entityType: string, eventType: string): string {
   const e = BUSINESS_ENTITY_LABELS[String(entityType).toUpperCase()] || 'رویداد';
   const t = BUSINESS_EVENT_LABELS[String(eventType).toUpperCase()] || 'ثبت رویداد';

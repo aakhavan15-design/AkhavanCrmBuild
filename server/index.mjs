@@ -9,6 +9,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import fs from 'node:fs';
 import { createEntityService, FileEntityDriver, MssqlEntityDriver, MemoryEntityDriver } from './entityStore.mjs';
+import { createCollectionActions } from './collectionActions.mjs';
 import { createPublicRecruitment } from './publicRecruitment.mjs';
 import { buildReportStatus } from './reportStatus.mjs';
 import { getVapidPublicKey, saveSubscription, removeSubscription, sendPushToUser, initPushModule } from './pushStore.mjs';
@@ -761,6 +762,13 @@ app.post('/api/v1/public/recruitment/applications', wrap(async (req, res) => {
   const result = await publicRecruitment.submit(req.body);
   if (!result.receipt) return bad(req, res, result.status, 'RECRUITMENT_NOT_ACCEPTED', result.message);
   res.status(result.status).json(result.receipt);
+}));
+
+const submitCollectionAction = createCollectionActions({ sql, run: withTenantContext });
+app.post('/api/v1/finance/collections/:accountId/actions', authenticate, wrap(async (req, res) => {
+  const result = await submitCollectionAction(req.auth, req.params.accountId, req.body);
+  if (!result.id) return bad(req, res, result.status, 'COLLECTION_ACTION_REJECTED', result.message);
+  res.status(result.status).json({ id: result.id, status: 'RECORDED' });
 }));
 
 app.get('/api/v1/state/snapshot', authenticate, guardEntityDriver, wrap(async (req, res) => {
