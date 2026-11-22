@@ -188,5 +188,17 @@ BEGIN
   ALTER SECURITY POLICY security.TenantIsolationPolicy ADD FILTER PREDICATE security.fn_TenantAccessPredicate(TenantId) ON crm.VisitTourMirror;
  IF NOT EXISTS(SELECT 1 FROM sys.security_predicates WHERE object_id=OBJECT_ID(N'security.TenantIsolationPolicy') AND target_object_id=OBJECT_ID(N'crm.ErpVisitEventMirror'))
   ALTER SECURITY POLICY security.TenantIsolationPolicy ADD FILTER PREDICATE security.fn_TenantAccessPredicate(TenantId) ON crm.ErpVisitEventMirror;
+ IF NOT EXISTS(SELECT 1 FROM sys.security_predicates WHERE object_id=OBJECT_ID(N'security.TenantIsolationPolicy') AND target_object_id=OBJECT_ID(N'crm.VisitRouteCustomerMirror'))
+  ALTER SECURITY POLICY security.TenantIsolationPolicy ADD FILTER PREDICATE security.fn_TenantAccessPredicate(TenantId) ON crm.VisitRouteCustomerMirror;
+ IF NOT EXISTS(SELECT 1 FROM sys.security_predicates WHERE object_id=OBJECT_ID(N'security.TenantIsolationPolicy') AND target_object_id=OBJECT_ID(N'crm.VisitRouteStaffMirror'))
+  ALTER SECURITY POLICY security.TenantIsolationPolicy ADD FILTER PREDICATE security.fn_TenantAccessPredicate(TenantId) ON crm.VisitRouteStaffMirror;
+ IF NOT EXISTS(SELECT 1 FROM sys.security_predicates WHERE object_id=OBJECT_ID(N'security.TenantIsolationPolicy') AND target_object_id=OBJECT_ID(N'crm.VisitTourStopMirror'))
+  ALTER SECURITY POLICY security.TenantIsolationPolicy ADD FILTER PREDICATE security.fn_TenantAccessPredicate(TenantId) ON crm.VisitTourStopMirror;
+ IF NOT EXISTS(SELECT 1 FROM sys.security_predicates WHERE object_id=OBJECT_ID(N'security.TenantIsolationPolicy') AND target_object_id=OBJECT_ID(N'crm.VisitNoOrderReasonMirror'))
+  ALTER SECURITY POLICY security.TenantIsolationPolicy ADD FILTER PREDICATE security.fn_TenantAccessPredicate(TenantId) ON crm.VisitNoOrderReasonMirror;
+ IF NOT EXISTS(SELECT 1 FROM sys.security_predicates WHERE object_id=OBJECT_ID(N'security.TenantIsolationPolicy') AND target_object_id=OBJECT_ID(N'crm.SalesRepGpsMirror'))
+  ALTER SECURITY POLICY security.TenantIsolationPolicy ADD FILTER PREDICATE security.fn_TenantAccessPredicate(TenantId) ON crm.SalesRepGpsMirror;
+ IF NOT EXISTS(SELECT 1 FROM sys.security_predicates WHERE object_id=OBJECT_ID(N'security.TenantIsolationPolicy') AND target_object_id=OBJECT_ID(N'crm.VisitRouteZoneGeometry'))
+  ALTER SECURITY POLICY security.TenantIsolationPolicy ADD FILTER PREDICATE security.fn_TenantAccessPredicate(TenantId) ON crm.VisitRouteZoneGeometry;
 END;
 GO
