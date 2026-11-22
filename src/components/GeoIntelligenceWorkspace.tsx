@@ -69,6 +69,7 @@ export function GeoIntelligenceWorkspace({ state, updateState }: Props) {
   const [mode, setMode] = useState<Mode>(() => new URLSearchParams(location.search).get('mode') === 'operations' ? 'operations' : 'zones');
   const [selectedZoneId, setSelectedZoneId] = useState('');
   const [selectedErpRouteId, setSelectedErpRouteId] = useState('');
+  const [selectedErpTourId, setSelectedErpTourId] = useState('');
   const [zoneName, setZoneName] = useState('');
   const [zoneCode, setZoneCode] = useState('');
   const [coordinateText, setCoordinateText] = useState('');
@@ -101,6 +102,16 @@ export function GeoIntelligenceWorkspace({ state, updateState }: Props) {
     selectedErpRoute,visibleCustomers,state.erpVisitRouteCustomers||[],state.erpVisitRouteStaff||[],toLocalDateISO()
   ):null;
   const routeZoneSuggestion = routeMembership ? suggestRoutePolygonFromCustomers(routeMembership.customers) : null;
+  const routeTours = selectedErpRoute ? (state.erpVisitTours||[]).filter(tour=>tour.routeExternalId===selectedErpRoute.externalId &&
+    tour.sourceSystemCode.toUpperCase()===selectedErpRoute.sourceSystemCode.toUpperCase() &&
+    tour.tenantId===selectedErpRoute.tenantId && !tour.isDeleted) : [];
+  const selectedRouteTour = routeTours.find(tour=>tour.externalId===selectedErpTourId)||null;
+  const routeGpsFacts = selectedErpRoute && routeMembership ? (state.erpSalesRepGpsLogs||[])
+    .filter(log=>log.tenantId===selectedErpRoute.tenantId &&
+      log.sourceSystemCode.toUpperCase()===selectedErpRoute.sourceSystemCode.toUpperCase() &&
+      routeMembership.sellerIds.includes(log.externalSalesRepId) &&
+      String(log.recordedAtUtc).slice(0,10)===String(selectedRouteTour?.tourDate||toLocalDateISO()))
+    .sort((a,b)=>a.recordedAtUtc.localeCompare(b.recordedAtUtc)).slice(-500) : [];
   const routeVisitFacts = selectedErpRoute && routeMembership ? (state.erpVisitEvents||[])
     .filter(visit=>visit.tenantId===selectedErpRoute.tenantId &&
       visit.sourceSystemCode.toUpperCase()===selectedErpRoute.sourceSystemCode.toUpperCase() &&
@@ -133,13 +144,20 @@ export function GeoIntelligenceWorkspace({ state, updateState }: Props) {
         String(customer.externalId||customer.externalAccountId)===visit.externalCustomerId)?.id,
       latitude:visit.latitude,longitude:visit.longitude,
     })),displayedRouteGeometry) : null;
+  const tourSequenceByExternalCustomer = new Map((selectedRouteTour?.stops||[]).map(stop=>[stop.externalCustomerId,stop.stopSequence]));
   const routeMapPins: GeoMapPin[] = routeMembership ? [
     ...routeMembership.customers.flatMap(customer=>{
       const point=readCustomerGeoPoint(customer);
       if(!point)return [];
       return [{id:customer.id,name:customer.name,kind:'CUSTOMER' as const,point,
+        sequence:tourSequenceByExternalCustomer.get(String(customer.externalId||customer.externalAccountId||'')),
         outside:!!routeOutliers?.customersOutside.some(out=>out.id===customer.id),
         detailPath:'/accounts/'+encodeURIComponent(customer.id)}];
+    }),
+    ...routeGpsFacts.flatMap(log=>{
+      const point=readCustomerGeoPoint({latitude:log.latitude,longitude:log.longitude});
+      if(!point)return [];
+      return [{id:log.externalId,name:'GPS فروشنده '+log.externalSalesRepId+' · '+log.recordedAtUtc,kind:'GPS' as const,point}];
     }),
     ...routeVisitFacts.flatMap(visit=>{
       const point=readCustomerGeoPoint({latitude:visit.latitude,longitude:visit.longitude});
@@ -191,7 +209,7 @@ export function GeoIntelligenceWorkspace({ state, updateState }: Props) {
   };
   const selectZone = (zone: GeoZone) => {
     setSelectedZoneId(zone.id); setZoneName(zone.name); setZoneCode(zone.code);
-    setSelectedErpRouteId(String(zone.erpRouteExternalId || ''));
+    setSelectedErpRouteId(String(zone.erpRouteExternalId || ''));setSelectedErpTourId('');
     const current = versions.find(version => version.id === zone.currentGeometryVersionId) || versions.filter(version => version.zoneId === zone.id && !version.effectiveTo).sort((a,b) => b.version-a.version)[0];
     setCoordinateText(coordinatesToText(current?.geometry)); setChangeReason(''); setStatusMessage(null);
   };
@@ -541,7 +559,7 @@ export function GeoIntelligenceWorkspace({ state, updateState }: Props) {
           <label className="block text-xs font-black text-text-main">انتخاب مسیر رسمی ERP
             <Select value={selectedErpRouteId} className="mt-2" onChange={event=>{
               const route=erpRoutes.find(item=>item.externalId===event.target.value);
-              setSelectedErpRouteId(route?.externalId||'');setSelectedZoneId('');
+              setSelectedErpRouteId(route?.externalId||'');setSelectedErpTourId('');setSelectedZoneId('');
               setZoneName(route?route.routeName+' — محدوده تحلیلی':'');setZoneCode(route?'ERP-'+route.routeCode:'');
               setCoordinateText('');setChangeReason('');setStatusMessage(null);
             }}>
@@ -553,6 +571,14 @@ export function GeoIntelligenceWorkspace({ state, updateState }: Props) {
             <p>عضویت‌های ERP: {routeMembership.officialMembershipCount.toLocaleString('fa-IR')} · مشتری نگاشت‌شده و مجاز: {routeMembership.customers.length.toLocaleString('fa-IR')} · بدون نگاشت: {routeMembership.unmappedCount.toLocaleString('fa-IR')}</p>
             <p>فروشنده‌ها: {routeMembership.sellerIds.join('، ')||'نامشخص'} · سرپرست‌ها: {routeMembership.supervisorIds.join('، ')||'نامشخص'}</p>
             <p>زیرمسیرها: {routeMembership.subRoutes.map(sub=>sub.code+' ('+sub.count+')').join('، ')||'فاقد کد زیرمسیر'}</p>
+            <label className="block font-bold text-text-main">تور روزانه ERP
+              <Select className="mt-1" value={selectedErpTourId} onChange={event=>setSelectedErpTourId(event.target.value)}>
+                <option value="">بدون انتخاب تور</option>
+                {routeTours.map(tour=><option key={tour.externalId} value={tour.externalId}>{tour.tourDate} · {tour.externalId} · ویزیتور {tour.salesRepExternalId}</option>)}
+              </Select>
+            </label>
+            <p>{selectedRouteTour ? 'ترتیب روی پین‌های مشتری از تور رسمی ERP خوانده می‌شود؛ شروع مراجعه با شماره ۱ است.' : 'برای نمایش ترتیب رسمی و شروع مراجعه، تور تاریخ‌دار را انتخاب کنید.'}</p>
+            <p>نقاط GPS فروشنده در تاریخ تور/امروز: {routeGpsFacts.length.toLocaleString('fa-IR')} نمونه (حداکثر ۵۰۰ نقطه روی نقشه)</p>
             <div className="flex flex-wrap gap-2">
               <Button variant="outline" disabled={!canEdit||routeZoneSuggestion?.status!=='READY'} onClick={()=>{
                 if(!routeZoneSuggestion?.geometry)return;
