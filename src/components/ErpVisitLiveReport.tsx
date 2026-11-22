@@ -79,6 +79,11 @@ export function ErpVisitLiveReport(){
  const anomaly=useMemo(()=>boundary?inspectRouteCoordinates(sourceCustomers,visits.map(v=>({
   id:v.ExternalVisitId,customerId:v.AccountId,latitude:v.Latitude,longitude:v.Longitude,
  })),boundary):null,[sourceCustomers,visits,boundary]);
+ const gpsTrack = showGps ? [...gps].sort((a,b)=>a.RecordedAtUtc.localeCompare(b.RecordedAtUtc))
+   .slice(-500).flatMap(log=>{
+     const point=readCustomerGeoPoint({latitude:log.Latitude,longitude:log.Longitude});
+     return point?[point]:[];
+   }) : [];
  const markers:GeoMapPin[]=[
   ...(showCustomers?customers.flatMap(c=>{
    const point=readCustomerGeoPoint({latitude:c.Latitude,longitude:c.Longitude});
@@ -139,8 +144,28 @@ export function ErpVisitLiveReport(){
    <GeoZoneMapEditor
     key={selected.RouteId+date}
     geometry={boundary||undefined} coordinateText={toStringGeometry(boundary)}
-    disabled onChange={()=>{}} markers={markers}
+    disabled onChange={()=>{}} markers={markers} gpsTrack={gpsTrack}
    />
+   {anomaly&&<div className="grid gap-2 sm:grid-cols-2">
+    <section className="rounded-xl border border-border p-3 text-xs">
+     <h3 className="font-black text-text-main">مشتریان مشکوک خارج از محدوده پیشنهادی</h3>
+     <p className="my-2 text-text-secondary">احتمال اشتباه GPS مشتری یا انتساب مسیر؛ نیازمند بررسی انسانی، نه حذف خودکار.</p>
+     {anomaly.customersOutside.length===0?<p>موردی در مختصات موجود تشخیص داده نشد.</p>:<ul className="max-h-48 space-y-1 overflow-auto">
+      {anomaly.customersOutside.slice(0,50).map(customer=><li key={customer.id} className="flex justify-between gap-2">
+       <span>{customer.name}</span><Link className="font-bold text-primary" to={'/accounts/'+encodeURIComponent(customer.id)}>جزئیات</Link>
+      </li>)}
+     </ul>}
+    </section>
+    <section className="rounded-xl border border-border p-3 text-xs">
+     <h3 className="font-black text-text-main">ویزیت‌های مشکوک خارج از محدوده</h3>
+     <p className="my-2 text-text-secondary">مختصات زمان ویزیت با محدوده پیشنهادی مقایسه شده؛ دقت GPS و زمان ثبت باید بررسی شود.</p>
+     {anomaly.visitsOutside.length===0?<p>موردی در مختصات موجود تشخیص داده نشد.</p>:<ul className="max-h-48 space-y-1 overflow-auto">
+      {anomaly.visitsOutside.slice(0,50).map(visit=><li key={visit.id} className="flex justify-between gap-2">
+       <span>ویزیت {visit.id}</span>{visit.customerId&&<Link className="font-bold text-primary" to={'/accounts/'+encodeURIComponent(visit.customerId)}>پرونده مشتری</Link>}
+      </li>)}
+     </ul>}
+    </section>
+   </div>}
    <div className="space-y-2">
     <h3 className="text-sm font-black text-text-main">فهرست رسمی ترتیب مراجعه</h3>
     {!orderedStops.length?<p className="text-xs text-text-secondary">تور یا ایستگاه مجاز برای این تاریخ موجود نیست.</p>:<ol className="max-h-64 space-y-2 overflow-auto">
