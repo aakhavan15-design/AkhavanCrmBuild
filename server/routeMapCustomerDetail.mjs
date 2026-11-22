@@ -173,6 +173,16 @@ export function createRouteCustomerDetailReader({sql,run}){
   }
   const returnMap=new Map(returnRows.map(r=>[String(r.AccountId).toLowerCase(),Number(r.ReturnAmount)]));
   const balanceMap=new Map(balanceRows.map(r=>[String(r.AccountId).toLowerCase(),Number(r.ReceivableAmount)]));
+  const sourceCoverage=(await request().query(`
+    SELECT
+      CASE WHEN EXISTS(SELECT 1 FROM crm.ErpVisitEventMirror e WHERE e.TenantId=@tenant AND e.IsDeleted=0)
+        THEN 1 ELSE 0 END AS HasVisitFeed,
+      CASE WHEN EXISTS(SELECT 1 FROM crm.InvoiceMirror i WHERE i.TenantId=@tenant
+        AND i.IsVoided=0 AND i.StatusCode IN ('POSTED','CONFIRMED','CLOSED'))
+        THEN 1 ELSE 0 END AS HasInvoiceFeed
+  `)).recordset[0]||{};
+  const hasVisitFeed=sourceCoverage.HasVisitFeed===1;
+  const hasInvoiceFeed=financeAllowed && sourceCoverage.HasInvoiceFeed===1;
   const visitByAccount=new Map();
   for(const v of visits){const k=String(v.AccountId).toLowerCase();const a=visitByAccount.get(k)||[];a.push(v);visitByAccount.set(k,a);}
   const invoiceByAccount=new Map();
@@ -187,16 +197,16 @@ export function createRouteCustomerDetailReader({sql,run}){
     const bought=financeAllowed&&ci.length>0,visited=cv.length>0;
     return {id:m.AccountId,name:m.Name,code:m.AccountCode,statusCode:m.StatusCode,businessCategoryCode:m.BusinessCategoryCode,
       subRouteCode:m.SubRouteCode,latitude:numberOrNull(m.Latitude),longitude:numberOrNull(m.Longitude),
-      visitCount:cv.length,lastVisitAt:lastVisit?.VisitedAtUtc||null,
+      visitCount:hasVisitFeed?cv.length:null,lastVisitAt:lastVisit?.VisitedAtUtc||null,
       lastVisitOutcome:lastVisit?.OutcomeCode||null,noOrderReason:lastVisit?.ReasonTitleFa||lastVisit?.NoOrderReasonCode||null,
-      invoiceCount:financeAllowed?ci.length:null,netSales:financeAllowed&&ci.length?sales:null,
+      invoiceCount:hasInvoiceFeed?ci.length:null,netSales:hasInvoiceFeed&&ci.length?sales:null,
       returnAmount:returnMap.has(id)?returnMap.get(id):null,
       receivableAmount:balanceMap.has(id)?balanceMap.get(id):null,
       receivableAsOf:balanceMap.has(id)?new Date().toISOString().slice(0,10):null,
       lastInvoice:lastInvoice?{number:lastInvoice.InvoiceNumber,date:lastInvoice.InvoiceDate,
         items:(linesByInvoice.get(String(lastInvoice.InvoiceMirrorId).toLowerCase())||[])
           .slice(0,25).map(l=>({name:l.ProductNameSnapshot,quantity:Number(l.Quantity),unitPrice:Number(l.NetUnitPrice)}))}:null,
-      status:!financeAllowed?(visited?'VISITED':'UNKNOWN'):(bought?'BOUGHT':visited?'VISITED_NO_ORDER':'NOT_BOUGHT'),
+      status:!hasInvoiceFeed?(hasVisitFeed&&visited?'VISITED':'UNKNOWN'):(bought?'BOUGHT':hasVisitFeed&&visited?'VISITED_NO_ORDER':hasVisitFeed?'NOT_BOUGHT':'UNKNOWN'),
       evidence:{visitIds:cv.slice(0,5).map(v=>v.ExternalVisitId),
         invoiceIds:financeAllowed?ci.slice(0,5).map(i=>i.InvoiceMirrorId):[]}};
   });
@@ -206,7 +216,7 @@ export function createRouteCustomerDetailReader({sql,run}){
     item.amount+=Number(l.NetLineAmount||0);item.quantity+=Number(l.Quantity||0);map.set(key,item);return map;
   },new Map()).values()].sort((a,b)=>b.amount-a.amount).slice(0,20):[];
   return {route,period:{dateFrom:filters.from,dateTo:filters.to},customers,topProducts,
-    source:'ERP_SQL',moneyUnit:'IRR',financeVisible:financeAllowed,
+    source:'ERP_SQL',moneyUnit:'IRR',financeVisible:financeAllowed,coverage:{hasVisitFeed,hasInvoiceFeed},
     warnings:['بازه زمانی بر اساس عضویت رسمی ERP محاسبه شده است.',
       'برای مشتری چندمسیره ممکن است یک فاکتور در هر مسیر مربوط نمایش داده شود.',
       'برگشتی از ریز اسناد برگشت و مطالبات از مانده فعلی حسابداری فقط با مجوز همان شاخص قابل مشاهده است. سود و هدف هنوز به منبع قطعی متصل نیستند.']};
