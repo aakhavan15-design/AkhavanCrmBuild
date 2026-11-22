@@ -4,7 +4,7 @@
  * return/receivable/target data into 0.
  */
 export function createRouteCustomerDetailReader({sql,run}){
- return async(auth,{routeId,filters,organizationWide=false,financeAllowed=false,financeOrganizationWide=false})=>run(auth,async transaction=>{
+ return async(auth,{routeId,filters,organizationWide=false,financeAllowed=false,financeOrganizationWide=false,returnAllowed=false,receivableAllowed=false})=>run(auth,async transaction=>{
   const request=()=>new sql.Request(transaction)
    .input('tenant',sql.UniqueIdentifier,auth.tenantId)
    .input('actor',sql.UniqueIdentifier,auth.userId)
@@ -114,6 +114,56 @@ export function createRouteCustomerDetailReader({sql,run}){
    invoices=invoices.filter(i=>validInvoiceIds.has(String(i.InvoiceMirrorId).toLowerCase()));
    products=lines;
   }
+  let returnRows=[];
+  if(returnAllowed){
+    returnRows=(await request().query(`
+      SELECT ret.AccountId,SUM(ret.ReturnedAmount) AS ReturnAmount
+      FROM analytics.vw_FactReturns ret
+      JOIN crm.SalesReturnMirror sr ON sr.TenantId=ret.TenantId AND sr.SalesReturnMirrorId=ret.SalesReturnMirrorId
+      JOIN crm.Account a ON a.TenantId=ret.TenantId AND a.AccountId=ret.AccountId
+      LEFT JOIN crm.ExternalProduct product ON product.TenantId=ret.TenantId
+        AND product.SourceSystemCode=sr.SourceSystemCode AND product.ExternalProductId=ret.ExternalProductId
+      WHERE ret.TenantId=@tenant AND ret.IsEffective=1 AND ret.DateKey BETWEEN @dateFrom AND @dateTo
+        AND EXISTS(SELECT 1 FROM crm.VisitRouteCustomerMirror member WHERE member.TenantId=ret.TenantId
+          AND member.RouteId=@routeId AND member.AccountId=ret.AccountId
+          AND member.EffectiveFrom<=@dateTo AND (member.EffectiveTo IS NULL OR member.EffectiveTo>=@dateFrom))
+        AND EXISTS(SELECT 1 FROM security.fn_RecordReadScope(a.TenantId,N'accounts.view',a.OwnerUserId,a.BranchId,a.TerritoryId,a.TeamId))
+        AND (NOT EXISTS(SELECT 1 FROM OPENJSON(@productJson)) OR ret.ExternalProductId IN(SELECT value FROM OPENJSON(@productJson)))
+        AND (NOT EXISTS(SELECT 1 FROM OPENJSON(@supplierJson)) OR product.SupplierExternalId IN(SELECT value FROM OPENJSON(@supplierJson)))
+        AND (NOT EXISTS(SELECT 1 FROM OPENJSON(@brandJson)) OR product.BrandExternalId IN(SELECT value FROM OPENJSON(@brandJson)))
+        AND (NOT EXISTS(SELECT 1 FROM OPENJSON(@repJson)) OR EXISTS(
+          SELECT 1 FROM crm.VisitRouteStaffMirror st WHERE st.TenantId=@tenant AND st.RouteId=@routeId
+            AND st.StaffUserId=ret.SalesRepUserId AND st.ExternalStaffId IN(SELECT value FROM OPENJSON(@repJson))))
+        AND (@financeWide=1 OR ret.SalesRepUserId=@actor OR EXISTS(
+          SELECT 1 FROM crm.VisitRouteStaffMirror manager WHERE manager.TenantId=@tenant
+            AND manager.RouteId=@routeId AND manager.StaffRoleCode='SUPERVISOR'
+            AND manager.StaffUserId=@actor AND manager.EffectiveFrom<=@dateTo
+            AND (manager.EffectiveTo IS NULL OR manager.EffectiveTo>=@dateFrom)))
+      GROUP BY ret.AccountId
+    `)).recordset;
+  }
+  // Balance is a present-time ledger snapshot, not a historical report-period amount.
+  let balanceRows=[];
+  if(receivableAllowed && filters.repIds.length===0 && filters.productIds.length===0 &&
+     filters.supplierIds.length===0 && filters.brandIds.length===0){
+    balanceRows=(await request().query(`
+      SELECT b.AccountId,SUM(b.OutstandingAmount) AS ReceivableAmount
+      FROM analytics.vw_AccountReceivable b
+      JOIN crm.Account a ON a.TenantId=b.TenantId AND a.AccountId=b.AccountId
+      WHERE b.TenantId=@tenant AND b.CurrencyCode='IRR'
+       AND EXISTS(SELECT 1 FROM crm.VisitRouteCustomerMirror m WHERE m.TenantId=b.TenantId
+         AND m.RouteId=@routeId AND m.AccountId=b.AccountId AND m.EffectiveFrom<=@dateTo
+         AND (m.EffectiveTo IS NULL OR m.EffectiveTo>=@dateFrom))
+       AND EXISTS(SELECT 1 FROM security.fn_RecordReadScope(a.TenantId,N'accounts.view',a.OwnerUserId,a.BranchId,a.TerritoryId,a.TeamId))
+       AND (@financeWide=1 OR EXISTS(
+         SELECT 1 FROM crm.VisitRouteStaffMirror manager WHERE manager.TenantId=@tenant
+          AND manager.RouteId=@routeId AND manager.StaffRoleCode='SUPERVISOR'
+          AND manager.StaffUserId=@actor AND manager.EffectiveFrom<=@dateTo
+          AND (manager.EffectiveTo IS NULL OR manager.EffectiveTo>=@dateFrom)))
+      GROUP BY b.AccountId`)).recordset;
+  }
+  const returnMap=new Map(returnRows.map(r=>[String(r.AccountId).toLowerCase(),Number(r.ReturnAmount)]));
+  const balanceMap=new Map(balanceRows.map(r=>[String(r.AccountId).toLowerCase(),Number(r.ReceivableAmount)]));
   const visitByAccount=new Map();
   for(const v of visits){const k=String(v.AccountId).toLowerCase();const a=visitByAccount.get(k)||[];a.push(v);visitByAccount.set(k,a);}
   const invoiceByAccount=new Map();
@@ -130,7 +180,10 @@ export function createRouteCustomerDetailReader({sql,run}){
       subRouteCode:m.SubRouteCode,latitude:numberOrNull(m.Latitude),longitude:numberOrNull(m.Longitude),
       visitCount:cv.length,lastVisitAt:lastVisit?.VisitedAtUtc||null,
       lastVisitOutcome:lastVisit?.OutcomeCode||null,noOrderReason:lastVisit?.ReasonTitleFa||lastVisit?.NoOrderReasonCode||null,
-      invoiceCount:financeAllowed?ci.length:null,netSales:financeAllowed?sales:null,
+      invoiceCount:financeAllowed?ci.length:null,netSales:financeAllowed&&ci.length?sales:null,
+      returnAmount:returnMap.has(id)?returnMap.get(id):null,
+      receivableAmount:balanceMap.has(id)?balanceMap.get(id):null,
+      receivableAsOf:balanceMap.has(id)?new Date().toISOString().slice(0,10):null,
       lastInvoice:lastInvoice?{number:lastInvoice.InvoiceNumber,date:lastInvoice.InvoiceDate,
         items:(linesByInvoice.get(String(lastInvoice.InvoiceMirrorId).toLowerCase())||[])
           .slice(0,25).map(l=>({name:l.ProductNameSnapshot,quantity:Number(l.Quantity),unitPrice:Number(l.NetUnitPrice)}))}:null,
@@ -147,7 +200,7 @@ export function createRouteCustomerDetailReader({sql,run}){
     source:'ERP_SQL',moneyUnit:'IRR',financeVisible:financeAllowed,
     warnings:['بازه زمانی بر اساس عضویت رسمی ERP محاسبه شده است.',
       'برای مشتری چندمسیره ممکن است یک فاکتور در هر مسیر مربوط نمایش داده شود.',
-      'مانده، برگشتی، سود و هدف تا تأیید منبع حسابداری، نامشخص هستند.']};
+      'برگشتی از ریز اسناد برگشت و مطالبات از مانده فعلی حسابداری فقط با مجوز همان شاخص قابل مشاهده است. سود و هدف هنوز به منبع قطعی متصل نیستند.']};
  });
 }
 const numberOrNull=x=>x==null?null:Number(x);
