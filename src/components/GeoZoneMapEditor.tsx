@@ -21,7 +21,21 @@ export function GeoZoneMapEditor({geometry,coordinateText,onChange,onPointsChang
  if(!valid.length)return {longitude:53,latitude:32};
  const latitudes=valid.map(p=>p.point.latitude).sort((a,b)=>a-b);
  const longitudes=valid.map(p=>p.point.longitude).sort((a,b)=>a-b);
- return {latitude:latitudes[Math.floor(latitudes.length/2)],longitude:longitudes[Math.floor(longitudes.length/2)]};});const [zoom,setZoom]=useState(()=>markers.length?11:5);const [drawing,setDrawing]=useState(false);const [points,setPoints]=useState<GeoPoint[]>(()=>fromGeometry(geometry));const [provider,setProvider]=useState<Provider>(mapConfig.provider==='custom'?'custom':'osm');const [customTemplate,setCustomTemplate]=useState(mapConfig.customTemplate||'');const [customAttribution,setCustomAttribution]=useState(mapConfig.customAttribution||'');const [tileState,setTileState]=useState<'idle'|'loading'|'ok'|'error'>('idle');const [size,setSize]=useState({width:800,height:420});const [fullscreen,setFullscreen]=useState(false);const [selectedPin,setSelectedPin]=useState<string|null>(null);const [myPos,setMyPos]=useState<GeoPoint|null>(null);const [locState,setLocState]=useState<'idle'|'loading'|'denied'|'unsupported'>('idle');const mapRef=useRef<HTMLDivElement>(null);const drag=useRef<{x:number;y:number;cx:number;cy:number;startX:number;startY:number;moved:boolean}|null>(null);
+ return {latitude:latitudes[Math.floor(latitudes.length/2)],longitude:longitudes[Math.floor(longitudes.length/2)]};});const [zoom,setZoom]=useState(()=>markers.length?11:5);const [drawing,setDrawing]=useState(false);const [points,setPoints]=useState<GeoPoint[]>(()=>fromGeometry(geometry));const [provider,setProvider]=useState<Provider>(mapConfig.provider==='custom'?'custom':'osm');const [customTemplate,setCustomTemplate]=useState(mapConfig.customTemplate||'');const [customAttribution,setCustomAttribution]=useState(mapConfig.customAttribution||'');const [tileState,setTileState]=useState<'idle'|'loading'|'ok'|'error'>('idle');const [size,setSize]=useState({width:800,height:420});const [fullscreen,setFullscreen]=useState(false);const [selectedPin,setSelectedPin]=useState<string|null>(null);const [myPos,setMyPos]=useState<GeoPoint|null>(null);const [locState,setLocState]=useState<'idle'|'loading'|'denied'|'unsupported'>('idle');const hasCenteredMarkers=useRef(false);const mapRef=useRef<HTMLDivElement>(null);const drag=useRef<{x:number;y:number;cx:number;cy:number;startX:number;startY:number;moved:boolean}|null>(null);
+ useEffect(()=>{
+  if(hasCenteredMarkers.current||geometry?.coordinates?.[0]?.length||!markers.length)return;
+  const valid=markers.filter(pin=>Number.isFinite(pin.point.latitude)&&Number.isFinite(pin.point.longitude));
+  if(!valid.length)return;
+  const lats=valid.map(pin=>pin.point.latitude).sort((a,b)=>a-b);
+  const lons=valid.map(pin=>pin.point.longitude).sort((a,b)=>a-b);
+  const median={latitude:lats[Math.floor(lats.length/2)],longitude:lons[Math.floor(lons.length/2)]};
+  setCenter(median);
+  const latitudeSpread=lats[lats.length-1]-lats[0];
+  const longitudeSpread=lons[lons.length-1]-lons[0];
+  const degrees=Math.max(latitudeSpread,longitudeSpread);
+  setZoom(degrees>3?7:degrees>1?8:degrees>.35?9:degrees>.1?10:12);
+  hasCenteredMarkers.current=true;
+ },[markers,geometry]);
  useEffect(()=>{const raw=coordinateText.split(/\r?\n/).map(line=>line.trim()).filter(Boolean);if(!raw.length){setPoints([]);return;}const parsed:GeoPoint[]=[];for(const [index,line] of raw.entries()){const parts=line.split(/[;,\s]+/).filter(Boolean);if(parts.length!==2)return;const longitude=Number(parts[0]),latitude=Number(parts[1]);if(!Number.isFinite(longitude)||!Number.isFinite(latitude)||longitude < -180||longitude>180||latitude < -90||latitude>90)return;parsed.push({longitude,latitude});}setPoints(parsed);},[coordinateText]);
  useEffect(()=>{const el=mapRef.current;if(!el)return;const ro=new ResizeObserver(entries=>{const r=entries[0]?.contentRect;if(r)setSize({width:Math.max(1,r.width),height:Math.max(1,r.height)});});ro.observe(el);return()=>ro.disconnect();},[]);
  useEffect(()=>{setProvider(mapConfig.provider==='custom'?'custom':'osm');setCustomTemplate(mapConfig.customTemplate||'');setCustomAttribution(mapConfig.customAttribution||'');},[mapConfig.provider,mapConfig.customTemplate,mapConfig.customAttribution]);
