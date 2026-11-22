@@ -853,7 +853,8 @@ app.post('/api/v1/public/recruitment/applications', wrap(async (req, res) => {
   res.status(result.status).json(result.receipt);
 }));
 
-const recruitmentReview=createRecruitmentReview({sql,run:withTenantContext,createTask:(tx,auth,input)=>taskRequests.createInTransaction(tx,auth,input)});
+const recruitmentReview=createRecruitmentReview({sql,run:withTenantContext,createTask:taskRequests.createInTransaction,
+  eligibleInterviewer:taskRequests.eligibleInterviewer});
 app.get('/api/v1/recruitment/applications',authenticate,requireSignedSession,requirePermission('users.manage',{organizationWide:true}),
   personnelEndpoint(async(req,res)=>{
     const filter=recruitmentFilters(req.query);
@@ -992,7 +993,7 @@ const taskRequestRoute = handler => wrap(async (req,res) => {
 });
 app.get('/api/v1/tasks/requests',authenticate,taskRequestRoute(req => taskRequests.list(req.auth,req.query)));
 app.post('/api/v1/tasks/requests',authenticate,taskRequestRoute(req => taskRequests.create(req.auth,req.body)));
-app.get('/api/v1/tasks/request-directory',authenticate,taskRequestRoute(req => taskRequests.users(req.auth,req.query.search ?? '')));
+app.get('/api/v1/tasks/request-directory',authenticate,taskRequestRoute(req => taskRequests.users(req.auth,req.query.search ?? '',req.query.context ?? '')));
 app.get('/api/v1/tasks/request-resources',authenticate,taskRequestRoute(req => taskRequests.resources(req.auth,req.query)));
 app.get('/api/v1/organization/reporting-lines',authenticate,requirePermission('users.manage',{organizationWide:true}),
   taskRequestRoute(req => taskRequests.reportingLines(req.auth)));

@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { getOnboardingConfig, isValidNationalCode, normalizeMobile, toLatinDigits, transitionApplication } from '../src/lib/onboarding.ts';
-import { date, uuid } from './taskRequestContract.mjs';
+import { date, priorities, uuid } from './taskRequestContract.mjs';
 
 const statuses = ['SUBMITTED','UNDER_REVIEW','NEEDS_INFORMATION','ACCEPTED','REJECTED'];
 const commands = ['REVIEW','NEEDS_INFORMATION','SCHEDULE','INTERVIEW_RESULT','ACCEPT','REJECT','CREATE_EMPLOYEE','LINK_USER'];
@@ -20,8 +20,10 @@ export function recruitmentCommand(body) {
   const base={commandId:body.commandId.toLowerCase(),version:body.version,action:body.action,note};
   if (body.action==='SCHEDULE') {
     const address=bounded(body.address,450);
+    const priority=body.priority;
     return date(body.date) && typeof body.time==='string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(body.time) &&
-      uuid(body.interviewerId) && address ? {...base,date:body.date,time:body.time,interviewerId:body.interviewerId.toLowerCase(),address} : null;
+      (priority===undefined || priorities.has(priority)) && uuid(body.interviewerId) && address
+      ? {...base,date:body.date,time:body.time,interviewerId:body.interviewerId.toLowerCase(),address,...(priority ? {priority} : {})} : null;
   }
   if (body.action==='INTERVIEW_RESULT') return ['ACCEPT','REJECT','FOLLOW_UP'].includes(body.result) ? {...base,result:body.result} : null;
   if (body.action==='CREATE_EMPLOYEE') {
@@ -42,7 +44,7 @@ function view(row) {
     interview:a.interview ?? null,employmentId:a.employmentId ?? null,userLinked:uuid(a.employmentUserId)};
 }
 
-export function createRecruitmentReview({sql,run,createTask}) {
+export function createRecruitmentReview({sql,run,createTask,eligibleInterviewer}) {
   const request=(tx,auth)=>new sql.Request(tx).input('tenant',sql.UniqueIdentifier,auth.tenantId).input('actor',sql.UniqueIdentifier,auth.userId);
   const scoped=`TenantId=@tenant AND CollectionName=N'onboardingApplications' AND IsDeleted=0
     AND JSON_VALUE(JsonDoc,'$.transport')=N'SQLSERVER'
@@ -135,11 +137,13 @@ export function createRecruitmentReview({sql,run,createTask}) {
       } else if (input.action==='SCHEDULE') {
         if (['ACCEPTED','REJECTED'].includes(before) || (application.interview && application.interview.result!=='FOLLOW_UP')) return fail('برای این پرونده امکان ارجاع جدید وجود ندارد.');
         if (Date.parse(`${input.date}T${input.time}:00+03:30`)<=now.getTime()) return fail('زمان مصاحبه باید در آینده باشد.');
+        await eligibleInterviewer(tx,auth,input.interviewerId);
+        const priority=input.priority ?? 'NORMAL';
         const task=await createTask(tx,auth,{requestId:input.commandId,kind:'HR',title:'بررسی مصاحبهٔ استخدامی',
-          description:`زمان مصاحبه ${input.time} است. برای جزئیات پرونده به کارتابل جذب مراجعه کنید.`,priority:'NORMAL',
+          description:`زمان مصاحبه ${input.time} است. برای جزئیات پرونده به کارتابل جذب مراجعه کنید.`,priority,
           assigneeId:input.interviewerId,dueDate:input.date,confidential:false,watchers:[],links:[],priceItems:[]});
         if (application.interview) (application.previousInterviews ??= []).push(application.interview);
-        application.interview={date:input.date,time:input.time,address:input.address,interviewerId:input.interviewerId,taskId:task.task.id};
+        application.interview={date:input.date,time:input.time,address:input.address,interviewerId:input.interviewerId,taskId:task.task.id,priority};
         application.status='UNDER_REVIEW'; mark('مصاحبه تعیین و به کارتابل ارجاع شد.');
       } else if (input.action==='INTERVIEW_RESULT') {
         if (before!=='UNDER_REVIEW' || !application.interview?.taskId || application.interview.result) return fail('مصاحبهٔ منتظر نتیجه یافت نشد.');

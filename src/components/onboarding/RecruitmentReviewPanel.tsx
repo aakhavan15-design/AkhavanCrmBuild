@@ -6,6 +6,7 @@ import { formatAppDate } from '../../lib/utils';
 import { formatCount } from '../../lib/format';
 import { getActiveDataProvider } from '../../services/dataProvider';
 import type { RecruitmentAction, RecruitmentReviewInput, RecruitmentReviewRow } from '../../services/recruitmentReview';
+import { requestPriorities, type RequestPriority } from '../../services/taskRequests';
 import type { Attachment } from '../../types';
 import { RequestPeople } from '../tasks/QuickTaskRequest';
 import { Button } from '../ui/Button';
@@ -41,6 +42,7 @@ function ReviewDetails({row,attachments,viewer,canEdit,onSaved,onClose}:{row:Rec
   const [time,setTime]=useState('');
   const [address,setAddress]=useState('');
   const [interviewer,setInterviewer]=useState<string[]>([]);
+  const [priority,setPriority]=useState<RequestPriority>('NORMAL');
   const [result,setResult]=useState<InterviewResult>('FOLLOW_UP');
   const [employeeCode,setEmployeeCode]=useState('');
   const [username,setUsername]=useState('');
@@ -55,7 +57,7 @@ function ReviewDetails({row,attachments,viewer,canEdit,onSaved,onClose}:{row:Rec
   async function save() {
     if (!action || sending.current) return;
     const data:Omit<RecruitmentReviewInput,'commandId'>={action,version:row.version,note};
-    if (action==='SCHEDULE') Object.assign(data,{date:day,time,address,interviewerId:interviewer[0]});
+    if (action==='SCHEDULE') Object.assign(data,{date:day,time,address,interviewerId:interviewer[0],priority});
     if (action==='INTERVIEW_RESULT') data.result=result;
     if (action==='CREATE_EMPLOYEE') Object.assign(data,{employeeCode,hireDate:day});
     if (action==='LINK_USER') Object.assign(data,{username,identityConfirmed});
@@ -85,6 +87,7 @@ function ReviewDetails({row,attachments,viewer,canEdit,onSaved,onClose}:{row:Rec
       </details>}
       {row.interview && <div className="rounded-xl border border-border p-2 text-caption">
         <p>مصاحبه {formatAppDate(row.interview.date)} · <bdi>{row.interview.time}</bdi> · {row.interview.address}</p>
+        {row.interview.priority && <p>اهمیت {requestPriorities.find(item=>item.value===row.interview?.priority)?.label}</p>}
         {row.interview.result && <p>{interviewOptions.find(item=>item.value===row.interview?.result)?.label} · {row.interview.resultNote}</p>}
         {row.interview.taskId.startsWith('taskreq-') && <Link to={`/tasks?request=${encodeURIComponent(row.interview.taskId)}`} className="inline-flex min-h-11 items-center text-primary">مشاهدهٔ تسک مصاحبه</Link>}
       </div>}
@@ -100,7 +103,9 @@ function ReviewDetails({row,attachments,viewer,canEdit,onSaved,onClose}:{row:Rec
         {action==='SCHEDULE' && <>
           <Input label="ساعت مصاحبه" type="time" value={time} required disabled={busy} onChange={event=>setTime(event.target.value)} />
           <Input label="نشانی یا محل مصاحبه" value={address} maxLength={450} required disabled={busy} onChange={event=>setAddress(event.target.value)} />
-          <RequestPeople viewer={viewer} label="مصاحبه‌کننده" values={interviewer} onChange={setInterviewer}/>
+          <RequestPeople viewer={viewer} label="مصاحبه‌کننده" context="recruitment" values={interviewer} onChange={setInterviewer}/>
+          <SearchableSelect label="اهمیت پیگیری" value={priority} options={requestPriorities} disabled={busy}
+            onChange={value=>setPriority(value as RequestPriority)}/>
         </>}
         {action==='INTERVIEW_RESULT' && <SearchableSelect label="نتیجهٔ مصاحبه" value={result} options={interviewOptions} disabled={busy}
           onChange={value=>setResult(value as InterviewResult)}/>}

@@ -15,16 +15,16 @@ type Option = {value:string;label:string};
 const financialTypes: TaskFinancialReference[] = ['INVOICE','CHEQUE'];
 const allowsDocuments = (kind: TaskRequestKind) => ['FINANCE','COLLECTION','ORDER_APPROVAL'].includes(kind);
 
-export function RequestPeople({viewer,values,onChange,label,multiple=false}:{
-  viewer:string; values:string[]; onChange:(values:string[])=>void; label:string; multiple?:boolean;
+export function RequestPeople({viewer,values,onChange,label,multiple=false,context}:{
+  viewer:string; values:string[]; onChange:(values:string[])=>void; label:string; multiple?:boolean; context?:'recruitment';
 }) {
   const [search,setSearch]=useState('');
   const [picked,setPicked]=useState<Option[]>([]);
   const onSearch=useCallback((value:string)=>setSearch(value.slice(0,80)),[]);
   const {data,loading,error}=useDataQuery(async provider => ({
-    viewer,items:(await provider.getTaskRequestDirectory(search)).items,
-  }),[search,viewer]);
-  const options=[...new Map([...picked,...(data?.viewer===viewer ? data.items : []).map(user => ({value:user.id,label:user.name}))].map(option => [option.value,option])).values()];
+    viewer,context,items:(await provider.getTaskRequestDirectory(search,context)).items,
+  }),[search,viewer,context]);
+  const options=[...new Map([...picked,...(data?.viewer===viewer && data.context===context ? data.items : []).map(user => ({value:user.id,label:user.name}))].map(option => [option.value,option])).values()];
   return <div className="space-y-1">
     <SearchableSelect label={label} value={multiple ? '' : values[0] ?? ''} options={options.filter(option => !multiple || !values.includes(option.value))}
       onSearch={onSearch} loading={loading} error={error?.message}

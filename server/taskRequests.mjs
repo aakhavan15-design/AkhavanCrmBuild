@@ -20,7 +20,8 @@ SELECT u.UserId AS id,u.DisplayName AS name,CAST(CASE WHEN u.UserId=@actor OR u.
 FROM core.AppUser u JOIN core.AppUser v ON v.TenantId=u.TenantId AND v.UserId=@actor AND v.IsActive=1
 WHERE u.TenantId=@tenantId AND u.IsActive=1
   AND (@target IS NULL OR u.UserId=@target)
-  AND (@search IS NULL OR CHARINDEX(@search,u.DisplayName)>0)`;
+  AND (@search IS NULL OR CHARINDEX(@search,u.DisplayName)>0)
+  AND (@recruitment=0 OR EXISTS(SELECT 1 FROM security.fn_TaskRequestGrant(@tenantId,u.UserId,N'users.manage',NULL,NULL,NULL,NULL,1)))`;
 
 const rowsSql = `
 SELECT task.EntityId AS id,task.JsonDoc,CONVERT(varchar(20),task.Version) AS version,a.*,
@@ -106,8 +107,9 @@ export function createTaskRequests({sql,run}) {
     return {...row,task:JSON.parse(row.JsonDoc)};
   }
 
-  async function assignee(tx,auth,id) {
+  async function assignee(tx,auth,id,recruitment=false) {
     const row = (await input(tx,auth).input('target',sql.UniqueIdentifier,id).input('search',sql.NVarChar(80),null)
+      .input('recruitment',sql.Bit,recruitment)
       .query(activeUsersSql)).recordset[0];
     if (!row?.canAssign) throw forbidden();
     return row;
@@ -450,6 +452,7 @@ export function createTaskRequests({sql,run}) {
     },
 
     createInTransaction,
+    eligibleInterviewer: (tx,auth,id) => assignee(tx,auth,id,true),
     create: (auth,body) => run(auth,tx=>createInTransaction(tx,auth,body)),
 
     read: (auth,id) => run(auth,async tx => {
@@ -641,14 +644,16 @@ export function createTaskRequests({sql,run}) {
       });
     },
 
-    users: (auth,search) => {
-      if (typeof search!=='string' || search.length>80) throw invalid('جست‌وجو معتبر نیست.');
+    users: (auth,search,context='') => {
+      if (typeof search!=='string' || search.length>80 || !['','recruitment'].includes(context)) throw invalid('جست‌وجو معتبر نیست.');
       return run(auth,async tx => {
-        const allowed=await grant(tx,auth,'tasks.view',false) || await grant(tx,auth,'accounts.view',false)
+        const recruitment=context==='recruitment';
+        const allowed=recruitment ? await grant(tx,auth,'users.manage') : await grant(tx,auth,'tasks.view',false) || await grant(tx,auth,'accounts.view',false)
           || await grant(tx,auth,'internal.view',false) || await grant(tx,auth,'internal.manage',false)
           || await grant(tx,auth,'settings.manage',false);
         if (!allowed) throw forbidden();
         const result=await input(tx,auth).input('target',sql.UniqueIdentifier,null).input('search',sql.NVarChar(80),search.trim()||null)
+          .input('recruitment',sql.Bit,recruitment)
           .query(`SELECT TOP(60) d.id,d.name FROM (${activeUsersSql}) d WHERE d.canAssign=1 ORDER BY d.name,d.id;`);
         return {items:result.recordset};
       });

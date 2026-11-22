@@ -292,7 +292,7 @@ export interface DataProvider {
   getTaskRequest(id:string): Promise<TaskRequestRecord>;
   submitTaskRequest(input:TaskRequestInput): Promise<TaskRequestRecord>;
   changeTaskRequest(id:string,input:TaskRequestCommand): Promise<TaskRequestRecord | {task:null;version:string}>;
-  getTaskRequestDirectory(search:string): Promise<{items:{id:string;name:string}[]}>;
+  getTaskRequestDirectory(search:string,context?:'recruitment'): Promise<{items:{id:string;name:string}[]}>;
   getTaskRequestResources(type:TaskRequestResource,accountId:string,search:string): Promise<{items:{id:string;title:string;unit?:string;sku?:string}[]}>;
   getReportingLines(): Promise<{items:ReportingLine[]}>;
   getOwnPersonnelProfile():Promise<OwnPersonnelProfile>;
@@ -1113,8 +1113,10 @@ export class HttpBackendDataProvider implements DataProvider {
   async changeTaskRequest(id:string,input:TaskRequestCommand): Promise<TaskRequestRecord | {task:null;version:string}> {
     return this.request(`/tasks/requests/${encodeURIComponent(id)}/actions`,{method:'POST',body:JSON.stringify(input)});
   }
-  async getTaskRequestDirectory(search:string): Promise<{items:{id:string;name:string}[]}> {
-    return this.request(`/tasks/request-directory?${new URLSearchParams({search})}`);
+  async getTaskRequestDirectory(search:string,context?:'recruitment'): Promise<{items:{id:string;name:string}[]}> {
+    const params=new URLSearchParams({search});
+    if (context) params.set('context',context);
+    return this.request(`/tasks/request-directory?${params}`);
   }
   async getTaskRequestResources(type:TaskRequestResource,accountId:string,search:string): Promise<{items:{id:string;title:string;unit?:string;sku?:string}[]}> {
     return this.request(`/tasks/request-resources?${new URLSearchParams({type,accountId,search})}`);
