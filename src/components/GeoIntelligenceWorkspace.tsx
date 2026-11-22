@@ -228,6 +228,17 @@ export function GeoIntelligenceWorkspace({ state, updateState }: Props) {
         tenantId: ret.tenantId as string | undefined, deletedAt: ret.deletedAt as string | undefined,
         isDeleted: ret.isDeleted as boolean | undefined,
       }))
+      .map(ret => ({
+        id: String(ret.id || ''),
+        customerId: String(ret.customerId || ret.accountId || ''),
+        externalInvoiceId: ret.externalInvoiceId == null ? undefined : String(ret.externalInvoiceId),
+        invoiceId: ret.invoiceId == null ? undefined : String(ret.invoiceId),
+        returnDate: ret.returnDate == null ? undefined : String(ret.returnDate),
+        totalAmount: typeof ret.totalAmount === 'number' ? ret.totalAmount : undefined,
+        totalValue: typeof ret.totalValue === 'number' ? ret.totalValue : undefined,
+        isVoided: ret.isVoided === true,
+        statusCode: ret.statusCode == null ? undefined : String(ret.statusCode),
+      }))
     : [];
   const scopedErpVisitTours = can('geo', 'VIEW')
     ? ((state.erpVisitTours || []) as Array<Record<string, unknown>>).filter(tour =>
