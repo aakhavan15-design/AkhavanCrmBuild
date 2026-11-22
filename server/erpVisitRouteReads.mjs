@@ -64,13 +64,21 @@ export function createErpVisitRouteReader({sql,run}){
        FROM crm.VisitTourMirror tour
        LEFT JOIN crm.VisitTourStopMirror stop
           ON stop.TenantId=tour.TenantId AND stop.TourId=tour.TourId AND stop.IsDeleted=0
+          AND EXISTS (SELECT 1 FROM crm.Account sa WHERE sa.TenantId=stop.TenantId AND sa.AccountId=stop.AccountId
+            AND EXISTS(SELECT 1 FROM security.fn_RecordReadScope(sa.TenantId,N'accounts.view',sa.OwnerUserId,sa.BranchId,sa.TerritoryId,sa.TeamId)))
        WHERE tour.TenantId=@tenant AND tour.RouteId=@routeId AND tour.TourDate=@date AND tour.IsDeleted=0
+       AND (@organizationWide=1 OR tour.SalesRepUserId=@actor OR EXISTS(SELECT 1 FROM crm.VisitRouteStaffMirror manager
+         WHERE manager.TenantId=tour.TenantId AND manager.RouteId=tour.RouteId AND manager.StaffUserId=@actor
+           AND manager.StaffRoleCode='SUPERVISOR' AND manager.EffectiveFrom<=@date
+           AND (manager.EffectiveTo IS NULL OR manager.EffectiveTo>=@date)))
        ORDER BY tour.ExternalSalesRepId,tour.TourId,stop.StopSequence`),
     request().query(`SELECT TOP (1500) visit.ExternalVisitId,visit.AccountId,visit.VisitedAtUtc,
        visit.ExternalSalesRepId,visit.OutcomeCode,visit.NoOrderReasonCode,
        reason.ReasonTitleFa,visit.ResultingExternalOrderId,
        visit.Latitude,visit.Longitude,visit.AccuracyMeters
        FROM crm.ErpVisitEventMirror visit
+       JOIN crm.VisitTourMirror sourceTour ON sourceTour.TenantId=visit.TenantId
+         AND sourceTour.TourId=visit.TourId AND sourceTour.RouteId=@routeId
        JOIN crm.VisitRouteCustomerMirror member ON member.TenantId=visit.TenantId
          AND member.AccountId=visit.AccountId AND member.RouteId=@routeId
          AND member.EffectiveFrom<=@date AND (member.EffectiveTo IS NULL OR member.EffectiveTo>=@date)
@@ -78,6 +86,10 @@ export function createErpVisitRouteReader({sql,run}){
        LEFT JOIN crm.VisitNoOrderReasonMirror reason ON reason.TenantId=visit.TenantId
          AND reason.SourceSystemCode=visit.SourceSystemCode AND reason.ExternalReasonCode=visit.NoOrderReasonCode
        WHERE visit.TenantId=@tenant AND visit.IsDeleted=0 AND CONVERT(date,visit.VisitedAtUtc)=@date
+         AND (@organizationWide=1 OR visit.SalesRepUserId=@actor OR EXISTS(SELECT 1 FROM crm.VisitRouteStaffMirror manager
+           WHERE manager.TenantId=visit.TenantId AND manager.RouteId=@routeId AND manager.StaffUserId=@actor
+           AND manager.StaffRoleCode='SUPERVISOR' AND manager.EffectiveFrom<=@date
+           AND (manager.EffectiveTo IS NULL OR manager.EffectiveTo>=@date)))
          AND EXISTS(SELECT 1 FROM security.fn_RecordReadScope(a.TenantId,N'accounts.view',a.OwnerUserId,a.BranchId,a.TerritoryId,a.TeamId))
        ORDER BY visit.VisitedAtUtc DESC`),
     request().query(`SELECT TOP (1500) gps.ExternalLocationId,gps.ExternalSalesRepId,
@@ -86,7 +98,13 @@ export function createErpVisitRouteReader({sql,run}){
        WHERE gps.TenantId=@tenant AND CONVERT(date,gps.RecordedAtUtc)=@date
          AND EXISTS(SELECT 1 FROM crm.VisitRouteStaffMirror staff
            WHERE staff.TenantId=gps.TenantId AND staff.RouteId=@routeId AND staff.ExternalStaffId=gps.ExternalSalesRepId
-           AND staff.StaffRoleCode='SALES_REP' AND staff.EffectiveFrom<=@date
+           AND staff.StaffRoleCode='SALES_REP'
+           AND (@organizationWide=1 OR gps.SalesRepUserId=@actor OR EXISTS (
+             SELECT 1 FROM crm.VisitRouteStaffMirror supervisor WHERE supervisor.TenantId=staff.TenantId
+               AND supervisor.RouteId=staff.RouteId AND supervisor.StaffUserId=@actor
+               AND supervisor.StaffRoleCode='SUPERVISOR' AND supervisor.EffectiveFrom<=@date
+               AND (supervisor.EffectiveTo IS NULL OR supervisor.EffectiveTo>=@date)))
+           AND staff.EffectiveFrom<=@date
            AND (staff.EffectiveTo IS NULL OR staff.EffectiveTo>=@date))
        ORDER BY gps.RecordedAtUtc DESC`),
    ]);
