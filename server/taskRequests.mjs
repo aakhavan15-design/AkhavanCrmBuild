@@ -358,6 +358,31 @@ export function createTaskRequests({sql,run}) {
     'application/pdf': bytes => bytes.toString('ascii',0,5)==='%PDF-',
   };
 
+  async function createInTransaction(tx,auth,body) {
+    const value=requestInput(body);
+    if (!value) throw invalid('عنوان، مسئول، نوع یا اطلاعات ضروری درخواست معتبر نیست.');
+    const id=`taskreq-${value.requestId}`;
+    const existing=(await requestById(tx,auth,id).query(`
+      SELECT JSON_VALUE(JsonDoc,'$.createFingerprint') AS fingerprint,JSON_VALUE(JsonDoc,'$.createdBy') AS creator,IsDeleted
+      FROM sync.EntityStore WITH(UPDLOCK,HOLDLOCK) WHERE TenantId=@tenantId AND CollectionName=N'tasks' AND EntityId=@id;`)).recordset[0];
+    const fingerprint=digest(value);
+    if (existing) {
+      if (existing.IsDeleted || existing.creator!==actorId(auth) || existing.fingerprint!==fingerprint) throw conflict();
+      return {...present(await get(tx,auth,id),auth),replayed:true};
+    }
+    if (!(await grant(tx,auth,'tasks.create') || await grant(tx,auth,'tasks.edit') ||
+          await grant(tx,auth,'accounts.edit') || await grant(tx,auth,'internal.manage'))) throw forbidden();
+    const now=new Date().toISOString();
+    let task = await construct(tx,auth,value,now);
+    task=appendTaskActivity({...task,createFingerprint:fingerprint},
+      {id:value.requestId,action:'CREATED',actorId:actorId(auth),at:now,summary:'درخواست ثبت و ارجاع شد'});
+    await requestById(tx,auth,id).input('task',sql.NVarChar(sql.MAX),JSON.stringify(task)).query(`
+      INSERT sync.EntityStore(TenantId,CollectionName,EntityId,JsonDoc,UpdatedByUserId) VALUES(@tenantId,N'tasks',@id,@task,@actor);`);
+    await writeAudit(tx,auth,id,value.requestId,'TASK_REQUEST_CREATED',fingerprint,{after:task.status,contentRevision:1});
+    await notify(tx,auth,task,value.requestId);
+    return {...present(await get(tx,auth,id),auth),replayed:false};
+  }
+
   return {
     reportingLines: auth => run(auth,async tx => {
       const result=await input(tx,auth).query(`SELECT CONVERT(varchar(36),UserId) AS id,DisplayName AS name,
@@ -424,32 +449,8 @@ export function createTaskRequests({sql,run}) {
       });
     },
 
-    async create(auth,body) {
-      const value=requestInput(body);
-      if (!value) throw invalid('عنوان، مسئول، نوع یا اطلاعات ضروری درخواست معتبر نیست.');
-      const id=`taskreq-${value.requestId}`;
-      return run(auth,async tx => {
-        const existing=(await requestById(tx,auth,id).query(`
-          SELECT JSON_VALUE(JsonDoc,'$.createFingerprint') AS fingerprint,JSON_VALUE(JsonDoc,'$.createdBy') AS creator,IsDeleted
-          FROM sync.EntityStore WITH(UPDLOCK,HOLDLOCK) WHERE TenantId=@tenantId AND CollectionName=N'tasks' AND EntityId=@id;`)).recordset[0];
-        const fingerprint=digest(value);
-        if (existing) {
-          if (existing.IsDeleted || existing.creator!==actorId(auth) || existing.fingerprint!==fingerprint) throw conflict();
-          return {...present(await get(tx,auth,id),auth),replayed:true};
-        }
-        if (!(await grant(tx,auth,'tasks.create') || await grant(tx,auth,'tasks.edit') ||
-              await grant(tx,auth,'accounts.edit') || await grant(tx,auth,'internal.manage'))) throw forbidden();
-        const now=new Date().toISOString();
-        let task = await construct(tx,auth,value,now);
-        task=appendTaskActivity({...task,createFingerprint:fingerprint},
-          {id:value.requestId,action:'CREATED',actorId:actorId(auth),at:now,summary:'درخواست ثبت و ارجاع شد'});
-        await requestById(tx,auth,id).input('task',sql.NVarChar(sql.MAX),JSON.stringify(task)).query(`
-          INSERT sync.EntityStore(TenantId,CollectionName,EntityId,JsonDoc,UpdatedByUserId) VALUES(@tenantId,N'tasks',@id,@task,@actor);`);
-        await writeAudit(tx,auth,id,value.requestId,'TASK_REQUEST_CREATED',fingerprint,{after:task.status,contentRevision:1});
-        await notify(tx,auth,task,value.requestId);
-        return {...present(await get(tx,auth,id),auth),replayed:false};
-      });
-    },
+    createInTransaction,
+    create: (auth,body) => run(auth,tx=>createInTransaction(tx,auth,body)),
 
     read: (auth,id) => run(auth,async tx => {
       const row=await get(tx,auth,id);

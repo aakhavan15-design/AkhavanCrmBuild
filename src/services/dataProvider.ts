@@ -2,6 +2,7 @@ import type { ReportingLine, ReportingLineChange, TaskRequestApprovalPolicy, Tas
   TaskRequestRecord, TaskRequestPage, TaskRequestView, TaskRequestResource } from './taskRequests';
 import type { PurchaseCoverageScope, PurchaseCycleResult, PurchaseCycleView, PurchaseProductResult } from './purchaseCycle';
 import type { AdvanceDecisionInput, EmploymentProfile, OwnPersonnelProfile, PersonnelAdvanceInput, PersonnelAdvanceReceipt } from './personnelProfile';
+import type { RecruitmentReviewInput, RecruitmentReviewRow } from './recruitmentReview';
 import type { 
   AppState, 
   Account, 
@@ -298,6 +299,8 @@ export interface DataProvider {
   getLinkedPersonnelProfile(userId:string):Promise<EmploymentProfile>;
   requestPersonnelAdvance(input:PersonnelAdvanceInput):Promise<PersonnelAdvanceReceipt>;
   decidePersonnelAdvance(id:string,input:AdvanceDecisionInput):Promise<{id:string;replayed:boolean}>;
+  listRecruitmentApplications(search:string,status:string,page:number):Promise<{items:RecruitmentReviewRow[];hasMore:boolean}>;
+  reviewRecruitmentApplication(id:string,input:RecruitmentReviewInput):Promise<{application:RecruitmentReviewRow;replayed:boolean}>;
   changeReportingLine(userId:string,input:ReportingLineChange): Promise<{changed:boolean;replayed:boolean}>;
   getTaskRequestPolicies(): Promise<{items:(TaskRequestApprovalPolicy & {kind:TaskRequestPolicyKind})[]}>;
   saveTaskRequestPolicy(kind:TaskRequestPolicyKind,policy:TaskRequestApprovalPolicy): Promise<TaskRequestApprovalPolicy>;
@@ -370,6 +373,8 @@ const MAX_PNL_JOURNAL_PAGES = 100;
  * 1. پیاده‌سازی ارائه‌دهنده داده سمت کلاینت (IndexedDB / Local-first)
  */
 export class ClientStorageDataProvider implements DataProvider {
+  async listRecruitmentApplications():Promise<{items:RecruitmentReviewRow[];hasMore:boolean}> { return {items:[],hasMore:false}; }
+  async reviewRecruitmentApplication():Promise<{application:RecruitmentReviewRow;replayed:boolean}> { throw new Error('بررسی پرونده به پایگاه مرکزی نیاز دارد.'); }
   async getOwnPersonnelProfile():Promise<OwnPersonnelProfile> { throw new Error('پروندهٔ پرسنلی به پایگاه مرکزی نیاز دارد.'); }
   async getLinkedPersonnelProfile():Promise<EmploymentProfile> { throw new Error('پروندهٔ پرسنلی به پایگاه مرکزی نیاز دارد.'); }
   async requestPersonnelAdvance():Promise<PersonnelAdvanceReceipt> { throw new Error('درخواست مساعده به پایگاه مرکزی نیاز دارد.'); }
@@ -806,6 +811,12 @@ export class ClientStorageDataProvider implements DataProvider {
  * 2. پیاده‌سازی ارائه‌دهنده داده مستقیم به Backend سرور و SQL Server
  */
 export class HttpBackendDataProvider implements DataProvider {
+  async listRecruitmentApplications(search:string,status:string,page:number):Promise<{items:RecruitmentReviewRow[];hasMore:boolean}> {
+    return this.request(`/recruitment/applications?${new URLSearchParams({search,status,page:String(page)})}`);
+  }
+  async reviewRecruitmentApplication(id:string,input:RecruitmentReviewInput):Promise<{application:RecruitmentReviewRow;replayed:boolean}> {
+    return this.request(`/recruitment/applications/${encodeURIComponent(id)}/actions`,{method:'POST',body:JSON.stringify(input)});
+  }
   async getOwnPersonnelProfile():Promise<OwnPersonnelProfile> { return this.request('/personnel/me'); }
   async getLinkedPersonnelProfile(userId:string):Promise<EmploymentProfile> { return this.request(`/personnel/linked-user/${encodeURIComponent(userId)}`); }
   async requestPersonnelAdvance(input:PersonnelAdvanceInput):Promise<PersonnelAdvanceReceipt> {

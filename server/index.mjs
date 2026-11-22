@@ -18,6 +18,7 @@ import { createMoneyIntelligenceReader, parseMoneyReportQuery } from './moneyInt
 import { createJournalCoverageReader, createJournalCoverageFollowUp, createJournalFollowUpEvidenceReader, coverageFilter } from './journalCoverage.mjs';
 import { createCollectionActions } from './collectionActions.mjs';
 import { createPublicRecruitment } from './publicRecruitment.mjs';
+import { createRecruitmentReview, recruitmentCommand, recruitmentFilters } from './recruitmentReview.mjs';
 import { createPersonnelService, parseAdvanceDecision, parseAdvanceRequest } from './personnelProfile.mjs';
 import { buildReportStatus } from './reportStatus.mjs';
 import { getVapidPublicKey, saveSubscription, removeSubscription, sendPushToUser, initPushModule } from './pushStore.mjs';
@@ -821,6 +822,29 @@ app.post('/api/v1/public/recruitment/applications', wrap(async (req, res) => {
   if (!result.receipt) return bad(req, res, result.status, 'RECRUITMENT_NOT_ACCEPTED', result.message);
   res.status(result.status).json(result.receipt);
 }));
+
+const recruitmentReview=createRecruitmentReview({sql,run:withTenantContext,createTask:(tx,auth,input)=>taskRequests.createInTransaction(tx,auth,input)});
+app.get('/api/v1/recruitment/applications',authenticate,requireSignedSession,requirePermission('users.manage',{organizationWide:true}),
+  personnelEndpoint(async(req,res)=>{
+    const filter=recruitmentFilters(req.query);
+    if (!filter) return bad(req,res,400,'RECRUITMENT_FILTER_INVALID','فیلتر درخواست‌های همکاری معتبر نیست.');
+    res.json(await recruitmentReview.list(req.auth,filter));
+  }));
+app.post('/api/v1/recruitment/applications/:id/actions',authenticate,requireSignedSession,requirePermission('users.manage',{organizationWide:true}),
+  personnelEndpoint(async(req,res)=>{
+    const input=recruitmentCommand(req.body);
+    if (!uuid(req.params.id) || !input) return bad(req,res,400,'RECRUITMENT_ACTION_INVALID','اطلاعات اقدام یا شناسهٔ پرونده معتبر نیست.');
+    try {
+      const result=await recruitmentReview.change(req.auth,req.params.id,input);
+      if (!result.application) return bad(req,res,result.status,'RECRUITMENT_ACTION_REJECTED',result.message);
+      res.json({application:result.application,replayed:result.replayed});
+    } catch (error) {
+      if (error?.status>=400 && error.status<500 && String(error.code).startsWith('REQUEST_')) {
+        return bad(req,res,error.status,'RECRUITMENT_TASK_REJECTED',error.message);
+      }
+      throw error;
+    }
+  }));
 
 const searchAccountDirectory = createAccountDirectory({ sql, run: withTenantContext, excludeFixtures: isProduction });
 app.post('/api/v1/accounts/search', authenticate, requirePermission('accounts.VIEW'), wrap(async (req, res) => {

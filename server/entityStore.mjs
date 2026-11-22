@@ -454,8 +454,10 @@ export function createEntityService({ driver, registry, hasPermission, excludeFi
       if (!writable.has(code)) writable.set(code, await can(auth, code));
       return writable.get(code);
     };
+    const typedOnly = name => name.toLowerCase()==='collectionpromises' ||
+      (driver.kind==='mssql' && name.toLowerCase()==='onboardingapplications');
     for (const [name, list] of Object.entries(change?.upserts || {})) {
-      if (name.toLowerCase() === 'collectionpromises') { rejected.push({ collection: name, reason: 'FORBIDDEN_CONTRACT' }); continue; }
+      if (typedOnly(name)) { rejected.push({ collection: name, reason: 'FORBIDDEN_CONTRACT' }); continue; }
       if (!NAME_RE.test(name) || !canonical(name) || !Array.isArray(list)) { rejected.push({ collection: name, reason: 'INVALID_COLLECTION' }); continue; }
       if (!(await canWrite(name))) { rejected.push({ collection: name, reason: 'FORBIDDEN', count: list.length }); continue; }
       for (const rec of list) {
@@ -473,7 +475,7 @@ export function createEntityService({ driver, registry, hasPermission, excludeFi
       }
     }
     for (const [name, ids] of Object.entries(allowDeletes ? (change?.deletes || {}) : {})) {
-      if (name.toLowerCase() === 'collectionpromises') { rejected.push({ collection: name, reason: 'FORBIDDEN_CONTRACT' }); continue; }
+      if (typedOnly(name)) { rejected.push({ collection: name, reason: 'FORBIDDEN_CONTRACT' }); continue; }
       if (!NAME_RE.test(name) || !canonical(name) || !Array.isArray(ids)) { rejected.push({ collection: name, reason: 'INVALID_COLLECTION' }); continue; }
       if (!(await canWrite(name))) { rejected.push({ collection: name, reason: 'FORBIDDEN', count: ids.length }); continue; }
       deletes[name] = ids.filter(id => {

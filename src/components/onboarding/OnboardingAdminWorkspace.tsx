@@ -34,6 +34,8 @@ import { decideAdvanceWithContext } from '../../lib/financialIntelligence';
 import { withViewer } from '../../lib/financialAccess';
 import { Wallet, Calculator, Sliders, CheckCircle2, AlertTriangle, ArrowUpRight, Download } from 'lucide-react';
 import { FilterChip } from '../ui/Tabs';
+import { getActiveDataProvider } from '../../services/dataProvider';
+import { RecruitmentReviewPanel } from './RecruitmentReviewPanel';
 
 type Tab = 'apps' | 'files' | 'payroll' | 'config';
 const maskNid = (n?: string) => (n ? n.slice(0, 3) + '****' + n.slice(-3) : '—');
@@ -41,6 +43,7 @@ const maskNid = (n?: string) => (n ? n.slice(0, 3) + '****' + n.slice(-3) : '—
 export function OnboardingAdminWorkspace({ state, updateState }: { state: AppState; updateState: (u: (d: AppState) => AppState | void) => void }) {
   const { can, denied } = useCan(state, updateState); 
   const me = state.currentUserId; 
+  const remote=getActiveDataProvider().name==='SQLSERVER_BACKEND';
   const cfg = getOnboardingConfig(state); 
   const [tab, setTab] = useState<Tab>('apps'); 
   const [q, setQ] = useState(''); 
@@ -141,7 +144,7 @@ export function OnboardingAdminWorkspace({ state, updateState }: { state: AppSta
           <div className="flex gap-1 overflow-x-auto no-scrollbar">
             {(['apps', 'files', 'payroll', 'config'] as Tab[]).map(t => (
               <FilterChip active={tab === t} key={t} onClick={() => setTab(t)} >
-                {t === 'apps' ? `درخواست‌های همکاری (${apps.length})` :
+                {t === 'apps' ? (remote ? 'درخواست‌های همکاری' : `درخواست‌های همکاری (${apps.length})`) :
                  t === 'files' ? `پرونده‌های پرسنلی (${files.length})` :
                  t === 'payroll' ? 'حقوق، مساعده و پورسانت' : 'تنظیمات'}
               </FilterChip>
@@ -153,7 +156,10 @@ export function OnboardingAdminWorkspace({ state, updateState }: { state: AppSta
       {msg && <p role="status" className="rounded-xl bg-primary/10 p-2.5 text-xs font-bold text-primary">{msg}</p>}
       <p className="rounded-xl border border-border bg-surface px-3 py-2 text-caption leading-5 text-text-secondary">تأیید مدارک، وضعیت استخدام و فعال‌سازی حساب سه مفهوم جدا هستند؛ تأیید پرونده به‌تنهایی حساب کاربری را فعال یا وضعیت استخدام را قطعی نمی‌کند.</p>
 
-      {tab === 'apps' && (
+      {tab==='apps' && remote && <div id="onboarding-content" data-tour-primary>
+        <RecruitmentReviewPanel key={me} search={q} viewer={me || ''} canEdit={can('onboarding','EDIT')} attachments={state.attachments ?? []}/>
+      </div>}
+      {tab === 'apps' && !remote && (
         <div id="onboarding-content" data-tour-primary className="space-y-2">
           {visibleApps.map(a => (
             <div 
