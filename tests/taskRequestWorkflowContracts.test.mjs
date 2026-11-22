@@ -77,6 +77,11 @@ test('a deadline update requires a changed or removed date and preserves approva
   assert.equal(applyRequestCommand(task,{isCreator:true},command('DUE_DATE',{dueDate:task.dueDate}),creator,now).ok,false);
   const updated=applyRequestCommand(task,{isCreator:true},command('DUE_DATE',{dueDate:null}),creator,now).task;
   assert.equal(updated.dueDate,null);
+  assert.equal(updated.managedRequest.deadlineChangedAt,now);
+  const restoredAt='2026-11-26T12:00:00.000Z';
+  const restored=applyRequestCommand(updated,{isCreator:true},command('DUE_DATE',{dueDate:task.dueDate}),creator,restoredAt).task;
+  assert.equal(restored.dueDate,task.dueDate);
+  assert.equal(restored.managedRequest.deadlineChangedAt,restoredAt);
   assert.equal(updated.managedRequest.contentRevision,2);
   assert.equal(updated.status,'PENDING_APPROVAL');
 });

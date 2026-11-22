@@ -319,7 +319,7 @@ export function createTaskRequests({sql,run}) {
 
   async function notify(tx,auth,task,commandId,extra=[],overdue=false) {
     const recipients = [...new Set([task.createdBy,task.assigneeId,...task.managedRequest.watchers,...task.managedRequest.activeApprovers,...extra])]
-      .filter(id => id && id!==actorId(auth));
+      .filter(id => id && (overdue || id!==actorId(auth)));
     if (!recipients.length) return;
     await input(tx,auth).input('targets',sql.NVarChar(sql.MAX),JSON.stringify(recipients))
       .input('payload',sql.NVarChar(sql.MAX),JSON.stringify(task)).input('command',sql.NVarChar(100),commandId)
@@ -491,7 +491,9 @@ export function createTaskRequests({sql,run}) {
         FROM sync.EntityStore task WITH(UPDLOCK,HOLDLOCK)
         LEFT JOIN core.AppUser u ON u.TenantId=task.TenantId AND u.IsActive=1
           AND u.UserId=TRY_CONVERT(uniqueidentifier,JSON_VALUE(task.JsonDoc,'$.assigneeId'))
-        CROSS APPLY(SELECT CONCAT('due:',JSON_VALUE(task.JsonDoc,'$.dueDate'),':',JSON_VALUE(task.JsonDoc,'$.managedRequest.assignedAt')) AS command) reminder
+        CROSS APPLY(SELECT CONCAT('due:',JSON_VALUE(task.JsonDoc,'$.dueDate'),':',JSON_VALUE(task.JsonDoc,'$.managedRequest.assignedAt'),
+          CASE WHEN JSON_VALUE(task.JsonDoc,'$.managedRequest.deadlineChangedAt') IS NOT NULL
+            THEN CONCAT(':',JSON_VALUE(task.JsonDoc,'$.managedRequest.deadlineChangedAt')) END) AS command) reminder
         WHERE task.TenantId=@tenantId AND task.CollectionName=N'tasks' AND task.EntityId LIKE N'taskreq-%' AND task.IsDeleted=0
           AND JSON_VALUE(task.JsonDoc,'$.status') NOT IN('COMPLETED','REJECTED','CANCELLED')
           AND TRY_CONVERT(date,JSON_VALUE(task.JsonDoc,'$.dueDate'))<@today

@@ -142,7 +142,8 @@ export function applyRequestCommand(task, access, command, actor, now, context =
     case 'PRIORITY': next.priority=command.priority; break;
     case 'DUE_DATE':
       if ((task.dueDate ?? null)===command.dueDate) return fail('برای ثبت، مهلت را تغییر دهید.');
-      next.dueDate=command.dueDate; break;
+      next.dueDate=command.dueDate;
+      data.deadlineChangedAt=now; break;
     case 'WATCHERS': data.watchers=command.watchers; break;
     case 'REFER':
       next.assigneeId=command.assigneeId; next.assignedTo=command.assigneeId; next.ownerId=command.assigneeId;
