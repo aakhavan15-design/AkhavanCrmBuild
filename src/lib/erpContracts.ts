@@ -117,6 +117,31 @@ export interface ERPReturnReadContract extends ERPRecordIdentity {
   isVoided: boolean;
 }
 
+/** ERP owns route definitions and daily visit tours. CRM treats both as read-only mirrors. */
+export interface ERPVisitRouteReadContract extends ERPRecordIdentity {
+  entityType?: 'VISIT_ROUTE';
+  routeCode: string;
+  routeName: string;
+  territoryExternalId?: string | null;
+  assignedSalesRepExternalId?: string | null;
+  statusCode?: string;
+  isDeleted?: boolean;
+}
+
+export interface ERPVisitTourReadContract extends ERPRecordIdentity {
+  entityType?: 'VISIT_TOUR';
+  tourDate: string;
+  routeExternalId: string;
+  salesRepExternalId: string;
+  statusCode?: string;
+  isDeleted?: boolean;
+  stops: Array<{
+    externalCustomerId: string;
+    stopSequence: number;
+    /** A visit outcome is a separate actual event, never implied by the plan. */
+  }>;
+}
+
 /** A successful sync timestamp is local integration metadata, not an ERP-authored field. */
 export interface ERPSyncReceipt {
   tenantId: string;
