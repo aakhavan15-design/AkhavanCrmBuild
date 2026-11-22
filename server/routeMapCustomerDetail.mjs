@@ -87,7 +87,7 @@ export function createRouteCustomerDetailReader({sql,run}){
       AND i.InvoiceDate BETWEEN @dateFrom AND @dateTo
       AND EXISTS(SELECT 1 FROM crm.VisitRouteCustomerMirror m WHERE m.TenantId=i.TenantId
         AND m.RouteId=@routeId AND m.AccountId=i.AccountId
-        AND m.EffectiveFrom<=@dateTo AND (m.EffectiveTo IS NULL OR m.EffectiveTo>=@dateFrom))
+        AND m.EffectiveFrom<=i.InvoiceDate AND (m.EffectiveTo IS NULL OR m.EffectiveTo>=i.InvoiceDate))
       AND EXISTS(SELECT 1 FROM security.fn_RecordReadScope(a.TenantId,N'accounts.view',a.OwnerUserId,a.BranchId,a.TerritoryId,a.TeamId))
       AND (NOT EXISTS(SELECT 1 FROM OPENJSON(@repJson)) OR i.SalesRepExternalId IN(SELECT value FROM OPENJSON(@repJson)))
       AND (@financeWide=1 OR i.SalesRepUserId=@actor OR EXISTS(
@@ -108,7 +108,7 @@ export function createRouteCustomerDetailReader({sql,run}){
       AND i.InvoiceDate BETWEEN @dateFrom AND @dateTo
       AND EXISTS(SELECT 1 FROM crm.VisitRouteCustomerMirror m WHERE m.TenantId=i.TenantId
        AND m.RouteId=@routeId AND m.AccountId=i.AccountId
-       AND m.EffectiveFrom<=@dateTo AND (m.EffectiveTo IS NULL OR m.EffectiveTo>=@dateFrom))
+       AND m.EffectiveFrom<=i.InvoiceDate AND (m.EffectiveTo IS NULL OR m.EffectiveTo>=i.InvoiceDate))
       AND EXISTS(SELECT 1 FROM security.fn_RecordReadScope(a.TenantId,N'accounts.view',a.OwnerUserId,a.BranchId,a.TerritoryId,a.TeamId))
       AND (NOT EXISTS(SELECT 1 FROM OPENJSON(@repJson)) OR i.SalesRepExternalId IN(SELECT value FROM OPENJSON(@repJson)))
       AND (NOT EXISTS(SELECT 1 FROM OPENJSON(@productJson)) OR l.ExternalProductId IN(SELECT value FROM OPENJSON(@productJson)))
@@ -135,7 +135,7 @@ export function createRouteCustomerDetailReader({sql,run}){
       WHERE ret.TenantId=@tenant AND ret.IsEffective=1 AND ret.DateKey BETWEEN @dateFrom AND @dateTo
         AND EXISTS(SELECT 1 FROM crm.VisitRouteCustomerMirror member WHERE member.TenantId=ret.TenantId
           AND member.RouteId=@routeId AND member.AccountId=ret.AccountId
-          AND member.EffectiveFrom<=@dateTo AND (member.EffectiveTo IS NULL OR member.EffectiveTo>=@dateFrom))
+          AND member.EffectiveFrom<=ret.DateKey AND (member.EffectiveTo IS NULL OR member.EffectiveTo>=ret.DateKey))
         AND EXISTS(SELECT 1 FROM security.fn_RecordReadScope(a.TenantId,N'accounts.view',a.OwnerUserId,a.BranchId,a.TerritoryId,a.TeamId))
         AND (NOT EXISTS(SELECT 1 FROM OPENJSON(@productJson)) OR ret.ExternalProductId IN(SELECT value FROM OPENJSON(@productJson)))
         AND (NOT EXISTS(SELECT 1 FROM OPENJSON(@supplierJson)) OR product.SupplierExternalId IN(SELECT value FROM OPENJSON(@supplierJson)))
