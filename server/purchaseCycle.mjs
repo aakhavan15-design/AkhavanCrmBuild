@@ -73,12 +73,13 @@ BEGIN
 END;
 ${thresholdsSql}
 SELECT @minimumDays AS minimumDays,CONVERT(varchar(42),@minimumSales) AS minimumSales;
-${purchaseRiskSql(`SELECT a.AccountId,a.Name,a.OwnerUserId,a.TerritoryId FROM crm.Account a
+SELECT a.AccountId,a.Name,a.OwnerUserId,a.TerritoryId INTO #visiblePurchaseAccounts FROM crm.Account a
   ${accountScope}
   WHERE a.TenantId=@tenantId AND a.DeletedAtUtc IS NULL AND (@search=N'' OR CHARINDEX(@search,a.Name)>0)
     AND (@audience IN('','manager') OR (@audience='owner' AND a.OwnerUserId=@viewer) OR (@audience='supervisor' AND EXISTS(
       SELECT 1 FROM core.AppUser owner WHERE owner.TenantId=a.TenantId AND owner.UserId=a.OwnerUserId
-        AND owner.ManagerUserId=@viewer AND owner.IsActive=1 AND owner.UserId<>@viewer)))`)}
+        AND owner.ManagerUserId=@viewer AND owner.IsActive=1 AND owner.UserId<>@viewer)));
+${purchaseRiskSql('SELECT AccountId,Name,OwnerUserId,TerritoryId FROM #visiblePurchaseAccounts')}
 
 WITH pageRows AS (
   SELECT * FROM #rankedPurchase WHERE (@onlyRisk=0 OR followUp=1)
@@ -120,7 +121,24 @@ SELECT TOP(12) TerritoryId AS territoryId,ownerId,MAX(territory) AS territory,MA
   CASE WHEN @minimumDays>0 AND @minimumSales>0 THEN COUNT_BIG(CASE WHEN followUp=1 AND planned=0 AND observedCheckIns=0 THEN 1 END) END AS followUpWithoutVisitEvidence,
   SUM(planned) AS planned,SUM(checkedIn) AS checkedIn
 FROM visitsPerAccount GROUP BY TerritoryId,ownerId
-ORDER BY needingFollowUp DESC,planned DESC,TerritoryId,ownerId;`;
+ORDER BY needingFollowUp DESC,planned DESC,TerritoryId,ownerId;
+
+SELECT visit.AccountId,orders.SalesOrderId,
+  CASE WHEN visit.ResultingSalesOrderId IS NULL THEN NULLIF(LTRIM(RTRIM(visit.NoOrderReasonCode)),'') END AS noOrderReason
+INTO #observedVisits
+FROM crm.Visit visit JOIN #visiblePurchaseAccounts account ON account.AccountId=visit.AccountId AND account.OwnerUserId=visit.VisitorUserId
+LEFT JOIN crm.SalesOrder orders ON orders.TenantId=visit.TenantId AND orders.SalesOrderId=visit.ResultingSalesOrderId
+  AND orders.AccountId=visit.AccountId AND orders.StatusCode NOT IN ('DRAFT','FAILED','REJECTED','CANCELLED')
+WHERE visit.TenantId=@tenantId AND visit.CheckInAtUtc>=DATEADD(day,-30,@nextDayUtc) AND visit.CheckInAtUtc<=@nowUtc
+  AND (@territory IS NULL OR account.TerritoryId=@territory) AND (@owner IS NULL OR account.OwnerUserId=@owner);
+
+SELECT COUNT_BIG(*) AS checkIns,COUNT_BIG(DISTINCT AccountId) AS visitedCustomers,
+  COUNT_BIG(DISTINCT SalesOrderId) AS linkedOrders,
+  COUNT_BIG(CASE WHEN noOrderReason IS NOT NULL THEN 1 END) AS visitsWithNoOrderReason,
+  COUNT_BIG(CASE WHEN SalesOrderId IS NULL AND noOrderReason IS NULL THEN 1 END) AS visitsWithUnknownOutcome
+FROM #observedVisits;
+SELECT TOP (10) noOrderReason AS code,COUNT_BIG(*) AS visits FROM #observedVisits
+  WHERE noOrderReason IS NOT NULL GROUP BY noOrderReason ORDER BY visits DESC,noOrderReason;`;
 
 const productQuery = `
 WITH periodInvoices AS (
@@ -189,7 +207,8 @@ export function createPurchaseCycleReader({sql,run}) {
     if (thresholds.denied) return { forbidden:true };
     const rows=result.recordsets[1];
     return {asOf,configured:thresholds.minimumDays>0 && Number(thresholds.minimumSales)>0,
-      rows:rows.slice(0,20),hasMore:filter.page<500 && rows.length>20,coverage:result.recordsets[2]};
+      rows:rows.slice(0,20),hasMore:filter.page<500 && rows.length>20,coverage:result.recordsets[2],
+      visitOutcomes:result.recordsets[3]?.[0], noOrderReasons:result.recordsets[4] ?? []};
   });
 }
 

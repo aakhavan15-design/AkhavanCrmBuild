@@ -15,6 +15,8 @@ export interface PurchaseCycleResult {
   rows:PurchaseCycleRow[];
   hasMore:boolean;
   coverage:PurchaseCoverageRow[];
+  visitOutcomes?: {checkIns:number;visitedCustomers:number;linkedOrders:number;visitsWithNoOrderReason:number;visitsWithUnknownOutcome:number};
+  noOrderReasons?: Array<{code:string;visits:number}>;
 }
 
 export interface PurchaseCoverageScope {territory:string;owner:string}

@@ -74,6 +74,21 @@ export function PurchaseCycleFollowUp({viewer,accounts,canCreate,audience}:{view
       : loading || !report ? <LoadingState label="در حال خواندن فاکتورهای ERP" /> : <>
         {!report.configured && <p className="text-caption text-warning">اولویت پیگیری بعد از تنظیم حداقل فاصلهٔ خرید و حداقل فروش در سیاست سازمان مشخص می‌شود.</p>}
         <p className="text-caption text-text-secondary">تاریخ مبنا {formatAppDate(report.asOf)}</p>
+        {report.visitOutcomes && <details className="rounded-xl border border-border p-2">
+          <summary className="min-h-11 cursor-pointer py-2 text-sm font-semibold">نتیجهٔ مراجعه‌ها در ۳۰ روز اخیر</summary>
+          <p className="text-caption text-text-secondary">بر اساس ورود ثبت‌شده برای مسئول فعلی مشتری و فیلتر نام، منطقه و مسئول. مشتری بدون سابقهٔ خرید هم در صورت ثبت ورود در این بخش دیده می‌شود.</p>
+          {report.visitOutcomes.checkIns > 0 ? <>
+            <dl className="grid grid-cols-2 gap-2 py-2 text-caption sm:grid-cols-3">
+              <div><dt>ثبت ورود / مشتری یکتا</dt><dd>{formatCount(report.visitOutcomes.checkIns)} / {formatCount(report.visitOutcomes.visitedCustomers)}</dd></div>
+              <div><dt>سفارش مرتبط یکتا</dt><dd>{formatCount(report.visitOutcomes.linkedOrders)}</dd></div>
+              <div><dt>مراجعه با علت ثبت‌شدهٔ عدم سفارش</dt><dd>{formatCount(report.visitOutcomes.visitsWithNoOrderReason)}</dd></div>
+              <div><dt>مراجعه با نتیجهٔ نامشخص</dt><dd>{formatCount(report.visitOutcomes.visitsWithUnknownOutcome)}</dd></div>
+            </dl>
+            {!!report.noOrderReasons?.length && <ul className="divide-y divide-border text-caption" aria-label="علت‌های ثبت‌شدهٔ عدم سفارش">
+              {report.noOrderReasons.map(reason => <li key={reason.code} className="flex justify-between gap-2 py-1"><span>کد علت ثبت‌شده <bdi>{reason.code}</bdi></span><span>{formatCount(reason.visits)} مراجعه</span></li>)}
+            </ul>}
+          </> : <p className="py-2 text-caption text-text-secondary">در دادهٔ در دسترس، ثبت ورودی مشاهده نشد.</p>}
+        </details>}
         {(report.coverage?.length ?? 0)>0 && <details open={coverageOpen} onToggle={event=>setCoverageOpen(event.currentTarget.open)} className="rounded-xl border border-border p-2">
           <summary className="min-h-11 cursor-pointer py-2 text-sm font-semibold">پوشش ثبت ویزیت به تفکیک منطقه و مسئول</summary>
           <p className="pb-1 text-caption text-text-secondary">پوشش بر اساس برنامه‌هایی است که زمانشان در ۳۰ روز اخیر رسیده و ثبت ورود دارند. نبود ثبت ورود، انجام‌نشدن مراجعه را ثابت نمی‌کند.</p>
