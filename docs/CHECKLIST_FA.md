@@ -641,7 +641,7 @@
 - [~] F4-06 (۲.۶) ارجاع هوشمند: قلمرو/تخصص/ظرفیت/Override/ثبت علت.
   - **P1 · PARTIAL** · taskIntelligence.ts و directory/assign در taskRequests؛ ظرفیت و ارجاع بخشی، انتخاب عملیاتی تخصص×قلمرو×ظرفیت همراه ممیزی Override باز.
 - [~] F4-07 (۲.۷) اعلان: `notifyAndPush` و `NotificationCenter`، خوانده‌شدن و ثبت اشتراک برای گیرندهٔ مجاز وصل و آزموده شدند؛ ضد‌تکرار، صف/Retry، کنترل مجوز اعلان‌های گردش سمت سرور و ارسال Push واقعی بازند.
-  - **P0 · PARTIAL** · NotificationCenter، taskRequests.notify، purchaseCycle و pushStore؛ dedupe قلمرویی و Push مستقیم؛ Outbox قابل Retry و آزمون واقعی ارسال باز.
+  - **P0 · PARTIAL** · `taskRequests.notify` و `entityStore.mjs` مجوز جاری کارتابل را برای مشاهده و علامت‌زدن اعلان‌های صادرشدهٔ درخواست دوباره بررسی می‌کنند. همگام‌سازی عمومی فقط فیلد خوانده‌شدن اعلانِ ذخیره‌شده برای همان گیرنده را تغییر می‌دهد. آزمون قرارداد هدفمند PASS؛ ارسال پس‌زمینه، Outbox قابل Retry و آزمون SQL/Push واقعی باز.
 - [~] F4-08 (۲.۸) Audit و تاریخچه مشترک سراسری (کامپوننت یگانه؛ ثبت سمت سرور؛ نمایش `accountAuditLogs` در Customer360؛ `ActivitiesWorkspace` همه `auditLogs`).
   - **P0 · PARTIAL** · 013، taskRequests، personnelLearning و WorkflowTimeline؛ تاریخچه و Audit بخشی؛ نمایش/سیاست سراسری Customer360 و Activities یکپارچه نیست.
 - [ ] F4-09 (۲.۹) موتور جریمه مشترک (سیاست‌محور، بازتولیدپذیر، ضد اعمال مجدد).

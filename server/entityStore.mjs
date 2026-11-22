@@ -25,6 +25,13 @@ const scopedCollections = new Set([...PARTY_COLLECTIONS, ...FINANCIAL_PARTY_COLL
 const taskWorkflowFields = sqlCollectionList([
   'status', 'result', 'nextAction', 'blockReason', 'blockedAt', 'unblockedAt', 'completedAt', 'activityHistory',
 ]);
+const taskNoticePrefix = 'task-update-';
+const taskNoticeVisibleSql = (notice, viewer) => `EXISTS (
+  SELECT 1 FROM sync.EntityStore AS task
+  CROSS APPLY security.fn_TaskRequestAccess(task.TenantId,${viewer},task.JsonDoc) AS taskAccess
+  WHERE task.TenantId=${notice}.TenantId AND task.CollectionName=N'tasks' AND task.IsDeleted=0
+    AND task.EntityId=JSON_VALUE(${notice}.JsonDoc,'$.requestId') AND task.EntityId LIKE N'taskreq-%'
+)`;
 const now = () => new Date().toISOString();
 const bytes = (value) => Buffer.byteLength(JSON.stringify(value ?? null), 'utf8');
 
@@ -160,6 +167,9 @@ export class MssqlEntityDriver {
                 AND NOT (ISNULL(JSON_VALUE(record.JsonDoc,'$.linkTab'),N'')=N'tasks'
                   AND ISNULL(JSON_VALUE(record.JsonDoc,'$.dedupeKey'),N'') LIKE N'%|%|[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]%'))
             ))
+            AND (LOWER(record.CollectionName)<>N'notifications' OR LOWER(record.EntityId) NOT LIKE N'${taskNoticePrefix}%'
+              OR (TRY_CONVERT(uniqueidentifier,JSON_VALUE(record.JsonDoc,'$.recipientId'))=TRY_CONVERT(uniqueidentifier,SESSION_CONTEXT(N'UserId'))
+                AND ${taskNoticeVisibleSql('record', "TRY_CONVERT(uniqueidentifier,SESSION_CONTEXT(N'UserId'))")}))
           ORDER BY CreatedAtUtc, EntityId;
           SELECT N'personnelFiles' AS CollectionName,subject.UserId AS EntityId,entry.value AS JsonDoc
           FROM sync.EntityStore legacy CROSS APPLY OPENJSON(legacy.JsonDoc) entry
@@ -226,6 +236,41 @@ export class MssqlEntityDriver {
       for (const partition of partitions) {
         for (let at = 0; at < partition.length; at += 400) {
           let chunk = partition.slice(at, at + 400);
+          const taskNotices = chunk.flatMap((row, index) => row.c.toLowerCase() === 'notifications'
+            && row.i.toLowerCase().startsWith(taskNoticePrefix) ? [{ ...row, index }] : []);
+          if (taskNotices.length) {
+            const marked = await new sql.Request(tx)
+              .input('tenantId', sql.UniqueIdentifier, tenantId)
+              .input('userId', sql.UniqueIdentifier, userId)
+              .input('taskNotices', sql.NVarChar(sql.MAX), JSON.stringify(taskNotices))
+              .query(`DECLARE @allowed TABLE (RowIndex int PRIMARY KEY, EntityId nvarchar(200) NOT NULL);
+                INSERT @allowed(RowIndex,EntityId)
+                SELECT incoming.RowIndex,stored.EntityId
+                FROM OPENJSON(@taskNotices) WITH (RowIndex int '$.index', EntityId nvarchar(200) '$.i',
+                  JsonDoc nvarchar(max) '$.j', IsDelete bit '$.d') AS incoming
+                JOIN sync.EntityStore AS stored WITH(UPDLOCK,HOLDLOCK)
+                  ON stored.TenantId=@tenantId AND stored.CollectionName=N'notifications'
+                  AND stored.EntityId=incoming.EntityId AND stored.IsDeleted=0
+                WHERE incoming.IsDelete=0 AND JSON_VALUE(incoming.JsonDoc,'$.read')=N'true'
+                  AND LEN(JSON_VALUE(stored.JsonDoc,'$.recipientId'))=36
+                  AND TRY_CONVERT(uniqueidentifier,JSON_VALUE(stored.JsonDoc,'$.recipientId'))=@userId
+                  AND ${taskNoticeVisibleSql('stored', '@userId')};
+
+                UPDATE stored SET JsonDoc=JSON_MODIFY(stored.JsonDoc,'$.read',CONVERT(bit,1)),
+                  Version=stored.Version+1,UpdatedAtUtc=SYSUTCDATETIME()
+                FROM sync.EntityStore AS stored WHERE stored.TenantId=@tenantId AND stored.CollectionName=N'notifications'
+                  AND EXISTS(SELECT 1 FROM @allowed permitted WHERE permitted.EntityId=stored.EntityId)
+                  AND JSON_VALUE(stored.JsonDoc,'$.read')=N'false';
+                SELECT @@ROWCOUNT AS MarkedCount;
+                SELECT RowIndex FROM @allowed;`);
+            const allowed = new Set(marked.recordsets[1].map(row => row.RowIndex));
+            upserted += marked.recordsets[0][0]?.MarkedCount ?? 0;
+            for (const notice of taskNotices) if (!allowed.has(notice.index)) {
+              rejected.push({ collection: notice.c, id: notice.i, reason: 'FORBIDDEN_SCOPE' });
+            }
+            const protectedIndices = new Set(taskNotices.map(row => row.index));
+            chunk = chunk.filter((_, index) => !protectedIndices.has(index));
+          }
           const reminders = chunk.flatMap((row, index) =>
             row.c.toLowerCase() === 'notifications' && row.i.toLowerCase().startsWith('task-reminder-') ? [{ ...row, index }] : [],
           );

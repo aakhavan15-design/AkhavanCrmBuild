@@ -316,6 +316,52 @@ test('SQL personnel writes use the stored status, separate self review and prote
   assert.deepEqual(result.rejected.map(row => row.reason), ['INVALID_SINGLETON', 'FORBIDDEN_SCOPE', 'FORBIDDEN_SCOPE', 'FORBIDDEN_SCOPE']);
 });
 
+test('managed task notices are visible by current request scope and only the recipient can mark stored notices read', async () => {
+  const noticeId = 'task-update-notice';
+  const statements = [];
+  const writes = [];
+  class Request {
+    constructor() { this.params = {}; }
+    input(name, _type, value) { this.params[name] = value; return this; }
+    async query(sql) {
+      statements.push(sql);
+      if (this.params.taskNotices) {
+        const inputs = JSON.parse(this.params.taskNotices);
+        assert.deepEqual(inputs.map(input => [input.i, input.d]), [[noticeId, 0], ['task-update-fabricated', 0], [noticeId, 1]]);
+        return { recordsets: [[{ MarkedCount: 1 }], [{ RowIndex: 0 }]] };
+      }
+      if (sql.includes('MAX(Version)')) return { recordset: [{ V: 2 }] };
+      return { recordset: [], recordsets: [[], []] };
+    }
+    async execute(_name) { writes.push(...JSON.parse(this.params.rows)); }
+  }
+  const driver = new MssqlEntityDriver({
+    sql: { Request, UniqueIdentifier: 'uuid', NVarChar: () => 'text', MAX: -1 },
+    run: async (_claims, work) => work({}),
+  });
+  await driver.load(auth.tenantId, auth.userId);
+  const result = await driver.apply(auth.tenantId, auth.userId, {
+    upserts: { notifications: [
+      { __id: noticeId, json: { read: true, requestId: 'taskreq-untrusted', title: 'تغییر از مرورگر' } },
+      { __id: 'task-update-fabricated', json: { read: true } },
+      { __id: 'legacy-notice', json: { read: true } },
+    ] },
+    deletes: { notifications: [noticeId] },
+  });
+  const load = statements.find(sql => sql.includes('ORDER BY CreatedAtUtc'));
+  const mark = statements.find(sql => sql.includes('DECLARE @allowed'));
+  assert.match(load, /fn_TaskRequestAccess\(task\.TenantId,TRY_CONVERT\(uniqueidentifier,SESSION_CONTEXT\(N'UserId'\)\),task\.JsonDoc\)/);
+  assert.match(load, /task\.EntityId=JSON_VALUE\(record\.JsonDoc,'\$\.requestId'\)/);
+  assert.match(mark, /TRY_CONVERT\(uniqueidentifier,JSON_VALUE\(stored\.JsonDoc,'\$\.recipientId'\)\)=@userId/);
+  assert.match(mark, /task\.EntityId=JSON_VALUE\(stored\.JsonDoc,'\$\.requestId'\)/);
+  assert.match(mark, /JSON_MODIFY\(stored\.JsonDoc,'\$\.read',CONVERT\(bit,1\)\)/);
+  assert.doesNotMatch(mark, /SET JsonDoc=incoming\.JsonDoc/);
+  assert.deepEqual(writes.map(row => row.i), ['legacy-notice']);
+  assert.equal(result.upserted, 2);
+  assert.equal(result.deleted, 0);
+  assert.deepEqual(result.rejected.map(row => row.id), ['task-update-fabricated', noticeId]);
+});
+
 test('file driver persists across restarts', async () => {
   const file = new URL('../.tmp-entity-test.json', import.meta.url).pathname;
   fs.rmSync(file, { force: true });
