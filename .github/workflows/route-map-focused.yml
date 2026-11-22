@@ -1,0 +1,43 @@
+name: Route Map focused verification
+on:
+  push:
+    branches:
+      - chatgpt/parallel-checklist-20261122
+    paths:
+      - 'server/routeMap*.mjs'
+      - 'server/erpVisitRouteReads.mjs'
+      - 'server/index.mjs'
+      - 'src/components/RouteMapOverview.tsx'
+      - 'src/components/ErpVisitLiveReport.tsx'
+      - 'src/components/GeoZoneMapEditor.tsx'
+      - 'src/lib/geoRouteAnalysis.ts'
+      - 'src/lib/visitIntelligence.ts'
+      - 'tests/geoRouteAnalysis.test.mjs'
+      - 'tests/visitIntelligence.test.mjs'
+      - '.github/workflows/route-map-focused.yml'
+  workflow_dispatch:
+jobs:
+  route-map-focused:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: oven-sh/setup-bun@v2
+      - name: Node syntax (no dependencies)
+        run: |
+          node --check server/routeMapAnalytics.mjs
+          node --check server/routeMapCustomerDetail.mjs
+          node --check server/erpVisitRouteReads.mjs
+          node --check server/index.mjs
+      - name: TSX transpile syntax (no package install)
+        run: |
+          bun -e "import fs from 'node:fs'; const t=new Bun.Transpiler({loader:'tsx'}); for(const p of process.argv.slice(1)){t.transformSync(fs.readFileSync(p,'utf8')); console.log('Parsed '+p)}" \
+            src/components/RouteMapOverview.tsx \
+            src/components/ErpVisitLiveReport.tsx \
+            src/components/GeoZoneMapEditor.tsx \
+            src/components/GeoIntelligenceWorkspace.tsx
+      - name: Visit and geographical calculation tests
+        run: bun test tests/geoRouteAnalysis.test.mjs tests/visitIntelligence.test.mjs tests/erpVisitToursContracts.test.mjs
