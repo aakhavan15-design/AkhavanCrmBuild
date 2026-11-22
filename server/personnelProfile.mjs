@@ -25,7 +25,8 @@ WHERE p.TenantId=@tenant AND p.UserId=@user AND p.StatusCode IN('ISSUED','APPROV
 ORDER BY p.PeriodMonth DESC,p.PayslipId;
 
 SELECT TOP(30) r.AdvanceRequestId AS id,r.RequestNumber AS number,CONVERT(varchar(42),r.RequestedAmountRials) AS requested,
-  CONVERT(varchar(42),r.ApprovedAmountRials) AS approved,r.StatusCode AS status,r.ManagerNotes AS managerNotes,r.CreatedAtUtc AS createdAt
+  CONVERT(varchar(42),r.ApprovedAmountRials) AS approved,r.StatusCode AS status,r.ManagerNotes AS managerNotes,r.CreatedAtUtc AS createdAt,
+  r.AccountingStage AS accountingStage
 FROM hr.AdvanceRequest r JOIN core.AppUser u ON u.TenantId=r.TenantId AND u.UserId=r.UserId AND u.IsActive=1
 WHERE r.TenantId=@tenant AND r.UserId=@user ORDER BY r.CreatedAtUtc DESC,r.AdvanceRequestId;
 
@@ -59,6 +60,13 @@ export function parseAdvanceDecision(body) {
   if (!uuid(body?.commandId) || !['APPROVED','REJECTED'].includes(body.status) || !reason || reason.length>1000 ||
       (body.status==='APPROVED' ? !asAmount(body.amount) : body.amount!=null)) return null;
   return {commandId:body.commandId.toLowerCase(),status:body.status,amount:body.amount ?? null,reason};
+}
+
+export function parseAdvanceAccounting(body) {
+  const note=typeof body?.note==='string' ? body.note.trim() : '';
+  return uuid(body?.commandId) && ['AWAITING_REVIEW','ON_HOLD'].includes(body.expectedStage) &&
+    ['ON_HOLD','READY_FOR_ERP'].includes(body.stage) && body.expectedStage!==body.stage && note && note.length<=1000
+    ? {commandId:body.commandId.toLowerCase(),expectedStage:body.expectedStage,stage:body.stage,note} : null;
 }
 
 export function createPersonnelService({ sql,run }) {
@@ -98,14 +106,67 @@ export function createPersonnelService({ sql,run }) {
         IF @status='APPROVED' AND (@approved IS NULL OR @approved<=0 OR @approved>@requested)
           BEGIN SELECT 'AMOUNT' AS outcome; RETURN; END;
         UPDATE hr.AdvanceRequest SET StatusCode=@status,ApprovedAmountRials=@approved,DecidedByUserId=@user,
+          AccountingStage=CASE WHEN @status='APPROVED' THEN 'AWAITING_REVIEW' END,
           DecidedAtUtc=SYSUTCDATETIME(),ManagerNotes=@reason WHERE TenantId=@tenant AND AdvanceRequestId=@id;
         DECLARE @details nvarchar(max)=(SELECT @current AS previousStatus,@status AS status,@fingerprint AS fingerprint FOR JSON PATH,WITHOUT_ARRAY_WRAPPER);
         INSERT security.AuditEvent(TenantId,ActorUserId,CorrelationId,EventType,EntityType,EntityId,OutcomeCode,DetailsJson)
           VALUES(@tenant,@user,@command,N'HR_ADVANCE_DECIDED',N'ADVANCE',@subject,'SUCCESS',@details);
         DECLARE @noticeId nvarchar(120)=CONCAT(N'hr-advance-decided-',@subject),@noticeTitle nvarchar(120)=N'نتیجهٔ بررسی مساعده ثبت شد';
         ${advanceNotice}
+        IF @status='APPROVED'
+          INSERT sync.EntityStore(TenantId,CollectionName,EntityId,JsonDoc,UpdatedByUserId)
+          SELECT @tenant,N'notifications',notice.id,
+            (SELECT notice.id AS id,N'مساعدهٔ مصوب نیازمند بررسی حسابداری' AS title,N'درخواست را در کارتابل مالی باز کنید.' AS message,
+              N'INFO' AS type,CONVERT(bit,0) AS [read],CONVERT(varchar(33),SYSUTCDATETIME(),126)+'Z' AS createdAt,
+              N'finance-advance' AS linkTab,@subject AS entityId,CONVERT(varchar(36),reviewer.UserId) AS recipientId
+              FOR JSON PATH,WITHOUT_ARRAY_WRAPPER),@user
+          FROM core.AppUser reviewer CROSS APPLY security.fn_TaskRequestGrant(@tenant,reviewer.UserId,N'finance.manage',NULL,NULL,NULL,NULL,1)
+          CROSS APPLY(SELECT CONCAT(N'hr-advance-accounting-',@subject,N'-',LOWER(CONVERT(nvarchar(36),reviewer.UserId))) AS id) notice
+          WHERE reviewer.TenantId=@tenant AND reviewer.IsActive=1 AND reviewer.UserId NOT IN(@user,@recipient);
         SELECT 'DECIDED' AS outcome;`);
       return result.recordset[0].outcome;
+    }),
+    accountingQueue: (auth,stage,page,focus)=>run(auth,async tx=>{
+      const result=await request(tx,auth,auth.userId).input('stage',sql.VarChar(24),stage).input('focus',sql.UniqueIdentifier,focus)
+        .input('offset',sql.Int,(page-1)*25).query(`SELECT r.AdvanceRequestId AS id,r.RequestNumber AS number,employee.DisplayName AS employee,
+          CONVERT(varchar(42),r.ApprovedAmountRials) AS amount,r.DecidedAtUtc AS approvedAt,r.AccountingStage AS stage,
+          r.AccountingNote AS accountingNote,reviewer.DisplayName AS reviewer,r.AccountingReviewedAtUtc AS reviewedAt
+        FROM hr.AdvanceRequest r JOIN core.AppUser employee ON employee.TenantId=r.TenantId AND employee.UserId=r.UserId
+        LEFT JOIN core.AppUser reviewer ON reviewer.TenantId=r.TenantId AND reviewer.UserId=r.AccountingReviewedBy
+        WHERE r.TenantId=@tenant AND r.StatusCode=N'APPROVED' AND r.ApprovedAmountRials>0 AND r.AccountingStage IS NOT NULL
+          AND r.UserId<>@user AND r.DecidedByUserId<>@user AND (@stage='' OR r.AccountingStage=@stage OR r.AdvanceRequestId=@focus)
+          AND EXISTS(SELECT 1 FROM security.fn_TaskRequestGrant(@tenant,@user,N'finance.manage',NULL,NULL,NULL,NULL,1))
+        ORDER BY CASE WHEN r.AdvanceRequestId=@focus THEN 0 ELSE 1 END,r.DecidedAtUtc,r.AdvanceRequestId
+        OFFSET @offset ROWS FETCH NEXT 26 ROWS ONLY;`);
+      return {items:result.recordset.slice(0,25),hasMore:page<999 && result.recordset.length>25};
+    }),
+    reviewAccounting: (auth,id,input)=>run(auth,async tx=>{
+      const fingerprint=createHash('sha256').update(JSON.stringify(input)).digest('hex');
+      const result=await request(tx,auth,auth.userId).input('id',sql.UniqueIdentifier,id).input('stage',sql.VarChar(24),input.stage)
+        .input('expected',sql.VarChar(24),input.expectedStage)
+        .input('note',sql.NVarChar(1000),input.note).input('command',sql.NVarChar(100),input.commandId)
+        .input('fingerprint',sql.VarChar(64),fingerprint).query(`SET NOCOUNT ON;
+          DECLARE @current varchar(24),@recipient uniqueidentifier,@subject nvarchar(36)=LOWER(CONVERT(nvarchar(36),@id));
+          SELECT @current=AccountingStage,@recipient=UserId FROM hr.AdvanceRequest WITH(UPDLOCK,HOLDLOCK)
+          WHERE TenantId=@tenant AND AdvanceRequestId=@id AND StatusCode=N'APPROVED' AND ApprovedAmountRials>0
+            AND UserId<>@user AND DecidedByUserId<>@user
+            AND EXISTS(SELECT 1 FROM security.fn_TaskRequestGrant(@tenant,@user,N'finance.manage',NULL,NULL,NULL,NULL,1));
+          IF @current IS NULL BEGIN SELECT 'UNAVAILABLE' AS outcome; RETURN; END;
+          IF EXISTS(SELECT 1 FROM security.AuditEvent WHERE TenantId=@tenant AND EntityId=@subject AND EntityType=N'ADVANCE'
+            AND EventType=N'HR_ADVANCE_ACCOUNTING_REVIEW' AND ActorUserId=@user AND CorrelationId=@command AND JSON_VALUE(DetailsJson,'$.fingerprint')=@fingerprint)
+            BEGIN SELECT 'REPLAY' AS outcome; RETURN; END;
+          IF @current<>@expected OR EXISTS(SELECT 1 FROM security.AuditEvent
+            WHERE TenantId=@tenant AND EntityId=@subject AND EntityType=N'ADVANCE' AND EventType=N'HR_ADVANCE_ACCOUNTING_REVIEW' AND CorrelationId=@command)
+            BEGIN SELECT 'CONFLICT' AS outcome; RETURN; END;
+          UPDATE hr.AdvanceRequest SET AccountingStage=@stage,AccountingReviewedBy=@user,AccountingReviewedAtUtc=SYSUTCDATETIME(),AccountingNote=@note
+          WHERE TenantId=@tenant AND AdvanceRequestId=@id;
+          DECLARE @details nvarchar(max)=(SELECT @current AS previousStage,@stage AS stage,@fingerprint AS fingerprint FOR JSON PATH,WITHOUT_ARRAY_WRAPPER);
+          INSERT security.AuditEvent(TenantId,ActorUserId,CorrelationId,EventType,EntityType,EntityId,OutcomeCode,DetailsJson)
+            VALUES(@tenant,@user,@command,N'HR_ADVANCE_ACCOUNTING_REVIEW',N'ADVANCE',@subject,'SUCCESS',@details);
+          DECLARE @noticeId nvarchar(120)=CONCAT(N'hr-advance-review-',@subject,N'-',@command),@noticeTitle nvarchar(120)=N'وضعیت بررسی حسابداری مساعده تغییر کرد';
+          ${advanceNotice}
+          SELECT 'REVIEWED' AS outcome;`);
+      return result.recordset[0]?.outcome;
     }),
     requestAdvance: (auth,input,correlation)=>run(auth,async tx=>{
       const result=await request(tx,auth,auth.userId).input('id',sql.UniqueIdentifier,input.id)

@@ -34,7 +34,7 @@ const typeIcon = (t?: string) => {
 const guessBucket = (n: AppNotification): Filter => {
   const blob = `${n.title || ''} ${n.message || ''} ${n.linkTab || ''}`.toLowerCase();
   if (n.linkTab === 'tasks' || /وظیفه|تسک|معوق|پیگیری|sla/.test(blob)) return 'TASK';
-  if (n.linkTab === 'finance' || /مالی|وصول|پرداخت|چک|مطالبات/.test(blob)) return 'FINANCE';
+  if (n.linkTab === 'finance' || n.linkTab === 'finance-advance' || /مالی|وصول|پرداخت|چک|مطالبات/.test(blob)) return 'FINANCE';
   if (n.linkTab === 'settings' || /سیستم|همگام|sync|erp/.test(blob)) return 'SYSTEM';
   return 'ALL';
 };
@@ -143,7 +143,7 @@ export function NotificationCenter({
               )}
               {n.linkTab && (
                 <span className="mt-1.5 inline-block text-micro font-medium text-primary/80">
-                  باز کردن: {n.linkTab === 'tasks' ? 'وظایف' : n.linkTab === 'finance' ? 'مالی' : n.linkTab === 'personnel-file' ? 'پروندهٔ پرسنلی' : n.linkTab}
+                  باز کردن: {n.linkTab === 'tasks' ? 'وظایف' : n.linkTab === 'finance-advance' ? 'بررسی حسابداری مساعده' : n.linkTab === 'finance' ? 'مالی' : n.linkTab === 'personnel-file' ? 'پروندهٔ پرسنلی' : n.linkTab}
                 </span>
               )}
             </button>

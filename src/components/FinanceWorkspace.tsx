@@ -53,6 +53,7 @@ import { LedgerBooksPanel } from './finance/LedgerBooksPanel';
 import { ProfitLossWidget } from './finance/ProfitLossWidget';
 import { MoneyIntelligencePanel } from './finance/MoneyIntelligencePanel';
 import { CashFlowPanel } from './finance/CashFlowPanel';
+import { AdvanceAccountingPanel } from './finance/AdvanceAccountingPanel';
 import { 
   evaluateAllCustomerCollections, 
   CustomerCollectionProfile 
@@ -70,7 +71,7 @@ interface FinanceWorkspaceProps {
 }
 
 export function FinanceWorkspace({ state, updateState }: FinanceWorkspaceProps) {
-  const { can, canOn, denied } = useCan(state, updateState);
+  const { rbac, can, canOn, denied } = useCan(state, updateState);
   type FinanceView = 'overview' | 'invoices' | 'payments' | 'cheques' | 'collection' | 'requests' | 'expenses' | 'treasury' | 'credits';
   const financeViewIds = FINANCE_AREAS.flatMap(area => area.views.map(view => view.id)) as FinanceView[];
   const [activeTab, setLocalTab] = useTabParam<FinanceView>(financeViewIds, 'overview');
@@ -108,6 +109,8 @@ export function FinanceWorkspace({ state, updateState }: FinanceWorkspaceProps) 
   const [intakeInitialType, setIntakeInitialType] = useState<CapturedDocumentType>('BANK_RECEIPT');
   const [paymentFormInitialValues, setPaymentFormInitialValues] = useState<Record<string, unknown>>({ method: 'TRANSFER' });
   const location = useLocation();
+  const selectedAdvance = new URLSearchParams(location.search).get('advance')?.toLowerCase();
+  const advanceFocus = selectedAdvance && /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(selectedAdvance) ? selectedAdvance : undefined;
   const applyIntakeToForm = React.useCallback((payload: IntakePrefillPayload) => {
     const prefill = buildPaymentFormPrefill(payload);
     if (prefill) {
@@ -531,6 +534,11 @@ export function FinanceWorkspace({ state, updateState }: FinanceWorkspaceProps) 
           ))}
           {cheques.length === 0 && <div className="text-center text-xs text-text-secondary py-8 bg-surface rounded-xl border border-border">چکی یافت نشد.</div>}
         </div>
+      )}
+
+      {activeTab === 'requests' && rbac.hasPermission('finance.manage') && rbac.canSeeRecord() &&
+        getActiveDataProvider().name === 'SQLSERVER_BACKEND' && (
+          <AdvanceAccountingPanel key={JSON.stringify([state.currentUserId, advanceFocus])} focus={advanceFocus} />
       )}
 
       {/* دستورهای پرداخت و تسویه */}

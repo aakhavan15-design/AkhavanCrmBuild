@@ -19,7 +19,7 @@ import { createJournalCoverageReader, createJournalCoverageFollowUp, createJourn
 import { createCollectionActions } from './collectionActions.mjs';
 import { createPublicRecruitment } from './publicRecruitment.mjs';
 import { createRecruitmentReview, recruitmentCommand, recruitmentFilters } from './recruitmentReview.mjs';
-import { createPersonnelService, parseAdvanceDecision, parseAdvanceRequest } from './personnelProfile.mjs';
+import { createPersonnelService, parseAdvanceAccounting, parseAdvanceDecision, parseAdvanceRequest } from './personnelProfile.mjs';
 import { buildReportStatus } from './reportStatus.mjs';
 import { getVapidPublicKey, saveSubscription, removeSubscription, sendPushToUser, initPushModule } from './pushStore.mjs';
 import { recordId } from '../src/lib/stateModel.mjs';
@@ -808,6 +808,24 @@ app.post('/api/v1/personnel/advances/:id/decision',authenticate,requireSignedSes
   if (outcome==='AMOUNT') return bad(req,res,422,'ADVANCE_AMOUNT_OUT_OF_RANGE','مبلغ مصوب باید مثبت و حداکثر برابر مبلغ درخواستی باشد.');
   res.json({id:id.toLowerCase(),replayed:outcome==='REPLAY'});
 }));
+app.get('/api/v1/finance/personnel-advances',authenticate,requireSignedSession,requirePermission('finance.manage',{organizationWide:true}),
+  personnelEndpoint(async(req,res)=>{
+    const stage=req.query.stage ?? '', page=String(req.query.page ?? '1'), focus=req.query.focus ?? null;
+    if (!['','AWAITING_REVIEW','ON_HOLD','READY_FOR_ERP'].includes(stage) || !/^[1-9]\d{0,2}$/.test(page) || (focus!==null && !uuid(focus))) {
+      return bad(req,res,400,'ADVANCE_QUEUE_FILTER_INVALID','فیلتر کارتابل مساعده معتبر نیست.');
+    }
+    res.json(await personnel.accountingQueue(req.auth,stage,Number(page),focus));
+  }));
+app.post('/api/v1/finance/personnel-advances/:id/review',authenticate,requireSignedSession,requirePermission('finance.manage',{organizationWide:true}),
+  personnelEndpoint(async(req,res)=>{
+    const input=parseAdvanceAccounting(req.body), {id}=req.params;
+    if (!input || !uuid(id)) return bad(req,res,400,'ADVANCE_REVIEW_INVALID','تصمیم حسابداری یا توضیح معتبر نیست.');
+    const outcome=await personnel.reviewAccounting(req.auth,id,input);
+    if (outcome==='UNAVAILABLE') return bad(req,res,404,'ADVANCE_NOT_AVAILABLE','درخواست برای بررسی حسابداری در دسترس نیست.');
+    if (outcome==='CONFLICT') return bad(req,res,409,'ADVANCE_REVIEW_CONFLICT','وضعیت درخواست تغییر کرده یا قبلاً همین تصمیم ثبت شده است.');
+    if (outcome!=='REVIEWED' && outcome!=='REPLAY') throw new Error('Unexpected advance review outcome');
+    res.json({id:id.toLowerCase(),replayed:outcome==='REPLAY'});
+  }));
 
 const publicRecruitment = createPublicRecruitment({
   sql, run: withTenantContext, tenantId: process.env.PUBLIC_RECRUITMENT_TENANT_ID,

@@ -175,6 +175,7 @@ function AppContent() {
         tasks: /^taskreq-[0-9a-f-]{36}$/i.test(n.requestId ?? '') ? `/tasks?request=${encodeURIComponent(n.requestId!)}` : '/tasks',
         quotes: '/quotes',
         finance: '/finance',
+        'finance-advance': n.entityId ? `/finance?tab=requests&advance=${encodeURIComponent(n.entityId)}` : '/finance?tab=requests',
         internal_automation: '/internal_automation',
         'personnel-file': n.entityId ? `/personnel-file?advance=${encodeURIComponent(n.entityId)}` : '/personnel-file',
         groups: n.conversationId ? `/groups?c=${encodeURIComponent(n.conversationId)}` : '/groups'

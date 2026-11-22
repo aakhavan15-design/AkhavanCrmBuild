@@ -1,7 +1,7 @@
 import type { ReportingLine, ReportingLineChange, TaskRequestApprovalPolicy, TaskRequestCommand, TaskRequestFile, TaskRequestInput, TaskRequestPolicyKind,
   TaskRequestRecord, TaskRequestPage, TaskRequestView, TaskRequestResource } from './taskRequests';
 import type { PurchaseCoverageScope, PurchaseCycleResult, PurchaseCycleView, PurchaseProductResult } from './purchaseCycle';
-import type { AdvanceDecisionInput, EmploymentProfile, OwnPersonnelProfile, PersonnelAdvanceInput, PersonnelAdvanceReceipt } from './personnelProfile';
+import type { AdvanceAccountingInput, AdvanceAccountingRow, AdvanceAccountingStage, AdvanceDecisionInput, EmploymentProfile, OwnPersonnelProfile, PersonnelAdvanceInput, PersonnelAdvanceReceipt } from './personnelProfile';
 import type { RecruitmentReviewInput, RecruitmentReviewRow } from './recruitmentReview';
 import type { 
   AppState, 
@@ -299,6 +299,8 @@ export interface DataProvider {
   getLinkedPersonnelProfile(userId:string):Promise<EmploymentProfile>;
   requestPersonnelAdvance(input:PersonnelAdvanceInput):Promise<PersonnelAdvanceReceipt>;
   decidePersonnelAdvance(id:string,input:AdvanceDecisionInput):Promise<{id:string;replayed:boolean}>;
+  listAdvanceAccounting(stage:AdvanceAccountingStage|'',page:number,focus?:string):Promise<{items:AdvanceAccountingRow[];hasMore:boolean}>;
+  reviewAdvanceAccounting(id:string,input:AdvanceAccountingInput):Promise<{id:string;replayed:boolean}>;
   listRecruitmentApplications(search:string,status:string,page:number):Promise<{items:RecruitmentReviewRow[];hasMore:boolean}>;
   reviewRecruitmentApplication(id:string,input:RecruitmentReviewInput):Promise<{application:RecruitmentReviewRow;replayed:boolean}>;
   changeReportingLine(userId:string,input:ReportingLineChange): Promise<{changed:boolean;replayed:boolean}>;
@@ -373,6 +375,8 @@ const MAX_PNL_JOURNAL_PAGES = 100;
  * 1. پیاده‌سازی ارائه‌دهنده داده سمت کلاینت (IndexedDB / Local-first)
  */
 export class ClientStorageDataProvider implements DataProvider {
+  async listAdvanceAccounting():Promise<{items:AdvanceAccountingRow[];hasMore:boolean}> { throw new Error('کارتابل مساعده به پایگاه مرکزی نیاز دارد.'); }
+  async reviewAdvanceAccounting():Promise<{id:string;replayed:boolean}> { throw new Error('بررسی حسابداری به پایگاه مرکزی نیاز دارد.'); }
   async listRecruitmentApplications():Promise<{items:RecruitmentReviewRow[];hasMore:boolean}> { return {items:[],hasMore:false}; }
   async reviewRecruitmentApplication():Promise<{application:RecruitmentReviewRow;replayed:boolean}> { throw new Error('بررسی پرونده به پایگاه مرکزی نیاز دارد.'); }
   async getOwnPersonnelProfile():Promise<OwnPersonnelProfile> { throw new Error('پروندهٔ پرسنلی به پایگاه مرکزی نیاز دارد.'); }
@@ -811,6 +815,14 @@ export class ClientStorageDataProvider implements DataProvider {
  * 2. پیاده‌سازی ارائه‌دهنده داده مستقیم به Backend سرور و SQL Server
  */
 export class HttpBackendDataProvider implements DataProvider {
+  async listAdvanceAccounting(stage:AdvanceAccountingStage|'',page:number,focus?:string):Promise<{items:AdvanceAccountingRow[];hasMore:boolean}> {
+    const params=new URLSearchParams({stage,page:String(page)});
+    if (focus) params.set('focus',focus);
+    return this.request(`/finance/personnel-advances?${params}`);
+  }
+  async reviewAdvanceAccounting(id:string,input:AdvanceAccountingInput):Promise<{id:string;replayed:boolean}> {
+    return this.request(`/finance/personnel-advances/${encodeURIComponent(id)}/review`,{method:'POST',body:JSON.stringify(input)});
+  }
   async listRecruitmentApplications(search:string,status:string,page:number):Promise<{items:RecruitmentReviewRow[];hasMore:boolean}> {
     return this.request(`/recruitment/applications?${new URLSearchParams({search,status,page:String(page)})}`);
   }

@@ -17,6 +17,7 @@ import { EmploymentDetails } from './EmploymentDetails';
 import { AdvanceReview } from './AdvanceReview';
 import { useDataQuery } from '../../hooks/useDataProvider';
 import { getActiveDataProvider } from '../../services/dataProvider';
+import { advanceAccountingLabels } from '../../services/personnelProfile';
 import { toLatinDigits, toPersianDigits } from '../../lib/digits';
 import { formatDecimalString } from '../../lib/format';
 
@@ -254,6 +255,7 @@ export function PersonnelFilePage({ state, updateState }: { state: AppState; upd
               {profile.advances.map(advance=><li key={advance.id} className={`space-y-1 rounded-lg py-2 ${advance.id.toLowerCase()===advanceLink ? 'bg-primary-soft px-2' : ''}`}>
                 <p className="font-semibold">{formatDecimalString(advance.requested)} ریال · {advanceStatuses[advance.status] ?? 'وضعیت نامشخص'}</p>
                 <p className="text-text-secondary"><bdi>{advance.number}</bdi>{advance.approved!==null && <> · مبلغ مصوب {formatDecimalString(advance.approved)} ریال</>}</p>
+                {advance.accountingStage && <p className="text-text-secondary">{advanceAccountingLabels[advance.accountingStage]}</p>}
                 {advance.managerNotes && <p className="whitespace-pre-wrap wrap-break-word text-text-secondary">{advance.managerNotes}</p>}
               </li>)}
             </ul> : <p className="text-caption">درخواست مساعده‌ای در پایگاه مرکزی مشاهده نشد.</p>}
