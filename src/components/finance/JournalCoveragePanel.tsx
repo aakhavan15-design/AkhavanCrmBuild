@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { getActiveDataProvider } from '../../services/dataProvider';
 import { useDataQuery } from '../../hooks/useDataProvider';
-import { formatCount, formatDecimalString } from '../../lib/format';
 import { formatAppDate } from '../../lib/utils';
 import type { JournalCoverageRow, JournalCoverageStatus, JournalOperation, MoneyPeriod } from '../../services/moneyIntelligence';
+import { formatCount, formatDecimalString, formatPercent } from '../../lib/format';
 import { BottomSheet } from '../ui/BottomSheet';
 import { Button } from '../ui/Button';
 import { EmptyState } from '../ui/EmptyState';
@@ -97,6 +97,13 @@ export function JournalCoveragePanel({ period, canFollowUp, focusReturns=false }
         : result.status==='UNAVAILABLE' ? <EmptyState surface="finance_journal_control" title="منبع مالی برای این گزارش تنظیم نشده است" compact />
         : <>
           {result.verifiedThrough && <p className="text-caption text-text-secondary">آخرین تاریخ گواهی پوشش {formatAppDate(result.verifiedThrough)}</p>}
+          {focusReturns && result.returnCohort && <div className="rounded-xl border border-border bg-canvas p-2 text-caption">
+            <p className="font-semibold">سهم فاکتورهای دارای برگشت مشاهده‌شده</p>
+            {result.returnCohort.invoices > 0 ? <p>
+              {formatPercent(result.returnCohort.returnedInvoices / result.returnCohort.invoices * 100)} · {formatCount(result.returnCohort.returnedInvoices)} از {formatCount(result.returnCohort.invoices)} فاکتور قطعی همین دوره، تا پایان دوره برگشت مرتبط با یک سند معتبر دارند.
+            </p> : <p>فاکتور قطعی برای محاسبهٔ سهم در دادهٔ این دوره دیده نشد.</p>}
+            <p className="text-text-secondary">هر فاکتور یک‌بار شمرده می‌شود. شاخص بر پایهٔ اسناد مشاهده‌شده در بازه است و به تعداد کالا، مبلغ یا برگشت پس از پایان دوره تعمیم داده نمی‌شود.</p>
+          </div>}
           {focusReturns && (result.returnReasons?.length ? <div className="space-y-2">
             <h4 className="text-sm font-semibold">دلایل ثبت‌شده در برگشت‌های دارای یک سند معتبر</h4>
             {result.returnReasons.map(row=><button type="button" key={row.reason ?? ''}

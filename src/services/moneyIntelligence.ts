@@ -133,6 +133,7 @@ export interface JournalCoveragePage {
   status: 'AVAILABLE' | 'UNAVAILABLE'; verifiedThrough?: string | null; sourceSystem?: string;
   items: JournalCoverageRow[]; hasMore: boolean; counts: { coverageStatus: JournalCoverageStatus; count: number }[];
   returnReasons?:{reason:string|null;count:number}[];
+  returnCohort?:{invoices:number;returnedInvoices:number};
 }
 
 export interface JournalFollowUpEvidence {

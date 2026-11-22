@@ -21,18 +21,18 @@ WHERE s.TenantId=@tenantId AND EXISTS(SELECT 1 FROM security.fn_RecordReadScope(
 
 SELECT * INTO #operations FROM (
   SELECT 'SALES_INVOICE' AS operation,i.ExternalInvoiceId AS externalId,i.InvoiceNumber AS documentNumber,i.InvoiceDate AS operationDate,
-    i.CurrencyCode,i.GrossAmount AS amount,i.AccountId,i.StatusCode,i.SourceSystemCode,CAST(NULL AS nvarchar(120)) AS returnReason
+    i.CurrencyCode,i.GrossAmount AS amount,i.AccountId,i.StatusCode,i.SourceSystemCode,CAST(NULL AS nvarchar(120)) AS returnReason,i.InvoiceMirrorId
   FROM crm.InvoiceMirror i JOIN #scope s ON s.SourceSystemCode=i.SourceSystemCode
   WHERE i.TenantId=@tenantId AND i.IsVoided=0 AND i.DeletedAtUtc IS NULL AND i.InvoiceDate BETWEEN @from AND @to
   UNION ALL
   SELECT 'SALES_RETURN',r.ExternalReturnId,NULL,r.ReturnDate,i.CurrencyCode,r.TotalAmount,r.AccountId,r.StatusCode,r.SourceSystemCode,
-    COALESCE(NULLIF(r.ReasonCode,''),NULLIF(r.ReasonSourceCode,N''))
+    COALESCE(NULLIF(r.ReasonCode,''),NULLIF(r.ReasonSourceCode,N'')),i.InvoiceMirrorId
   FROM crm.SalesReturnMirror r JOIN #scope s ON s.SourceSystemCode=r.SourceSystemCode
   LEFT JOIN crm.InvoiceMirror i ON i.TenantId=r.TenantId AND i.SourceSystemCode=r.SourceSystemCode AND i.InvoiceMirrorId=r.InvoiceMirrorId
     AND i.IsVoided=0 AND i.DeletedAtUtc IS NULL AND i.AccountId=r.AccountId
   WHERE r.TenantId=@tenantId AND r.IsVoided=0 AND r.ReturnDate BETWEEN @from AND @to
   UNION ALL
-  SELECT 'PAYMENT',p.ExternalPaymentId,p.ReferenceNumber,p.PaymentDate,p.CurrencyCode,p.Amount,p.AccountId,p.StatusCode,p.SourceSystemCode,NULL
+  SELECT 'PAYMENT',p.ExternalPaymentId,p.ReferenceNumber,p.PaymentDate,p.CurrencyCode,p.Amount,p.AccountId,p.StatusCode,p.SourceSystemCode,NULL,NULL
   FROM crm.PaymentMirror p JOIN #scope s ON s.SourceSystemCode=p.SourceSystemCode
   WHERE p.TenantId=@tenantId AND p.IsVoided=0 AND p.PaymentDate BETWEEN @from AND @to
 ) o
@@ -103,7 +103,23 @@ OFFSET @offset ROWS FETCH NEXT 26 ROWS ONLY;
 
 SELECT TOP(8) returnReason AS reason,COUNT_BIG(*) AS [count]
 FROM #classified WHERE @operation='SALES_RETURN' AND operation='SALES_RETURN' AND coverageStatus='VALID'
-GROUP BY returnReason ORDER BY [count] DESC,returnReason;`;
+GROUP BY returnReason ORDER BY [count] DESC,returnReason;
+
+WITH cohort AS (
+  SELECT i.InvoiceMirrorId FROM crm.InvoiceMirror i JOIN #scope s ON s.SourceSystemCode=i.SourceSystemCode
+  CROSS APPLY (
+    SELECT MAX(m.StandardCode) AS status FROM integration.CodeMapping m
+    WHERE m.TenantId=i.TenantId AND m.SourceSystemCode=i.SourceSystemCode
+      AND m.MappingDomain='INVOICE_STATUS' AND m.ExternalCode=i.StatusCode AND m.MapStatus='APPROVED'
+      AND m.EffectiveFrom<=i.InvoiceDate AND (m.EffectiveTo IS NULL OR m.EffectiveTo>=i.InvoiceDate)
+    HAVING COUNT_BIG(*)=1
+  ) mapped
+  WHERE @operation='SALES_RETURN' AND i.TenantId=@tenantId AND i.InvoiceDate BETWEEN @from AND @to
+    AND i.IsVoided=0 AND i.DeletedAtUtc IS NULL AND mapped.status IN ('POSTED','FINAL')
+)
+SELECT COUNT_BIG(DISTINCT i.InvoiceMirrorId) AS invoices,COUNT_BIG(DISTINCT returned.InvoiceMirrorId) AS returnedInvoices
+FROM cohort i LEFT JOIN #classified returned ON returned.InvoiceMirrorId=i.InvoiceMirrorId AND returned.operation='SALES_RETURN'
+  AND returned.coverageStatus='VALID';`;
 
 async function readCoverageInTransaction(sql, tx, auth, { from,to,page,operation,state,search,externalId = null,returnReason = null }) {
   const result = await new sql.Request(tx).input('tenantId',sql.UniqueIdentifier,auth.tenantId)
@@ -111,10 +127,11 @@ async function readCoverageInTransaction(sql, tx, auth, { from,to,page,operation
     .input('offset',sql.Int,(page-1)*25).input('operation',sql.VarChar(20),operation)
     .input('state',sql.VarChar(20),state).input('search',sql.NVarChar(100),search).input('returnReason',sql.NVarChar(120),returnReason)
     .input('externalId',sql.NVarChar(200),externalId).query(operationCoverageSql);
-  const [sources,counts,rows,returnReasons=[]] = result.recordsets;
+  const [sources,counts,rows,returnReasons=[],returnCohort=[]] = result.recordsets;
   if (!sources.length) return { status:'UNAVAILABLE', counts: [], items:[], hasMore:false };
   return { status:'AVAILABLE', ...sources[0], counts: counts.map(row => ({ ...row,count:Number(row.count) })),
     returnReasons:returnReasons.map(row=>({...row,count:Number(row.count)})),
+    ...(operation === 'SALES_RETURN' && returnCohort[0] ? { returnCohort: returnCohort[0] } : {}),
     items: rows.slice(0,25).map(row => ({ ...row,documents: JSON.parse(row.documents ?? '[]') })),
     hasMore: page<1000 && rows.length>25 };
 }
