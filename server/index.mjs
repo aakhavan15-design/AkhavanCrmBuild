@@ -547,6 +547,7 @@ app.get('/api/v1/erp/route-map/filter-options',authenticate,requirePermission('g
  const financeAllowed=(await hasSqlPermission(req.auth,'finance.view')) && (await hasSqlPermission(req.auth,'route_map.sales.view'));
  const returnAllowed=(await hasSqlPermission(req.auth,'finance.view')) && (await hasSqlPermission(req.auth,'route_map.returns.view'));
  const receivableAllowed=(await hasSqlPermission(req.auth,'finance.view')) && (await hasSqlPermission(req.auth,'route_map.receivables.view'));
+ const targetAllowed=(await hasSqlPermission(req.auth,'finance.view')) && (await hasSqlPermission(req.auth,'route_map.targets.view'));
  const financeOrganizationWide=financeAllowed&&await hasSqlPermission(req.auth,'finance.view',{organizationWide:true});
  const date=String(req.query.date||new Date().toISOString().slice(0,10));
  if(!/^\d{4}-\d{2}-\d{2}$/.test(date))
@@ -563,8 +564,9 @@ app.get('/api/v1/erp/route-map/summary',authenticate,requirePermission('geo.view
  const financeAllowed=(await hasSqlPermission(req.auth,'finance.view')) && (await hasSqlPermission(req.auth,'route_map.sales.view'));
  const returnAllowed=(await hasSqlPermission(req.auth,'finance.view')) && (await hasSqlPermission(req.auth,'route_map.returns.view'));
  const receivableAllowed=(await hasSqlPermission(req.auth,'finance.view')) && (await hasSqlPermission(req.auth,'route_map.receivables.view'));
+ const targetAllowed=(await hasSqlPermission(req.auth,'finance.view')) && (await hasSqlPermission(req.auth,'route_map.targets.view'));
  const financeOrganizationWide=financeAllowed&&await hasSqlPermission(req.auth,'finance.view',{organizationWide:true});
- const report=await routeMapAnalytics.mapSummary(req.auth,{filters,organizationWide,financeAllowed,financeOrganizationWide,returnAllowed,receivableAllowed});
+ const report=await routeMapAnalytics.mapSummary(req.auth,{filters,organizationWide,financeAllowed,financeOrganizationWide,returnAllowed,receivableAllowed,targetAllowed});
  res.json(report);
 }));
 app.get('/api/v1/erp/route-map/:id/detail',authenticate,requirePermission('geo.view'),wrap(async(req,res)=>{
@@ -580,6 +582,7 @@ app.get('/api/v1/erp/route-map/:id/detail',authenticate,requirePermission('geo.v
  const financeAllowed=(await hasSqlPermission(req.auth,'finance.view')) && (await hasSqlPermission(req.auth,'route_map.sales.view'));
  const returnAllowed=(await hasSqlPermission(req.auth,'finance.view')) && (await hasSqlPermission(req.auth,'route_map.returns.view'));
  const receivableAllowed=(await hasSqlPermission(req.auth,'finance.view')) && (await hasSqlPermission(req.auth,'route_map.receivables.view'));
+ const targetAllowed=(await hasSqlPermission(req.auth,'finance.view')) && (await hasSqlPermission(req.auth,'route_map.targets.view'));
  const financeOrganizationWide=financeAllowed&&await hasSqlPermission(req.auth,'finance.view',{organizationWide:true});
  const report=await routeCustomerDetail(req.auth,{routeId:req.params.id,filters,organizationWide,financeAllowed,financeOrganizationWide,returnAllowed,receivableAllowed});
  if(!report)return res.status(404).json({error:{code:'ROUTE_NOT_FOUND',message:'مسیر مجاز پیدا نشد.'}});
