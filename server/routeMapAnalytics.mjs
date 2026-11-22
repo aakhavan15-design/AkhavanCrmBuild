@@ -33,24 +33,25 @@ export function parseRouteMapFilters(query = {}) {
  return {from,to,productIds,repIds,routeIds,supplierIds,brandIds,customerCategoryIds};
 }
 const money = x => x === null || x === undefined ? null : Number(x);
-const shapeRow=(row,financial,customerCount,visited,invoiceCount,netSales,customerActiveCount,visitCount,orderOutcomes,missingCoords,coverage)=>{
+const shapeRow=(row,financial,customerCount,visited,invoiceCount,netSales,customerActiveCount,visitCount,orderOutcomes,missingCoords,coverage,supplement={})=>{
  const counts=customerCount==null?null:Number(customerCount);
  return {
   routeId:String(row.RouteId),routeCode:row.RouteCode,routeName:row.RouteName,
   location:{latitude:row.CenterLat==null?null:Number(row.CenterLat),longitude:row.CenterLon==null?null:Number(row.CenterLon)},
-  customerCount:counts,activeCustomerCount:financial?Number(customerActiveCount):null,
+  customerCount:counts,activeCustomerCount:financial&&customerActiveCount!=null?Number(customerActiveCount):null,
   visitCount:Number(visitCount||0),visitedCustomerCount:Number(visited||0),
   orderOutcomeCount:Number(orderOutcomes||0),
-  invoiceCount:financial?Number(invoiceCount):null,netSales:financial?money(netSales):null,
+  invoiceCount:financial&&invoiceCount!=null?Number(invoiceCount):null,netSales:financial?money(netSales):null,
   missingCoordinateCount:Number(missingCoords||0),coordinateCoveragePercent:coverage,
-  returnAmount:null,profitAmount:null,receivableAmount:null,targetAchievedPercent:null,
+  returnAmount:money(supplement.returnAmount),profitAmount:null,receivableAmount:money(supplement.receivableAmount),targetAchievedPercent:null,
+  receivableDate:supplement.receivableDate||null,
   attentionPercent:counts>0?Math.round(Number(visited||0)*10000/counts)/100:null,
   health:'UNKNOWN',metricAvailability:{
    customerCount:'ERP_ROUTE_MEMBERSHIP',activeCustomerCount:financial?'ERP_INVOICE':'DENIED',
    visitCount:'ERP_VISIT_EVENT',invoiceCount:financial?'ERP_INVOICE':'DENIED',
    netSales:financial?'ERP_INVOICE_LINE':'DENIED',
-   returnAmount:'UNAVAILABLE',profitAmount:'UNAVAILABLE',
-   receivableAmount:'UNAVAILABLE',targetAchievedPercent:'UNAVAILABLE',
+   returnAmount:supplement.returnAmount!=null?'ERP_SALES_RETURN':'UNAVAILABLE',profitAmount:'UNAVAILABLE',
+   receivableAmount:supplement.receivableAmount!=null?'ACCOUNT_RECEIVABLE_CURRENT':'UNAVAILABLE',targetAchievedPercent:'UNAVAILABLE',
   },source:'ERP_SQL',sourceStatus:'PARTIAL'
  };
 };
@@ -74,7 +75,7 @@ export function createRouteMapAnalytics({sql,run}) {
   * deduplicated within a route; same official sale in two routes is marked
   * per-route and never shown as an organisation-wide sum.
   */
- const mapSummary=async(auth,{filters,organizationWide=false,financeAllowed=false,financeOrganizationWide=false}={})=>run(auth,async tx=>{
+ const mapSummary=async(auth,{filters,organizationWide=false,financeAllowed=false,financeOrganizationWide=false,returnAllowed=false,receivableAllowed=false}={})=>run(auth,async tx=>{
   const sqlText=`
   WITH AllowedRoutes AS (
    SELECT r.RouteId,r.RouteCode,r.RouteName,r.TenantId
@@ -173,8 +174,8 @@ export function createRouteMapAnalytics({sql,run}) {
     rows:rows.map(r=>{
       const f=financial.get(String(r.RouteId).toLowerCase());
       const count=Number(r.CustomerCount);
-      return shapeRow(r,financeAllowed,count,r.VisitedCount,Number(f?.InvoiceCount||0),
-       financeAllowed?(f?.NetSales??0):null,Number(f?.ActiveCustomerCount||0),
+      return shapeRow(r,financeAllowed,count,r.VisitedCount,f?Number(f.InvoiceCount):null,
+       financeAllowed&&f?f.NetSales:null,f?Number(f.ActiveCustomerCount):null,
        r.VisitCount,r.OrderOutcomes,r.MissingGps,
        count>0?Math.round((count-Number(r.MissingGps))*10000/count)/100:null);
     })};
