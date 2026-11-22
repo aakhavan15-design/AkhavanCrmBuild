@@ -1,12 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildVisitIntelligence } from '../src/lib/visitIntelligence.ts';
-const c=(id,name,tags=[])=>({id,name,tags});
+const c=(id,name,tags=[])=>({id,name,tags,externalId:id,tenantId:'TENANT',sourceSystemCode:'ERP'});
 const v=(id,customerId,dateTime,outcome='NO_NEED',more={})=>({id,customerId,type:'VISIT',dateTime,outcome,...more});
 const invoice=(id,customerId,date,totalAmount=1200000,more={})=>({
  id,customerId,date,totalAmount,status:'UNPAID',items:[{description:'لیموناد شیشه',quantity:12,unitPrice:40000,total:480000}],...more
 });
-const tour=(date,ids)=>({externalId:'TOUR-01',tourDate:date,routeExternalId:'ROUTE-07',salesRepExternalId:'REP-01',stops:ids.map((externalCustomerId,i)=>({externalCustomerId,stopSequence:i+1}))});
+const tour=(date,ids)=>({externalId:'TOUR-01',tourDate:date,sourceSystemCode:'ERP',tenantId:'TENANT',routeExternalId:'ROUTE-07',salesRepExternalId:'REP-01',stops:ids.map((externalCustomerId,i)=>({externalCustomerId,stopSequence:i+1}))});
 const base={asOf:'2026-11-22',customers:[c('C1','فروشگاه یک'),c('C2','تعاونی مصرف',['تعاونی'])],visits:[],invoices:[]};
 test('lack of recorded visits is not proof of never visited',()=>{
  const r=buildVisitIntelligence(base); assert.equal(r.withoutRecordedVisits,2);
