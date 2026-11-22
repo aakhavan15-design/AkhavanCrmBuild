@@ -198,15 +198,30 @@ export function createRouteMapAnalytics({sql,run}) {
      ORDER BY st.StaffRoleCode,st.ExternalStaffId`)).recordset;
    let products=[];
    if(financeAllowed){
-     products=(await request().query(`SELECT TOP(500) p.ExternalProductId,p.ProductName
+     products=(await request().query(`SELECT TOP(500) p.ExternalProductId,p.ProductName,p.SupplierExternalId,p.BrandExternalId
        FROM crm.ExternalProduct p WHERE p.TenantId=@tenant AND p.IsActive=1
        ORDER BY p.ProductName,p.ExternalProductId`)).recordset;
    }
+   const categories=(await request().query(`SELECT DISTINCT TOP (150) a.BusinessCategoryCode
+      FROM crm.Account a
+      WHERE a.TenantId=@tenant AND a.BusinessCategoryCode IS NOT NULL
+      AND EXISTS(SELECT 1 FROM security.fn_RecordReadScope(a.TenantId,N'accounts.view',a.OwnerUserId,a.BranchId,a.TerritoryId,a.TeamId))
+      AND EXISTS(SELECT 1 FROM crm.VisitRouteCustomerMirror m JOIN crm.VisitRouteMirror r
+         ON r.TenantId=m.TenantId AND r.RouteId=m.RouteId AND r.IsDeleted=0
+         WHERE m.TenantId=a.TenantId AND m.AccountId=a.AccountId
+           AND m.EffectiveFrom<=@asOf AND (m.EffectiveTo IS NULL OR m.EffectiveTo>=@asOf)
+           AND (@organizationWide=1 OR EXISTS(SELECT 1 FROM crm.VisitRouteStaffMirror st
+             WHERE st.TenantId=r.TenantId AND st.RouteId=r.RouteId AND st.StaffUserId=@actor
+              AND st.EffectiveFrom<=@asOf AND (st.EffectiveTo IS NULL OR st.EffectiveTo>=@asOf))))
+      ORDER BY a.BusinessCategoryCode`)).recordset;
+   const unique=(field)=>[...new Set(products.map(p=>p[field]).filter(Boolean))].map(code=>({id:String(code),name:String(code)}));
    return {source:'ERP_SQL',salesReps:staff.filter(x=>x.StaffRoleCode==='SALES_REP').map(x=>({id:x.ExternalStaffId,name:x.ExternalStaffId})),
      supervisors:staff.filter(x=>x.StaffRoleCode==='SUPERVISOR').map(x=>({id:x.ExternalStaffId,name:x.ExternalStaffId})),
      products:products.map(x=>({id:x.ExternalProductId,name:x.ProductName})),
-     supported:['dateFrom','dateTo','routeIds','salesRepIds','productIds'],
-     unavailable:['supplierIds','brandIds','customerCategoryIds','supervisorIds']};
+     suppliers:unique('SupplierExternalId'),brands:unique('BrandExternalId'),
+     categories:categories.map(x=>({id:x.BusinessCategoryCode,name:x.BusinessCategoryCode})),
+     supported:['dateFrom','dateTo','routeIds','salesRepIds','productIds','supplierIds','brandIds','customerCategoryIds'],
+     unavailable:['supervisorIds']};
  });
  return {mapSummary,filterOptions};
 }
