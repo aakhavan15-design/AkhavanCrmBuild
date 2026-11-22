@@ -148,6 +148,11 @@ export function createRouteMapAnalytics({sql,run}) {
       COUNT(DISTINCT i.AccountId) AS ActiveCustomerCount,SUM(l.Amount) AS NetSales
     FROM Members m JOIN FilteredInvoices i ON i.AccountId=m.AccountId
     JOIN InvoiceLines l ON l.InvoiceMirrorId=i.InvoiceMirrorId
+    WHERE @organizationWide=1 OR i.SalesRepUserId=@actor OR EXISTS (
+      SELECT 1 FROM crm.VisitRouteStaffMirror manager
+      WHERE manager.TenantId=@tenant AND manager.RouteId=m.RouteId AND manager.StaffUserId=@actor
+      AND manager.StaffRoleCode='SUPERVISOR'
+      AND manager.EffectiveFrom<=@dateTo AND (manager.EffectiveTo IS NULL OR manager.EffectiveTo>=@dateFrom))
     GROUP BY m.RouteId`;
    financial=new Map((await filtersRequest(tx,auth,filters,organizationWide).query(amountQuery)).recordset.map(x=>[String(x.RouteId).toLowerCase(),x]));
   }
