@@ -32,6 +32,7 @@ export interface ERPCustomerMirrorContract extends ERPImportRecord {
   balance?: number | null;
   salesRepExternalId?: string | null;
   territoryExternalId?: string | null;
+  businessCategoryCode?: string | null;
   latitude?: number | null;
   longitude?: number | null;
   geoAccuracyMeters?: number | null;
@@ -40,6 +41,14 @@ export interface ERPCustomerMirrorContract extends ERPImportRecord {
   isDeleted: boolean;
 }
 
+/** Extra route-map dimensions are official ERP master fields, not guesses from name. */
+export interface ERPProductRouteDimensionsContract extends ERPImportRecord {
+  entityType?: 'PRODUCT';
+  productName: string;
+  supplierExternalId?: string | null;
+  brandExternalId?: string | null;
+  isActive?: boolean;
+}
 export interface ERPSalesOrderContract extends ERPImportRecord {
   entityType?: 'SALES_ORDER';
   externalOrderId?: string;
