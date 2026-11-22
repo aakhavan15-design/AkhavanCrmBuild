@@ -100,7 +100,7 @@ export function buildVisitIntelligence(args: VisitIntelArgs): VisitIntelReport {
   const target=Math.max(1,Math.min(365,Math.floor(args.visitTargetDays||14)));
   const ids=new Set(args.customers.map(c=>c.id));
   const visits=(args.visits||[]).filter(v=>ids.has(String(v.customerId||v.accountId||'')) && realVisit(v) && (ymd(v.checkInAt||v.dateTime)||'')<=asOf);
-  const invoices=(args.invoices||[]).filter(i=>ids.has(String(i.customerId||i.accountId||'')) && !emptyOrVoided(i) && !!ymd(i.date) && (ymd(i.date)||'')<=asOf);
+  const invoices=(args.invoices||[]).filter(i=>ids.has(String(i.customerId||i.accountId||'')) && !emptyOrVoided(i) && !['DRAFT','PENDING','PROFORMA'].includes(String(i.status||'').toUpperCase()) && !!ymd(i.date) && (ymd(i.date)||'')<=asOf);
   const returns=(args.returns||[]).filter(r=>!emptyOrVoided(r) && !!ymd(r.returnDate) && (ymd(r.returnDate) as string) <= asOf);
   // Resolve external ERP customer IDs through explicit source-scoped identities only.
   // An arbitrary CRM id or customer code must NOT be assumed equal to the ERP id.
@@ -132,9 +132,20 @@ export function buildVisitIntelligence(args: VisitIntelArgs): VisitIntelReport {
     }
   }
   const balanceMap=new Map((args.receivables||[]).filter(r=>ids.has(r.customerId)).map(r=>[r.customerId,r]));
+  const groupByCustomer=<T extends {customerId?:string;accountId?:string}>(rows:T[])=>{
+    const map=new Map<string,T[]>();
+    for(const row of rows){
+      const id=String(row.customerId||row.accountId||'');
+      if(!ids.has(id))continue;
+      const list=map.get(id)||[];list.push(row);map.set(id,list);
+    }
+    return map;
+  };
+  const visitsByCustomer=groupByCustomer(visits);
+  const invoicesByCustomer=groupByCustomer(invoices);
   const provisional = args.customers.map(customer=>{
-    const cv=visits.filter(v=>String(v.customerId||v.accountId||'')===customer.id).sort((a,b)=>String(b.checkInAt||b.dateTime).localeCompare(String(a.checkInAt||a.dateTime)));
-    const ci=invoices.filter(i=>String(i.customerId||i.accountId||'')===customer.id).sort((a,b)=>b.date.localeCompare(a.date));
+    const cv=[...(visitsByCustomer.get(customer.id)||[])].sort((a,b)=>String(b.checkInAt||b.dateTime).localeCompare(String(a.checkInAt||a.dateTime)));
+    const ci=[...(invoicesByCustomer.get(customer.id)||[])].sort((a,b)=>b.date.localeCompare(a.date));
     const last=cv[0];const lastDate=last?ymd(last.checkInAt||last.dateTime):null;
     const amounts=ci.map(i=>money(i.totalAmount));
     const salesTotal=ci.length > 0 && amounts.every(a=>a!==null)?amounts.reduce<number>((sum,a)=>sum+(a||0),0):null;
@@ -206,7 +217,7 @@ export function buildVisitIntelligence(args: VisitIntelArgs): VisitIntelReport {
     const key=stop.routeId+'|'+stop.repId;
     const entry=routesMap.get(key)||{routeId:stop.routeId,repId:stop.repId,plannedStops:0,recordedVisitsOnTourDate:0,recordedOrderOutcomes:0,unconfirmedPastStops:0,collectionDueStops:0};
     entry.plannedStops++;
-    const matchedVisits=visits.filter(v=>String(v.customerId||v.accountId||'')===row.customerId &&
+    const matchedVisits=(visitsByCustomer.get(row.customerId)||[]).filter(v=>
       ymd(v.checkInAt||v.dateTime)===stop.date && [v.repId,v.ownerId].filter(Boolean).includes(stop.repId));
     const done=matchedVisits.length>0;
     if(matchedVisits.some(v=>String(v.outcome||'').toUpperCase()==='ORDER_TAKEN'))entry.recordedOrderOutcomes++;
