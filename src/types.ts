@@ -900,6 +900,10 @@ export interface AppState {
   geoZones?: GeoZone[];
   zoneGeometryVersions?: ZoneGeometryVersion[];
   zoneAssignments?: ZoneAssignment[];
+  /** ERP-owned read-only routes; never generated or edited by CRM. */
+  erpVisitRoutes?: Array<import('./lib/erpContracts').ERPVisitRouteReadContract>;
+  /** ERP-owned dated visit tour plans. Actual visits are separate CRM events. */
+  erpVisitTours?: Array<import('./lib/erpContracts').ERPVisitTourReadContract>;
   geoMetricDefinitions?: GeoMetricDefinition[];
   zoneMetricSnapshots?: ZoneMetricSnapshot[];
   coaMirror?: CoaMirror[];
