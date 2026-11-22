@@ -1,0 +1,135 @@
+/**
+ * Drilldown of ERP route membership, scoped to account and rep permissions.
+ * Supports official date/product/rep filters. Never turn absent official
+ * return/receivable/target data into 0.
+ */
+export function createRouteCustomerDetailReader({sql,run}){
+ return async(auth,{routeId,filters,organizationWide=false,financeAllowed=false})=>run(auth,async transaction=>{
+  const request=()=>new sql.Request(transaction)
+   .input('tenant',sql.UniqueIdentifier,auth.tenantId)
+   .input('actor',sql.UniqueIdentifier,auth.userId)
+   .input('routeId',sql.UniqueIdentifier,routeId)
+   .input('organizationWide',sql.Bit,organizationWide?1:0)
+   .input('dateFrom',sql.Date,filters.from).input('dateTo',sql.Date,filters.to)
+   .input('productJson',sql.NVarChar(sql.MAX),JSON.stringify(filters.productIds))
+   .input('repJson',sql.NVarChar(sql.MAX),JSON.stringify(filters.repIds));
+  const allowed=`(@organizationWide=1 OR EXISTS(
+    SELECT 1 FROM crm.VisitRouteStaffMirror staff
+    WHERE staff.TenantId=route.TenantId AND staff.RouteId=route.RouteId
+      AND staff.StaffUserId=@actor AND staff.EffectiveFrom<=@dateTo
+      AND (staff.EffectiveTo IS NULL OR staff.EffectiveTo>=@dateFrom)))`;
+  const route=(await request().query(`SELECT TOP(1) route.RouteId,route.RouteCode,route.RouteName
+    FROM crm.VisitRouteMirror route WHERE route.TenantId=@tenant AND route.RouteId=@routeId
+    AND route.IsDeleted=0 AND ${allowed}`)).recordset[0];
+  if(!route)return null;
+  // Source-authoritative membership, never WHERE customer.Latitude IS NOT NULL.
+  const members=(await request().query(`
+   SELECT DISTINCT a.AccountId,a.Name,a.AccountCode,a.StatusCode,
+      a.Latitude,a.Longitude,a.GeoAccuracyMeters,m.SubRouteCode
+   FROM crm.VisitRouteCustomerMirror m
+   JOIN crm.Account a ON a.TenantId=m.TenantId AND a.AccountId=m.AccountId
+   WHERE m.TenantId=@tenant AND m.RouteId=@routeId
+     AND m.EffectiveFrom<=@dateTo AND (m.EffectiveTo IS NULL OR m.EffectiveTo>=@dateFrom)
+     AND EXISTS(SELECT 1 FROM security.fn_RecordReadScope(a.TenantId,N'accounts.view',a.OwnerUserId,a.BranchId,a.TerritoryId,a.TeamId))
+   ORDER BY a.Name,a.AccountId`)).recordset;
+  const visits=(await request().query(`
+   SELECT v.AccountId,v.ExternalVisitId,v.ExternalSalesRepId,v.VisitedAtUtc,
+      v.OutcomeCode,v.NoOrderReasonCode,reason.ReasonTitleFa
+   FROM crm.ErpVisitEventMirror v
+   JOIN crm.VisitTourMirror tour ON tour.TenantId=v.TenantId AND tour.TourId=v.TourId
+      AND tour.RouteId=@routeId
+   JOIN crm.Account a ON a.TenantId=v.TenantId AND a.AccountId=v.AccountId
+   LEFT JOIN crm.VisitNoOrderReasonMirror reason ON reason.TenantId=v.TenantId
+      AND reason.SourceSystemCode=v.SourceSystemCode AND reason.ExternalReasonCode=v.NoOrderReasonCode
+   WHERE v.TenantId=@tenant AND v.IsDeleted=0
+     AND v.VisitedAtUtc>=@dateFrom AND v.VisitedAtUtc<DATEADD(day,1,@dateTo)
+     AND EXISTS(SELECT 1 FROM security.fn_RecordReadScope(a.TenantId,N'accounts.view',a.OwnerUserId,a.BranchId,a.TerritoryId,a.TeamId))
+     AND (NOT EXISTS(SELECT 1 FROM OPENJSON(@repJson)) OR v.ExternalSalesRepId IN(SELECT value FROM OPENJSON(@repJson)))
+     AND (@organizationWide=1 OR v.SalesRepUserId=@actor OR EXISTS (
+       SELECT 1 FROM crm.VisitRouteStaffMirror manager
+       WHERE manager.TenantId=@tenant AND manager.RouteId=@routeId AND manager.StaffRoleCode='SUPERVISOR'
+         AND manager.StaffUserId=@actor AND manager.EffectiveFrom<=@dateTo
+         AND (manager.EffectiveTo IS NULL OR manager.EffectiveTo>=@dateFrom)))
+   ORDER BY v.VisitedAtUtc DESC`)).recordset;
+  let invoices=[];
+  let products=[];
+  if(financeAllowed){
+   invoices=(await request().query(`
+     SELECT i.InvoiceMirrorId,i.AccountId,i.InvoiceNumber,i.InvoiceDate,
+       i.SalesRepExternalId,i.NetAmount,i.StatusCode
+     FROM crm.InvoiceMirror i
+     JOIN crm.Account a ON a.TenantId=i.TenantId AND a.AccountId=i.AccountId
+     WHERE i.TenantId=@tenant AND i.IsVoided=0 AND i.CurrencyCode='IRR'
+      AND i.StatusCode IN ('POSTED','CONFIRMED','CLOSED')
+      AND i.InvoiceDate BETWEEN @dateFrom AND @dateTo
+      AND EXISTS(SELECT 1 FROM crm.VisitRouteCustomerMirror m WHERE m.TenantId=i.TenantId
+        AND m.RouteId=@routeId AND m.AccountId=i.AccountId
+        AND m.EffectiveFrom<=@dateTo AND (m.EffectiveTo IS NULL OR m.EffectiveTo>=@dateFrom))
+      AND EXISTS(SELECT 1 FROM security.fn_RecordReadScope(a.TenantId,N'accounts.view',a.OwnerUserId,a.BranchId,a.TerritoryId,a.TeamId))
+      AND (NOT EXISTS(SELECT 1 FROM OPENJSON(@repJson)) OR i.SalesRepExternalId IN(SELECT value FROM OPENJSON(@repJson)))
+      AND (@organizationWide=1 OR i.SalesRepUserId=@actor OR EXISTS(
+        SELECT 1 FROM crm.VisitRouteStaffMirror manager WHERE manager.TenantId=@tenant
+        AND manager.RouteId=@routeId AND manager.StaffRoleCode='SUPERVISOR' AND manager.StaffUserId=@actor
+        AND manager.EffectiveFrom<=@dateTo AND (manager.EffectiveTo IS NULL OR manager.EffectiveTo>=@dateFrom)))
+   `)).recordset;
+   const lines=(await request().query(`
+     SELECT i.InvoiceMirrorId,l.ExternalProductId,l.ProductNameSnapshot,
+       l.Quantity,l.NetUnitPrice,l.NetLineAmount
+     FROM crm.InvoiceLineMirror l
+     JOIN crm.InvoiceMirror i ON i.TenantId=l.TenantId AND i.InvoiceMirrorId=l.InvoiceMirrorId
+     JOIN crm.Account a ON a.TenantId=i.TenantId AND a.AccountId=i.AccountId
+     WHERE i.TenantId=@tenant AND i.IsVoided=0 AND i.CurrencyCode='IRR'
+      AND i.StatusCode IN ('POSTED','CONFIRMED','CLOSED')
+      AND i.InvoiceDate BETWEEN @dateFrom AND @dateTo
+      AND EXISTS(SELECT 1 FROM crm.VisitRouteCustomerMirror m WHERE m.TenantId=i.TenantId
+       AND m.RouteId=@routeId AND m.AccountId=i.AccountId
+       AND m.EffectiveFrom<=@dateTo AND (m.EffectiveTo IS NULL OR m.EffectiveTo>=@dateFrom))
+      AND EXISTS(SELECT 1 FROM security.fn_RecordReadScope(a.TenantId,N'accounts.view',a.OwnerUserId,a.BranchId,a.TerritoryId,a.TeamId))
+      AND (NOT EXISTS(SELECT 1 FROM OPENJSON(@repJson)) OR i.SalesRepExternalId IN(SELECT value FROM OPENJSON(@repJson)))
+      AND (NOT EXISTS(SELECT 1 FROM OPENJSON(@productJson)) OR l.ExternalProductId IN(SELECT value FROM OPENJSON(@productJson)))
+      AND (@organizationWide=1 OR i.SalesRepUserId=@actor OR EXISTS(
+        SELECT 1 FROM crm.VisitRouteStaffMirror manager WHERE manager.TenantId=@tenant
+        AND manager.RouteId=@routeId AND manager.StaffRoleCode='SUPERVISOR' AND manager.StaffUserId=@actor
+        AND manager.EffectiveFrom<=@dateTo AND (manager.EffectiveTo IS NULL OR manager.EffectiveTo>=@dateFrom)))
+   `)).recordset;
+   const validInvoiceIds=new Set(lines.map(l=>String(l.InvoiceMirrorId).toLowerCase()));
+   invoices=invoices.filter(i=>validInvoiceIds.has(String(i.InvoiceMirrorId).toLowerCase()));
+   products=lines;
+  }
+  const visitByAccount=new Map();
+  for(const v of visits){const k=String(v.AccountId).toLowerCase();const a=visitByAccount.get(k)||[];a.push(v);visitByAccount.set(k,a);}
+  const invoiceByAccount=new Map();
+  for(const i of invoices){const k=String(i.AccountId).toLowerCase();const a=invoiceByAccount.get(k)||[];a.push(i);invoiceByAccount.set(k,a);}
+  const linesByInvoice=new Map();
+  for(const l of products){const k=String(l.InvoiceMirrorId).toLowerCase();const a=linesByInvoice.get(k)||[];a.push(l);linesByInvoice.set(k,a);}
+  const customers=members.map(m=>{
+    const id=String(m.AccountId).toLowerCase(),cv=visitByAccount.get(id)||[],ci=invoiceByAccount.get(id)||[];
+    const sales=ci.reduce((sum,i)=>sum+(linesByInvoice.get(String(i.InvoiceMirrorId).toLowerCase())||[])
+       .reduce((sub,l)=>sub+Number(l.NetLineAmount||0),0),0);
+    const lastVisit=cv[0],lastInvoice=ci.sort((a,b)=>String(b.InvoiceDate).localeCompare(String(a.InvoiceDate)))[0];
+    const bought=financeAllowed&&ci.length>0,visited=cv.length>0;
+    return {id:m.AccountId,name:m.Name,code:m.AccountCode,statusCode:m.StatusCode,
+      subRouteCode:m.SubRouteCode,latitude:numberOrNull(m.Latitude),longitude:numberOrNull(m.Longitude),
+      visitCount:cv.length,lastVisitAt:lastVisit?.VisitedAtUtc||null,
+      lastVisitOutcome:lastVisit?.OutcomeCode||null,noOrderReason:lastVisit?.ReasonTitleFa||lastVisit?.NoOrderReasonCode||null,
+      invoiceCount:financeAllowed?ci.length:null,netSales:financeAllowed?sales:null,
+      lastInvoice:lastInvoice?{number:lastInvoice.InvoiceNumber,date:lastInvoice.InvoiceDate,
+        items:(linesByInvoice.get(String(lastInvoice.InvoiceMirrorId).toLowerCase())||[])
+          .slice(0,25).map(l=>({name:l.ProductNameSnapshot,quantity:Number(l.Quantity),unitPrice:Number(l.NetUnitPrice)}))}:null,
+      status:!financeAllowed?(visited?'VISITED':'UNKNOWN'):(bought?'BOUGHT':visited?'VISITED_NO_ORDER':'NOT_BOUGHT'),
+      evidence:{visitIds:cv.slice(0,5).map(v=>v.ExternalVisitId),
+        invoiceIds:financeAllowed?ci.slice(0,5).map(i=>i.InvoiceMirrorId):[]}};
+  });
+  const topProducts=financeAllowed?[...products.reduce((map,l)=>{
+    const key=String(l.ExternalProductId||l.ProductNameSnapshot);
+    const item=map.get(key)||{id:key,name:l.ProductNameSnapshot,amount:0,quantity:0};
+    item.amount+=Number(l.NetLineAmount||0);item.quantity+=Number(l.Quantity||0);map.set(key,item);return map;
+  },new Map()).values()].sort((a,b)=>b.amount-a.amount).slice(0,20):[];
+  return {route,period:{dateFrom:filters.from,dateTo:filters.to},customers,topProducts,
+    source:'ERP_SQL',moneyUnit:'IRR',financeVisible:financeAllowed,
+    warnings:['بازه زمانی بر اساس عضویت رسمی ERP محاسبه شده است.',
+      'برای مشتری چندمسیره ممکن است یک فاکتور در هر مسیر مربوط نمایش داده شود.',
+      'مانده، برگشتی، سود و هدف تا تأیید منبع حسابداری، نامشخص هستند.']};
+ });
+}
+const numberOrNull=x=>x==null?null:Number(x);
