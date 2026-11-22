@@ -30,6 +30,8 @@ const COLLECTIONS: Record<ErpEntityType, string> = {
   PRODUCT: 'externalProducts',
   PRODUCT_COST: 'productCosts',
   SALES_RETURN: 'salesReturns',
+  VISIT_ROUTE: 'erpVisitRoutes',
+  VISIT_TOUR: 'erpVisitTours',
   DELIVERY_EVENT: 'deliveryEvents',
 };
 export const ERP_ENTITY_TYPES = Object.keys(COLLECTIONS) as ErpEntityType[];
