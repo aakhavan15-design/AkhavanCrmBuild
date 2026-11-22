@@ -82,7 +82,7 @@ export function ErpVisitLiveReport({canManage=false}:{canManage?:boolean}){
  const officialStops=(detail?.tours||[]).filter(r=>r.TourId===selectedTourId && r.AccountId&&Number.isInteger(r.StopSequence));
  const orderedStops=[...officialStops].sort((a,b)=>(a.StopSequence||0)-(b.StopSequence||0));
  const sourceCustomers=useMemo(()=>customers.map(c=>({id:c.AccountId,name:c.Name,latitude:c.Latitude,longitude:c.Longitude})),[detail]);
- const suggested=useMemo(()=>suggestRoutePolygonFromCustomers(sourceCustomers),[sourceCustomers]);
+ const suggested=useMemo(()=>suggestRoutePolygonFromCustomers(sourceCustomers,.7),[sourceCustomers]);
  const boundary=editedGeometry||detail?.analysisBoundary?.geometry||suggested.geometry;
  const mappedCount=sourceCustomers.filter(customer=>readCustomerGeoPoint(customer)!==null).length;
  const actualCoveragePercent=boundary&&mappedCount>0
@@ -147,13 +147,13 @@ export function ErpVisitLiveReport({canManage=false}:{canManage?:boolean}){
    </div>
    {detail.limits?.mayBeTruncated&&<p className="text-xs text-warning">بخشی از ویزیت‌ها یا GPS به سقف واکشی صفحه رسید؛ نتیجه کامل نیست.</p>}
    <p className="rounded-xl border border-warning/30 bg-warning-soft p-3 text-xs leading-6 text-text-main">
-    پیشنهاد محدوده ۸۰٪ مشتریان صرفاً تحلیل است و هنوز تأیید مدیریتی ندارد؛ تشخیص خروج از مرز، نیازمند بررسی علت، دقت GPS و تأیید مرز رسمی تحلیلی است.
+    پیشنهاد محدوده ۷۰٪ مشتریان صرفاً تحلیل است و هنوز تأیید مدیریتی ندارد؛ تشخیص خروج از مرز، نیازمند بررسی علت، دقت GPS و تأیید مرز رسمی تحلیلی است.
     {anomaly&&<> مشتری مشکوک خارج از مرز: {fa(anomaly.customersOutside.length)}؛ ویزیت خارج از مرز: {fa(anomaly.visitsOutside.length)}؛ مختصات نامشخص: {fa(anomaly.unknownCustomers.length+anomaly.unknownVisits.length)}.</>}
    </p>
    <div className="flex flex-wrap items-center gap-2">
     <span className="text-xs text-text-secondary">{detail.analysisBoundary
       ? 'نسخه ذخیره‌شده '+fa(detail.analysisBoundary.version)+' · وضعیت '+detail.analysisBoundary.status
-      : 'مرز فعلی پیشنهاد اولیه ۸۰٪ و ذخیره نشده است'}</span>
+      : 'مرز فعلی پیشنهاد اولیه ۷۰٪ و ذخیره نشده است'}</span>
     {canManage&&boundary&&<button type="button" disabled={saving} onClick={async()=>{
       setSaveMessage('');setSaving(true);
       try{
