@@ -67,7 +67,7 @@ export function GeoZoneMapEditor({geometry,coordinateText,onChange,onPointsChang
      onPointerDown={event=>event.stopPropagation()} onPointerUp={event=>event.stopPropagation()}>
      <button type="button" className={`grid min-h-8 place-items-center border-2 border-white text-xs font-black text-white shadow-lg ${marker.kind==='ROUTE'?'min-w-16 rounded-2xl px-2 py-1.5':'min-w-8 rounded-full'} ${marker.kind==='ROUTE'?(marker.tone==='good'?'bg-emerald-700':marker.tone==='warn'?'bg-amber-600':marker.tone==='bad'?'bg-rose-700':'bg-slate-600'):marker.outside?'bg-danger':marker.kind==='VISIT'?'bg-warning':marker.kind==='GPS'?'bg-slate-600':'bg-primary'}`}
        onClick={()=>{setSelectedPin(selected?null:marker.id);onMarkerSelect?.(marker);}} aria-label={marker.name}>
-       {marker.kind==='ROUTE'?<span className="max-w-36 truncate text-center leading-5">{marker.bubbleLabel||marker.name}</span>:marker.sequence??(marker.kind==='VISIT'?'✓':marker.kind==='GPS'?'●':'•')}
+       {marker.kind==='ROUTE'?<span className="max-w-44 whitespace-pre-line text-center leading-4">{marker.bubbleLabel||marker.name}</span>:marker.sequence??(marker.kind==='VISIT'?'✓':marker.kind==='GPS'?'●':'•')}
      </button>
      {selected&&<div className="absolute bottom-10 right-1/2 min-w-48 translate-x-1/2 rounded-xl border border-border bg-white p-3 text-right shadow-xl">
        <strong className="block text-xs text-text-main">{marker.name}</strong>
