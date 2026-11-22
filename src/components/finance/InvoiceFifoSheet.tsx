@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useDataQuery } from '../../hooks/useDataProvider';
-import { formatDecimalString } from '../../lib/format';
+import { formatCount, formatDecimalString } from '../../lib/format';
 import { formatAppDate } from '../../lib/utils';
 import type { InvoiceFifoRow } from '../../services/dataProvider';
 import { BottomSheet } from '../ui/BottomSheet';
@@ -48,9 +48,19 @@ export function InvoiceFifoSheet({ invoiceId, invoiceNumber, locale, onClose }: 
   const state=useAppStore(store=>store.state);
   const navigate=useNavigate();
   const [followUp,setFollowUp]=useState(false);
+  const [selectedLine, setSelectedLine] = useState<InvoiceFifoRow | null>(null);
   const { data:snapshot, loading, error, refetch } = useDataQuery(async provider=>({invoiceId, viewer:state.currentUserId,
     report:await provider.getInvoiceFifoEvidence(invoiceId)}), [invoiceId,state.currentUserId]);
   const data=snapshot?.invoiceId===invoiceId && snapshot.viewer===state.currentUserId ? snapshot.report : null;
+  const layerKey = JSON.stringify([invoiceId, selectedLine?.lineId, state.currentUserId]);
+  const layerQuery = useDataQuery(async provider => selectedLine
+    ? { key: layerKey, report: await provider.getInvoiceFifoEvidence(invoiceId, selectedLine.lineId) } : null, [layerKey]);
+  const evidence = layerQuery.data?.key === layerKey ? layerQuery.data.report : null;
+  const evidenceColumn: DataTableColumn<InvoiceFifoRow> = {
+    id: 'layers', header: 'برداشت FIFO', sortable: false,
+    render: row => <Button type="button" variant="ghost" size="sm" aria-expanded={selectedLine?.lineId === row.lineId}
+      onClick={() => setSelectedLine(current => current?.lineId === row.lineId ? null : row)}>لایه‌های ردیف</Button>,
+  };
   const hasRows = data?.status === 'AVAILABLE';
   const summary=data?.margin;
   const invoice=data?.invoice;
@@ -86,10 +96,25 @@ export function InvoiceFifoSheet({ invoiceId, invoiceNumber, locale, onClose }: 
         <p className="mb-2 text-caption text-text-secondary">مبنای سود تجاری، فروش خالص و بهای معتبر کالاست. تحلیل هزینهٔ حمل و توزیع در گزارش هزینه‌های عملیاتی انجام می‌شود.</p>
         {needsReview && canFollowUp && <Button type="button" variant="outline" size="sm" className="mb-2" onClick={()=>setFollowUp(true)}>ثبت پیگیری این فاکتور</Button>}
         {data.hasMore && <p role="status" className="mb-2 text-caption text-warning">نمایش به نخستین ۲۵۰ ردیف محدود است.</p>}
-        <DataTable tableId="invoice-fifo-evidence" title="ردیف‌های فاکتور" rows={data.rows} columns={columns}
+        <DataTable tableId="invoice-fifo-evidence" title="ردیف‌های فاکتور" rows={data.rows} columns={[...columns, evidenceColumn]}
           getRowId={row => row.lineId} exportFileName="invoice_fifo_evidence"
           emptyTitle={hasRows ? 'ردیفی یافت نشد' : 'فاکتور در آینهٔ ERP ردیف قابل نمایش ندارد'}
           emptyDescription="پس از دریافت ردیف‌های رسمی، تطبیق بهای تمام‌شده در همین نما انجام می‌شود." />
+        {selectedLine && <section className="mt-3 space-y-2 rounded-xl border border-border p-3" aria-label="شواهد برداشت ردیف">
+          <h3 className="text-sm font-bold">لایه‌های برداشت <bdi>{selectedLine.name}</bdi></h3>
+          {selectedLine.coverage !== 'MATCHED' && <p className="text-caption text-warning">{labels[selectedLine.coverage]}. شواهد موجود در محاسبهٔ سود قطعی استفاده نمی‌شوند.</p>}
+          {layerQuery.loading ? <LoadingState label="در حال دریافت لایه‌های ردیف" compact />
+            : layerQuery.error || evidence?.status === 'UNAVAILABLE' ? <ErrorState surface="invoice_fifo_layers" title="دریافت لایه‌ها ممکن نیست" onRetry={() => void layerQuery.refetch()} />
+              : evidence?.status === 'RESTRICTED' ? <p role="status" className="text-caption">مشاهدهٔ لایه‌ها به مجوز مالی در سطح سازمان نیاز دارد.</p>
+                : evidence?.layers?.length ? <ul className="divide-y divide-border text-caption">
+                  {evidence.layers.map(layer => <li key={`${layer.runId}:${layer.consumptionNo}`} className="space-y-1 py-2">
+                    <p className="font-semibold">لایهٔ {formatCount(layer.layerNo)} · انبار <bdi>{layer.warehouseId}</bdi></p>
+                    <p>سند مبدأ <bdi>{layer.sourceDocumentId}</bdi>، ردیف <bdi>{layer.sourceLineId}</bdi> · {formatAppDate(layer.sourceDate, locale)}</p>
+                    <p>برداشت {decimal(layer.quantity)} · برگشت {decimal(layer.returned)} · بهای واحد {decimal(layer.unitCost)} · بهای برداشت اولیه {decimal(layer.originalCost)}</p>
+                  </li>)}
+                </ul> : evidence && <p role="status" className="text-caption text-text-secondary">برداشت ثبت‌شده‌ای برای این ردیف پیدا نشد.</p>}
+          {evidence?.hasMore && <p role="status" className="text-caption text-warning">فقط ۱۰۰ برداشت نخست نمایش داده شده‌اند.</p>}
+        </section>}
       </>}
   </BottomSheet>;
 }

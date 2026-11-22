@@ -139,6 +139,10 @@ export interface InvoiceFifoEvidence {
   status: 'AVAILABLE' | 'EMPTY' | 'UNMAPPED' | 'AMBIGUOUS' | 'RESTRICTED' | 'UNAVAILABLE';
   invoice?: { id: string; number: string; date: string; currency: string; source: string; accountId?:string|null };
   rows: InvoiceFifoRow[];
+  lineId?: string;
+  layers?: Array<{ runId:string; consumptionNo:number; layerNo:number; kind:string; warehouseId:string;
+    sourceDocumentId:string; sourceLineId:string; sourceDate:string; through:string;
+    quantity:string; returned:string; unitCost:string; originalCost:string }>;
   hasMore?: boolean;
   margin?: {status:'AVAILABLE';net:string;cost:string;profit:string;percent:string|null} |
     {status:'RETURN_REVIEW'|'INCOMPLETE'|'NET_MISMATCH'};
@@ -356,7 +360,7 @@ export interface DataProvider {
   getCreditNoteEvidence(): Promise<CreditNoteEvidence>;
   getFifoValuations(): Promise<FifoValuations>;
   getFifoLayers(runId: string, warehouseId: string, after?: number, activity?: 'inbound' | 'withdrawals'): Promise<FifoLayerPage>;
-  getInvoiceFifoEvidence(invoiceId: string): Promise<InvoiceFifoEvidence>;
+  getInvoiceFifoEvidence(invoiceId: string, lineId?: string): Promise<InvoiceFifoEvidence>;
   getFifoSaleEvidence(documentId: string, source: string, periodStart: string): Promise<FifoSaleEvidence>;
   
   // Financial Intelligence & Approval Center (Approval Intelligence / Financial 360 / Smart Accounting Classification)
@@ -924,9 +928,10 @@ export class HttpBackendDataProvider implements DataProvider {
     }
     return receipt;
   }
-  async getInvoiceFifoEvidence(invoiceId: string): Promise<InvoiceFifoEvidence> {
+  async getInvoiceFifoEvidence(invoiceId: string, lineId?: string): Promise<InvoiceFifoEvidence> {
     try {
-      return await this.request(`/finance/invoices/${encodeURIComponent(invoiceId)}/fifo`);
+      const query = lineId === undefined ? '' : `?${new URLSearchParams({line: lineId})}`;
+      return await this.request(`/finance/invoices/${encodeURIComponent(invoiceId)}/fifo${query}`);
     } catch (error) {
       const denied = error instanceof Error && 'status' in error && error.status === 403;
       return { status: denied ? 'RESTRICTED' : 'UNAVAILABLE', rows: [] };

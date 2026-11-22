@@ -635,7 +635,11 @@ app.get('/api/v1/finance/invoices/:id/fifo', authenticate, requirePermission('fi
     if (!/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(req.params.id)) {
       return bad(req, res, 400, 'INVALID_INVOICE', 'شناسهٔ فاکتور معتبر نیست.');
     }
-    res.json(await readInvoiceFifoEvidence(req.auth, req.params.id));
+    const { line } = req.query;
+    if (line !== undefined && (typeof line !== 'string' || !line.trim() || line.length > 200)) {
+      return bad(req, res, 400, 'INVALID_INVOICE_LINE', 'شناسهٔ ردیف فاکتور معتبر نیست.');
+    }
+    res.json(await readInvoiceFifoEvidence(req.auth, req.params.id, line ?? null));
   }));
 
 const officialLedger = createOfficialLedgerReader({ sql, run: withTenantContext });

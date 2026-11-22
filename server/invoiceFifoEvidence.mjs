@@ -33,7 +33,7 @@ export function projectInvoiceMargin(invoice,rows,hasMore) {
 }
 
 export function createInvoiceFifoEvidence({ sql, run }) {
-  return (auth, localId) => run(auth, async tx => {
+  return (auth, localId, lineId = null) => run(auth, async tx => {
     const request = () => new sql.Request(tx).input('tenantId', sql.UniqueIdentifier, auth.tenantId);
     const { recordset: matches } = await request().input('localId', sql.UniqueIdentifier, localId)
       .query(`SELECT TOP (2) invoice.InvoiceMirrorId AS id, invoice.InvoiceNumber AS number,
@@ -52,6 +52,34 @@ export function createInvoiceFifoEvidence({ sql, run }) {
           ))`);
     if (matches.length !== 1) return { status: matches.length ? 'AMBIGUOUS' : 'UNMAPPED', rows: [] };
     const invoice = matches[0];
+    if (lineId !== null) {
+      const { recordset } = await request().input('invoiceId', sql.UniqueIdentifier, invoice.id)
+        .input('lineId', sql.NVarChar(200), lineId).query(`SELECT TOP (101)
+          r.RunId AS runId,c.ConsumptionNo AS consumptionNo,l.LayerNo AS layerNo,l.KindCode AS kind,
+          l.WarehouseExternalId AS warehouseId,l.DocumentId AS sourceDocumentId,l.LineId AS sourceLineId,
+          l.EffectiveAtUtc AS sourceDate,r.ThroughUtc AS through,
+          CONVERT(varchar(42),c.Quantity) AS quantity,CONVERT(varchar(42),c.ReturnedQuantity) AS returned,
+          CONVERT(varchar(42),l.UnitCost) AS unitCost,CONVERT(varchar(52),c.TotalCost) AS originalCost
+        FROM crm.InvoiceMirror invoice
+        ${verifiedInvoiceStatus}
+        JOIN crm.InvoiceLineMirror line ON line.TenantId=invoice.TenantId AND line.InvoiceMirrorId=invoice.InvoiceMirrorId
+          AND line.SourceSystemCode=invoice.SourceSystemCode
+          AND line.ExternalInvoiceId COLLATE Latin1_General_100_BIN2=invoice.ExternalInvoiceId COLLATE Latin1_General_100_BIN2
+        JOIN analytics.FifoRun r ON r.TenantId=invoice.TenantId AND r.IsCurrent=1 AND r.SourceSystemCode=invoice.SourceSystemCode
+          AND r.CurrencyCode=invoice.CurrencyCode AND r.ProductExternalId=line.ExternalProductId COLLATE Latin1_General_100_BIN2
+          AND r.UnitCode=line.UnitCode COLLATE Latin1_General_100_BIN2
+        JOIN analytics.FifoConsumption c ON c.TenantId=r.TenantId AND c.RunId=r.RunId AND c.KindCode='SALE'
+          AND c.DocumentId COLLATE Latin1_General_100_BIN2=invoice.ExternalInvoiceId COLLATE Latin1_General_100_BIN2
+          AND c.LineId COLLATE Latin1_General_100_BIN2=line.ExternalInvoiceLineId COLLATE Latin1_General_100_BIN2
+        JOIN analytics.FifoLayer l ON l.TenantId=c.TenantId AND l.RunId=c.RunId AND l.LayerNo=c.LayerNo
+        WHERE invoice.TenantId=@tenantId AND invoice.InvoiceMirrorId=@invoiceId AND invoice.IsVoided=0
+          AND invoice.DeletedAtUtc IS NULL AND invoiceStatus.status IN ('POSTED','FINAL')
+          AND line.ExternalInvoiceLineId COLLATE Latin1_General_100_BIN2=@lineId
+          AND EXISTS(SELECT 1 FROM security.fn_RecordReadScope(@tenantId,N'finance.view',NULL,NULL,NULL,NULL))
+        ORDER BY r.RunId,c.ConsumptionNo;`);
+      return { status: recordset.length ? 'AVAILABLE' : 'EMPTY', invoice, rows: [], lineId,
+        layers: recordset.slice(0, 100), hasMore: recordset.length > 100 };
+    }
     const { recordset } = await request().input('invoiceId', sql.UniqueIdentifier, invoice.id)
       .query(`SELECT TOP (251) line.ExternalInvoiceLineId AS lineId,
           line.ExternalProductId AS productId,line.ProductNameSnapshot AS name,line.UnitCode AS unit,
