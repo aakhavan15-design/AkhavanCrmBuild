@@ -162,7 +162,7 @@ export function RouteMapOverview(){
    id:r.routeId,name:r.routeCode+' · '+r.routeName,kind:'ROUTE' as const,
    point:{latitude:point.latitude,longitude:point.longitude},
    tone:color(r),bubbleLabel:displayMetric(currentPrimary,r[currentPrimary])+'\n'+
-    fa(r.customerCount??0)+' مشتری'+(permitted.has('activeCustomerCount')&&r.activeCustomerCount!==null
+    (r.customerCount==null?'نامشخص':fa(r.customerCount))+' مشتری'+(permitted.has('activeCustomerCount')&&r.activeCustomerCount!==null
       ? ' · '+fa(r.activeCustomerCount)+' خریدار' : ''),detailPath:undefined
   }];
  });
