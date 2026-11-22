@@ -13,6 +13,9 @@ export function createRouteCustomerDetailReader({sql,run}){
    .input('financeWide',sql.Bit,financeOrganizationWide?1:0)
    .input('dateFrom',sql.Date,filters.from).input('dateTo',sql.Date,filters.to)
    .input('productJson',sql.NVarChar(sql.MAX),JSON.stringify(filters.productIds))
+   .input('supplierJson',sql.NVarChar(sql.MAX),JSON.stringify(filters.supplierIds))
+   .input('brandJson',sql.NVarChar(sql.MAX),JSON.stringify(filters.brandIds))
+   .input('categoryJson',sql.NVarChar(sql.MAX),JSON.stringify(filters.customerCategoryIds))
    .input('repJson',sql.NVarChar(sql.MAX),JSON.stringify(filters.repIds));
   const allowed=`(@organizationWide=1 OR EXISTS(
     SELECT 1 FROM crm.VisitRouteStaffMirror staff
@@ -26,11 +29,12 @@ export function createRouteCustomerDetailReader({sql,run}){
   // Source-authoritative membership, never WHERE customer.Latitude IS NOT NULL.
   const members=(await request().query(`
    SELECT DISTINCT a.AccountId,a.Name,a.AccountCode,a.StatusCode,
-      a.Latitude,a.Longitude,a.GeoAccuracyMeters,m.SubRouteCode
+      a.Latitude,a.Longitude,a.GeoAccuracyMeters,a.BusinessCategoryCode,m.SubRouteCode
    FROM crm.VisitRouteCustomerMirror m
    JOIN crm.Account a ON a.TenantId=m.TenantId AND a.AccountId=m.AccountId
    WHERE m.TenantId=@tenant AND m.RouteId=@routeId
      AND m.EffectiveFrom<=@dateTo AND (m.EffectiveTo IS NULL OR m.EffectiveTo>=@dateFrom)
+     AND (NOT EXISTS(SELECT 1 FROM OPENJSON(@categoryJson)) OR a.BusinessCategoryCode IN(SELECT value FROM OPENJSON(@categoryJson)))
      AND EXISTS(SELECT 1 FROM security.fn_RecordReadScope(a.TenantId,N'accounts.view',a.OwnerUserId,a.BranchId,a.TerritoryId,a.TeamId))
    ORDER BY a.Name,a.AccountId`)).recordset;
   const visits=(await request().query(`
@@ -77,6 +81,8 @@ export function createRouteCustomerDetailReader({sql,run}){
      SELECT i.InvoiceMirrorId,l.ExternalProductId,l.ProductNameSnapshot,
        l.Quantity,l.NetUnitPrice,l.NetLineAmount
      FROM crm.InvoiceLineMirror l
+     LEFT JOIN crm.ExternalProduct product ON product.TenantId=l.TenantId
+       AND product.SourceSystemCode=l.SourceSystemCode AND product.ExternalProductId=l.ExternalProductId
      JOIN crm.InvoiceMirror i ON i.TenantId=l.TenantId AND i.InvoiceMirrorId=l.InvoiceMirrorId
      JOIN crm.Account a ON a.TenantId=i.TenantId AND a.AccountId=i.AccountId
      WHERE i.TenantId=@tenant AND i.IsVoided=0 AND i.CurrencyCode='IRR'
@@ -88,6 +94,8 @@ export function createRouteCustomerDetailReader({sql,run}){
       AND EXISTS(SELECT 1 FROM security.fn_RecordReadScope(a.TenantId,N'accounts.view',a.OwnerUserId,a.BranchId,a.TerritoryId,a.TeamId))
       AND (NOT EXISTS(SELECT 1 FROM OPENJSON(@repJson)) OR i.SalesRepExternalId IN(SELECT value FROM OPENJSON(@repJson)))
       AND (NOT EXISTS(SELECT 1 FROM OPENJSON(@productJson)) OR l.ExternalProductId IN(SELECT value FROM OPENJSON(@productJson)))
+      AND (NOT EXISTS(SELECT 1 FROM OPENJSON(@supplierJson)) OR product.SupplierExternalId IN(SELECT value FROM OPENJSON(@supplierJson)))
+      AND (NOT EXISTS(SELECT 1 FROM OPENJSON(@brandJson)) OR product.BrandExternalId IN(SELECT value FROM OPENJSON(@brandJson)))
       AND (@financeWide=1 OR i.SalesRepUserId=@actor OR EXISTS(
         SELECT 1 FROM crm.VisitRouteStaffMirror manager WHERE manager.TenantId=@tenant
         AND manager.RouteId=@routeId AND manager.StaffRoleCode='SUPERVISOR' AND manager.StaffUserId=@actor
@@ -109,7 +117,7 @@ export function createRouteCustomerDetailReader({sql,run}){
        .reduce((sub,l)=>sub+Number(l.NetLineAmount||0),0),0);
     const lastVisit=cv[0],lastInvoice=ci.sort((a,b)=>String(b.InvoiceDate).localeCompare(String(a.InvoiceDate)))[0];
     const bought=financeAllowed&&ci.length>0,visited=cv.length>0;
-    return {id:m.AccountId,name:m.Name,code:m.AccountCode,statusCode:m.StatusCode,
+    return {id:m.AccountId,name:m.Name,code:m.AccountCode,statusCode:m.StatusCode,businessCategoryCode:m.BusinessCategoryCode,
       subRouteCode:m.SubRouteCode,latitude:numberOrNull(m.Latitude),longitude:numberOrNull(m.Longitude),
       visitCount:cv.length,lastVisitAt:lastVisit?.VisitedAtUtc||null,
       lastVisitOutcome:lastVisit?.OutcomeCode||null,noOrderReason:lastVisit?.ReasonTitleFa||lastVisit?.NoOrderReasonCode||null,
