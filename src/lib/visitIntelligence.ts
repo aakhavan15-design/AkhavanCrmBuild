@@ -103,15 +103,18 @@ export function buildVisitIntelligence(args: VisitIntelArgs): VisitIntelReport {
   // Resolve external ERP customer IDs through explicit source-scoped identities only.
   // An arbitrary CRM id or customer code must NOT be assumed equal to the ERP id.
   const externalCustomerIds=new Map<string,string>();
+  const ambiguousExternalIds=new Set<string>();
   for(const customer of args.customers) {
     const externalId=String(customer.externalId||customer.externalAccountId||'').trim();
     const source=String(customer.sourceSystemCode||'').trim().toUpperCase();
     const tenant=String(customer.tenantId||'').trim();
     if(externalId && source && tenant){
       const key=tenant+'|'+source+'|'+externalId;
-      if(externalCustomerIds.has(key) && externalCustomerIds.get(key)!==customer.id)
-        externalCustomerIds.delete(key); // ambiguous ERP identity: fail closed
-      else externalCustomerIds.set(key,customer.id);
+      if(ambiguousExternalIds.has(key)) continue;
+      if(externalCustomerIds.has(key) && externalCustomerIds.get(key)!==customer.id) {
+        externalCustomerIds.delete(key);
+        ambiguousExternalIds.add(key); // ambiguous ERP identity: permanently fail closed
+      } else externalCustomerIds.set(key,customer.id);
     }
   }
   const tourStops=new Map<string,VisitIntelRow['tourStops']>();
@@ -188,7 +191,7 @@ export function buildVisitIntelligence(args: VisitIntelArgs): VisitIntelReport {
     if(reason)reasonMap.set(reason,(reasonMap.get(reason)||0)+1);
   }
   const reasonCounts=[...reasonMap].map(([reason,count])=>({reason,count})).sort((a,b)=>b.count-a.count);
-  const routesMap=new Map<string,{routeId:string;repId:string;plannedStops:number;recordedVisitsOnTourDate:number;unconfirmedPastStops:number;collectionDueStops:number}>();
+  const routesMap=new Map<string,VisitIntelReport['routes'][number]>();
   for(const row of customerRows)for(const stop of row.tourStops){
     const key=stop.routeId+'|'+stop.repId;
     const entry=routesMap.get(key)||{routeId:stop.routeId,repId:stop.repId,plannedStops:0,recordedVisitsOnTourDate:0,recordedOrderOutcomes:0,unconfirmedPastStops:0,collectionDueStops:0};
