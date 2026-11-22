@@ -19,6 +19,8 @@ export interface PurchaseCycleResult {
 export interface PurchaseCoverageScope {territory:string;owner:string}
 export interface PurchaseCoverageRow {
   territoryId:string;ownerId:string;territory:string;owner:string;observedCustomers:number;needingFollowUp:number|null;planned:number;checkedIn:number;
+  followUpWithoutCheckIn:number|null;
+  followUpWithoutVisitEvidence:number|null;
 }
 
 export interface PurchaseProductHint {

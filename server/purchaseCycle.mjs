@@ -75,9 +75,9 @@ SELECT r.AccountId AS accountId,r.SourceSystemCode AS source,r.name,r.owner,r.te
   visits.planned,visits.checkedIn,visits.latestCheckIn
 FROM pageRows r
 OUTER APPLY (
-  SELECT COUNT_BIG(CASE WHEN v.PlannedAtUtc>=DATEADD(day,-30,@nextDayUtc) AND v.PlannedAtUtc<@nextDayUtc THEN 1 END) AS planned,
-    COUNT_BIG(CASE WHEN v.PlannedAtUtc>=DATEADD(day,-30,@nextDayUtc) AND v.PlannedAtUtc<@nextDayUtc AND v.CheckInAtUtc<@nextDayUtc THEN 1 END) AS checkedIn,
-    MAX(CASE WHEN v.CheckInAtUtc<@nextDayUtc THEN v.CheckInAtUtc END) AS latestCheckIn
+  SELECT COUNT_BIG(CASE WHEN v.IsUnplanned=0 AND v.PlannedAtUtc>=DATEADD(day,-30,@nextDayUtc) AND v.PlannedAtUtc<=@nowUtc THEN 1 END) AS planned,
+    COUNT_BIG(CASE WHEN v.IsUnplanned=0 AND v.PlannedAtUtc>=DATEADD(day,-30,@nextDayUtc) AND v.PlannedAtUtc<=@nowUtc AND v.CheckInAtUtc<=@nowUtc THEN 1 END) AS checkedIn,
+    MAX(CASE WHEN v.CheckInAtUtc<=@nowUtc THEN v.CheckInAtUtc END) AS latestCheckIn
   FROM crm.Visit v WHERE v.TenantId=@tenantId AND v.AccountId=r.AccountId AND r.ownerId IS NOT NULL AND v.VisitorUserId=r.ownerId
 ) visits
 ORDER BY r.followUp DESC,r.observedSales DESC,r.AccountId,r.SourceSystemCode;
@@ -87,16 +87,20 @@ WITH accountsOnce AS (
   FROM #rankedPurchase WHERE TerritoryId IS NOT NULL AND ownerId IS NOT NULL AND owner IS NOT NULL
   GROUP BY AccountId,TerritoryId,ownerId
 ), visitsPerAccount AS (
-  SELECT a.*,visits.planned,visits.checkedIn
+  SELECT a.*,visits.planned,visits.checkedIn,visits.observedCheckIns
   FROM accountsOnce a OUTER APPLY (
-    SELECT COUNT_BIG(*) AS planned,COUNT_BIG(CASE WHEN v.CheckInAtUtc<@nextDayUtc THEN 1 END) AS checkedIn
+    SELECT COUNT_BIG(CASE WHEN v.IsUnplanned=0 AND v.PlannedAtUtc>=DATEADD(day,-30,@nextDayUtc) AND v.PlannedAtUtc<=@nowUtc THEN 1 END) AS planned,
+      COUNT_BIG(CASE WHEN v.IsUnplanned=0 AND v.PlannedAtUtc>=DATEADD(day,-30,@nextDayUtc) AND v.PlannedAtUtc<=@nowUtc AND v.CheckInAtUtc<=@nowUtc THEN 1 END) AS checkedIn,
+      COUNT_BIG(CASE WHEN v.CheckInAtUtc>=DATEADD(day,-30,@nextDayUtc) AND v.CheckInAtUtc<=@nowUtc THEN 1 END) AS observedCheckIns
     FROM crm.Visit v WHERE v.TenantId=@tenantId AND v.AccountId=a.AccountId AND v.VisitorUserId=a.ownerId
-      AND v.PlannedAtUtc>=DATEADD(day,-30,@nextDayUtc) AND v.PlannedAtUtc<@nextDayUtc
+      AND (v.PlannedAtUtc>=DATEADD(day,-30,@nextDayUtc) OR v.CheckInAtUtc>=DATEADD(day,-30,@nextDayUtc))
   ) visits
 )
 SELECT TOP(12) TerritoryId AS territoryId,ownerId,MAX(territory) AS territory,MAX(owner) AS owner,
   COUNT_BIG(*) AS observedCustomers,
   CASE WHEN @minimumDays>0 AND @minimumSales>0 THEN SUM(CONVERT(bigint,followUp)) END AS needingFollowUp,
+  CASE WHEN @minimumDays>0 AND @minimumSales>0 THEN COUNT_BIG(CASE WHEN followUp=1 AND planned>0 AND observedCheckIns=0 THEN 1 END) END AS followUpWithoutCheckIn,
+  CASE WHEN @minimumDays>0 AND @minimumSales>0 THEN COUNT_BIG(CASE WHEN followUp=1 AND planned=0 AND observedCheckIns=0 THEN 1 END) END AS followUpWithoutVisitEvidence,
   SUM(planned) AS planned,SUM(checkedIn) AS checkedIn
 FROM visitsPerAccount GROUP BY TerritoryId,ownerId
 ORDER BY needingFollowUp DESC,planned DESC,TerritoryId,ownerId;`;
@@ -155,11 +159,13 @@ export function createPurchaseProductReader({sql,run}) {
 
 export function createPurchaseCycleReader({sql,run}) {
   return (auth,filter) => run(auth,async tx=>{
-    const asOf=tehranDate.format(new Date());
+    const now=new Date();
+    const asOf=tehranDate.format(now);
     const result=await new sql.Request(tx).input('tenantId',sql.UniqueIdentifier,auth.tenantId)
       .input('asOf',sql.Date,new Date(asOf)).input('search',sql.NVarChar(100),filter.search)
       .input('territory',sql.UniqueIdentifier,filter.territory).input('owner',sql.UniqueIdentifier,filter.owner)
       .input('nextDayUtc',sql.DateTime2,new Date(`${asOf}T20:30:00Z`))
+      .input('nowUtc',sql.DateTime2,now)
       .input('onlyRisk',sql.Bit,filter.view==='follow-up').input('offset',sql.Int,(filter.page-1)*20).query(query);
     const thresholds=result.recordsets[0][0];
     const rows=result.recordsets[1];

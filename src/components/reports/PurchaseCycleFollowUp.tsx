@@ -16,6 +16,7 @@ import { SearchableSelect } from '../ui/SearchableSelect';
 
 const views=[{value:'follow-up',label:'اولویت پیگیری'},{value:'all',label:'همهٔ مشتریان دارای فاکتور'}];
 const observedMoney=(value:string)=>Number(value)>0 ? `${formatDecimalString(value)} ریال` : 'فاکتوری مشاهده نشده';
+const shareFormat=new Intl.NumberFormat('fa-IR',{style:'percent',maximumFractionDigits:1});
 
 function PurchaseProductHints({account,source,onSelect}:{account:string;source:string;onSelect?:(item:PurchaseProductHint)=>void}) {
   const [open,setOpen]=useState(false);
@@ -71,17 +72,24 @@ export function PurchaseCycleFollowUp({viewer,accounts,canCreate}:{viewer:string
         <p className="text-caption text-text-secondary">تاریخ مبنا {formatAppDate(report.asOf)}</p>
         {(report.coverage?.length ?? 0)>0 && <details open={coverageOpen} onToggle={event=>setCoverageOpen(event.currentTarget.open)} className="rounded-xl border border-border p-2">
           <summary className="min-h-11 cursor-pointer py-2 text-sm font-semibold">پوشش ثبت ویزیت به تفکیک منطقه و مسئول</summary>
-          <p className="pb-1 text-caption text-text-secondary">برنامه‌های ۳۰ روز اخیرِ مشتریان دارای فاکتور مشاهده‌شده. پوشش، سهم برنامه‌های دارای ثبت ورود است.</p>
+          <p className="pb-1 text-caption text-text-secondary">پوشش بر اساس برنامه‌هایی است که زمانشان در ۳۰ روز اخیر رسیده و ثبت ورود دارند. نبود ثبت ورود، انجام‌نشدن مراجعه را ثابت نمی‌کند.</p>
           {scope && <Button type="button" variant="ghost" size="sm" onClick={()=>{setScope(undefined);setPage(1);}}>پاک‌کردن فیلتر منطقه و مسئول</Button>}
           <ul className="divide-y divide-border">{report.coverage.map(entry=>{
             const selectedGroup=scope?.territory===entry.territoryId && scope?.owner===entry.ownerId;
-            const percent=entry.planned ? new Intl.NumberFormat('fa-IR',{style:'percent',maximumFractionDigits:1}).format(entry.checkedIn/entry.planned) : null;
+            const percent=entry.planned ? shareFormat.format(entry.checkedIn/entry.planned) : null;
+            const followUpShare=entry.needingFollowUp!==null && entry.observedCustomers>0 ? shareFormat.format(entry.needingFollowUp/entry.observedCustomers) : null;
             return <li key={`${entry.territoryId}:${entry.ownerId}`}>
               <button type="button" className="min-h-11 w-full rounded-lg px-1.5 py-2 text-start hover:bg-hover" aria-pressed={selectedGroup}
                 onClick={()=>{setScope(selectedGroup ? undefined : {territory:entry.territoryId,owner:entry.ownerId});setPage(1);}}>
                 <span className="block text-sm font-semibold">{entry.territory || 'منطقهٔ نامشخص'} · {entry.owner}</span>
-                <span className="mt-1 block text-caption">{formatCount(entry.observedCustomers)} مشتری · {entry.needingFollowUp===null ? 'اولویت نامشخص' : `${formatCount(entry.needingFollowUp)} نیازمند پیگیری`}</span>
+                <span className="mt-1 block text-caption">{formatCount(entry.observedCustomers)} مشتری · {entry.needingFollowUp===null ? 'اولویت نامشخص' : `${formatCount(entry.needingFollowUp)} نیازمند پیگیری${followUpShare ? ` (${followUpShare})` : ''}`}</span>
                 <span className="block text-caption text-text-secondary">{percent ? `${percent} پوشش، ${formatCount(entry.checkedIn)} ثبت ورود از ${formatCount(entry.planned)} برنامه` : 'برنامهٔ ثبت‌شده در دسترس نیست'}</span>
+                {(entry.followUpWithoutCheckIn ?? 0)>0 && <span className="block text-caption text-warning">
+                  {formatCount(entry.followUpWithoutCheckIn!)} مشتری در اولویت با برنامهٔ رسیده و بدون ثبت ورود مشاهده‌شده
+                </span>}
+                {(entry.followUpWithoutVisitEvidence ?? 0)>0 && <span className="block text-caption text-text-secondary">
+                  {formatCount(entry.followUpWithoutVisitEvidence!)} مشتری در اولویت با وضعیت مراجعهٔ نامشخص
+                </span>}
               </button>
             </li>;
           })}</ul>
@@ -99,7 +107,7 @@ export function PurchaseCycleFollowUp({viewer,accounts,canCreate}:{viewer:string
                 <div><dt className="text-text-secondary">فاصلهٔ فعلی / چرخهٔ معمول</dt><dd>{formatCount(row.daysSince)} روز / {row.medianGap===null?'سابقه کافی نیست':`${formatCount(row.medianGap)} روز`}</dd></div>
                 <div><dt className="text-text-secondary">آخرین خرید مشاهده‌شده</dt><dd>{formatAppDate(row.lastPurchase)} · {row.lastInvoiceNumber ? <bdi>{row.lastInvoiceNumber}</bdi> : `${formatCount(row.lastInvoiceCount)} فاکتور`}</dd></div>
                 <div><dt className="text-text-secondary">۹۰ روز اخیر / ۹۰ روز پیش از آن</dt><dd>{observedMoney(row.recentSales)} / {observedMoney(row.previousSales)}</dd></div>
-                <div><dt className="text-text-secondary">ثبت ورود در برنامهٔ ۳۰ روز اخیر همین مسئول</dt><dd>{row.planned>0 ? `${formatCount(row.checkedIn)} از ${formatCount(row.planned)} برنامه` : 'برنامه‌ای در دادهٔ مشاهده‌شده وجود ندارد'}</dd></div>
+                <div><dt className="text-text-secondary">ثبت ورود برای برنامه‌های رسیدهٔ این مسئول</dt><dd>{row.planned>0 ? `${formatCount(row.checkedIn)} از ${formatCount(row.planned)} برنامه` : 'برنامهٔ رسیده‌ای در دادهٔ مشاهده‌شده وجود ندارد'}</dd></div>
                 <div><dt className="text-text-secondary">آخرین ثبت ورود این مسئول</dt><dd>{row.latestCheckIn ? formatAppDate(row.latestCheckIn) : 'نامشخص'}</dd></div>
                 <div><dt className="text-text-secondary">منبع و تازگی فاکتورها</dt><dd><bdi>{row.source}</bdi> · {formatAppDate(row.lastSynced)}</dd></div>
               </dl>
