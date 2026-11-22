@@ -18,11 +18,11 @@ import { SearchableSelect } from '../ui/SearchableSelect';
 
 const statusOptions=[{value:'',label:'همهٔ وضعیت‌ها'},...Object.entries(APPLICATION_STATUS_LABEL).map(([value,label])=>({value,label}))];
 const names:Record<RecruitmentAction,string>={REVIEW:'شروع بررسی',NEEDS_INFORMATION:'درخواست اطلاعات تکمیلی',SCHEDULE:'تعیین مصاحبه',
-  INTERVIEW_RESULT:'ثبت نتیجهٔ مصاحبه',ACCEPT:'پذیرش',REJECT:'رد درخواست',CREATE_EMPLOYEE:'تشکیل پروندهٔ استخدامی'};
+  INTERVIEW_RESULT:'ثبت نتیجهٔ مصاحبه',ACCEPT:'پذیرش',REJECT:'رد درخواست',CREATE_EMPLOYEE:'تشکیل پروندهٔ استخدامی',LINK_USER:'اتصال حساب موجود'};
 const interviewOptions=[{value:'ACCEPT',label:'مناسب برای پذیرش'},{value:'REJECT',label:'نامناسب'},{value:'FOLLOW_UP',label:'مصاحبهٔ تکمیلی'}];
 
 function availableActions(row:RecruitmentReviewRow):RecruitmentAction[] {
-  if (row.status==='ACCEPTED') return row.employmentId ? [] : ['CREATE_EMPLOYEE'];
+  if (row.status==='ACCEPTED') return row.employmentId ? (row.userLinked ? [] : ['LINK_USER']) : ['CREATE_EMPLOYEE'];
   if (row.status==='REJECTED') return [];
   const actions:RecruitmentAction[]=[];
   if (row.status!=='UNDER_REVIEW') actions.push('REVIEW');
@@ -43,6 +43,8 @@ function ReviewDetails({row,attachments,viewer,canEdit,onSaved,onClose}:{row:Rec
   const [interviewer,setInterviewer]=useState<string[]>([]);
   const [result,setResult]=useState<InterviewResult>('FOLLOW_UP');
   const [employeeCode,setEmployeeCode]=useState('');
+  const [username,setUsername]=useState('');
+  const [identityConfirmed,setIdentityConfirmed]=useState(false);
   const [busy,setBusy]=useState(false);
   const [error,setError]=useState('');
   const pending=useRef<{key:string;id:string}|null>(null);
@@ -56,6 +58,7 @@ function ReviewDetails({row,attachments,viewer,canEdit,onSaved,onClose}:{row:Rec
     if (action==='SCHEDULE') Object.assign(data,{date:day,time,address,interviewerId:interviewer[0]});
     if (action==='INTERVIEW_RESULT') data.result=result;
     if (action==='CREATE_EMPLOYEE') Object.assign(data,{employeeCode,hireDate:day});
+    if (action==='LINK_USER') Object.assign(data,{username,identityConfirmed});
     const key=JSON.stringify(data);
     const commandId=pending.current?.key===key ? pending.current.id : crypto.randomUUID();
     pending.current={key,id:commandId};sending.current=true;setBusy(true);setError('');
@@ -85,7 +88,7 @@ function ReviewDetails({row,attachments,viewer,canEdit,onSaved,onClose}:{row:Rec
         {row.interview.result && <p>{interviewOptions.find(item=>item.value===row.interview?.result)?.label} · {row.interview.resultNote}</p>}
         {row.interview.taskId.startsWith('taskreq-') && <Link to={`/tasks?request=${encodeURIComponent(row.interview.taskId)}`} className="inline-flex min-h-11 items-center text-primary">مشاهدهٔ تسک مصاحبه</Link>}
       </div>}
-      {row.employmentId && <p className="text-caption text-success">پروندهٔ استخدامی تشکیل شده و وضعیت آن شروع همکاری است.</p>}
+      {row.employmentId && <p className="text-caption text-success">{row.userLinked ? 'پروندهٔ استخدامی به حساب کاربری موجود متصل شد.' : 'پروندهٔ استخدامی تشکیل شده است و منتظر اتصال به حساب کاربری است.'}</p>}
       {row.history.length>0 && <details><summary className="min-h-11 cursor-pointer py-2 font-semibold">تاریخچهٔ تصمیم‌ها</summary>
         <ul className="divide-y divide-border text-caption">{row.history.map((event,index)=><li key={`${event.at}:${index}`} className="py-2">
           {formatAppDate(event.at)} · {APPLICATION_STATUS_LABEL[event.status]}{event.note && <p className="whitespace-pre-wrap wrap-break-word">{event.note}</p>}
@@ -102,6 +105,14 @@ function ReviewDetails({row,attachments,viewer,canEdit,onSaved,onClose}:{row:Rec
         {action==='INTERVIEW_RESULT' && <SearchableSelect label="نتیجهٔ مصاحبه" value={result} options={interviewOptions} disabled={busy}
           onChange={value=>setResult(value as InterviewResult)}/>}
         {action==='CREATE_EMPLOYEE' && <Input label="کد پرسنلی" value={employeeCode} maxLength={32} required disabled={busy} onChange={event=>setEmployeeCode(event.target.value)} />}
+        {action==='LINK_USER' && <>
+          <Input label="نام کاربری حساب موجود" value={username} maxLength={100} required disabled={busy} onChange={event=>setUsername(event.target.value)} />
+          <label className="flex min-h-11 items-start gap-2 text-caption">
+            <input type="checkbox" required checked={identityConfirmed} disabled={busy} onChange={event=>setIdentityConfirmed(event.target.checked)} />
+            هویت متقاضی و تعلق حساب به او را از روی مدارک بررسی کرده‌ام.
+          </label>
+          <p className="text-caption text-text-secondary">مرجع نام کاربری، سیاست سازمان است. نقش و مجوز حساب با اتصال پرونده تغییر نمی‌کند.</p>
+        </>}
         {action && <Textarea label="توضیح اقدام" value={note} rows={3} maxLength={750} disabled={busy} required={!['SCHEDULE','REVIEW'].includes(action)} onChange={event=>setNote(event.target.value)} />}
         {error && <p role="alert" className="text-caption text-danger">{error}</p>}
         {action && <Button type="submit" variant={action==='REJECT'?'danger':'primary'} loading={busy}>ثبت {names[action]}</Button>}

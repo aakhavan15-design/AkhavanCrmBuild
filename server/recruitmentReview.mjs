@@ -1,9 +1,9 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { isValidNationalCode, transitionApplication } from '../src/lib/onboarding.ts';
+import { getOnboardingConfig, isValidNationalCode, normalizeMobile, toLatinDigits, transitionApplication } from '../src/lib/onboarding.ts';
 import { date, uuid } from './taskRequestContract.mjs';
 
 const statuses = ['SUBMITTED','UNDER_REVIEW','NEEDS_INFORMATION','ACCEPTED','REJECTED'];
-const commands = ['REVIEW','NEEDS_INFORMATION','SCHEDULE','INTERVIEW_RESULT','ACCEPT','REJECT','CREATE_EMPLOYEE'];
+const commands = ['REVIEW','NEEDS_INFORMATION','SCHEDULE','INTERVIEW_RESULT','ACCEPT','REJECT','CREATE_EMPLOYEE','LINK_USER'];
 const bounded = (value,max) => typeof value==='string' && value.length<=max && !/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(value) ? value.trim() : null;
 const digest = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 
@@ -16,7 +16,7 @@ export function recruitmentFilters(query) {
 export function recruitmentCommand(body) {
   const note=bounded(body?.note ?? '',750);
   if (!uuid(body?.commandId) || typeof body.version!=='string' || !/^[1-9]\d{0,18}$/.test(body.version) ||
-      !commands.includes(body.action) || note===null || (['NEEDS_INFORMATION','INTERVIEW_RESULT','ACCEPT','REJECT','CREATE_EMPLOYEE'].includes(body.action) && !note)) return null;
+      !commands.includes(body.action) || note===null || (!['REVIEW','SCHEDULE'].includes(body.action) && !note)) return null;
   const base={commandId:body.commandId.toLowerCase(),version:body.version,action:body.action,note};
   if (body.action==='SCHEDULE') {
     const address=bounded(body.address,450);
@@ -28,6 +28,10 @@ export function recruitmentCommand(body) {
     const code=bounded(body.employeeCode,32);
     return code && date(body.hireDate) ? {...base,employeeCode:code,hireDate:body.hireDate} : null;
   }
+  if (body.action==='LINK_USER') {
+    const username=bounded(body.username,100);
+    return username && body.identityConfirmed===true ? {...base,username,identityConfirmed:true} : null;
+  }
   return base;
 }
 
@@ -35,7 +39,7 @@ function view(row) {
   const a=JSON.parse(row.JsonDoc);
   return {id:row.id,version:row.version,firstName:a.firstName,lastName:a.lastName,mobile:a.mobile,desiredRole:a.desiredRole,
     status:a.status,createdAt:a.createdAt,notes:a.notes,history:a.history ?? [],documents:a.documents ?? [],
-    interview:a.interview ?? null,employmentId:a.employmentId ?? null};
+    interview:a.interview ?? null,employmentId:a.employmentId ?? null,userLinked:uuid(a.employmentUserId)};
 }
 
 export function createRecruitmentReview({sql,run,createTask}) {
@@ -99,6 +103,35 @@ export function createRecruitmentReview({sql,run,createTask}) {
         if (added!=='CREATED') return {status:409,message:added==='DUPLICATE' ? 'برای این کد ملی یا کد پرسنلی، پروندهٔ موجود باید بررسی شود.' : 'پرونده هم‌زمان در حال ثبت است.'};
         application.employmentId=employeeId;
         mark(input.note);
+      } else if (input.action==='LINK_USER') {
+        if (before!=='ACCEPTED' || !uuid(application.employmentId) || application.employmentUserId) return fail('برای اتصال، پروندهٔ استخدامی بدون حساب لازم است.');
+        const nationalId=toLatinDigits(String(application.nationalId ?? '')).trim();
+        const mobile=normalizeMobile(application.mobile);
+        if (!isValidNationalCode(nationalId) || !mobile) return fail('کد ملی و شماره همراه معتبر در پروندهٔ پذیرش لازم است.');
+
+        const settingsRow=(await request(tx,auth).query(`SELECT JsonDoc FROM sync.EntityStore WITH(HOLDLOCK)
+          WHERE TenantId=@tenant AND IsDeleted=0 AND CollectionName=N'__singleton__' AND EntityId=N'settings';`)).recordset[0];
+        const policy=getOnboardingConfig({settings:settingsRow ? JSON.parse(settingsRow.JsonDoc) : {}}).usernamePolicy;
+        const expected=policy==='NATIONAL_ID' ? nationalId : policy==='MOBILE' ? mobile : null;
+        const normalized=policy==='MOBILE' ? normalizeMobile(input.username) : toLatinDigits(input.username);
+        if (!expected || normalized!==expected) return fail('نام کاربری مطابق سیاست سازمان با شناسهٔ پرونده مطابقت ندارد.');
+
+        const target=(await request(tx,auth).input('supplied',sql.NVarChar(100),input.username).input('expected',sql.NVarChar(100),expected).query(`
+          SELECT UserId AS id,Phone AS phone FROM core.AppUser WITH(UPDLOCK,HOLDLOCK)
+          WHERE TenantId=@tenant AND IsActive=1 AND UserId<>@actor AND UserName IN(@supplied,@expected);`)).recordset;
+        if (target.length!==1 || normalizeMobile(target[0].phone)!==mobile) return fail('حساب فعال یکتا با نام کاربری و شماره همراه مطابق پرونده یافت نشد.');
+
+        const linked=(await request(tx,auth).input('employee',sql.UniqueIdentifier,application.employmentId)
+          .input('account',sql.UniqueIdentifier,target[0].id).input('nationalId',sql.NVarChar(20),nationalId).query(`
+            IF EXISTS(SELECT 1 FROM hr.Employee WITH(UPDLOCK,HOLDLOCK) WHERE TenantId=@tenant AND UserId=@account AND IsDeleted=0)
+              BEGIN SELECT 'USED' AS outcome; RETURN; END;
+            UPDATE hr.Employee SET UserId=@account,UpdatedAtUtc=SYSUTCDATETIME(),UpdatedByUserId=@actor
+            WHERE TenantId=@tenant AND EmployeeId=@employee AND UserId IS NULL AND IsDeleted=0
+              AND NationalId=@nationalId AND EmploymentStatus=N'ONBOARDING' AND Origin=N'LOCAL';
+            SELECT CASE WHEN @@ROWCOUNT=1 THEN 'LINKED' ELSE 'UNAVAILABLE' END AS outcome;`)).recordset[0]?.outcome;
+        if (linked!=='LINKED') return {status:409,message:linked==='USED' ? 'این حساب قبلاً به پروندهٔ پرسنلی متصل است.' : 'وضعیت یا هویت پروندهٔ پرسنلی تغییر کرده است.'};
+        application.employmentUserId=target[0].id;
+        mark(input.note);
       } else if (input.action==='SCHEDULE') {
         if (['ACCEPTED','REJECTED'].includes(before) || (application.interview && application.interview.result!=='FOLLOW_UP')) return fail('برای این پرونده امکان ارجاع جدید وجود ندارد.');
         if (Date.parse(`${input.date}T${input.time}:00+03:30`)<=now.getTime()) return fail('زمان مصاحبه باید در آینده باشد.');
@@ -126,7 +159,8 @@ export function createRecruitmentReview({sql,run,createTask}) {
           WHERE TenantId=@tenant AND CollectionName=N'onboardingApplications' AND EntityId=@id AND Version=TRY_CONVERT(bigint,@version);`)).recordset[0];
       if (!updated) throw new Error('Recruitment row was not updated under its write lock');
       await forId().input('command',sql.NVarChar(100),input.commandId)
-        .input('details',sql.NVarChar(sql.MAX),JSON.stringify({action:input.action,before,after:application.status,fingerprint,employmentId:application.employmentId}))
+        .input('details',sql.NVarChar(sql.MAX),JSON.stringify({action:input.action,before,after:application.status,fingerprint,
+          employmentId:application.employmentId,linkedUserId:input.action==='LINK_USER' ? application.employmentUserId : undefined}))
         .query(`INSERT security.AuditEvent(TenantId,ActorUserId,CorrelationId,EventType,EntityType,EntityId,OutcomeCode,DetailsJson)
           VALUES(@tenant,@actor,@command,N'RECRUITMENT_REVIEW',N'APPLICATION',@id,'SUCCESS',@details);`);
       return {status:200,application:view(updated),replayed:false};
