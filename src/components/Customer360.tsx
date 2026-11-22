@@ -24,6 +24,7 @@ import { getDefaultCreditLimit } from '../lib/orgPolicy';
 import { calculateCustomerRiskScore, calculateDaysOverdue } from '../services/collectionEngine';
 import { DynamicFormRenderer } from './shared/DynamicFormRenderer';
 import { RecordTaskAction } from './shared/RecordTaskAction';
+import { PurchaseCycleFollowUp } from './reports/PurchaseCycleFollowUp';
 import { getPersianStatusLabel } from '../lib/labels';
 import { CUSTOMER_PROPOSAL_STATUS_LABEL, proposalStatusOf } from '../lib/customerProposal';
 import { getActiveDataProvider } from '../services/dataProvider';
@@ -64,6 +65,7 @@ type UltraHubKey = 'OVERVIEW' | 'TIMELINE' | 'DEALS' | 'FINANCE_SUPPORT';
 export function Customer360({ customer, state, onBack, updateState, setActiveTab }: Customer360Props) {
   const navigate = useNavigate();
   const [activeHub, setActiveHub] = useState<UltraHubKey>('OVERVIEW');
+  const [purchaseEvidenceFor, setPurchaseEvidenceFor] = useState<string | null>(null);
   const [timelineFilter, setTimelineFilter] = useState<'ALL' | 'ACTIVITY' | 'NOTE' | 'TASK' | 'DEAL' | 'AUDIT'>('ALL');
 
   const [contactModal, setContactModal] = useState<null | { initial?: Record<string, unknown> }>(null);
@@ -554,6 +556,16 @@ export function Customer360({ customer, state, onBack, updateState, setActiveTab
       <div className="flex-1 overflow-y-auto px-3 pb-24 space-y-3 pt-2">
         {activeHub === 'OVERVIEW' && (
           <div className="space-y-3">
+            {state.currentUserId && getActiveDataProvider().name === 'SQLSERVER_BACKEND'
+              && rbac.canActOnRecord('accounts','VIEW',customerScope) && rbac.canActOnRecord('quotes','VIEW',customerScope)
+              && /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(customer.id) && (
+                <details key={customer.id} className="rounded-xl border border-border bg-surface p-2.5"
+                  onToggle={event => setPurchaseEvidenceFor(event.currentTarget.open ? customer.id : null)}>
+                  <summary className="min-h-11 cursor-pointer content-center text-sm font-bold">چرخهٔ خرید و پیشنهاد پیگیری</summary>
+                  {purchaseEvidenceFor === customer.id && <PurchaseCycleFollowUp key={`${state.currentUserId}:${customer.id}`}
+                    viewer={state.currentUserId} accountId={customer.id} accounts={[customer]} canCreate={canCreateTask} />}
+                </details>
+              )}
             <Card padding="md" className="space-y-2.5 rounded-xl border border-border">
               <div className="flex justify-between items-center text-xs">
                 <span className="font-bold text-text-main flex items-center gap-1.5">

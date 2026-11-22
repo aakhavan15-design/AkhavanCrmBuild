@@ -42,7 +42,7 @@ const audienceTitles:Record<PurchaseCycleAudience,string>={
   owner:'مشتریان تحت مسئولیت من',supervisor:'پوشش و پیگیری تیم من',manager:'اولویت‌های پیگیری سازمان',
 };
 
-export function PurchaseCycleFollowUp({viewer,accounts,canCreate,audience}:{viewer:string;accounts:Account[];canCreate:boolean;audience?:PurchaseCycleAudience}) {
+export function PurchaseCycleFollowUp({viewer,accounts,canCreate,audience,accountId}:{viewer:string;accounts:Account[];canCreate:boolean;audience?:PurchaseCycleAudience;accountId?:string}) {
   const [view,setView]=useState<PurchaseCycleView>(audience ? 'follow-up' : 'all');
   const [search,setSearch]=useState('');
   const [activeSearch,setActiveSearch]=useState('');
@@ -53,9 +53,9 @@ export function PurchaseCycleFollowUp({viewer,accounts,canCreate,audience}:{view
   const selected=selection?.row;
   const navigate=useNavigate();
   const {serverVersion}=useDataSyncStatus();
-  const requestKey=JSON.stringify([viewer,view,activeSearch,page,serverVersion,scope,audience]);
+  const requestKey=JSON.stringify([viewer,view,activeSearch,page,serverVersion,scope,audience,accountId]);
   const {data,loading,error,refetch}=useDataQuery(async provider=>({requestKey,
-    report:await provider.getPurchaseCycle(activeSearch,view,page,scope,audience),
+    report:await provider.getPurchaseCycle(activeSearch,view,page,scope,audience,accountId),
   }),[requestKey]);
   const report=data?.requestKey===requestKey ? data.report : null;
   const taskAccount=selected ? accounts.find(account=>account.id.toLowerCase()===selected.accountId.toLowerCase()) : null;
@@ -65,11 +65,11 @@ export function PurchaseCycleFollowUp({viewer,accounts,canCreate,audience}:{view
       <h3 className="text-sm font-bold">{audience ? audienceTitles[audience] : 'چرخهٔ خرید و اولویت پیگیری'}</h3>
       <p className="text-caption text-text-secondary">بر اساس فاکتورهای قطعیِ مشاهده‌شده در ۳۶۵ روز اخیر، به تفکیک منبع ERP. کامل بودن دریافت ویزیت و فاکتور تأیید نشده است.</p>
     </div>
-    <form className="flex flex-wrap items-end gap-2" onSubmit={event=>{event.preventDefault();setActiveSearch(search.trim());setPage(1);}}>
+    {!accountId && <form className="flex flex-wrap items-end gap-2" onSubmit={event=>{event.preventDefault();setActiveSearch(search.trim());setPage(1);}}>
       <Input label="نام مشتری" value={search} onChange={event=>setSearch(event.target.value)} maxLength={100} />
       <Button type="submit" variant="outline">جست‌وجو</Button>
       <SearchableSelect label="نمای مشتریان" value={view} options={views} onChange={value=>{setView(value as PurchaseCycleView);setPage(1);}} />
-    </form>
+    </form>}
     {error ? <EmptyState surface="purchase-follow-up" title="گزارش در دسترس نیست" description={error.message} compact actionLabel="تلاش دوباره" onAction={()=>void refetch()} />
       : loading || !report ? <LoadingState label="در حال خواندن فاکتورهای ERP" /> : <>
         {!report.configured && <p className="text-caption text-warning">اولویت پیگیری بعد از تنظیم حداقل فاصلهٔ خرید و حداقل فروش در سیاست سازمان مشخص می‌شود.</p>}
@@ -89,7 +89,7 @@ export function PurchaseCycleFollowUp({viewer,accounts,canCreate,audience}:{view
             </ul>}
           </> : <p className="py-2 text-caption text-text-secondary">در دادهٔ در دسترس، ثبت ورودی مشاهده نشد.</p>}
         </details>}
-        {(report.coverage?.length ?? 0)>0 && <details open={coverageOpen} onToggle={event=>setCoverageOpen(event.currentTarget.open)} className="rounded-xl border border-border p-2">
+        {!accountId && (report.coverage?.length ?? 0)>0 && <details open={coverageOpen} onToggle={event=>setCoverageOpen(event.currentTarget.open)} className="rounded-xl border border-border p-2">
           <summary className="min-h-11 cursor-pointer py-2 text-sm font-semibold">پوشش ثبت ویزیت به تفکیک منطقه و مسئول</summary>
           <p className="pb-1 text-caption text-text-secondary">پوشش بر اساس برنامه‌هایی است که زمانشان در ۳۰ روز اخیر رسیده و ثبت ورود دارند. نبود ثبت ورود، انجام‌نشدن مراجعه را ثابت نمی‌کند.</p>
           {scope && <Button type="button" variant="ghost" size="sm" onClick={()=>{setScope(undefined);setPage(1);}}>پاک‌کردن فیلتر منطقه و مسئول</Button>}
@@ -132,7 +132,7 @@ export function PurchaseCycleFollowUp({viewer,accounts,canCreate,audience}:{view
               </dl>
               {row.followUp===1 && <p className="text-caption text-warning">فاصلهٔ خرید از الگوی ثبت‌شده بیشتر شده است. در تماس یا مراجعه، وضعیت خرید و علت احتمالی را بررسی کنید.</p>}
               <div className="flex flex-wrap items-center gap-2">
-                <Link className="inline-flex min-h-11 items-center text-sm text-primary" to={`/accounts/${encodeURIComponent(row.accountId)}`}>پروندهٔ مشتری</Link>
+                {!accountId && <Link className="inline-flex min-h-11 items-center text-sm text-primary" to={`/accounts/${encodeURIComponent(row.accountId)}`}>پروندهٔ مشتری</Link>}
                 {canFollow && <Button type="button" variant="outline" size="sm" onClick={()=>setSelection({row})}>ثبت پیگیری</Button>}
               </div>
               <PurchaseProductHints account={row.accountId} source={row.source} onSelect={canFollow ? product=>setSelection({row,product}) : undefined} />

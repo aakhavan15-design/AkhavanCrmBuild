@@ -76,6 +76,7 @@ SELECT @minimumDays AS minimumDays,CONVERT(varchar(42),@minimumSales) AS minimum
 SELECT a.AccountId,a.Name,a.OwnerUserId,a.TerritoryId INTO #visiblePurchaseAccounts FROM crm.Account a
   ${accountScope}
   WHERE a.TenantId=@tenantId AND a.DeletedAtUtc IS NULL AND (@search=N'' OR CHARINDEX(@search,a.Name)>0)
+    AND (@account IS NULL OR a.AccountId=@account)
     AND (@audience IN('','manager') OR (@audience='owner' AND a.OwnerUserId=@viewer) OR (@audience='supervisor' AND EXISTS(
       SELECT 1 FROM core.AppUser owner WHERE owner.TenantId=a.TenantId AND owner.UserId=a.OwnerUserId
         AND owner.ManagerUserId=@viewer AND owner.IsActive=1 AND owner.UserId<>@viewer)));
@@ -171,9 +172,11 @@ ORDER BY s.priorDays DESC,s.lastSeen DESC,p.ExternalProductId;`;
 export function parsePurchaseCycleQuery(params) {
   const search=params.search ?? '', view=params.view ?? 'follow-up', page=Number(params.page ?? 1);
   const territory=params.territory ?? null, owner=params.owner ?? null, audience=params.audience ?? '';
+  const account=params.account ?? null;
   return typeof search==='string' && search.length<=100 && ['all','follow-up'].includes(view) &&
     Number.isInteger(page) && page>=1 && page<=500 && ['','owner','supervisor','manager'].includes(audience) && ((territory===null && owner===null) || (uuid(territory) && uuid(owner)))
-    ? {search:search.trim(),view,page,territory,owner,...(audience ? {audience} : {})} : null;
+    && (account===null || uuid(account))
+    ? {search:search.trim(),view,page,territory,owner,...(audience ? {audience} : {}), ...(account ? {account} : {})} : null;
 }
 
 export function parsePurchaseProductQuery(params) {
@@ -199,6 +202,7 @@ export function createPurchaseCycleReader({sql,run}) {
     const result=await new sql.Request(tx).input('tenantId',sql.UniqueIdentifier,auth.tenantId)
       .input('asOf',sql.Date,new Date(asOf)).input('search',sql.NVarChar(100),filter.search)
       .input('viewer',sql.UniqueIdentifier,auth.userId).input('audience',sql.VarChar(12),filter.audience ?? '')
+      .input('account',sql.UniqueIdentifier,filter.account ?? null)
       .input('territory',sql.UniqueIdentifier,filter.territory).input('owner',sql.UniqueIdentifier,filter.owner)
       .input('nextDayUtc',sql.DateTime2,new Date(`${asOf}T20:30:00Z`))
       .input('nowUtc',sql.DateTime2,now)
