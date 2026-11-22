@@ -23,6 +23,9 @@ import { VerdictStrip } from './shared/VerdictStrip';
 import { DonutChart } from './charts/DonutChart';
 import { LineChart } from './charts/LineChart';
 import { useNavigate } from 'react-router-dom';
+import { isNegotiableErpOrder } from '../lib/phase2Flow';
+import { getActiveDataProvider } from '../services/dataProvider';
+import { PurchaseProductHints } from './reports/PurchaseCycleFollowUp';
 import type { AppState } from '../types';
 
 interface Props { state: AppState; updateState: (updater: (draft: AppState) => void | Partial<AppState>) => void }
@@ -334,15 +337,27 @@ export function OperationsControlWorkspace({ state, updateState }: Props) {
 
       {tab==='orders' && (
         <div className="space-y-2">
-          {orders.map(o => (
-            <div key={String(o.id)} className="p-3 bg-surface border border-border rounded-xl flex justify-between items-center text-xs">
+          {orders.map(o => {
+            const account = customers.find(customer => customer.id === (o.accountId ?? o.customerId));
+            const source = typeof o.sourceSystemCode === 'string' ? o.sourceSystemCode : '';
+            const accountId = typeof account?.id === 'string' ? account.id : '';
+            const externalId = o.externalOrderId ?? o.externalId;
+            const relevant = Boolean(getActiveDataProvider().name === 'SQLSERVER_BACKEND' && can('quotes', 'VIEW') && source.trim()
+              && typeof externalId === 'string' && externalId.trim() && isNegotiableErpOrder(o)
+              && /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(accountId));
+            const existingProducts = new Set<string>(Array.isArray(o.lines) ? o.lines
+              .flatMap(line => typeof line?.externalProductId === 'string' ? [line.externalProductId] : []) : []);
+            return <article key={String(o.id)} className="space-y-2 rounded-xl border border-border bg-surface p-3 text-xs">
+              <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
                 <span className="font-bold font-mono text-text-main">{String(o.orderNumber || '')}</span>
                 <span className="block text-mini text-text-secondary mt-0.5">{String(o.notes || 'سفارش ثبت شده')}</span>
               </div>
-              <span className="font-bold font-mono text-text-main">{money(Number(o.totalAmount || 0))}</span>
-            </div>
-          ))}
+              <span className="font-bold font-mono text-text-main">{o.totalAmount == null || o.totalAmount === '' ? 'مبلغ نامشخص' : money(Number(o.totalAmount))}</span>
+              </div>
+              {relevant && <PurchaseProductHints key={`${state.currentUserId}:${accountId}:${source}`} account={accountId} source={source} excludeProductIds={existingProducts} />}
+            </article>;
+          })}
           {orders.length === 0 && <p className="text-xs text-text-secondary py-6 text-center">سفارشی یافت نشد.</p>}
         </div>
       )}

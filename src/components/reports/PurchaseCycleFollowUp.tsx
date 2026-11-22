@@ -18,17 +18,18 @@ const views=[{value:'follow-up',label:'اولویت پیگیری'},{value:'all',
 const observedMoney=(value:string)=>Number(value)>0 ? `${formatDecimalString(value)} ریال` : 'فاکتوری مشاهده نشده';
 const shareFormat=new Intl.NumberFormat('fa-IR',{style:'percent',maximumFractionDigits:1});
 
-function PurchaseProductHints({account,source,onSelect}:{account:string;source:string;onSelect?:(item:PurchaseProductHint)=>void}) {
+export function PurchaseProductHints({account,source,onSelect,excludeProductIds}:{account:string;source:string;onSelect?:(item:PurchaseProductHint)=>void;excludeProductIds?:ReadonlySet<string>}) {
   const [open,setOpen]=useState(false);
   const {serverVersion}=useDataSyncStatus();
   const {data,loading,error,refetch}=useDataQuery(provider=>open ? provider.getPurchaseProductHints(account,source) : Promise.resolve(null),
     [open,account,source,serverVersion]);
+  const candidates = data?.rows.filter(item => !excludeProductIds?.has(item.productId)) ?? [];
   return <div className="space-y-2">
     <Button type="button" variant="ghost" size="sm" aria-expanded={open} onClick={()=>setOpen(current=>!current)}>کالاهای قابل پیگیری</Button>
     {open && (error ? <EmptyState surface="purchase-product-hints" title="دریافت ردیف فاکتور ممکن نیست" compact
       actionLabel="تلاش دوباره" onAction={()=>void refetch()} /> : loading || !data ? <LoadingState label="در حال بررسی ردیف فاکتورها" /> : <>
       <p className="text-caption text-text-secondary">در دو روز یا بیشتر از بازهٔ قبلی خرید ثبت شده و در فاکتورهای دریافتی ۹۰ روز اخیر مشاهده نشده است. موجودی و علت تغییر باید بررسی شوند.</p>
-      {data.rows.length ? <ul className="divide-y divide-border">{data.rows.map(item=><li key={item.productId}
+      {candidates.length ? <ul className="divide-y divide-border">{candidates.map(item=><li key={item.productId}
         className="flex flex-wrap items-center justify-between gap-2 py-2 text-caption">
         <div className="min-w-0 wrap-break-word"><p className="font-semibold">{item.name} {item.sku && <bdi>· {item.sku}</bdi>}</p>
           <p>{formatCount(item.priorDays)} روز خرید · {formatAppDate(item.lastSeen)} · فاکتور <bdi>{item.lastInvoiceNumber}</bdi></p></div>
