@@ -168,16 +168,78 @@ export function createRouteMapAnalytics({sql,run}) {
     GROUP BY m.RouteId`;
    financial=new Map((await filtersRequest(tx,auth,filters,organizationWide,financeOrganizationWide).query(amountQuery)).recordset.map(x=>[String(x.RouteId).toLowerCase(),x]));
   }
+  const permittedMembers=`
+    WITH AllowedRoutes AS (
+      SELECT r.RouteId FROM crm.VisitRouteMirror r
+      WHERE r.TenantId=@tenant AND r.IsDeleted=0
+        AND (NOT EXISTS(SELECT 1 FROM OPENJSON(@routeJson))
+             OR CONVERT(nvarchar(36),r.RouteId) IN (SELECT value FROM OPENJSON(@routeJson)))
+        AND (@organizationWide=1 OR EXISTS(SELECT 1 FROM crm.VisitRouteStaffMirror st
+          WHERE st.TenantId=r.TenantId AND st.RouteId=r.RouteId AND st.StaffUserId=@actor
+          AND st.EffectiveFrom<=@dateTo AND (st.EffectiveTo IS NULL OR st.EffectiveTo>=@dateFrom)))
+    ), Members AS (
+      SELECT DISTINCT r.RouteId,m.AccountId
+      FROM AllowedRoutes r JOIN crm.VisitRouteCustomerMirror m ON m.TenantId=@tenant AND m.RouteId=r.RouteId
+      JOIN crm.Account a ON a.TenantId=m.TenantId AND a.AccountId=m.AccountId
+      WHERE m.EffectiveFrom<=@dateTo AND (m.EffectiveTo IS NULL OR m.EffectiveTo>=@dateFrom)
+        AND (NOT EXISTS(SELECT 1 FROM OPENJSON(@categoryJson)) OR a.BusinessCategoryCode IN (SELECT value FROM OPENJSON(@categoryJson)))
+        AND EXISTS(SELECT 1 FROM security.fn_RecordReadScope(a.TenantId,N'accounts.view',a.OwnerUserId,a.BranchId,a.TerritoryId,a.TeamId))
+    )`;
+  let returns=new Map();
+  if(returnAllowed){
+    const returnSql=permittedMembers+`
+      SELECT m.RouteId,SUM(ret.ReturnedAmount) AS ReturnAmount
+      FROM Members m JOIN analytics.vw_FactReturns ret ON ret.TenantId=@tenant AND ret.AccountId=m.AccountId
+      JOIN crm.SalesReturnMirror sourceReturn ON sourceReturn.TenantId=ret.TenantId
+        AND sourceReturn.SalesReturnMirrorId=ret.SalesReturnMirrorId
+      LEFT JOIN crm.ExternalProduct product ON product.TenantId=ret.TenantId
+        AND product.SourceSystemCode=sourceReturn.SourceSystemCode AND product.ExternalProductId=ret.ExternalProductId
+      WHERE ret.IsEffective=1 AND ret.DateKey BETWEEN @dateFrom AND @dateTo
+        AND (NOT EXISTS(SELECT 1 FROM OPENJSON(@repJson)) OR EXISTS (
+          SELECT 1 FROM crm.VisitRouteStaffMirror rs WHERE rs.TenantId=@tenant AND rs.RouteId=m.RouteId
+            AND rs.StaffUserId=ret.SalesRepUserId AND rs.ExternalStaffId IN (SELECT value FROM OPENJSON(@repJson))))
+        AND (NOT EXISTS(SELECT 1 FROM OPENJSON(@productJson)) OR ret.ExternalProductId IN (SELECT value FROM OPENJSON(@productJson)))
+        AND (NOT EXISTS(SELECT 1 FROM OPENJSON(@supplierJson)) OR product.SupplierExternalId IN (SELECT value FROM OPENJSON(@supplierJson)))
+        AND (NOT EXISTS(SELECT 1 FROM OPENJSON(@brandJson)) OR product.BrandExternalId IN (SELECT value FROM OPENJSON(@brandJson)))
+        AND (@financeWide=1 OR ret.SalesRepUserId=@actor OR EXISTS(
+          SELECT 1 FROM crm.VisitRouteStaffMirror manager WHERE manager.TenantId=@tenant
+            AND manager.RouteId=m.RouteId AND manager.StaffUserId=@actor AND manager.StaffRoleCode='SUPERVISOR'
+            AND manager.EffectiveFrom<=@dateTo AND (manager.EffectiveTo IS NULL OR manager.EffectiveTo>=@dateFrom)))
+      GROUP BY m.RouteId`;
+    returns=new Map((await filtersRequest(tx,auth,filters,organizationWide,financeOrganizationWide)
+      .query(returnSql)).recordset.map(x=>[String(x.RouteId).toLowerCase(),x]));
+  }
+  // This is a CURRENT receivable snapshot; never mislabel as historical period balance.
+  let receivables=new Map();
+  if(receivableAllowed && filters.repIds.length===0 && filters.productIds.length===0 &&
+     filters.supplierIds.length===0 && filters.brandIds.length===0){
+    const balanceSql=permittedMembers+`
+      SELECT m.RouteId,SUM(b.OutstandingAmount) AS ReceivableAmount
+      FROM Members m JOIN analytics.vw_AccountReceivable b ON b.TenantId=@tenant AND b.AccountId=m.AccountId
+      WHERE b.CurrencyCode='IRR'
+        AND (@financeWide=1 OR EXISTS(
+          SELECT 1 FROM crm.VisitRouteStaffMirror manager WHERE manager.TenantId=@tenant
+            AND manager.RouteId=m.RouteId AND manager.StaffUserId=@actor AND manager.StaffRoleCode='SUPERVISOR'
+            AND manager.EffectiveFrom<=@dateTo AND (manager.EffectiveTo IS NULL OR manager.EffectiveTo>=@dateFrom)))
+      GROUP BY m.RouteId`;
+    receivables=new Map((await filtersRequest(tx,auth,filters,organizationWide,financeOrganizationWide)
+      .query(balanceSql)).recordset.map(x=>[String(x.RouteId).toLowerCase(),x]));
+  }
   return {source:'ERP_SQL',period:{dateFrom:filters.from,dateTo:filters.to},
     caveats:['مشتری چندمسیره در هر مسیر مستقل شمرده می‌شود؛ مجموع مسیرها لزوماً جمع سازمان نیست.',
-      'خرید و فروش فیلترشده با کالا از ریز فاکتور معتبر محاسبه شده؛ مرجوعی، سود، مطالبات و هدف تا نگاشت قابل استناد نامشخص‌اند.'],
+      'فروش از ریز فاکتور و برگشتی از ریز سند برگشت رسمی محاسبه می‌شود. ارقام فقط در صورت مجوز مربوط نمایش داده می‌شوند.',
+      'مطالبات، در صورت وجود منبع معتبر و مجوز، مانده فعلی است نه مانده تاریخی بازه. سود و تارگت تا تکمیل مستندات هزینه و هدف نامشخص می‌مانند.'],
     rows:rows.map(r=>{
       const f=financial.get(String(r.RouteId).toLowerCase());
       const count=Number(r.CustomerCount);
+      const key=String(r.RouteId).toLowerCase();
+      const returned=returns.get(key),receivable=receivables.get(key);
       return shapeRow(r,financeAllowed,count,r.VisitedCount,f?Number(f.InvoiceCount):null,
        financeAllowed&&f?f.NetSales:null,f?Number(f.ActiveCustomerCount):null,
        r.VisitCount,r.OrderOutcomes,r.MissingGps,
-       count>0?Math.round((count-Number(r.MissingGps))*10000/count)/100:null);
+       count>0?Math.round((count-Number(r.MissingGps))*10000/count)/100:null,
+       {returnAmount:returned?.ReturnAmount??null,receivableAmount:receivable?.ReceivableAmount??null,
+        receivableDate:receivable?new Date().toISOString().slice(0,10):null});
     })};
  });
  const filterOptions=async(auth,{organizationWide=false,financeAllowed=false,date}={})=>run(auth,async tx=>{
