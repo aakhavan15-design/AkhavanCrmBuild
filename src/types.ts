@@ -904,6 +904,11 @@ export interface AppState {
   erpVisitRoutes?: Array<import('./lib/erpContracts').ERPVisitRouteReadContract>;
   /** ERP-owned dated visit tour plans. Actual visits are separate CRM events. */
   erpVisitTours?: Array<import('./lib/erpContracts').ERPVisitTourReadContract>;
+  erpVisitRouteCustomers?: Array<import('./lib/erpContracts').ERPVisitRouteCustomerContract>;
+  erpVisitRouteStaff?: Array<import('./lib/erpContracts').ERPVisitRouteStaffContract>;
+  erpVisitNoOrderReasons?: Array<import('./lib/erpContracts').ERPVisitNoOrderReasonContract>;
+  erpVisitEvents?: Array<import('./lib/erpContracts').ERPVisitEventContract>;
+  erpSalesRepGpsLogs?: Array<import('./lib/erpContracts').ERPRepGpsLogContract>;
   geoMetricDefinitions?: GeoMetricDefinition[];
   zoneMetricSnapshots?: ZoneMetricSnapshot[];
   coaMirror?: CoaMirror[];
