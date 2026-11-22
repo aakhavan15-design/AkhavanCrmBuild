@@ -170,23 +170,22 @@ export function calculateCommissionForSeller(
   if (!Number.isFinite(realizedSalesRials) || realizedSalesRials <= 0) {
     return { achievementPercent: 0, ratePercent: 0, commissionAmountRials: 0 };
   }
-  const target = Number.isFinite(targetRials) && targetRials > 0 ? targetRials : realizedSalesRials;
-  const achievementPercent = Math.round((realizedSalesRials / target) * 100);
-
-  let ratePercent = 0;
-  if (plan && Array.isArray(plan.tiers) && plan.tiers.length > 0) {
-    const matchedTier = [...plan.tiers]
-      .sort((a, b) => b.minAchievementPercent - a.minAchievementPercent)
-      .find(t => achievementPercent >= t.minAchievementPercent);
-    if (matchedTier) ratePercent = matchedTier.commissionRatePercent;
-  } else {
-    if (achievementPercent >= 120) ratePercent = 3.5;
-    else if (achievementPercent >= 100) ratePercent = 2.5;
-    else if (achievementPercent >= 80) ratePercent = 1.5;
-    else ratePercent = 0;
+  if (!Number.isFinite(targetRials) || targetRials <= 0) {
+    return { achievementPercent: 0, ratePercent: 0, commissionAmountRials: 0 };
   }
-
-  const multiplier = plan?.routeDifficultyMultiplier || 1.0;
+  const ratio = (realizedSalesRials / targetRials) * 100;
+  const achievementPercent = Math.round(ratio);
+  const matchedTier = plan?.isActive && Array.isArray(plan.tiers)
+    ? [...plan.tiers]
+      .filter(tier => Number.isFinite(tier.minAchievementPercent) && Number.isFinite(tier.commissionRatePercent)
+        && tier.commissionRatePercent >= 0 && tier.commissionRatePercent <= 100)
+      .sort((a,b) => b.minAchievementPercent-a.minAchievementPercent)
+      .find(tier => ratio >= tier.minAchievementPercent
+        && (tier.maxAchievementPercent === undefined || ratio <= tier.maxAchievementPercent))
+    : undefined;
+  const ratePercent = matchedTier?.commissionRatePercent ?? 0;
+  const factor = plan?.routeDifficultyMultiplier;
+  const multiplier = typeof factor === 'number' && Number.isFinite(factor) && factor >= 0 ? factor : 1;
   const commissionAmountRials = Math.round((realizedSalesRials * (ratePercent / 100)) * multiplier);
 
   return { achievementPercent, ratePercent, commissionAmountRials };
@@ -320,7 +319,9 @@ export function executePayrollRun(
   const advances = state.advanceRequests || [];
   const invoices = state.invoices || [];
   const targets = state.salesTargets || [];
-  const plans = state.commissionPlans || [];
+  const plans = (state.commissionPlans || []).filter(plan => plan.isActive);
+  const plan = plans.length === 1 ? plans[0] : undefined;
+  const postedStatuses = new Set(['PAID','PARTIAL','UNPAID','OVERDUE','POSTED','FINAL']);
 
   const runId = generateId();
   const payslips: Payslip[] = [];
@@ -347,13 +348,16 @@ export function executePayrollRun(
     }
 
     const activeAdvance = advances.find(a => a.userId === user.id && a.targetMonth === periodMonth && a.status === 'APPROVED');
-    const userInvoices = invoices.filter(i => (i as Record<string, unknown>).ownerId === user.id && i.status !== 'CANCELLED' && i.status !== 'DRAFT');
+    const userInvoices = invoices.filter(invoice => {
+      const source = invoice as typeof invoice & { ownerId?: string; isDeleted?: boolean };
+      return source.ownerId === user.id && !invoice.deletedAt && !source.isDeleted
+        && invoice.date?.slice(0,7) === periodMonth && postedStatuses.has(invoice.status);
+    });
     const realizedSales = userInvoices.reduce((sum, inv) => sum + (Number(inv.totalAmount) || 0), 0);
     // هدف فروش واقعی کاربر؛ نبود هدف ⇒ پورسانت صفر (نه هدف فرضی).
     const userTarget = Number(targets.find(t => t.userId === user.id && t.periodMonth === periodMonth)?.revenueTargetRials);
-    const userPlan = plans.find(p => p.isActive);
     const commissionCalc = Number.isFinite(userTarget) && userTarget > 0
-      ? calculateCommissionForSeller(realizedSales, userTarget, userPlan)
+      ? calculateCommissionForSeller(realizedSales, userTarget, plan)
       : { achievementPercent: 0, ratePercent: 0, commissionAmountRials: 0 };
 
     const payslip = generateEmployeePayslip({

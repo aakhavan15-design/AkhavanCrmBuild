@@ -38,24 +38,36 @@ test('Payroll Engine - Overtime calculation with standard multiplier 1.4', () =>
 
 test('Payroll Engine - Commission Tiers Evaluation', () => {
   const target = 1_000_000_000;
+  const plan = {
+    isActive: true, routeDifficultyMultiplier: 1,
+    tiers: [
+      { minAchievementPercent: 80, maxAchievementPercent: 99.99, commissionRatePercent: 1.5 },
+      { minAchievementPercent: 100, maxAchievementPercent: 119.99, commissionRatePercent: 2.5 },
+      { minAchievementPercent: 120, commissionRatePercent: 3.5 },
+    ],
+  };
+  assert.equal(calculateCommissionForSeller(target * 2, target).commissionAmountRials, 0);
+  assert.equal(calculateCommissionForSeller(target * 1.19995, target, plan).ratePercent, 0);
+  assert.equal(calculateCommissionForSeller(target, 0, plan).commissionAmountRials, 0);
+
 
   // زیر 80% تحقق -> پورسانت صفر
-  const comm70 = calculateCommissionForSeller(700_000_000, target);
+  const comm70 = calculateCommissionForSeller(700_000_000, target, plan);
   assert.equal(comm70.ratePercent, 0);
   assert.equal(comm70.commissionAmountRials, 0);
 
   // 90% تحقق -> نرخ 1.5%
-  const comm90 = calculateCommissionForSeller(900_000_000, target);
+  const comm90 = calculateCommissionForSeller(900_000_000, target, plan);
   assert.equal(comm90.ratePercent, 1.5);
   assert.equal(comm90.commissionAmountRials, 13_500_000);
 
   // 110% تحقق -> نرخ 2.5%
-  const comm110 = calculateCommissionForSeller(1_100_000_000, target);
+  const comm110 = calculateCommissionForSeller(1_100_000_000, target, plan);
   assert.equal(comm110.ratePercent, 2.5);
   assert.equal(comm110.commissionAmountRials, 27_500_000);
 
   // 130% تحقق -> نرخ 3.5%
-  const comm130 = calculateCommissionForSeller(1_300_000_000, target);
+  const comm130 = calculateCommissionForSeller(1_300_000_000, target, plan);
   assert.equal(comm130.ratePercent, 3.5);
   assert.equal(comm130.commissionAmountRials, 45_500_000);
 });
