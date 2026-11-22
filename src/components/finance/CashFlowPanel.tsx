@@ -22,6 +22,8 @@ import { buildCashFlowProjection, evaluatePayability, type CashItem } from '../.
  * داده فقط از DataProvider.getCashFlowData(؛ نه State). نبود داده/خطا/مجوز هرگز صفر نمایش داده نمی‌شود.
  */
 const HORIZONS = [2, 7, 30, 90] as const;
+// The ERP cheque query guarantees at most this window (today plus 89 days).
+const MAX_HORIZON = HORIZONS[HORIZONS.length - 1];
 const SCENARIOS = [
   {value:'BASE',label:'طبق سررسید',description:'وصول‌های پیش‌بینی‌شده طبق سررسید و تعهدات معوق از روز اول لحاظ می‌شوند.'},
   {value:'NO_RECEIPTS',label:'محافظه‌کارانه',description:'تعهدات ثبت‌شده لحاظ می‌شوند و هیچ وصول پیش‌بینی‌شده‌ای منظور نمی‌شود.'},
@@ -46,6 +48,7 @@ export function CashFlowPanel() {
   const [scenario, setScenario] = useState<(typeof SCENARIOS)[number]['value']>('BASE');
   const [followUp,setFollowUp]=useState<CashItem|null>(null);
   const [horizon, setHorizon] = useState<number>(30);
+  const [horizonText, setHorizonText] = useState('۳۰');
   const [amountText, setAmountText] = useState('');
   const [dueLimit, setDueLimit] = useState(10);
   const [reserveText, setReserveText] = useState('');
@@ -73,8 +76,12 @@ export function CashFlowPanel() {
   const reserve = reserveText.trim() ? parse(reserveText) : 0;
   const canAssess = data?.bankVerification === 'VERIFIED' && data.missingSources.length === 0
     && projection?.opening.status === 'KNOWN';
-  const pay = canAssess && projection && payDate && amount !== null && reserve !== null && amount > 0
-    ? evaluatePayability(projection, payDate, amount, reserve) : null;
+  const currentPayDate = projection?.days.some(day => day.date === payDate) ? payDate : '';
+  const pay = canAssess && projection && currentPayDate && amount !== null && reserve !== null && amount > 0
+    ? evaluatePayability(projection, currentPayDate, amount, reserve) : null;
+  const customHorizon = /^\d{1,2}$/.test(toLatinDigits(horizonText.trim())) ? Number(toLatinDigits(horizonText.trim())) : NaN;
+  const horizonValid = Number.isInteger(customHorizon) && customHorizon >= 1 && customHorizon <= MAX_HORIZON;
+  const changeHorizon = (days: number) => { setHorizon(days); setHorizonText(formatCount(days)); setDueLimit(10); };
 
   if (!canView) return <Card padding="md" className="text-sm text-text-secondary">دسترسی مشاهده جریان نقدینگی ندارید.</Card>;
   if ((!data || loading) && !error) return <Card padding="md" className="text-sm text-text-secondary">در حال دریافت داده نقدینگی…</Card>;
@@ -112,13 +119,18 @@ export function CashFlowPanel() {
       <Card padding="md" className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h3 className="text-sm font-black text-text-main">جریان نقدینگی {formatCount(horizon)} روز آینده</h3>
-          <div className="flex gap-1" role="group" aria-label="افق پیش‌بینی">
+          <div className="flex flex-wrap gap-1" role="group" aria-label="افق پیش‌بینی">
             {HORIZONS.map(h => (
-              <button key={h} type="button" aria-pressed={horizon === h} onClick={() => { setHorizon(h); setDueLimit(10); }}
+              <button key={h} type="button" aria-pressed={horizon === h} onClick={() => changeHorizon(h)}
                 className={`min-h-11 rounded-lg border px-3 py-1 text-xs ${horizon === h ? 'border-primary bg-primary-soft text-primary' : 'border-border text-text-secondary'}`}>{formatCount(h)} روز</button>
             ))}
           </div>
         </div>
+        <form className="flex flex-wrap items-end gap-2" onSubmit={event => { event.preventDefault(); if (horizonValid) changeHorizon(customHorizon); }}>
+          <Input label="افق دلخواه (روز)" inputMode="numeric" maxLength={2} value={horizonText}
+            onChange={event => setHorizonText(event.target.value)} error={!horizonValid ? 'عددی از ۱ تا ۹۰ روز وارد کنید.' : undefined} />
+          <Button size="sm" variant="outline" type="submit" disabled={!horizonValid || customHorizon === horizon}>اعمال افق</Button>
+        </form>
         <div className="flex flex-wrap items-center gap-2" role="group" aria-label="سناریوی نقدینگی">
           {SCENARIOS.map(item=><Button key={item.value} type="button" size="sm" variant={scenario===item.value ? 'soft' : 'ghost'}
             aria-pressed={scenario===item.value} onClick={()=>setScenario(item.value)}>{item.label}</Button>)}
@@ -167,7 +179,7 @@ export function CashFlowPanel() {
           امکان‌سنجی پس از تأیید مانده و پوشش کامل منابع بانک و خزانه فعال می‌شود.
         </p> : <>
           <div className="grid gap-2 sm:grid-cols-3">
-            <SearchableSelect label="تاریخ پرداخت" value={payDate} onChange={setPayDate}
+            <SearchableSelect label="تاریخ پرداخت" value={currentPayDate} onChange={setPayDate}
               options={projection.days.map(day => ({ value: day.date, label: formatAppDate(day.date, state.settings?.locale) }))} />
             <Input label="مبلغ به ریال" inputMode="numeric" value={amountText} onChange={event => setAmountText(event.target.value)} />
             <Input label="حداقل ذخیره به ریال (اختیاری)" inputMode="numeric" value={reserveText} onChange={event => setReserveText(event.target.value)} />
