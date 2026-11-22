@@ -225,7 +225,11 @@ export function createRouteMapAnalytics({sql,run}) {
     receivables=new Map((await filtersRequest(tx,auth,filters,organizationWide,financeOrganizationWide)
       .query(balanceSql)).recordset.map(x=>[String(x.RouteId).toLowerCase(),x]));
   }
-  return {source:'ERP_SQL',period:{dateFrom:filters.from,dateTo:filters.to},
+  const permittedMetrics=['customerCount','visitCount','attentionPercent',
+     ...(financeAllowed?['activeCustomerCount','invoiceCount','netSales']:[]),
+     ...(returnAllowed?['returnAmount']:[]),
+     ...(receivableAllowed?['receivableAmount']:[])];
+  return {source:'ERP_SQL',period:{dateFrom:filters.from,dateTo:filters.to},permittedMetrics,
     caveats:['مشتری چندمسیره در هر مسیر مستقل شمرده می‌شود؛ مجموع مسیرها لزوماً جمع سازمان نیست.',
       'فروش از ریز فاکتور و برگشتی از ریز سند برگشت رسمی محاسبه می‌شود. ارقام فقط در صورت مجوز مربوط نمایش داده می‌شوند.',
       'مطالبات، در صورت وجود منبع معتبر و مجوز، مانده فعلی است نه مانده تاریخی بازه. سود و تارگت تا تکمیل مستندات هزینه و هدف نامشخص می‌مانند.'],
