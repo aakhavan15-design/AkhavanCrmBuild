@@ -1,7 +1,7 @@
 import { open } from 'node:fs/promises';
 import { parseArgs } from 'node:util';
 import sql from 'mssql';
-import { readFinancialApiFeed,readFinancialSqlFeed } from '../server/financialFeedExtract.mjs';
+import { readFinancialApiFeed,readFinancialSqlFeed,retryFinancialFeed } from '../server/financialFeedExtract.mjs';
 import { createFinancialFeedWorker,readFinancialFeedCheckpoint } from '../server/financialFeedWorker.mjs';
 import { MAX_FEED_BYTES } from '../server/financialFeedContract.mjs';
 
@@ -61,9 +61,9 @@ try {
   if (fileMode) {
     raw = await readFinancialFile(values.file);
   } else {
-    const checkpoint = await readFinancialFeedCheckpoint(runtime,{...connection,feed:values.feed});
+    const checkpoint = await retryFinancialFeed(()=>readFinancialFeedCheckpoint(runtime,{...connection,feed:values.feed}));
     if (values.pull==='api') {
-      raw = await readFinancialApiFeed({ url:env.ERP_FINANCIAL_API_URL,token:env.ERP_FINANCIAL_API_TOKEN,checkpoint });
+      raw = await retryFinancialFeed(()=>readFinancialApiFeed({ url:env.ERP_FINANCIAL_API_URL,token:env.ERP_FINANCIAL_API_TOKEN,checkpoint }));
     } else {
       if (![env.ERP_FINANCIAL_SQL_HOST,env.ERP_FINANCIAL_SQL_DATABASE,env.ERP_FINANCIAL_SQL_USER,env.ERP_FINANCIAL_SQL_PASSWORD,
         env.ERP_FINANCIAL_SQL_VIEW].every(Boolean)) {
@@ -75,7 +75,7 @@ try {
         port:Number(env.ERP_FINANCIAL_SQL_PORT || 1433),options:{encrypt:true,trustServerCertificate:false,useUTC:true},
         connectionTimeout:8000,requestTimeout:checkpoint.timeoutMs,pool:{min:0,max:1},
       }).connect();
-      raw = await readFinancialSqlFeed({sql,pool:erpPool,view:env.ERP_FINANCIAL_SQL_VIEW,checkpoint});
+      raw = await retryFinancialFeed(()=>readFinancialSqlFeed({sql,pool:erpPool,view:env.ERP_FINANCIAL_SQL_VIEW,checkpoint}));
     }
     if (raw!==null && JSON.parse(raw).feed!==values.feed) {
       throw Object.assign(new Error('Feed does not match the request'),{code:'ERP_FEED_MISMATCH'});
@@ -84,13 +84,14 @@ try {
   if (raw===null) {
     process.stdout.write('{"status":"NO_CHANGES"}\n');
   } else {
-    const receipt = await worker({...connection,raw});
+    const receipt = await retryFinancialFeed(()=>worker({...connection,raw}));
     process.stdout.write(`${JSON.stringify(receipt)}\n`);
     if (receipt.status!=='SUCCEEDED') process.exitCode = 1;
   }
 } catch (error) {
   // Keep journal content, connection parameters and database error payload out of logs.
-  process.stderr.write(`Financial import failed (${error.code || 'INVALID_INPUT'}).\n`);
+  const code=typeof error.code==='string' && /^[A-Z][A-Z0-9_]{1,63}$/.test(error.code) ? error.code : 'INVALID_INPUT';
+  process.stderr.write(`Financial import failed (${code}).\n`);
   process.exitCode = 1;
 } finally {
   await erpPool?.close();

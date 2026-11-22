@@ -56,3 +56,35 @@ test('read-only SQL adapter rejects non-identifier views and ambiguous source cu
   await assert.rejects(readFinancialSqlFeed({sql,pool,view:'erp.journal;DELETE',checkpoint}),{code:'ERP_SQL_VIEW'});
   await assert.rejects(readFinancialSqlFeed({sql,pool,view:'erp.FinanceFeed',checkpoint}),{code:'ERP_SQL_CURSOR_AMBIGUOUS'});
 });
+
+test('ERP extraction retries a temporary 429 on the same cursor and respects Retry-After', async () => {
+  const { readFinancialApiFeed, retryFinancialFeed } = await import('../server/financialFeedExtract.mjs');
+  const checkpoint = { feed:JOURNAL_FEED,company:'company-42',cursor:'confirmed-1',timeoutMs:5000 };
+  const waits = [];
+  let requests=0;
+  const result=await retryFinancialFeed(()=>readFinancialApiFeed({
+    url:'https://erp.example.invalid/read',checkpoint,
+    request:async url=>{
+      assert.equal(url.searchParams.get('after'),checkpoint.cursor);
+      requests++;
+      return requests===1 ? new Response('too many requests',{status:429,headers:{'Retry-After':'2'}})
+        : new Response(null,{status:204});
+    },
+  }), async delay=>waits.push(delay));
+  assert.equal(result,null);
+  assert.equal(requests,2);
+  assert.deepEqual(waits,[2000]);
+});
+
+test('financial feed retries only transient failures and bounds delays', async () => {
+  const { retryFinancialFeed } = await import('../server/financialFeedExtract.mjs');
+  const attempts = [];
+  const waits = [];
+  const save = async () => { attempts.push('batch-1'); if (attempts.length<3) throw Object.assign(new Error(),{number:1205}); return {replayed:true}; };
+  assert.deepEqual(await retryFinancialFeed(save,async delay=>waits.push(delay)),{replayed:true});
+  assert.deepEqual(attempts,['batch-1','batch-1','batch-1']);
+  assert.deepEqual(waits,[250,500]);
+  for (const failure of [{code:'STALE_CHECKPOINT'}, {code:'ERP_API_RETRYABLE',retryAfterMs:9000}]) {
+    await assert.rejects(retryFinancialFeed(async()=>{throw Object.assign(new Error(),failure);},()=>assert.fail()),failure);
+  }
+});

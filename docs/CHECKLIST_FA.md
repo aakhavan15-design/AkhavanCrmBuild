@@ -919,7 +919,7 @@
 - [~] F14-02 انتخاب و پیاده‌سازی روش Change Detection پس از بررسی قابلیت واقعی DB (CDC/Change Tracking/Timestamp/Snapshot)؛ تشخیص Insert/Update/Delete با checkpoint و آزمون قطع/وصل.
   - **P0 · PARTIAL** · 032 و financialFeedWorker؛ Cursor و watermark به‌همراه snapshot/replay موجود، انتخاب مسیر CDC یا جایگزین رسمی نیازمند بررسی ERP است.
 - [~] F14-03 تکمیل Sync Run/Event و checkpoint: batch ID، زمان، checksum، شمارش new/updated/deleted/rejected، خطا، retry و idempotent replay.
-  - **P0 · PARTIAL** · 032/033 و financialFeedWorker؛ دسته/checksum/replay/checkpoint حاضر، Retry عملیاتی و مشاهدهٔ رویدادهای همهٔ حوزه‌ها باز.
+  - **P0 · PARTIAL** · 032/033 و financialFeedWorker؛ دسته، checksum، checkpoint و replay برقرارند. CLI ورودی مالی برای خطای گذرا با وقفهٔ محدود تکرار می‌کند و تلاش ناموفق در وضعیت اتصال ثبت می‌شود. مشاهدهٔ عملیات همهٔ حوزه‌ها و پذیرش ERP/SQL زنده باز.
   - **IMPLEMENTED — NOT TESTED:** Migrationهای ۰۴۰–۰۴۱ و ورودی `scripts/import-erp-financial-feed.mjs` کدینگ رسمی، دوره، تفصیلی و روابط و سند/آرتیکل را در جداول موجود منتشر می‌کنند. کنترل مستقل ERP، نسخهٔ مرتب حتی بدون UpdatedAt، cursor، قرنطینهٔ کل دسته، نگهداری Raw، محافظت از نسخهٔ قدیمی و اتصال دقیق سند به چند عملیات ثبت شده‌اند. دسته/کدینگ ناسالم هیچ سندی منتشر نمی‌کند. حساب‌های از پیش واردشده با نقش مصوب حفظ می‌شوند و سند قدیمی بدون نسخه نیازمند تعیین مبنا است. قرارداد Adapter اختصاصی، دادهٔ واقعی SQL/ERP و اجرای QA همچنان NOT VERIFIED است.
   - **IMPLEMENTED — NOT TESTED با ERP واقعی:** دریافت فایل و Pull از HTTPS یا View فقط‌خواندنی، شرکت و نقطهٔ ادامه را از Connector مصوب می‌خواند. قرارداد آداپتور Excel/CSV یا CDC هر فروشنده و اجرای اتصال زنده باز است. آزمون‌های سبک قرارداد محلی انجام شدند؛ گزارش تازه‌بودن و جریان واقعی SQL نیازمند QA مستقل است.
 - [ ] F14-04 اجرای خودکار Ruleهای وابسته پس از Sync موفق/جزئی؛ جلوگیری از اجرای غیرضروری کل کاتالوگ و ثبت نسخه قانون/داده مبنا.
@@ -1006,7 +1006,7 @@
 - [B] F14-42 تست حجم بالا، pagination، index/query plan و عدم افت عملکرد Sync/Rule/Badge؛ معیار حجم بر اساس داده واقعی/توافق مالک ثبت شود.
   - **P0 · BLOCKED** · 033، 034 و 045 ایندکس و بعضی APIها صفحه‌بندی دارند؛ تست بار/Query plan به حجم نمایندهٔ واقعی و SQL نیاز دارد.
 - [~] F14-43 تست قطع و وصل ارتباط، retry/backoff، checkpoint، replay، عدم overwrite داده جدید و عدم بستن اشتباه پرونده.
-  - **P0 · PARTIAL** · financialFeedWorker کنترل نسخه/کهنگی/Replay دارد؛ تست قطع/وصل و Backoff و تضمین عدم بسته‌شدن Finding روی شکست باز.
+  - **P0 · PARTIAL** · financialFeedExtract، financialFeedWorker و CLI؛ Backoff محدود، رعایت Retry-After، تکرار همان cursor/Batch و رد نسخهٔ کهنه. ۷ قرارداد هدفمند PASS. تست قطع/وصل واقعی SQL/ERP و ارتباط نتیجه با چرخهٔ Finding باز.
 - [~] F14-44 ممیزی امنیتی secrets، read-only ERP، audit، RLS، tenant isolation، پیوست‌ها و دسترسی داده حساس.
   - **P0 · PARTIAL** · 006، 029–034، 045/048 و مسیر فایل Task؛ کنترل‌های امنیتی موجود؛ ممیزی عملیاتی کامل/چند مستأجر و ابطال دسترسی باز.
 - [B] F14-45 کنترل تطبیق تمام داشبوردها و گزارش‌ها با Query دیتابیس و ثبت پوشش/تازگی/منبع.

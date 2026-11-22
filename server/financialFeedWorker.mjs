@@ -25,6 +25,8 @@ WHERE cp.TenantId=@tenantId AND cp.ConnectorId=@connectorId AND cp.EntityType=@f
 
 const createBatchSql = `
 SET NOCOUNT ON;
+UPDATE integration.Connector SET LastAttemptAtUtc=SYSUTCDATETIME(),UpdatedAtUtc=SYSUTCDATETIME()
+WHERE TenantId=@tenantId AND ConnectorId=@connectorId;
 INSERT integration.SyncBatch(TenantId,ConnectorId,SourceSystemCode,EntityType,ModeCode,WindowFromUtc,WindowToUtc,ExternalBatchKey,SourceBatchRevision)
 VALUES(@tenantId,@connectorId,@source,@feed,@mode,@windowFrom,@windowTo,@batchKey,CONVERT(decimal(20,0),@batchRevision));
 SELECT CONVERT(varchar(22),SCOPE_IDENTITY()) AS batchId;`;
