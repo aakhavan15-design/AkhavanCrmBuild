@@ -23,13 +23,14 @@ export function parseRouteMapFilters(query = {}) {
   return [...new Set(list.map(v=>safe(String(v))).filter(Boolean))];
  };
  const productIds=values('productIds'),repIds=values('salesRepIds'),routeIds=values('routeIds');
- const unsupported=['supplierIds','brandIds','customerCategoryIds','supervisorIds']
+ const supplierIds=values('supplierIds'),brandIds=values('brandIds'),customerCategoryIds=values('customerCategoryIds');
+ const unsupported=['supervisorIds']
    .filter(field=>values(field).length);
  if(unsupported.length)throw Object.assign(new Error('فیلترهای '+unsupported.join('، ')+' هنوز به نگاشت تأییدشده ERP متصل نیستند.'),{status:422});
- if(productIds.some(x=>x.length>200)||repIds.some(x=>x.length>200)||
+ if([...productIds,...repIds,...supplierIds,...brandIds,...customerCategoryIds].some(x=>x.length>200)||
    routeIds.some(x=>!/^[0-9a-f-]{36}$/i.test(x)))
   throw Object.assign(new Error('شناسه فیلتر معتبر نیست.'),{status:400});
- return {from,to,productIds,repIds,routeIds};
+ return {from,to,productIds,repIds,routeIds,supplierIds,brandIds,customerCategoryIds};
 }
 const money = x => x === null || x === undefined ? null : Number(x);
 const shapeRow=(row,financial,customerCount,visited,invoiceCount,netSales,customerActiveCount,visitCount,orderOutcomes,missingCoords,coverage)=>{
@@ -54,7 +55,7 @@ const shapeRow=(row,financial,customerCount,visited,invoiceCount,netSales,custom
  };
 };
 export function createRouteMapAnalytics({sql,run}) {
- const filtersRequest=(transaction,auth,{from,to,productIds,repIds,routeIds},organizationWide,financeOrganizationWide)=>{
+ const filtersRequest=(transaction,auth,{from,to,productIds,repIds,routeIds,supplierIds,brandIds,customerCategoryIds},organizationWide,financeOrganizationWide)=>{
   const req=new sql.Request(transaction)
    .input('tenant',sql.UniqueIdentifier,auth.tenantId)
    .input('actor',sql.UniqueIdentifier,auth.userId)
@@ -62,6 +63,9 @@ export function createRouteMapAnalytics({sql,run}) {
    .input('financeWide',sql.Bit,financeOrganizationWide?1:0)
    .input('dateFrom',sql.Date,from).input('dateTo',sql.Date,to)
    .input('productJson',sql.NVarChar(sql.MAX),JSON.stringify(productIds))
+   .input('supplierJson',sql.NVarChar(sql.MAX),JSON.stringify(supplierIds))
+   .input('brandJson',sql.NVarChar(sql.MAX),JSON.stringify(brandIds))
+   .input('categoryJson',sql.NVarChar(sql.MAX),JSON.stringify(customerCategoryIds))
    .input('repJson',sql.NVarChar(sql.MAX),JSON.stringify(repIds))
    .input('routeJson',sql.NVarChar(sql.MAX),JSON.stringify(routeIds));
   return req;
@@ -88,6 +92,7 @@ export function createRouteMapAnalytics({sql,run}) {
    FROM AllowedRoutes r JOIN crm.VisitRouteCustomerMirror m ON m.TenantId=r.TenantId AND m.RouteId=r.RouteId
    JOIN crm.Account a ON a.TenantId=m.TenantId AND a.AccountId=m.AccountId
    WHERE m.EffectiveFrom<=@dateTo AND (m.EffectiveTo IS NULL OR m.EffectiveTo>=@dateFrom)
+    AND (NOT EXISTS(SELECT 1 FROM OPENJSON(@categoryJson)) OR a.BusinessCategoryCode IN (SELECT value FROM OPENJSON(@categoryJson)))
     AND EXISTS(SELECT 1 FROM security.fn_RecordReadScope(a.TenantId,N'accounts.view',a.OwnerUserId,a.BranchId,a.TerritoryId,a.TeamId))
   ), RouteVisits AS (
     SELECT m.RouteId,COUNT_BIG(*) AS VisitCount,COUNT(DISTINCT v.AccountId) AS VisitedCount,
@@ -133,6 +138,7 @@ export function createRouteMapAnalytics({sql,run}) {
       FROM AllowedRoutes r JOIN crm.VisitRouteCustomerMirror m ON m.TenantId=@tenant AND m.RouteId=r.RouteId
       JOIN crm.Account a ON a.TenantId=m.TenantId AND a.AccountId=m.AccountId
       WHERE m.EffectiveFrom<=@dateTo AND (m.EffectiveTo IS NULL OR m.EffectiveTo>=@dateFrom)
+       AND (NOT EXISTS(SELECT 1 FROM OPENJSON(@categoryJson)) OR a.BusinessCategoryCode IN (SELECT value FROM OPENJSON(@categoryJson)))
        AND EXISTS(SELECT 1 FROM security.fn_RecordReadScope(a.TenantId,N'accounts.view',a.OwnerUserId,a.BranchId,a.TerritoryId,a.TeamId))
     ), FilteredInvoices AS (
       SELECT i.InvoiceMirrorId,i.AccountId,i.SourceSystemCode,i.GrossAmount
@@ -143,7 +149,10 @@ export function createRouteMapAnalytics({sql,run}) {
     ), InvoiceLines AS (
       SELECT i.InvoiceMirrorId,SUM(l.NetLineAmount) AS Amount
       FROM FilteredInvoices i JOIN crm.InvoiceLineMirror l ON l.TenantId=@tenant AND l.InvoiceMirrorId=i.InvoiceMirrorId
-      WHERE NOT EXISTS(SELECT 1 FROM OPENJSON(@productJson)) OR l.ExternalProductId IN (SELECT value FROM OPENJSON(@productJson))
+      LEFT JOIN crm.ExternalProduct p ON p.TenantId=l.TenantId AND p.SourceSystemCode=l.SourceSystemCode AND p.ExternalProductId=l.ExternalProductId
+      WHERE (NOT EXISTS(SELECT 1 FROM OPENJSON(@productJson)) OR l.ExternalProductId IN (SELECT value FROM OPENJSON(@productJson)))
+      AND (NOT EXISTS(SELECT 1 FROM OPENJSON(@supplierJson)) OR p.SupplierExternalId IN (SELECT value FROM OPENJSON(@supplierJson)))
+      AND (NOT EXISTS(SELECT 1 FROM OPENJSON(@brandJson)) OR p.BrandExternalId IN (SELECT value FROM OPENJSON(@brandJson)))
       GROUP BY i.InvoiceMirrorId
     )
     SELECT m.RouteId,COUNT(DISTINCT i.InvoiceMirrorId) AS InvoiceCount,
