@@ -1,6 +1,6 @@
 type Amount = string | null;
 
-export type MoneyDimension = 'category' | 'center' | 'party' | 'month';
+export type MoneyDimension = 'category' | 'center' | 'party' | 'month' | 'account' | 'detail' | 'general' | 'group';
 export interface MoneyPeriod { from: string; to: string; dimension: MoneyDimension }
 export interface MoneyEvidenceFilter {
   mode: 'cash' | 'outflow' | 'expense' | 'role' | 'balance' | 'opening' | 'review' | 'fifo' | 'profit' | 'bank' | 'cash-accounts' | 'cash-account';

@@ -31,6 +31,8 @@ const roles: Record<string, string> = {
 const dimensions = [
   { value: 'category', label: 'نوع هزینه یا مصرف' }, { value: 'center', label: 'مرکز هزینه' },
   { value: 'party', label: 'طرف‌حساب' }, { value: 'month', label: 'ماه' },
+  { value: 'group', label: 'گروه حسابداری' }, { value: 'general', label: 'حساب کل' },
+  { value: 'account', label: 'کد ثبت آرتیکل (معین یا سطح ثبت)' }, { value: 'detail', label: 'تفصیلی در کد حساب' },
 ];
 const expenseKinds = [
   { kind: 'outflow', label: 'پرداخت نقدی' }, { kind: 'expense', label: 'هزینهٔ شناسایی‌شده' },

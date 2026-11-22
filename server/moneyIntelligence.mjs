@@ -28,7 +28,7 @@ export function parseMoneyReportQuery(query) {
   if ((mode !== null && !modes.has(mode)) || page < 1 || page > 1000 ||
       (key !== null && (typeof key !== 'string' || key.length > 120)) || typeof search !== 'string' || search.length > 100 ||
       typeof detail !== 'string' || detail.length > 120 || (mode === 'cash-account' && !key?.trim()) ||
-      !['', 'category', 'center', 'party', 'month'].includes(dimension) ||
+      !['', 'category', 'center', 'party', 'month', 'account', 'detail', 'general', 'group'].includes(dimension) ||
       !['','unusual','repeat'].includes(signal) ||
       (signal==='unusual' && (dimension==='month' || !['expense','outflow'].includes(mode))) ||
       (signal==='repeat' && mode!=='outflow') || (signal && key===null)) return null;
@@ -68,7 +68,7 @@ SELECT l.JournalLineMirrorId AS lineId,d.journalId,d.[date],d.isOpening,
   l.ExternalAccountCode AS accountCode,l.ExternalDetailCode AS detailCode,
   l.DebitAmount AS debit,l.CreditAmount AS credit,la.MoneyRoleCode AS role,
   l.RefDocumentTypeCode AS refType,l.RefExternalDocumentId AS refId,
-  la.TitleFa AS accountTitle,ec.CategoryCode AS categoryCode,ec.TitleFa AS categoryTitle,
+  la.LedgerAccountId AS ledgerId,la.TitleFa AS accountTitle,ec.CategoryCode AS categoryCode,ec.TitleFa AS categoryTitle,
   dim.ExternalDimensionValueCode AS centerCode,dim.DimensionValueTitleFa AS centerTitle,
   l.AccountId AS partyId,a.Name AS partyTitle
 INTO #lines
@@ -117,19 +117,40 @@ SELECT *,CASE
 INTO #cash
 FROM #journal WHERE issue IS NULL AND isOpening=0 AND isClosing=0 AND [date]>=@priorStart;
 
+DECLARE @accountLevel varchar(12)=CASE @dimension WHEN 'general' THEN 'GENERAL' WHEN 'group' THEN 'GROUP' END;
+WITH accountTree AS (
+  SELECT DISTINCT a.LedgerAccountId AS ledgerId,a.ParentLedgerAccountId,a.AccountCode,a.TitleFa,a.LevelCode,0 AS depth
+  FROM #lines l JOIN crm.LedgerAccount a ON a.TenantId=@tenantId AND a.LedgerAccountId=l.ledgerId
+  WHERE @accountLevel IS NOT NULL
+  UNION ALL
+  SELECT child.ledgerId,parent.ParentLedgerAccountId,parent.AccountCode,parent.TitleFa,parent.LevelCode,child.depth+1
+  FROM accountTree child JOIN crm.LedgerAccount parent ON parent.TenantId=@tenantId AND parent.LedgerAccountId=child.ParentLedgerAccountId
+  WHERE child.LevelCode<>@accountLevel AND child.depth<8
+)
+SELECT ledgerId,AccountCode,TitleFa INTO #expenseRollup FROM accountTree WHERE LevelCode=@accountLevel;
+
 SELECT l.*,
   CASE WHEN @dimension='center' THEN l.centerCode
        WHEN @dimension='party' THEN COALESCE(CONVERT(nvarchar(36),l.partyId),NULLIF(l.detailCode,N''))
        WHEN @dimension='month' THEN calendar.groupCode
+       WHEN @dimension='account' THEN l.accountCode
+       WHEN @dimension IN ('group','general') THEN rollup.AccountCode
+       WHEN @dimension='detail' AND NULLIF(l.detailCode,N'') IS NOT NULL THEN
+         CONVERT(varchar(64),HASHBYTES('SHA2_256',CONCAT(LEN(l.accountCode),N':',l.accountCode,N':',l.detailCode)),2)
+       WHEN @dimension='detail' THEN NULL
        ELSE COALESCE(l.categoryCode,l.role) END AS groupCode,
   CASE WHEN @dimension='center' THEN l.centerTitle
        WHEN @dimension='party' THEN l.partyTitle
        WHEN @dimension='month' THEN calendar.title
+       WHEN @dimension='account' THEN CONCAT(l.accountCode,N' · ',l.accountTitle)
+       WHEN @dimension IN ('group','general') THEN CASE WHEN rollup.AccountCode IS NOT NULL THEN CONCAT(rollup.AccountCode,N' · ',rollup.TitleFa) END
+       WHEN @dimension='detail' THEN CASE WHEN NULLIF(l.detailCode,N'') IS NOT NULL THEN CONCAT(l.accountCode,N' · ',l.detailCode) END
        ELSE l.categoryTitle END AS groupTitle,
   CASE WHEN c.movement='OUT' AND c.otherCredits=0 AND l.role<>'CASH' AND l.debit>0 THEN 1 ELSE 0 END AS isAttributed,
   CASE WHEN l.role IN ('PNL_EXPENSE','PNL_NONCASH') AND (l.debit<>0 OR l.credit<>0) THEN 1 ELSE 0 END AS isExpense
 INTO #analysis
 FROM #cash c JOIN #lines l ON l.journalId=c.journalId
+LEFT JOIN #expenseRollup rollup ON rollup.ledgerId=l.ledgerId
 LEFT JOIN OPENJSON(@months) WITH ([date] date,groupCode nvarchar(20),title nvarchar(50)) AS calendar ON calendar.[date]=l.[date];`;
 
 const metadata = `
