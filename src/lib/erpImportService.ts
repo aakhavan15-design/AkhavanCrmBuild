@@ -4,7 +4,7 @@ import type { ERPImportRecord } from './erpContracts';
 export type ErpEntityType =
   | 'SALES_ORDER' | 'INVOICE'
   // Canonical ETL entities (docs/MASTER_SPEC_FA.md پیوست ب). Same upsert/stale/identity engine — no parallel importer.
-  | 'PAYMENT' | 'PAYMENT_ALLOCATION' | 'CREDIT_NOTE' | 'CHEQUE' | 'JOURNAL_LINE' | 'LEDGER_ACCOUNT' | 'PRODUCT' | 'PRODUCT_COST' | 'SALES_RETURN' | 'DELIVERY_EVENT';
+  | 'VISIT_ROUTE' | 'VISIT_TOUR';  | 'PAYMENT' | 'PAYMENT_ALLOCATION' | 'CREDIT_NOTE' | 'CHEQUE' | 'JOURNAL_LINE' | 'LEDGER_ACCOUNT' | 'PRODUCT' | 'PRODUCT_COST' | 'SALES_RETURN' | 'DELIVERY_EVENT';
 export type ErpImportRecord = ERPImportRecord;
 export interface ErpImportSummary {
   entityType: ErpEntityType;
