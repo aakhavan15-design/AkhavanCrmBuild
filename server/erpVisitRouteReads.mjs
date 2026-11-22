@@ -45,8 +45,8 @@ export function createErpVisitRouteReader({sql,run}){
     FROM crm.VisitRouteMirror route
     WHERE route.TenantId=@tenant AND route.RouteId=@routeId AND route.IsDeleted=0 AND ${staffAccess}`);
    if(!routes.recordset.length)return null;
-   const [members,staff,tours,visits,gps]=await Promise.all([
-    request().query(`SELECT member.AccountId,member.SubRouteCode,member.ExternalCustomerId,a.AccountCode,a.Name,
+   const statements=[
+    () => request().query(`SELECT member.AccountId,member.SubRouteCode,member.ExternalCustomerId,a.AccountCode,a.Name,
        a.Latitude,a.Longitude,a.GeoAccuracyMeters,a.GeoSourceCode
        FROM crm.VisitRouteCustomerMirror member
        JOIN crm.Account a ON a.TenantId=member.TenantId AND a.AccountId=member.AccountId
@@ -54,12 +54,12 @@ export function createErpVisitRouteReader({sql,run}){
          AND member.EffectiveFrom<=@date AND (member.EffectiveTo IS NULL OR member.EffectiveTo>=@date)
          AND EXISTS(SELECT 1 FROM security.fn_RecordReadScope(a.TenantId,N'accounts.view',a.OwnerUserId,a.BranchId,a.TerritoryId,a.TeamId))
        ORDER BY member.SubRouteCode,a.Name,a.AccountId`),
-    request().query(`SELECT staff.ExternalStaffId,staff.StaffRoleCode,staff.StaffUserId
+    () => request().query(`SELECT staff.ExternalStaffId,staff.StaffRoleCode,staff.StaffUserId
        FROM crm.VisitRouteStaffMirror staff
        WHERE staff.TenantId=@tenant AND staff.RouteId=@routeId
        AND staff.EffectiveFrom<=@date AND (staff.EffectiveTo IS NULL OR staff.EffectiveTo>=@date)
        ORDER BY staff.StaffRoleCode,staff.ExternalStaffId`),
-    request().query(`SELECT tour.TourId,tour.ExternalTourId,tour.TourCode,tour.TourDate,
+    () => request().query(`SELECT tour.TourId,tour.ExternalTourId,tour.TourCode,tour.TourDate,
        tour.ExternalSalesRepId,stop.StopSequence,stop.ExternalCustomerId,stop.AccountId
        FROM crm.VisitTourMirror tour
        LEFT JOIN crm.VisitTourStopMirror stop
@@ -72,7 +72,7 @@ export function createErpVisitRouteReader({sql,run}){
            AND manager.StaffRoleCode='SUPERVISOR' AND manager.EffectiveFrom<=@date
            AND (manager.EffectiveTo IS NULL OR manager.EffectiveTo>=@date)))
        ORDER BY tour.ExternalSalesRepId,tour.TourId,stop.StopSequence`),
-    request().query(`SELECT TOP (1500) visit.ExternalVisitId,visit.AccountId,visit.VisitedAtUtc,
+    () => request().query(`SELECT TOP (1500) visit.ExternalVisitId,visit.AccountId,visit.VisitedAtUtc,
        visit.ExternalSalesRepId,visit.OutcomeCode,visit.NoOrderReasonCode,
        reason.ReasonTitleFa,visit.ResultingExternalOrderId,
        visit.Latitude,visit.Longitude,visit.AccuracyMeters
@@ -92,7 +92,7 @@ export function createErpVisitRouteReader({sql,run}){
            AND (manager.EffectiveTo IS NULL OR manager.EffectiveTo>=@date)))
          AND EXISTS(SELECT 1 FROM security.fn_RecordReadScope(a.TenantId,N'accounts.view',a.OwnerUserId,a.BranchId,a.TerritoryId,a.TeamId))
        ORDER BY visit.VisitedAtUtc DESC`),
-    request().query(`SELECT TOP (1500) gps.ExternalLocationId,gps.ExternalSalesRepId,
+    () => request().query(`SELECT TOP (1500) gps.ExternalLocationId,gps.ExternalSalesRepId,
        gps.RecordedAtUtc,gps.Latitude,gps.Longitude,gps.AccuracyMeters
        FROM crm.SalesRepGpsMirror gps
        WHERE gps.TenantId=@tenant AND CONVERT(date,gps.RecordedAtUtc)=@date
@@ -107,7 +107,10 @@ export function createErpVisitRouteReader({sql,run}){
            AND staff.EffectiveFrom<=@date
            AND (staff.EffectiveTo IS NULL OR staff.EffectiveTo>=@date))
        ORDER BY gps.RecordedAtUtc DESC`),
-   ]);
+   ];
+   const results=[];
+   for(const query of statements) results.push(await query());
+   const [members,staff,tours,visits,gps]=results;
    return {source:'ERP_SQL',asOf:date,route:routes.recordset[0],
      customers:members.recordset,staff:staff.recordset,tours:tours.recordset,
      visits:visits.recordset,gps:gps.recordset,
