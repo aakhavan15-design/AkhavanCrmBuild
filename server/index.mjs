@@ -556,6 +556,25 @@ app.get('/api/v1/erp/visit-routes/:id/overview',authenticate,requirePermission('
 }));
 
 
+app.post('/api/v1/erp/visit-routes/:id/geometry',authenticate,
+  requirePermission('geo.manage',{organizationWide:true}),wrap(async(req,res)=>{
+    if(!isUuid(req.auth.tenantId)||!isUuid(req.auth.userId))
+      return bad(req,res,503,'AUTH_CONTEXT_INVALID','شناسه کاربر و سازمان برای ذخیره مرز معتبر نیست.');
+    if(!isUuid(req.params.id))return bad(req,res,400,'INVALID_ROUTE_ID','شناسه مسیر معتبر نیست.');
+    try{
+      const result=await visitRouteReader.saveBoundary(req.auth,{
+        routeId:req.params.id,geometry:req.body?.geometry,
+        coveragePercent:req.body?.coveragePercent,
+        sourceCount:req.body?.sourceCount,method:req.body?.method
+      });
+      if(!result)return bad(req,res,404,'ROUTE_NOT_FOUND','مسیر ERP پیدا نشد.');
+      res.status(201).json(result);
+    }catch(error){
+      if(error?.status===400)return bad(req,res,400,'INVALID_GEOMETRY',error.message);
+      throw error;
+    }
+  }));
+
 const bad = (req, res, status, code, message, extra = {}) => res.status(status).json({ error: { code, message, ...extra }, correlationId: req.correlationId });
 
 app.get('/api/v1/ledger/credit-notes', authenticate, requirePermission('finance.view'), wrap(async (req, res) => {
