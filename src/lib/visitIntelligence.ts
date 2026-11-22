@@ -63,7 +63,7 @@ export interface VisitIntelReport {
   customerCount: number; withRecordedVisits: number; withoutRecordedVisits: number;
   inErpTour: number; totalActualVisits: number; customerRows: VisitIntelRow[];
   incompleteSources: string[]; reasonCounts: Array<{reason: string; count: number}>;
-  routes: Array<{routeId: string; repId: string; plannedStops: number; recordedVisitsOnTourDate: number; recordedOrderOutcomes: number; unconfirmedPastStops: number; collectionDueStops: number}>;
+  routes: Array<{routeId: string; repId: string; plannedStops: number; recordedVisitsOnTourDate: number; recordedOrderOutcomes: number; linkedInvoiceCount: number; linkedInvoiceValue: number | null; unconfirmedPastStops: number; collectionDueStops: number}>;
 }
 const DAY_MS = 86400000;
 const ymd = (value: unknown): string | null => {
@@ -213,14 +213,26 @@ export function buildVisitIntelligence(args: VisitIntelArgs): VisitIntelReport {
   }
   const reasonCounts=[...reasonMap].map(([reason,count])=>({reason,count})).sort((a,b)=>b.count-a.count);
   const routesMap=new Map<string,VisitIntelReport['routes'][number]>();
+  const routeLinkedInvoices=new Map<string,Set<string>>();
   for(const row of customerRows)for(const stop of row.tourStops){
     const key=stop.routeId+'|'+stop.repId;
-    const entry=routesMap.get(key)||{routeId:stop.routeId,repId:stop.repId,plannedStops:0,recordedVisitsOnTourDate:0,recordedOrderOutcomes:0,unconfirmedPastStops:0,collectionDueStops:0};
+    const entry=routesMap.get(key)||{routeId:stop.routeId,repId:stop.repId,plannedStops:0,recordedVisitsOnTourDate:0,recordedOrderOutcomes:0,linkedInvoiceCount:0,linkedInvoiceValue:null,unconfirmedPastStops:0,collectionDueStops:0};
     entry.plannedStops++;
     const matchedVisits=(visitsByCustomer.get(row.customerId)||[]).filter(v=>
       ymd(v.checkInAt||v.dateTime)===stop.date && [v.repId,v.ownerId].filter(Boolean).includes(stop.repId));
     const done=matchedVisits.length>0;
     if(matchedVisits.some(v=>String(v.outcome||'').toUpperCase()==='ORDER_TAKEN'))entry.recordedOrderOutcomes++;
+    const seen=routeLinkedInvoices.get(key)||new Set<string>();
+    for(const visit of matchedVisits){
+      const invoice=(invoicesByCustomer.get(row.customerId)||[]).find(invoice =>
+        (visit.invoiceId && [invoice.id,invoice.invoiceNumber].includes(visit.invoiceId)) ||
+        ((visit.orderId||visit.salesOrderId) && invoice.salesOrderId === (visit.orderId||visit.salesOrderId)));
+      if(!invoice || seen.has(invoice.id))continue;
+      seen.add(invoice.id);entry.linkedInvoiceCount++;
+      const amount=money(invoice.totalAmount);
+      entry.linkedInvoiceValue=amount===null?null:(entry.linkedInvoiceValue||0)+amount;
+    }
+    routeLinkedInvoices.set(key,seen);
     if(done)entry.recordedVisitsOnTourDate++;
     else if(stop.date<asOf)entry.unconfirmedPastStops++;
     if(row.receivable && row.receivable.overdueAmount>0)entry.collectionDueStops++;
