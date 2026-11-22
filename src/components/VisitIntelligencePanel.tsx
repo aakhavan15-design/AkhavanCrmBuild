@@ -21,8 +21,8 @@ interface Props {
 const fmt=(n:number)=>n.toLocaleString('fa-IR',{maximumFractionDigits:0});
 const currency=(n:number|null)=>n===null?'نامشخص':fmt(n)+' ریال';
 const fdate=(date:string|null)=>date?new Date(date+'T00:00:00Z').toLocaleDateString('fa-IR'):'ثبت نشده';
-type Filter='all'|'unvisited'|'tour'|'collection'|'valuable'|'no-order';
-const filterNames:Record<Filter,string>={all:'همه',unvisited:'فاقد ویزیت ثبت‌شده',tour:'تور این هفته',collection:'وصول معوق',valuable:'ارزشمند / عمده', 'no-order':'بدون سفارش'};
+type Filter='all'|'unvisited'|'tour'|'tour-collection'|'missed'|'collection'|'valuable'|'no-order';
+const filterNames:Record<Filter,string>={all:'همه',unvisited:'فاقد ویزیت ثبت‌شده',tour:'تور این هفته','tour-collection':'وصول در تور این هفته',missed:'تور بدون مراجعه ثبت‌شده',collection:'وصول معوق',valuable:'ارزشمند / عمده', 'no-order':'بدون سفارش'};
 export function VisitIntelligencePanel(props: Props) {
   const [filter,setFilter]=useState<Filter>('all');
   const [search,setSearch]=useState('');
@@ -39,6 +39,8 @@ export function VisitIntelligencePanel(props: Props) {
     if(search && !(row.name+' '+row.customerId).toLocaleLowerCase('fa').includes(search.trim().toLocaleLowerCase('fa')))return false;
     if(filter==='unvisited')return row.recordedVisits===0;
     if(filter==='tour')return row.tourStops.length>0;
+    if(filter==='tour-collection')return row.tourStops.length>0&&!!row.receivable&&row.receivable.overdueAmount>0;
+    if(filter==='missed')return row.unconfirmedTourStops>0;
     if(filter==='collection')return !!row.receivable&&row.receivable.overdueAmount>0;
     if(filter==='valuable')return row.reasons.includes('HIGH_VALUE')||row.reasons.includes('WHOLESALE');
     if(filter==='no-order')return row.reasons.includes('NO_ORDER');
@@ -63,6 +65,20 @@ export function VisitIntelligencePanel(props: Props) {
       </label>
       <label className="text-xs font-bold text-text-secondary">آستانه عدم مراجعه (روز)<InputControl className="mt-1" type="number" min={1} max={365} value={days} onChange={e=>setDays(Math.max(1,Math.min(365,Number(e.target.value)||14)))}/></label>
     </div>
+    {report.routes.length>0&&<div className="rounded-xl border border-border bg-canvas p-3">
+      <h3 className="text-xs font-black text-text-main">عملکرد ثبت‌شده تورهای رسمی این هفته</h3>
+      <p className="mt-1 text-micro text-text-secondary">مقایسه برنامه ERP با مراجعه‌های ثبت‌شده در همین تاریخ؛ نبود رویداد، اثبات عدم انجام مراجعه نیست.</p>
+      <div className="mt-2 overflow-x-auto">
+        <table className="w-full min-w-[520px] text-right text-xs">
+          <thead className="text-text-secondary"><tr><th className="p-2">مسیر / ویزیتور</th><th className="p-2">ایستگاه برنامه‌ریزی‌شده</th><th className="p-2">مراجعه ثبت‌شده</th><th className="p-2">ایستگاه گذشته بدون ثبت</th><th className="p-2">دارای مانده معوق معتبر</th></tr></thead>
+          <tbody>{report.routes.map(route=><tr key={route.routeId+route.repId} className="border-t border-border">
+            <td className="p-2">{route.routeId} / {route.repId}</td>
+            <td className="p-2">{fmt(route.plannedStops)}</td><td className="p-2">{fmt(route.recordedVisitsOnTourDate)}</td>
+            <td className="p-2">{fmt(route.unconfirmedPastStops)}</td><td className="p-2">{props.financeVisible?fmt(route.collectionDueStops):'محدود'}</td>
+          </tr>)}</tbody>
+        </table>
+      </div>
+    </div>}
     {report.reasonCounts.length>0 && <div className="rounded-xl border border-border bg-canvas p-3">
       <h3 className="text-xs font-black text-text-main">علت‌های ثبت‌شده برای ویزیت‌های بدون سفارش</h3>
       <div className="mt-2 flex flex-wrap gap-2">{report.reasonCounts.slice(0,8).map(item=><span key={item.reason} className="rounded-lg border border-border px-2 py-1 text-xs text-text-secondary">{item.reason}: {fmt(item.count)}</span>)}</div>
@@ -89,9 +105,10 @@ export function VisitIntelligencePanel(props: Props) {
           </div>
           {expanded===row.customerId&&<div className="mt-3 space-y-2 border-t border-border pt-3 text-xs leading-6 text-text-main">
             <p><strong>آخرین نتیجه مراجعه:</strong> {row.lastVisitOutcome||'نامشخص'} {row.lastNoOrderReason?' — '+row.lastNoOrderReason:''}</p>
+            <p><strong>رابطه ثبت‌شده ویزیت و خرید:</strong> {row.visitLinkedInvoice ? 'فاکتور '+(row.visitLinkedInvoice.invoiceNumber||row.visitLinkedInvoice.id) : 'شناسه سند مرتبط در ویزیت ثبت نشده؛ آخرین فاکتور زیر لزوماً نتیجه آخرین ویزیت نیست.'}</p>
             <p><strong>سابقه خرید موجود:</strong> {props.financeVisible?currency(row.salesTotal):'مجوز مشاهده مالی وجود ندارد'} {props.financeVisible&&row.averageInvoice!==null?' · میانگین هر فاکتور '+currency(row.averageInvoice):''}</p>
             {props.financeVisible&&row.lastInvoice&&<div className="rounded-lg bg-canvas p-2">
-              <p><strong>آخرین فاکتور:</strong> {row.lastInvoice.invoiceNumber||row.lastInvoice.id} · {fdate(row.lastInvoiceDate)} · {currency(typeof row.lastInvoice.totalAmount==='number'?row.lastInvoice.totalAmount:null)}</p>
+              <p><strong>آخرین فاکتور موجود مشتری (نه لزوماً مربوط به آخرین ویزیت):</strong> {row.lastInvoice.invoiceNumber||row.lastInvoice.id} · {fdate(row.lastInvoiceDate)} · {currency(typeof row.lastInvoice.totalAmount==='number'?row.lastInvoice.totalAmount:null)}</p>
               {row.lastInvoice.items?.length ? <div className="mt-1 space-y-1">{row.lastInvoice.items.slice(0,15).map((item,i)=><p key={i}>{item.description||'کالای بدون نام'} · {fmt(Number(item.quantity)||0)} عدد · فی {currency(typeof item.unitPrice==='number'?item.unitPrice:null)}</p>)}</div>:<p className="text-text-secondary">ریز کالا و قیمت آخرین فاکتور در منبع حاضر موجود نیست.</p>}
             </div>}
             {props.financeVisible&&<p><strong>برگشت‌های مرتبط:</strong> {fmt(row.returnCount)} مورد · <strong>مانده معوق:</strong> {row.receivable?currency(row.receivable.overdueAmount):'تأییدشده در دسترس نیست'}</p>}
