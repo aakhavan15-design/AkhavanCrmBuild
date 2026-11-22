@@ -251,8 +251,9 @@ export function GeoIntelligenceWorkspace({ state, updateState }: Props) {
         statusCode: ret.statusCode == null ? undefined : String(ret.statusCode),
       }))
     : [];
-  const scopedErpVisitTours = can('geo', 'VIEW')
-    ? ((state.erpVisitTours || []) as Array<Record<string, unknown>>).filter(tour =>
+  // Until backend enforces per-tour/rep scope, hide ERP mirrors from non-admin roles.
+  const scopedErpVisitTours = can('geo', 'VIEW') && rbac.hasPermission('settings.manage')
+    ? ((state.erpVisitTours || []) as unknown as Array<Record<string, unknown>>).filter(tour =>
       rbac.canActOnRecord('geo', 'VIEW', {
         ownerId: tour.ownerId as string | undefined, branchId: tour.branchId as string | undefined,
         territoryId: tour.territoryId as string | undefined, teamId: tour.teamId as string | undefined,
