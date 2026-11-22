@@ -39,16 +39,16 @@ const shapeRow=(row,financial,customerCount,visited,invoiceCount,netSales,custom
   routeId:String(row.RouteId),routeCode:row.RouteCode,routeName:row.RouteName,
   location:{latitude:row.CenterLat==null?null:Number(row.CenterLat),longitude:row.CenterLon==null?null:Number(row.CenterLon)},
   customerCount:counts,activeCustomerCount:financial&&customerActiveCount!=null?Number(customerActiveCount):null,
-  visitCount:Number(visitCount||0),visitedCustomerCount:Number(visited||0),
+  visitCount:supplement.visitSourcePresent?Number(visitCount||0):null,visitedCustomerCount:supplement.visitSourcePresent?Number(visited||0):null,
   orderOutcomeCount:Number(orderOutcomes||0),
   invoiceCount:financial&&invoiceCount!=null?Number(invoiceCount):null,netSales:financial?money(netSales):null,
   missingCoordinateCount:Number(missingCoords||0),coordinateCoveragePercent:coverage,
   returnAmount:money(supplement.returnAmount),profitAmount:null,receivableAmount:money(supplement.receivableAmount),targetAchievedPercent:money(supplement.targetAchievedPercent),
   receivableDate:supplement.receivableDate||null,
-  attentionPercent:counts>0?Math.round(Number(visited||0)*10000/counts)/100:null,
+  attentionPercent:supplement.visitSourcePresent&&counts>0?Math.round(Number(visited||0)*10000/counts)/100:null,
   health:'UNKNOWN',metricAvailability:{
    customerCount:'ERP_ROUTE_MEMBERSHIP',activeCustomerCount:financial?'ERP_INVOICE':'DENIED',
-   visitCount:'ERP_VISIT_EVENT',invoiceCount:financial?'ERP_INVOICE':'DENIED',
+   visitCount:supplement.visitSourcePresent?'ERP_VISIT_EVENT':'SOURCE_UNCONFIRMED',invoiceCount:financial?'ERP_INVOICE':'DENIED',
    netSales:financial?'ERP_INVOICE_LINE':'DENIED',
    returnAmount:supplement.returnAmount!=null?'ERP_SALES_RETURN':'UNAVAILABLE',profitAmount:'UNAVAILABLE',
    receivableAmount:supplement.receivableAmount!=null?'ACCOUNT_RECEIVABLE_CURRENT':'UNAVAILABLE',targetAchievedPercent:supplement.targetAchievedPercent!=null?'APPROVED_SALES_TARGET':'UNAVAILABLE',
@@ -129,6 +129,9 @@ export function createRouteMapAnalytics({sql,run}) {
   LEFT JOIN RouteVisits v ON v.RouteId=r.RouteId
   LEFT JOIN RouteCenter c ON c.RouteId=r.RouteId ORDER BY r.RouteCode,r.RouteId`;
   const rows=(await filtersRequest(tx,auth,filters,organizationWide,financeOrganizationWide).query(sqlText)).recordset;
+  const visitFeed=(await new sql.Request(tx).input('tenant',sql.UniqueIdentifier,auth.tenantId)
+    .query(`SELECT CASE WHEN EXISTS(SELECT 1 FROM crm.ErpVisitEventMirror WHERE TenantId=@tenant AND IsDeleted=0) THEN 1 ELSE 0 END AS HasVisitFeed`))
+    .recordset[0]?.HasVisitFeed===1;
   // Financial query is entirely skipped without the server-side permission.
   let financial=new Map();
   if(financeAllowed) {
@@ -259,7 +262,8 @@ export function createRouteMapAnalytics({sql,run}) {
   return {source:'ERP_SQL',period:{dateFrom:filters.from,dateTo:filters.to},permittedMetrics,
     caveats:['مشتری چندمسیره در هر مسیر مستقل شمرده می‌شود؛ مجموع مسیرها لزوماً جمع سازمان نیست.',
       'فروش از ریز فاکتور و برگشتی از ریز سند برگشت رسمی محاسبه می‌شود. ارقام فقط در صورت مجوز مربوط نمایش داده می‌شوند.',
-      'مطالبات، در صورت وجود منبع معتبر و مجوز، مانده فعلی است نه مانده تاریخی بازه. سود و تارگت تا تکمیل مستندات هزینه و هدف نامشخص می‌مانند.'],
+      'مطالبات، در صورت وجود منبع معتبر و مجوز، مانده فعلی است نه مانده تاریخی بازه. سود تنها با بهای تمام‌شده مستند قابل گزارش خواهد بود.',
+      ...(!visitFeed?['پوشش دیتای ویزیت ERP تأیید نشده و نرخ توجه به مسیر قابل محاسبه نیست.']:[])],
     rows:rows.map(r=>{
       const f=financial.get(String(r.RouteId).toLowerCase());
       const count=Number(r.CustomerCount);
@@ -271,6 +275,7 @@ export function createRouteMapAnalytics({sql,run}) {
        count>0?Math.round((count-Number(r.MissingGps))*10000/count)/100:null,
        {returnAmount:returned?.ReturnAmount??null,receivableAmount:receivable?.ReceivableAmount??null,
         receivableDate:receivable?new Date().toISOString().slice(0,10):null,
+        visitSourcePresent:visitFeed,
         targetAchievedPercent:approvedTargets.get(key)?.TargetValue>0 && f?.NetSales!=null
           ? Math.round(Number(f.NetSales)*10000/Number(approvedTargets.get(key).TargetValue))/100 : null});
     })};
