@@ -47,10 +47,35 @@ export function VisitIntelligencePanel(props: Props) {
     if(filter==='no-order')return row.reasons.includes('NO_ORDER');
     return true;
   });
+  const exportPrioritiesCsv=()=>{
+    const csvCell=(value: unknown)=>{
+      const original=String(value??'');
+      const safe=/^[=+@\-\t\r]/.test(original.trimStart()) ? "'"+original : original;
+      return '"'+safe.replace(/"/g,'""')+'"';
+    };
+    const records=[
+      ['رتبه','شناسه مشتری','نام مشتری','امتیاز','دلایل اولویت','ویزیت ثبت‌شده','آخرین ویزیت','آخرین نتیجه','آخرین فاکتور','فروش ثبت‌شده (ریال)','مانده معوق معتبر (ریال)','تور رسمی این هفته'],
+      ...filtered.map((row,index)=>[
+        index+1,row.customerId,row.name,row.score,row.reasons.filter(r=>r!=='OUTSIDE_WEEK_TOUR').map(r=>visitReasonLabel[r]).join('؛ '),
+        row.recordedVisits,row.lastVisitDate||'',row.lastVisitOutcome||'',
+        props.financeVisible?(row.lastInvoiceDate||''):'',
+        props.financeVisible?(row.salesTotal??''):'',
+        props.financeVisible?(row.receivable?.overdueAmount??''):'',
+        row.tourStops.map(stop=>stop.date+' / '+stop.routeId+' / '+stop.sequence).join('؛ '),
+      ]),
+    ];
+    const csv='\uFEFF'+records.map(record=>record.map(csvCell).join(',')).join('\r\n');
+    const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
+    const a=document.createElement('a');
+    a.href=url;a.download='akhavan-visit-priorities-'+report.weekStart+'.csv';
+    document.body.appendChild(a);a.click();a.remove();
+    window.setTimeout(()=>URL.revokeObjectURL(url),1500);
+  };
   return <Card padding="lg" className="space-y-4">
-    <div>
-      <h2 className="text-base font-black text-text-main">هوش و اولویت‌بندی ویزیت مشتریان</h2>
-      <p className="mt-1 text-xs leading-6 text-text-secondary">ترکیب مراجعه واقعیِ ثبت‌شده، تور رسمی ERP و سابقه فروش در محدوده دسترسی شما؛ امتیاز یک اولویت پیشنهادی توضیح‌پذیر است، نه رتبه رسمی یا پیش‌بینی قطعی.</p>
+    <div className="flex flex-wrap items-start justify-between gap-2">
+      <div><h2 className="text-base font-black text-text-main">هوش و اولویت‌بندی ویزیت مشتریان</h2>
+      <p className="mt-1 text-xs leading-6 text-text-secondary">ترکیب مراجعه واقعیِ ثبت‌شده، تور رسمی ERP و سابقه فروش در محدوده دسترسی شما؛ امتیاز یک اولویت پیشنهادی توضیح‌پذیر است، نه رتبه رسمی یا پیش‌بینی قطعی.</p></div>
+      <button type="button" onClick={exportPrioritiesCsv} className="min-h-10 rounded-xl border border-border px-3 py-2 text-xs font-bold text-primary">خروجی اکسلِ اولویت‌ها</button>
     </div>
     <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
       {[['مشتری قابل بررسی',report.customerCount],['فاقد ویزیت ثبت‌شده',report.withoutRecordedVisits],['در تور ERP این هفته',report.inErpTour],['ویزیت واقعی ثبت‌شده',report.totalActualVisits]].map(([title,value])=>
