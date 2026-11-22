@@ -67,6 +67,32 @@ export const ETL_RULES: Record<ErpEntityType, Rule[]> = {
   PRODUCT: [r => (r.taxRatePercent == null || String(r.taxRatePercent).trim() === '' || (Number.isFinite(Number(r.taxRatePercent)) && Number(r.taxRatePercent) >= 0 && Number(r.taxRatePercent) <= 100) ? null : ['PRODUCT_TAX_RATE_INVALID', 'نرخ مالیات کالا باید عددی بین ۰ تا ۱۰۰ باشد (خالی = نامشخص).'])],
   PRODUCT_COST: [anyOf(['externalProductId'], 'COST_PRODUCT_MISSING'), nonNegative('unitCost', 'COST_VALUE_INVALID'), dateRule('effectiveFrom', 'COST_EFFECTIVE_FROM_INVALID')],
   SALES_RETURN: [dateRule('returnDate', 'RETURN_DATE_INVALID'), nonNegative('totalAmount', 'RETURN_AMOUNT_INVALID')],
+  VISIT_ROUTE: [
+    anyOf(['routeCode'], 'VISIT_ROUTE_CODE_MISSING'),
+    anyOf(['routeName'], 'VISIT_ROUTE_NAME_MISSING'),
+  ],
+  VISIT_TOUR: [
+    dateRule('tourDate', 'VISIT_TOUR_DATE_INVALID'),
+    anyOf(['routeExternalId'], 'VISIT_TOUR_ROUTE_MISSING'),
+    anyOf(['salesRepExternalId'], 'VISIT_TOUR_REP_MISSING'),
+    r => {
+      if (!Array.isArray(r.stops) || r.stops.length === 0) return ['VISIT_TOUR_STOPS_MISSING', 'تور ERP باید حداقل یک ایستگاه معتبر داشته باشد.'];
+      const stops = r.stops as Array<Record<string, unknown>>;
+      const seenSequences = new Set<number>();
+      const seenCustomers = new Set<string>();
+      for (const stop of stops) {
+        const customerId = String(stop?.externalCustomerId ?? '').trim();
+        const sequence = Number(stop?.stopSequence);
+        if (!customerId || !Number.isSafeInteger(sequence) || sequence < 1)
+          return ['VISIT_TOUR_STOP_INVALID', 'شناسه مشتری و ترتیب مثبت ایستگاه در تور ERP الزامی است.'];
+        if (seenSequences.has(sequence) || seenCustomers.has(customerId))
+          return ['VISIT_TOUR_STOP_DUPLICATE', 'ترتیب ایستگاه یا مشتری تکراری در تور ERP پذیرفته نمی‌شود.'];
+        seenSequences.add(sequence);
+        seenCustomers.add(customerId);
+      }
+      return null;
+    },
+  ],
   DELIVERY_EVENT: [anyOf(['externalInvoiceId', 'invoiceId'], 'DELIVERY_INVOICE_REF_MISSING'), r => (DELIVERY_STATUS.includes(String(r.deliveryStatusCode)) ? null : ['DELIVERY_STATUS_INVALID', 'وضعیت تحویل نامعتبر است.']),
     r => ((r.latitude == null || Math.abs(num(r.latitude)) <= 90) && (r.longitude == null || Math.abs(num(r.longitude)) <= 180) ? null : ['DELIVERY_COORDINATE_INVALID', 'مختصات خارج از بازهٔ معتبر است.'])],
 };
