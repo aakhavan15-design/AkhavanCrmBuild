@@ -161,7 +161,9 @@ export function RouteMapOverview(){
   return [{
    id:r.routeId,name:r.routeCode+' · '+r.routeName,kind:'ROUTE' as const,
    point:{latitude:point.latitude,longitude:point.longitude},
-   tone:color(r),bubbleLabel:displayMetric(currentPrimary,r[currentPrimary]),detailPath:undefined
+   tone:color(r),bubbleLabel:displayMetric(currentPrimary,r[currentPrimary])+'\n'+
+    fa(r.customerCount??0)+' مشتری'+(permitted.has('activeCustomerCount')&&r.activeCustomerCount!==null
+      ? ' · '+fa(r.activeCustomerCount)+' خریدار' : ''),detailPath:undefined
   }];
  });
  const selectedSummary=rows.find(r=>r.routeId===selectedRoute);
