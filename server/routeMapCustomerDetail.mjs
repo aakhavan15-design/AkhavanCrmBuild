@@ -16,6 +16,7 @@ export function createRouteCustomerDetailReader({sql,run}){
    .input('supplierJson',sql.NVarChar(sql.MAX),JSON.stringify(filters.supplierIds))
    .input('brandJson',sql.NVarChar(sql.MAX),JSON.stringify(filters.brandIds))
    .input('categoryJson',sql.NVarChar(sql.MAX),JSON.stringify(filters.customerCategoryIds))
+   .input('supervisorJson',sql.NVarChar(sql.MAX),JSON.stringify(filters.supervisorIds))
    .input('repJson',sql.NVarChar(sql.MAX),JSON.stringify(filters.repIds));
   const allowed=`(@organizationWide=1 OR EXISTS(
     SELECT 1 FROM crm.VisitRouteStaffMirror staff
@@ -26,6 +27,14 @@ export function createRouteCustomerDetailReader({sql,run}){
     FROM crm.VisitRouteMirror route WHERE route.TenantId=@tenant AND route.RouteId=@routeId
     AND route.IsDeleted=0 AND ${allowed}`)).recordset[0];
   if(!route)return null;
+  if(filters.supervisorIds.length){
+    const match=(await request().query(`SELECT TOP(1) 1 AS Match
+      FROM crm.VisitRouteStaffMirror st
+      WHERE st.TenantId=@tenant AND st.RouteId=@routeId AND st.StaffRoleCode='SUPERVISOR'
+        AND st.ExternalStaffId IN (SELECT value FROM OPENJSON(@supervisorJson))
+        AND st.EffectiveFrom<=@dateTo AND (st.EffectiveTo IS NULL OR st.EffectiveTo>=@dateFrom)`)).recordset;
+    if(!match.length)return null;
+  }
   // Source-authoritative membership, never WHERE customer.Latitude IS NOT NULL.
   const members=(await request().query(`
    SELECT DISTINCT a.AccountId,a.Name,a.AccountCode,a.StatusCode,
