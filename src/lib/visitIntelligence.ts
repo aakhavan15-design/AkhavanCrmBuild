@@ -44,11 +44,12 @@ export interface VisitIntelArgs {
   invoiceHistoryComplete?: boolean;
   visitTargetDays?: number;
 }
-export type VisitIntelLabel = 'NO_RECORDED_VISIT'|'OVERDUE_VISIT'|'HIGH_VALUE'|'WHOLESALE'|'NO_ORDER'|'RETURN_REVIEW'|'COLLECTION_DUE'|'IN_WEEK_TOUR'|'OUTSIDE_WEEK_TOUR';
+export type VisitIntelLabel = 'NO_RECORDED_VISIT'|'OVERDUE_VISIT'|'HIGH_VALUE'|'WHOLESALE'|'NO_ORDER'|'RETURN_REVIEW'|'COLLECTION_DUE'|'IN_WEEK_TOUR'|'OUTSIDE_WEEK_TOUR'|'UNCONFIRMED_TOUR_STOP';
 export interface VisitIntelRow {
   customerId: string; name: string; score: number; reasons: VisitIntelLabel[];
   recordedVisits: number; lastVisitDate: string | null; lastVisitOutcome: string | null; lastNoOrderReason: string | null;
   daysSinceVisit: number | null; invoiceCount: number; salesTotal: number | null;
+  visitLinkedInvoice: VisitIntelInvoice | null; unconfirmedTourStops: number;
   averageInvoice: number | null; lastInvoiceDate: string | null; lastInvoice: VisitIntelInvoice | null;
   returnedInvoiceIds: string[]; returnCount: number;
   receivable: VisitIntelReceivable | null;
@@ -60,6 +61,7 @@ export interface VisitIntelReport {
   customerCount: number; withRecordedVisits: number; withoutRecordedVisits: number;
   inErpTour: number; totalActualVisits: number; customerRows: VisitIntelRow[];
   incompleteSources: string[]; reasonCounts: Array<{reason: string; count: number}>;
+  routes: Array<{routeId: string; repId: string; plannedStops: number; recordedVisitsOnTourDate: number; unconfirmedPastStops: number; collectionDueStops: number}>;
 }
 const DAY_MS = 86400000;
 const ymd = (value: unknown): string | null => {
@@ -82,6 +84,7 @@ export const visitReasonLabel: Record<VisitIntelLabel,string> = {
   HIGH_VALUE:'سابقه خرید ارزشمند',WHOLESALE:'مشتری عمده/تعاونی',
   NO_ORDER:'ویزیت بدون سفارش',RETURN_REVIEW:'برگشت فروش نیازمند بررسی',
   COLLECTION_DUE:'مانده معوق معتبر',IN_WEEK_TOUR:'در تور رسمی این هفته',
+  UNCONFIRMED_TOUR_STOP:'ایستگاه گذشته بدون ثبت مراجعه',
   OUTSIDE_WEEK_TOUR:'خارج از تور رسمی هفته',
 };
 export function buildVisitIntelligence(args: VisitIntelArgs): VisitIntelReport {
@@ -137,6 +140,8 @@ export function buildVisitIntelligence(args: VisitIntelArgs): VisitIntelReport {
     if(receivable&&receivable.overdueAmount>0)add('COLLECTION_DUE');
     const stops=(tourStops.get(customer.id)||[]).sort((a,b)=>a.date.localeCompare(b.date)||a.sequence-b.sequence);
     if(stops.length)add('IN_WEEK_TOUR');
+    const unconfirmedTourStops=stops.filter(stop=>stop.date<asOf&&!cv.some(v=>ymd(v.checkInAt||v.dateTime)===stop.date && (!v.repId&&!v.ownerId||[v.repId,v.ownerId].includes(stop.repId)))).length;
+    if(unconfirmedTourStops)add('UNCONFIRMED_TOUR_STOP');
     else if((args.tours||[]).length)add('OUTSIDE_WEEK_TOUR');
     if(last) evidence.push('VISIT:'+last.id);
     if(first) evidence.push('INVOICE:'+first.id);
@@ -145,7 +150,7 @@ export function buildVisitIntelligence(args: VisitIntelArgs): VisitIntelReport {
     if(!args.historyComplete)warnings.push('پوشش تاریخچه ویزیت تأیید نشده؛ نبود رکورد به معنی هرگز ویزیت‌نشدن نیست.');
     if(!args.invoiceHistoryComplete)warnings.push('پوشش تاریخچه فاکتور تأیید نشده؛ رتبه خرید نسبی به داده موجود است.');
     if(!receivable)warnings.push('مانده رسمی قابل اتکا برای این مشتری ارائه نشده است.');
-    const score=(reasons.includes('NO_RECORDED_VISIT')?22:0)+(reasons.includes('OVERDUE_VISIT')?18:0)+
+    const score=(reasons.includes('UNCONFIRMED_TOUR_STOP')?20:0)+(reasons.includes('NO_RECORDED_VISIT')?22:0)+(reasons.includes('OVERDUE_VISIT')?18:0)+
       (reasons.includes('HIGH_VALUE')?18:0)+(reasons.includes('WHOLESALE')?10:0)+
       (reasons.includes('NO_ORDER')?12:0)+(reasons.includes('RETURN_REVIEW')?8:0)+
       (reasons.includes('COLLECTION_DUE')?15:0)+(reasons.includes('IN_WEEK_TOUR')?12:0);
@@ -153,6 +158,8 @@ export function buildVisitIntelligence(args: VisitIntelArgs): VisitIntelReport {
       lastVisitOutcome:last?String(last.outcome||last.status||'ثبت نشده'):null,
       lastNoOrderReason:last?String(last.noOrderReason||last.reasonCode||last.description||last.notes||'').trim()||null:null,
       daysSinceVisit,invoiceCount:ci.length,salesTotal,
+      unconfirmedTourStops,
+      visitLinkedInvoice:last ? ci.find(i=>(last.invoiceId&&[i.id,i.invoiceNumber].includes(last.invoiceId))||(last.salesOrderId||last.orderId)&&i.salesOrderId===(last.salesOrderId||last.orderId))||null : null,
       averageInvoice:salesTotal===null||!ci.length?null:salesTotal/ci.length,
       lastInvoiceDate:first?.date||null,lastInvoice:first,
       returnedInvoiceIds:[...new Set(matches.map(r=>String(r.invoiceId||r.externalInvoiceId||'')).filter(Boolean))],
@@ -165,11 +172,22 @@ export function buildVisitIntelligence(args: VisitIntelArgs): VisitIntelReport {
     if(reason)reasonMap.set(reason,(reasonMap.get(reason)||0)+1);
   }
   const reasonCounts=[...reasonMap].map(([reason,count])=>({reason,count})).sort((a,b)=>b.count-a.count);
+  const routesMap=new Map<string,{routeId:string;repId:string;plannedStops:number;recordedVisitsOnTourDate:number;unconfirmedPastStops:number;collectionDueStops:number}>();
+  for(const row of customerRows)for(const stop of row.tourStops){
+    const key=stop.routeId+'|'+stop.repId;
+    const entry=routesMap.get(key)||{routeId:stop.routeId,repId:stop.repId,plannedStops:0,recordedVisitsOnTourDate:0,unconfirmedPastStops:0,collectionDueStops:0};
+    entry.plannedStops++;
+    const done=visits.some(v=>String(v.customerId||v.accountId||'')===row.customerId && ymd(v.checkInAt||v.dateTime)===stop.date && (!v.repId&&!v.ownerId||[v.repId,v.ownerId].includes(stop.repId)));
+    if(done)entry.recordedVisitsOnTourDate++;
+    else if(stop.date<asOf)entry.unconfirmedPastStops++;
+    if(row.receivable && row.receivable.overdueAmount>0)entry.collectionDueStops++;
+    routesMap.set(key,entry);
+  }
   return {asOf,weekStart,weekEnd,customerCount:args.customers.length,
     withRecordedVisits:customerRows.filter(r=>r.recordedVisits>0).length,
     withoutRecordedVisits:customerRows.filter(r=>!r.recordedVisits).length,
     inErpTour:customerRows.filter(r=>r.tourStops.length>0).length,totalActualVisits:visits.length,
-    customerRows,incompleteSources:[
+    customerRows,routes:[...routesMap.values()].sort((a,b)=>b.unconfirmedPastStops-a.unconfirmedPastStops||b.collectionDueStops-a.collectionDueStops),incompleteSources:[
       ...(!args.historyComplete?['تاریخچه کامل ویزیت تأیید نشده']:[]),
       ...(!args.invoiceHistoryComplete?['تاریخچه کامل فروش تأیید نشده']:[]),
       ...(!(args.tours||[]).length?['تور ERP برای هفته جاری در داده قابل مشاهده نیست']:[]),
