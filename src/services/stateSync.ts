@@ -3,7 +3,7 @@
 // provider (SQL Server via /api/v1/state/*). Import-light on purpose so it can be unit-tested without a browser.
 import type { AppState } from '../types';
 import {
-  splitState, diffAgainstIndex, applyToIndex, mergeSnapshot, recordId, type HashIndex, type ChangeSet,
+  splitState, diffAgainstIndex, applyToIndex, mergeSnapshot, recordId, hashRecord, type HashIndex, type ChangeSet,
 } from '../lib/stateModel.mjs';
 
 export interface StateSnapshot { collections: Record<string, Array<Record<string, unknown>>>; singletons: Record<string, any>; serverVersion?: number; hiddenCollections?: string[] }
@@ -51,6 +51,28 @@ export class StateSyncEngine {
 
   getStatus(): SyncStatus { return this.status; }
   isRecordAcknowledged(collection: string, id: string): boolean { return this.index.collections[collection]?.has(id) ?? false; }
+
+  /** Adopt an authoritative API receipt without sending the same write through state sync. */
+  acknowledgeRecord(collection: string, record: Record<string,unknown>, before?: Record<string,unknown>): boolean {
+    if (!this.active || !this.hydrated || this.running) return false;
+    const id=recordId(record,collection,this.registry);
+    const list=(this.store.getState().state as unknown as Record<string,unknown>)[collection];
+    if (!id || !Array.isArray(list)) return false;
+    const current=list.find(item=>recordId(item,collection,this.registry)===id);
+    const alreadyCurrent=current && hashRecord(current)===hashRecord(record);
+    if (!alreadyCurrent && (before ? !current || hashRecord(current)!==hashRecord(before) : Boolean(current))) return false;
+    this.snapshotRequest++;
+    applyToIndex(this.index,{upserts:{[collection]:[record]},deletes:{},singletons:{},count:1},this.registry);
+    if (alreadyCurrent) return true;
+    this.suppress=true;
+    try {
+      this.store.setState(prev=>({state:{...prev.state,[collection]:current
+        ? list.map(item=>recordId(item,collection,this.registry)===id ? record : item)
+        : [record,...list]}}));
+    } finally { this.suppress=false; }
+    return true;
+  }
+
   onStatus(fn: (s: SyncStatus) => void): () => void { this.listeners.add(fn); fn(this.status); return () => this.listeners.delete(fn); }
   private set(patch: Partial<SyncStatus>) { this.status = { ...this.status, ...patch }; this.listeners.forEach(fn => fn(this.status)); }
 

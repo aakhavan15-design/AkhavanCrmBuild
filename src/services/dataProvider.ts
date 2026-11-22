@@ -7,7 +7,7 @@ import type { LearningActionInput, LearningAssignmentInput, LearningCatalog, Lea
 import type { 
   AppState, 
   Account, 
-  Quote, 
+  Quote, QuoteDecisionAction,
   Task, 
   Invoice, 
   Payment, 
@@ -279,6 +279,7 @@ export interface DataProvider {
   getQuoteById(id: string): Promise<Quote | null>;
   createQuote(quote: Partial<Quote>, idempotencyKey?: string): Promise<Quote>;
   updateQuote(id: string, patch: Partial<Quote>): Promise<Quote>;
+  decideQuote(id:string,input:{commandId:string;action:QuoteDecisionAction;expectedAt:string;expectedBasis:string}):Promise<{quote:Quote;replayed:boolean}>;
   
   // Tasks
   getTasks(filter?: any, pagination?: PaginationParams): Promise<PaginatedResult<Task>>;
@@ -571,6 +572,7 @@ export class ClientStorageDataProvider implements DataProvider {
     });
     return updated!;
   }
+  async decideQuote():Promise<{quote:Quote;replayed:boolean}> { throw new Error('ثبت تصمیم فروش به پایگاه مرکزی نیاز دارد.'); }
 
   async getTasks(filter?: any, pagination?: PaginationParams): Promise<PaginatedResult<Task>> {
     const list = this.getState().tasks || [];
@@ -1116,6 +1118,9 @@ export class HttpBackendDataProvider implements DataProvider {
       method: 'PUT',
       body: JSON.stringify(patch)
     });
+  }
+  async decideQuote(id:string,input:{commandId:string;action:QuoteDecisionAction;expectedAt:string;expectedBasis:string}):Promise<{quote:Quote;replayed:boolean}> {
+    return this.request(`/quotes/${encodeURIComponent(id)}/decision`,{method:'POST',body:JSON.stringify(input)});
   }
 
   async getTasks(filter?: any, pagination?: PaginationParams): Promise<PaginatedResult<Task>> {

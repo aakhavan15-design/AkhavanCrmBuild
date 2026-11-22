@@ -1,7 +1,7 @@
 import { canEditQuoteLines } from '../lib/cpqEngine';
 import { useCan, requireActiveUser } from '../hooks/useCan';
 import { Select } from './ui';
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { getPersianStatusLabel } from '../lib/labels';
 import { useNavigate } from 'react-router-dom';
 import { AppState, Quote, QuoteLine, ID, PriceWaterfallBreakdown } from '../types';
@@ -28,6 +28,9 @@ import { TrendIndicator } from './charts/TrendIndicator';
 import { PrintQuoteButton } from './PrintLayouts';
 import { OrderDetailsDrawer } from './shared/OrderDetailsDrawer';
 import { InputControl } from './ui/Input';
+import { getActiveDataProvider } from '../services/dataProvider';
+import { quoteDecisionBasis } from '../lib/quoteDecisionBasis.mjs';
+import { dataSyncController } from '../services/dataSyncController';
 
 /** Recompute persisted Quote totals from line-level source values in one place. */
 function recalculateQuoteFinancials(quote: Quote): void {
@@ -58,6 +61,9 @@ interface QuotesWorkspaceProps {
 }
 
 export function QuotesWorkspace({ state, updateState }: QuotesWorkspaceProps) {
+  const [decisionBusy,setDecisionBusy]=useState(false);
+  const submittingDecision=useRef(false);
+  const decisionAttempt=useRef<{key:string;id:string}|null>(null);
   const { can, canOn, denied } = useCan(state, updateState);
   const navigate = useNavigate();
   const [activeQuoteId, setActiveQuoteId] = useState<ID | null>(() => {
@@ -386,14 +392,15 @@ export function QuotesWorkspace({ state, updateState }: QuotesWorkspaceProps) {
     });
   };
 
-  const handleAction = (action: 'REQUEST_APPROVAL' | 'APPROVE' | 'ACCEPT' | 'REJECT' | 'HANDOFF') => {
-    if (!can('quotes', action === 'APPROVE' || action === 'HANDOFF' ? 'APPROVE' : 'EDIT')) return denied(action === 'APPROVE' ? 'تایید سفارش' : 'تغییر وضعیت سفارش');
+  const handleAction = async (action: 'REQUEST_APPROVAL' | 'APPROVE' | 'ACCEPT' | 'REJECT' | 'HANDOFF') => {
+    const permission=action==='APPROVE' || action==='REJECT' || action==='HANDOFF' ? 'APPROVE' : 'EDIT';
+    if (submittingDecision.current || !can('quotes',permission)) return;
     if (!activeQuote) return;
     if (action !== 'HANDOFF' && !requireActiveUser(state, updateState, 'تغییر وضعیت سفارش')) return;
-    if (!canOn('quotes', action === 'APPROVE' || action === 'HANDOFF' ? 'APPROVE' : 'EDIT', quoteScope(activeQuote))) return denied('دسترسی به این سفارش');
+    if (!canOn('quotes',permission,quoteScope(activeQuote))) return denied('دسترسی به این سفارش');
     const allowedTransition: Record<typeof action, boolean> = {
       REQUEST_APPROVAL: activeQuote.status === 'DRAFT' && activeQuote.lines.length > 0,
-      APPROVE: activeQuote.status === 'DRAFT' || activeQuote.status === 'PENDING_APPROVAL',
+      APPROVE: (activeQuote.status === 'DRAFT' || activeQuote.status === 'PENDING_APPROVAL') && activeQuote.lines.length>0,
       ACCEPT: activeQuote.status === 'APPROVED',
       REJECT: activeQuote.status === 'PENDING_APPROVAL',
       HANDOFF: activeQuote.status === 'ACCEPTED'
@@ -427,6 +434,33 @@ export function QuotesWorkspace({ state, updateState }: QuotesWorkspaceProps) {
           actor: draft.users?.find(u => u.id === draft.currentUserId)?.name || 'System', createdAt: new Date().toISOString()
         });
       });
+      return;
+    }
+    const provider=getActiveDataProvider();
+    if (provider.name==='SQLSERVER_BACKEND') {
+      const engine=dataSyncController.getEngine();
+      const expectedAt=activeQuote.updatedAt ?? activeQuote.createdAt;
+      submittingDecision.current=true;
+      setDecisionBusy(true);
+      try {
+        const expectedBasis=await quoteDecisionBasis(activeQuote);
+        const key=JSON.stringify([activeQuote.id,action,expectedBasis]);
+        const commandId=decisionAttempt.current?.key===key ? decisionAttempt.current.id : crypto.randomUUID();
+        decisionAttempt.current={key,id:commandId};
+        const receipt=await provider.decideQuote(activeQuote.id,{action,expectedAt,expectedBasis,commandId});
+        if (receipt.quote?.id!==activeQuote.id) throw new Error('رسید ثبت تصمیم دریافت نشد.');
+        if (engine!==dataSyncController.getEngine()) return;
+        if (!engine?.acknowledgeRecord('quotes',receipt.quote,activeQuote)) {
+          await dataSyncController.retrieveFromSqlServer();
+        }
+        decisionAttempt.current=null;
+        toast.success('تصمیم پیش‌فاکتور در سرور ثبت شد.');
+      } catch (cause) {
+        toast.warning(cause instanceof Error ? cause.message : 'ثبت تصمیم ممکن نشد.');
+      } finally {
+        submittingDecision.current=false;
+        setDecisionBusy(false);
+      }
       return;
     }
     updateState(draft => {
@@ -781,10 +815,10 @@ export function QuotesWorkspace({ state, updateState }: QuotesWorkspaceProps) {
                 <div className="flex flex-wrap gap-2">
                   {activeQuote.status === 'DRAFT' && (
                     <>
-                      {can('quotes', 'EDIT') && <Button size="sm" variant="outline" onClick={() => handleAction('REQUEST_APPROVAL')}>
+                      {can('quotes', 'EDIT') && <Button disabled={decisionBusy} size="sm" variant="outline" onClick={() => handleAction('REQUEST_APPROVAL')}>
                         درخواست تایید مدیریت
                       </Button>}
-                      {can('quotes', 'APPROVE') && <Button size="sm" variant="primary" onClick={() => handleAction('APPROVE')}>
+                      {can('quotes', 'APPROVE') && <Button disabled={decisionBusy} size="sm" variant="primary" onClick={() => handleAction('APPROVE')}>
                         تایید قیمت
                       </Button>}
                     </>
@@ -792,17 +826,17 @@ export function QuotesWorkspace({ state, updateState }: QuotesWorkspaceProps) {
 
                   {activeQuote.status === 'PENDING_APPROVAL' && (
                     can('quotes', 'APPROVE') ? <>
-                      <Button size="sm" variant="success" onClick={() => handleAction('APPROVE')} icon={<CheckCircle2 className="w-3.5 h-3.5" />}>
+                      <Button disabled={decisionBusy} size="sm" variant="success" onClick={() => handleAction('APPROVE')} icon={<CheckCircle2 className="w-3.5 h-3.5" />}>
                         تایید نهایی مدیریت
                       </Button>
-                      <Button size="sm" variant="danger" onClick={() => handleAction('REJECT')}>
+                      <Button disabled={decisionBusy} size="sm" variant="danger" onClick={() => handleAction('REJECT')}>
                         رد سفارش
                       </Button>
                     </> : <span className="text-xs text-warning font-bold rounded-xl bg-warning-soft px-3 py-2">در انتظار تصمیم مدیر مجاز</span>
                   )}
 
                   {activeQuote.status === 'APPROVED' && (
-                    <Button size="sm" variant="primary" onClick={() => handleAction('ACCEPT')} icon={<CheckCircle2 className="w-3.5 h-3.5" />}>
+                    <Button disabled={decisionBusy || !can('quotes','EDIT')} size="sm" variant="primary" onClick={() => handleAction('ACCEPT')} icon={<CheckCircle2 className="w-3.5 h-3.5" />}>
                       ثبت تاییدیه مشتری
                     </Button>
                   )}
@@ -1102,7 +1136,7 @@ export function QuotesWorkspace({ state, updateState }: QuotesWorkspaceProps) {
         quoteId={activeQuoteId}
         state={state}
         updateState={updateState}
-        onAction={handleAction}
+        onAction={decisionBusy ? undefined : handleAction}
         onOpenProfitModal={() => setIsProfitModalOpen(true)}
         canEdit={can('quotes', 'EDIT')}
         canApprove={can('quotes', 'APPROVE')}

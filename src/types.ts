@@ -466,6 +466,7 @@ export interface Quote {
   updatedAt?: string;
   [key: string]: any;
 }
+export type QuoteDecisionAction = 'REQUEST_APPROVAL' | 'APPROVE' | 'ACCEPT' | 'REJECT';
 
 export interface Notification {
   id: string;

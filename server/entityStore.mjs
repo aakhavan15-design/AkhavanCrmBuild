@@ -412,7 +412,18 @@ export class MssqlEntityDriver {
                       @tenantId,collection.Name,N'quotes.create',incoming.JsonDoc
                     )
                   ))
-                )`);
+                )
+                AND (collection.Name<>N'quotes' OR
+                  (previous.EntityId IS NULL AND incoming.IsDelete=0 AND JSON_VALUE(incoming.JsonDoc,'$.status') IN(N'DRAFT',N'PENDING_APPROVAL'))
+                  OR (previous.EntityId IS NOT NULL AND previous.IsDeleted=0 AND (
+                    (incoming.IsDelete=1 AND JSON_VALUE(previous.JsonDoc,'$.status')=N'DRAFT')
+                    OR (incoming.IsDelete=0 AND JSON_VALUE(incoming.JsonDoc,'$.status')=JSON_VALUE(previous.JsonDoc,'$.status')
+                      AND (JSON_VALUE(previous.JsonDoc,'$.status')=N'DRAFT'
+                        OR (ISNULL(CONVERT(varbinary(max),JSON_QUERY(previous.JsonDoc,'$.lines')),0x)=ISNULL(CONVERT(varbinary(max),JSON_QUERY(incoming.JsonDoc,'$.lines')),0x)
+                          AND NOT EXISTS(SELECT 1 FROM OPENJSON(previous.JsonDoc) p
+                            FULL JOIN OPENJSON(incoming.JsonDoc) n ON p.[key]=n.[key]
+                            WHERE COALESCE(p.[key],n.[key]) IN(N'accountId',N'customerId',N'ownerId',N'totalAmount',N'validUntil',N'notes')
+                              AND ISNULL(CONVERT(varbinary(max),p.value),0x)<>ISNULL(CONVERT(varbinary(max),n.value),0x))))))))`);
             const allowed = new Set(permissions.recordset.map(row => row.RowIndex));
             const blocked = new Set(scoped.filter(row => !allowed.has(row.index)).map(row => row.index));
             for (const index of blocked) rejected.push({ collection: chunk[index].c, id: chunk[index].i, reason: 'FORBIDDEN_SCOPE' });

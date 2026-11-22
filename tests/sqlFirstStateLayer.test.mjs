@@ -346,6 +346,26 @@ function fakeStore(state) {
   };
 }
 
+test('authoritative receipts update the visible record once and preserve intervening edits', async () => {
+  const before={id:'quote',status:'DRAFT'};
+  const store=fakeStore({quotes:[before]});
+  const pushes=[];
+  const provider={name:'SQLSERVER_BACKEND',getStateSnapshot:async()=>({collections:{quotes:[before]},singletons:{}}),
+    syncStateChanges:async change=>{pushes.push(change); return {ok:true,rejected:[]};}};
+  const engine=new StateSyncEngine(store,provider,registry,{debounceMs:50});
+  await engine.start();
+  const approved={...before,status:'APPROVED'};
+  assert.equal(engine.acknowledgeRecord('quotes',approved,before),true);
+  assert.equal(store.getState().state.quotes[0],approved);
+  await engine.flush();
+  assert.deepEqual(pushes,[]);
+  const newer={...approved,notes:'ویرایش در جریان'};
+  store.setState({state:{quotes:[newer]}});
+  assert.equal(engine.acknowledgeRecord('quotes',{...approved,status:'ACCEPTED'},approved),false);
+  assert.equal(store.getState().state.quotes[0],newer);
+  engine.stop();
+});
+
 test('round trip: client edits reach SQL, a second client sees them, deletes propagate', async () => {
   const svc = createEntityService({ driver: new MemoryEntityDriver(), registry, hasPermission: allow });
   const storeA = fakeStore(sampleState());

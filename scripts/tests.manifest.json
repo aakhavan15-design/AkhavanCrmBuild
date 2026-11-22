@@ -1,5 +1,9 @@
 [
   {
+    "file": "tests/quoteDecisionContracts.test.mjs",
+    "flags": []
+  },
+  {
     "file": "tests/personnelLearningChurnContracts.test.mjs",
     "flags": []
   },

@@ -1,6 +1,6 @@
 import { guard, useCan } from '../hooks/useCan';
 import { computeQuoteTax } from '../lib/taxRate';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { AppState, Quote, ID, DraftQuoteState } from '../types';
 import { generateId, nextSequenceNumber, formatCurrency, parsePersianNumber, formatInputCurrency, cleanNumericInput } from '../lib/utils';
 import { Modal } from './ui/Modal';
@@ -9,6 +9,9 @@ import { Package, CheckCircle2, ChevronRight, ChevronLeft, Plus, Trash2, Printer
 import { CustomerInvoicePrint } from './PrintLayouts';
 import { SearchableSelect, type SelectOption } from './ui/SearchableSelect';
 import { InputControl, Checkbox } from './ui/Input';
+import { getActiveDataProvider } from '../services/dataProvider';
+import { toast } from './ui/Toast';
+import { dataSyncController } from '../services/dataSyncController';
 
 interface QuoteWizardModalProps {
   isOpen: boolean;
@@ -19,6 +22,9 @@ interface QuoteWizardModalProps {
 }
 
 export function QuoteWizardModal({ isOpen, onClose, state, updateState, onQuoteCreated }: QuoteWizardModalProps) {
+  const [creating,setCreating]=useState(false);
+  const creationBusy=useRef(false);
+  const creationAttempt=useRef<{key:string;quote:Quote}|null>(null);
   const draftState = state.draftQuote;
   const orgConfig = (state.settings as Record<string, unknown>)?.orgConfig || {};
   const configuredTaxRaw = orgConfig.taxRatePercent;
@@ -123,7 +129,8 @@ export function QuoteWizardModal({ isOpen, onClose, state, updateState, onQuoteC
     setLines(prev => prev.filter((_, i) => i !== idx));
   };
 
-  const handleFinishAndCreate = () => {
+  const handleFinishAndCreate = async () => {
+    if (creationBusy.current) return;
     if (!guard(state, updateState, 'quotes', 'CREATE', 'صدور پیش‌فاکتور')) return;
     if (!selectedCustomerId || !visibleAccounts.some(account => account.id === selectedCustomerId) || lines.length === 0) return;
     if (!discountValid) {
@@ -143,7 +150,10 @@ export function QuoteWizardModal({ isOpen, onClose, state, updateState, onQuoteC
     const newQuoteNum = nextSequenceNumber('QT-', (state.quotes || []).map(x => x.quoteNumber), 1001);
     const creator = state.users.find(user => user.id === state.currentUserId);
 
-    const finalQuote: Quote = {
+    const provider=getActiveDataProvider();
+    const remote=provider.name==='SQLSERVER_BACKEND';
+    const engine=dataSyncController.getEngine();
+    let finalQuote: Quote = {
       id: newId,
       quoteNumber: newQuoteNum,
       accountId: selectedCustomerId,
@@ -153,7 +163,7 @@ export function QuoteWizardModal({ isOpen, onClose, state, updateState, onQuoteC
       territoryId: creator?.territoryId,
       teamId: creator?.teamId,
       tenantId: creator?.tenantId,
-      status: !costsComplete || marginPercent < (state.settings?.quoteApprovalMarginThreshold || 15) ? 'PENDING_APPROVAL' : 'APPROVED',
+      status: remote ? 'DRAFT' : !costsComplete || marginPercent < (state.settings?.quoteApprovalMarginThreshold || 15) ? 'PENDING_APPROVAL' : 'APPROVED',
       lines: lines.map(l => ({
         id: generateId(),
         productId: l.productId,
@@ -171,9 +181,29 @@ export function QuoteWizardModal({ isOpen, onClose, state, updateState, onQuoteC
       updatedAt: new Date().toISOString()
     };
 
+    if (remote) {
+      const key=JSON.stringify([state.currentUserId,selectedCustomerId,lines,projectTitle,paymentTerms,deliveryTerms,quoteNotes,validUntilDays,grandTotal]);
+      const pending=creationAttempt.current?.key===key ? creationAttempt.current.quote : finalQuote;
+      creationAttempt.current={key,quote:pending};
+      creationBusy.current=true;
+      setCreating(true);
+      try {
+        finalQuote=await provider.createQuote(pending);
+        if (finalQuote?.id!==pending.id) throw new Error('رسید ثبت پیش‌فاکتور دریافت نشد.');
+        if (engine!==dataSyncController.getEngine()) return;
+        if (!engine?.acknowledgeRecord('quotes',finalQuote)) await dataSyncController.retrieveFromSqlServer();
+        creationAttempt.current=null;
+      } catch (cause) {
+        toast.warning(cause instanceof Error ? cause.message : 'ثبت پیش‌فاکتور ممکن نشد.');
+        return;
+      } finally {
+        creationBusy.current=false;
+        setCreating(false);
+      }
+    }
     updateState(draft => {
       if (!draft.quotes) draft.quotes = [];
-      draft.quotes.unshift(finalQuote);
+      if (!remote) draft.quotes = [finalQuote,...draft.quotes.filter(quote=>quote.id!==finalQuote.id)];
       draft.activeContextAccountId = selectedCustomerId;
       draft.draftQuote = null;
       if (!draft.auditLogs) draft.auditLogs = [];
@@ -181,8 +211,8 @@ export function QuoteWizardModal({ isOpen, onClose, state, updateState, onQuoteC
         id: generateId(),
         action: 'QUOTE_CREATED',
         entityType: 'QUOTE',
-        entityId: newId,
-        details: `پیش‌فاکتور رسمی ${newQuoteNum} صادر شد`,
+        entityId: finalQuote.id,
+        details: `پیش‌فاکتور ${finalQuote.quoteNumber} ثبت شد`,
         actor: state.users?.find(u => u.id === state.currentUserId)?.name || 'System',
         createdAt: new Date().toISOString()
       });
@@ -190,7 +220,7 @@ export function QuoteWizardModal({ isOpen, onClose, state, updateState, onQuoteC
 
     setCreatedQuote(finalQuote);
     setStep(4);
-    if (onQuoteCreated) onQuoteCreated(newId);
+    if (onQuoteCreated) onQuoteCreated(finalQuote.id);
   };
 
   const handleClearDraft = () => {
@@ -206,7 +236,7 @@ export function QuoteWizardModal({ isOpen, onClose, state, updateState, onQuoteC
   return (
     <Modal
       isOpen={isOpen}
-      onClose={onClose}
+      onClose={()=>{if(!creating)onClose();}}
       title="ویزارد صدور پیش‌فاکتور رسمی (پیکربندی و قیمت‌گذاری)"
       subtitle={`مرحله ${step} از ۴`}
       size="xl"
@@ -219,7 +249,7 @@ export function QuoteWizardModal({ isOpen, onClose, state, updateState, onQuoteC
               </Button>
             </div>
             <div className="flex gap-2">
-              <Button variant="outline" size="sm" disabled={step === 1} onClick={() => setStep(s => (s - 1) as Record<string, unknown>)}>
+              <Button variant="outline" size="sm" disabled={step === 1 || creating} onClick={() => setStep(s => (s - 1) as Record<string, unknown>)}>
                 <ChevronRight size={16} className="ml-1" /> مرحله قبل
               </Button>
               {step < 3 ? (
@@ -227,8 +257,8 @@ export function QuoteWizardModal({ isOpen, onClose, state, updateState, onQuoteC
                   مرحله بعد <ChevronLeft size={16} className="mr-1" />
                 </Button>
               ) : (
-                <Button variant="primary" size="sm" onClick={handleFinishAndCreate} className="bg-primary hover:bg-primary-hover">
-                  <FileText size={16} className="ml-1" /> صدور نهایی
+                <Button variant="primary" size="sm" loading={creating} onClick={handleFinishAndCreate} className="bg-primary hover:bg-primary-hover">
+                  <FileText size={16} className="ml-1" /> ثبت پیش‌فاکتور
                 </Button>
               )}
             </div>

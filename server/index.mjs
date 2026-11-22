@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 import fs from 'node:fs';
 import { createEntityService, FileEntityDriver, MssqlEntityDriver, MemoryEntityDriver } from './entityStore.mjs';
 import { createAccountDirectory } from './accountDirectory.mjs';
+import { createQuoteDecisions, quoteDecisionInput } from './quoteDecisions.mjs';
 import { createInvoiceFifoEvidence } from './invoiceFifoEvidence.mjs';
 import { createCollectionReceiptEvidence } from './collectionReceiptEvidence.mjs';
 import { createTreasuryFlowReader } from './treasuryFlow.mjs';
@@ -1081,6 +1082,17 @@ function taskWorkflowEndpoint(change) {
     }
   };
 }
+
+const decideQuote = createQuoteDecisions({sql,run:withTenantContext});
+app.post('/api/v1/quotes/:id/decision',authenticate,requireSignedSession,guardEntityDriver,wrap(async(req,res)=>{
+  res.set('Cache-Control','private, no-store');
+  if (entityDriverKind!=='mssql') return bad(req,res,503,'QUOTE_DECISION_UNAVAILABLE','ثبت تصمیم فروش به پایگاه مرکزی نیاز دارد.');
+  const input=quoteDecisionInput(req.body);
+  if (!input || !req.params.id || req.params.id.length>200) return bad(req,res,400,'INVALID_QUOTE_DECISION','تصمیم یا نسخهٔ پیش‌فاکتور معتبر نیست.');
+  const result=await decideQuote(req.auth,req.params.id,input);
+  if (!result.quote) return bad(req,res,result.status,'QUOTE_DECISION_REJECTED',result.message);
+  res.json(result);
+}));
 
 // Typed REST façade over the same store, used by HttpBackendDataProvider repositories (no more static stubs).
 function mountCollectionRoutes(route, collection) {
