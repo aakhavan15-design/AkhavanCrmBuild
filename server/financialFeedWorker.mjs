@@ -49,6 +49,22 @@ IF @@ROWCOUNT=0
 UPDATE integration.Connector SET LastAttemptAtUtc=SYSUTCDATETIME(),LastSuccessAtUtc=SYSUTCDATETIME(),UpdatedAtUtc=SYSUTCDATETIME()
 WHERE TenantId=@tenantId AND ConnectorId=@connectorId;`;
 
+// Reuse the existing append-only data-quality run table and the same journal checks as the ledger.
+const recordJournalQualitySql = `
+SELECT j.JournalEntryMirrorId AS id,j.ExternalJournalId AS externalId,j.DocumentNumber AS number,j.JournalQuality AS quality
+INTO #journalBatchQuality FROM analytics.vw_FinancialJournalState j
+WHERE j.TenantId=@tenantId AND j.SourceSystemCode=@source AND j.ImportedBatchId=@batchId
+  AND j.JournalQuality NOT IN ('PENDING','VOID');
+DECLARE @evaluated bigint=(SELECT COUNT_BIG(*) FROM #journalBatchQuality),
+  @failed bigint=(SELECT COUNT_BIG(*) FROM #journalBatchQuality WHERE quality<>'VALID');
+IF @evaluated>0
+  INSERT analytics.DataQualityRun(TenantId,RuleCode,EntityType,FinishedAtUtc,EvaluatedCount,FailedCount,StatusCode,SampleJson)
+  VALUES(@tenantId,'FINANCIAL_JOURNAL_VALIDITY_V1',N'FINANCIAL_JOURNAL',SYSUTCDATETIME(),@evaluated,@failed,
+    CASE WHEN @failed>0 THEN 'FAILED' ELSE 'PASSED' END,
+    (SELECT @source AS source,CONVERT(varchar(22),@batchId) AS batchId,1 AS ruleVersion,
+      JSON_QUERY((SELECT TOP (50) id,externalId,number,quality FROM #journalBatchQuality WHERE quality<>'VALID'
+        ORDER BY externalId,id FOR JSON PATH)) AS evidence FOR JSON PATH,WITHOUT_ARRAY_WRAPPER));`;
+
 function failure(code, message) {
   return Object.assign(new Error(message), { code });
 }
@@ -172,6 +188,9 @@ export function createFinancialFeedWorker({ sql, run }) {
         .execute('integration.usp_FinalizeSyncBatch');
 
       if (status==='SUCCEEDED' && input.mode!=='REPLAY') {
+        if (input.feed===JOURNAL_FEED && (Number(stats.inserted)>0 || Number(stats.updated)>0)) {
+          await batchScope().input('source',sql.VarChar(40),connector.source).query(recordJournalQualitySql);
+        }
         await batchScope().input('feed',sql.NVarChar(80),input.feed)
           .input('cursor',sql.NVarChar(200),input.nextCursor)
           .input('watermark',sql.DateTime2(3),dateParameter(input.watermarkUtc))

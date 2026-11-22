@@ -17,6 +17,8 @@ import {
 import { Card } from './ui/Card';
 import { getActiveDataProvider } from '../services/dataProvider';
 import { EmptyState } from './ui/EmptyState';
+import { JournalCoveragePanel } from './finance/JournalCoveragePanel';
+import { toLocalDateISO } from '../lib/utils';
 
 const fa = formatCount;
 const DOMAIN_META: Record<QualityDomain, { label: string; short: string }> = {
@@ -90,8 +92,11 @@ export function AuditWorkspace({ state }: { state: AppState }) {
   const configuredProvider = useMemo(() => getActiveDataProvider().name, []);
   const providerLabel = configuredProvider === 'SQLSERVER_BACKEND' ? 'SQL Server' : 'ذخیره‌سازی محلی مرورگر';
   const config = MODULES[moduleId] || MODULES.home;
-  const { can } = useCan(state);
+  const { rbac, can } = useCan(state);
   const canFinance = can('finance', 'VIEW');
+  const officialJournal = moduleId === 'finance' && configuredProvider === 'SQLSERVER_BACKEND'
+    && rbac.hasPermission('finance.view') && rbac.canSeeRecord();
+  const to = toLocalDateISO();
   const canAccounts = can('accounts', 'VIEW');
   const canOperations = can('quotes', 'VIEW') || can('finance', 'VIEW');
   const canSeeDomain = (domain: QualityDomain) => {
@@ -161,6 +166,9 @@ export function AuditWorkspace({ state }: { state: AppState }) {
         <span className="rounded-full border border-border bg-surface px-3 py-1.5 text-micro font-semibold text-text-secondary">فقط خواندنی</span>
         <span className="rounded-full border border-border bg-surface px-3 py-1.5 text-micro font-semibold text-text-secondary">ارزیابی بر اساس قوانین فعال</span>
       </div>
+
+      {officialJournal && <JournalCoveragePanel key={state.currentUserId}
+        period={{from: `${to.slice(0,7)}-01`, to, dimension: 'category'}} canFollowUp={can('finance','EDIT') && can('tasks','CREATE')} />}
 
       <Card padding="md" className="space-y-3">
         <div className="flex items-center justify-between gap-2">
