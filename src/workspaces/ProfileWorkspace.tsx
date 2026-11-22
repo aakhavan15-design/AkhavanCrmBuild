@@ -135,9 +135,12 @@ export function ProfileWorkspace({ state, updateState, setActiveTab }: ProfileWo
         </Card>
       </div>
 
-      <div className="flex justify-end">
+      <div className="flex flex-wrap justify-end gap-2">
         <Button type="button" variant="outline" size="sm" onClick={() => navigate('/personnel-file')}>
           پرونده پرسنلی من
+        </Button>
+        <Button type="button" variant="outline" size="sm" onClick={() => navigate('/personnel-file?tab=learning')}>
+          آموزش و آزمون من
         </Button>
       </div>
 

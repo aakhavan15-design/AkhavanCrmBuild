@@ -266,7 +266,7 @@ export const MODULE_LANDINGS: ModuleLandingDefinition[] = [
           tile('audit-finance', 'پایش مغایرت مالی', 'کنترل کدینگ، ماهیت حساب و توازن اسناد', '/audit?module=finance', 'finance', SearchCheck),
           tile('fin-budget', 'بودجه‌ریزی', 'بودجه دوره‌ای هر واحد', '/planned?item=fin-budget', 'finance', Target),
           tile('fin-cost-control', 'کنترل هزینه‌ها', 'هزینه در برابر بودجه', '/planned?item=fin-cost-control', 'finance', Sliders),
-          tile('fin-invoice-profit', 'سود فاکتور', 'سود هر فاکتور بر مبنای بهای تمام‌شده', '/planned?item=fin-invoice-profit', 'finance', Percent),
+          tile('fin-invoice-profit', 'سود فاکتور', 'سود هر فاکتور بر مبنای بهای تمام‌شده', '/finance?tab=invoices&view=margin', 'finance.invoiceMargin', Percent),
           tile('fin-dispatch-profit', 'سود برنامه توزیع', 'سود هر برنامه توزیع', '/planned?item=fin-dispatch-profit', 'finance', Truck),
           tile('fin-cash-discount', 'تخفیف نقد فاکتور و پخش', 'کنترل تخفیف نقد در فاکتور و برنامه توزیع', '/planned?item=fin-cash-discount', 'finance', Tag),
         ],
@@ -282,9 +282,8 @@ export const MODULE_LANDINGS: ModuleLandingDefinition[] = [
       {
         title: 'جذب و پرسنل',
         tiles: [
-          tile('onboarding', 'پذیرش و پرونده پرسنلی', 'بررسی متقاضیان، پرونده کارکنان و مساعده', '/onboarding', 'onboarding', Users),
-          tile('hr-recruitment', 'جذب و استخدام', 'نیاز استخدام، مراحل جذب و پذیرش', '/planned?item=hr-recruitment', 'onboarding', UserPlus),
-          tile('hr-applicants', 'متقاضیان و پرونده استخدامی', 'بانک متقاضیان و مدارک استخدامی', '/planned?item=hr-applicants', 'onboarding', ClipboardList),
+          tile('hr-recruitment', 'جذب و پروندهٔ متقاضیان', 'بررسی درخواست همکاری، مصاحبه و پذیرش', '/onboarding?tab=apps', 'onboarding', UserPlus),
+          tile('onboarding', 'پرونده‌های پرسنلی', 'بررسی و تکمیل پروندهٔ کارکنان', '/onboarding?tab=files', 'onboarding', Users),
         ],
       },
       {
@@ -297,7 +296,7 @@ export const MODULE_LANDINGS: ModuleLandingDefinition[] = [
       {
         title: 'آموزش و رشد',
         tiles: [
-          tile('hr-training', 'آموزش کارکنان', 'دوره‌ها، مراحل آموزش و پیشرفت', '/planned?item=hr-training', 'onboarding', GraduationCap),
+          tile('hr-training', 'مدیریت آموزش کارکنان', 'انتشار دوره و تخصیص آزمون به کارکنان', '/onboarding?tab=learning', 'hr.learningCatalog', GraduationCap),
           tile('hr-evaluation', 'سوابق آموزشی و ارزیابی عملکرد', 'سوابق آموزش و ارزیابی دوره‌ای', '/planned?item=hr-evaluation', 'onboarding', ChartNoAxesCombined),
           tile('audit-hr', 'پایش امور پرسنلی', 'کنترل گردش کار و دسترسی‌های مرتبط', '/audit?module=work', 'onboarding', SearchCheck),
         ],

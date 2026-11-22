@@ -5,6 +5,7 @@ import React, { useState, useMemo } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useDeepLinkCreate } from '../hooks/useDeepLinkCreate';
 import { useTabParam } from '../hooks/useTabParam';
+import { makeCanAccess } from '../lib/navigation';
 import { buildAgingBuckets, normalizeAgingBounds, estimateLedgerAging, buildLedgerAgingInputs, estimateInvoiceRemaining } from '../services/agingBuckets';
 import { getAgingBucketDays } from '../lib/metricConfig';
 import { FINANCE_AREAS, areaOf } from '../lib/workspaceHierarchy';
@@ -78,7 +79,8 @@ export function FinanceWorkspace({ state, updateState }: FinanceWorkspaceProps) 
   const activeArea = areaOf(FINANCE_AREAS, activeTab);
   const [notice, setNotice] = useState<string | null>(null);
 
-  const [costInvoice, setCostInvoice] = useState<Invoice | null>(null);
+  const [costInvoiceId, setCostInvoiceId] = useState<string | null>(null);
+  const [invoiceSearch, setInvoiceSearch] = useState('');
   const [collectionAction, setCollectionAction] = useState<{ kind: 'PROMISE' | 'FOLLOW_UP'; profile: CustomerCollectionProfile } | null>(null);
 
   const [showPaymentModal, setShowPaymentModal] = useState(false);
@@ -109,7 +111,11 @@ export function FinanceWorkspace({ state, updateState }: FinanceWorkspaceProps) 
   const [intakeInitialType, setIntakeInitialType] = useState<CapturedDocumentType>('BANK_RECEIPT');
   const [paymentFormInitialValues, setPaymentFormInitialValues] = useState<Record<string, unknown>>({ method: 'TRANSFER' });
   const location = useLocation();
-  const selectedAdvance = new URLSearchParams(location.search).get('advance')?.toLowerCase();
+  const params = new URLSearchParams(location.search);
+  const showInvoiceMargin = activeTab === 'invoices' && params.get('view') === 'margin';
+  const canViewInvoiceMargin = makeCanAccess(rbac)('finance.invoiceMargin');
+  const canReadInvoiceEvidence = canViewInvoiceMargin && getActiveDataProvider().name === 'SQLSERVER_BACKEND';
+  const selectedAdvance = params.get('advance')?.toLowerCase();
   const advanceFocus = selectedAdvance && /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(selectedAdvance) ? selectedAdvance : undefined;
   const applyIntakeToForm = React.useCallback((payload: IntakePrefillPayload) => {
     const prefill = buildPaymentFormPrefill(payload);
@@ -152,6 +158,13 @@ export function FinanceWorkspace({ state, updateState }: FinanceWorkspaceProps) 
   const [showChequeModal, setShowChequeModal] = useState(false);
 
   const invoices = (state.invoices || []).filter(invoice => canOn('finance', 'VIEW', getFinanceRecordScope(invoice)));
+  const invoiceAccount = (invoice: Invoice & { accountId?: string }) =>
+    (state.accounts || []).find(account => account.id === invoice.accountId || account.id === invoice.customerId);
+  const costInvoice = activeTab === 'invoices' && canReadInvoiceEvidence ? invoices.find(invoice => invoice.id === costInvoiceId) : null;
+  const invoiceQuery = toLatinDigits(invoiceSearch.trim()).toLowerCase();
+  const displayedInvoices = showInvoiceMargin && invoiceQuery ? invoices.filter(invoice =>
+    toLatinDigits(`${invoice.invoiceNumber} ${invoiceAccount(invoice)?.name ?? ''}`).toLowerCase().includes(invoiceQuery)
+  ) : invoices;
   const payments = (state.payments || []).filter(payment => canOn('payments', 'VIEW', getFinanceRecordScope(payment)));
   const creditNotes: CreditNoteRequest[] = (state.creditNoteRequests || []).filter(note => canOn('finance', 'VIEW', getFinanceRecordScope(note)));
 
@@ -470,8 +483,17 @@ export function FinanceWorkspace({ state, updateState }: FinanceWorkspaceProps) 
       {/* لیست فاکتورها */}
       {activeTab === 'invoices' && (
         <div className="space-y-2">
-          {invoices.map(inv => {
-            const acc = (state.accounts || []).find(a => a.id === (inv as Invoice & { accountId?: string }).accountId || a.id === inv.customerId);
+          {showInvoiceMargin && <Card className="space-y-2" padding="sm">
+            <h2 className="font-bold text-text-main">سود تجاری فاکتور</h2>
+            <p role={!canReadInvoiceEvidence ? 'status' : undefined} className="text-caption text-text-secondary">
+              {!canViewInvoiceMargin ? 'مشاهدهٔ سود و بهای تمام‌شده به مجوز مالی در سطح سازمان نیاز دارد.'
+                : !canReadInvoiceEvidence ? 'شواهد بهای تمام‌شده پس از اتصال به سرور در دسترس‌اند.'
+                  : 'فاکتور را با شماره یا نام مشتری پیدا کنید و جزئیات سود و بهای تمام‌شده را باز کنید.'}
+            </p>
+            {canReadInvoiceEvidence && <Input type="search" label="جست‌وجوی فاکتور" value={invoiceSearch} onChange={event => setInvoiceSearch(event.target.value)} />}
+          </Card>}
+          {(!showInvoiceMargin || canReadInvoiceEvidence) && displayedInvoices.map(inv => {
+            const acc = invoiceAccount(inv);
             const outstanding = invoiceRemaining.get(inv.id) ?? null;
             return (
               <div key={inv.id} className="p-3 bg-surface border border-border rounded-xl flex flex-wrap justify-between items-center gap-2">
@@ -484,17 +506,20 @@ export function FinanceWorkspace({ state, updateState }: FinanceWorkspaceProps) 
                   <div className="text-xs font-bold text-text-main">{inv.totalAmount.toLocaleString('fa-IR')} ریال</div>
                   <div className="text-micro text-text-secondary mt-0.5">مانده (تخمینی): {outstanding === null ? 'نامشخص' : outstanding.toLocaleString('fa-IR')}</div>
                 </div>
-                {/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(inv.id) &&
-                  <Button type="button" variant="ghost" size="sm" onClick={() => setCostInvoice(inv)}>شواهد بها</Button>}
+                {canReadInvoiceEvidence && /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(inv.id) &&
+                  <Button type="button" variant="ghost" size="sm" onClick={() => setCostInvoiceId(inv.id)}>سود و شواهد بها</Button>}
               </div>
             );
           })}
-          {invoices.length === 0 && <div className="text-center text-xs text-text-secondary py-8 bg-surface rounded-xl border border-border">فاکتوری یافت نشد.</div>}
+          {(!showInvoiceMargin || canReadInvoiceEvidence) && displayedInvoices.length === 0 && (
+            <EmptyState surface="finance_invoices" title="فاکتوری یافت نشد" description={invoiceQuery && showInvoiceMargin
+              ? 'شمارهٔ فاکتور یا نام مشتری دیگری را جست‌وجو کنید.' : 'فاکتورهای قابل مشاهده پس از دریافت از سامانهٔ مرجع در این فهرست می‌آیند.'} />
+          )}
         </div>
       )}
 
       {costInvoice && <InvoiceFifoSheet key={costInvoice.id} invoiceId={costInvoice.id}
-        invoiceNumber={costInvoice.invoiceNumber} locale={state.settings?.locale} onClose={() => setCostInvoice(null)} />}
+        invoiceNumber={costInvoice.invoiceNumber} locale={state.settings?.locale} onClose={() => setCostInvoiceId(null)} />}
 
       {activeTab === 'treasury' && <>
         <MoneyIntelligencePanel />

@@ -1,5 +1,6 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { useTabParam } from '../../hooks/useTabParam';
 import type { AppState, AdvanceRequest, Attachment } from '../../types';
 import { Textarea } from '../ui';
 import { DynamicFormRenderer } from '../shared/DynamicFormRenderer';
@@ -40,8 +41,7 @@ export function PersonnelFilePage({ state, updateState }: { state: AppState; upd
   const cfg = getOnboardingConfig(state); 
   const [params]=useSearchParams();
   const advanceLink=params.get('advance')?.toLowerCase() ?? null;
-  const [step, setStep] = useState<Step>(advanceLink ? 'payroll' : 'identity');
-  useEffect(()=>{if (advanceLink) setStep('payroll');},[advanceLink]);
+  const [step, setStep] = useTabParam(STEPS.map(item => item.id), advanceLink ? 'payroll' : 'identity');
   const [msg, setMsg] = useState('');
   const [advanceAmount, setAdvanceAmount] = useState('');
   const [advanceReason, setAdvanceReason] = useState('');
@@ -191,7 +191,7 @@ export function PersonnelFilePage({ state, updateState }: { state: AppState; upd
 
       {/* تب‌های ناوبری مراحل پرونده */}
       <nav id="personnel-nav" data-tour-actions className="flex gap-1 overflow-x-auto no-scrollbar" aria-label="مراحل پرونده">
-        {STEPS.filter(item => item.id!=='learning' || remote).map(s => {
+        {STEPS.map(s => {
           const bad = missing.some(m => m.key.startsWith(s.id === 'documents' ? 'doc.' : s.id + '.')); 
           return (
             <button 
@@ -212,7 +212,9 @@ export function PersonnelFilePage({ state, updateState }: { state: AppState; upd
       </nav>
 
       {/* محتوای هر مرحله */}
-      {step==='learning' && remote && <PersonnelLearningPanel key={me} viewer={me} canReview={can('internal','APPROVE')}/>}
+      {step === 'learning' && (remote && me ? <PersonnelLearningPanel key={me} viewer={me} canReview={can('internal','APPROVE')} /> : (
+        <p role="status" className="rounded-xl border border-border bg-surface p-3 text-sm text-text-secondary">دوره‌های شما پس از اتصال به سرور نمایش داده می‌شوند.</p>
+      ))}
       {step!=='learning' && <section className="bg-surface border border-border rounded-xl p-3.5 space-y-3">
         {locked && (
           <p className="rounded-lg bg-warning-soft p-2 text-caption text-warning">

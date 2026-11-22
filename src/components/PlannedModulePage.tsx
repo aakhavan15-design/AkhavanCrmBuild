@@ -10,6 +10,10 @@ import { EmptyState } from './ui/EmptyState';
 import { Button } from './ui/Button';
 
 interface PlannedModulePageProps { state: AppState }
+const legacyTiles: Record<string, string> = {
+  'hr-applicants': 'hr-recruitment',
+  'fin-reports': 'finance-reports',
+};
 
 /**
  * صفحه وضعیت واحدهای «در دست تکمیل».
@@ -20,21 +24,15 @@ export function PlannedModulePage({ state }: PlannedModulePageProps) {
   const navigate = useNavigate();
   const item = getPlannedModule(params.get('item'));
   const canAccess = useMemo(() => makeCanAccess(new RBACService(state)), [state]);
+  const tileId = item && (legacyTiles[item.id] ?? item.id);
+  const owner = MODULE_LANDINGS.find(module => module.groups.some(group => group.tiles.some(tile => tile.id === tileId)));
+  const tile = owner?.groups.flatMap(group => group.tiles).find(tile => tile.id === tileId);
 
-  const owner = useMemo(() => {
-    if (!item) return undefined;
-    return MODULE_LANDINGS.find(module => module.groups.some(group => group.tiles.some(tile => tile.id === item.id)));
-  }, [item]);
-  const tileIcon = useMemo(() => {
-    if (!item || !owner) return CircleDashed;
-    return owner.groups.flatMap(group => group.tiles).find(tile => tile.id === item.id)?.icon || CircleDashed;
-  }, [item, owner]);
-
-  if (!item || !canAccess(item.perm)) {
+  if (!item || !canAccess(item.perm) || (tile && !canAccess(tile.perm))) {
     return <EmptyState surface="planned_module_page" title="بخش پیدا نشد" description="این بخش وجود ندارد یا سطح دسترسی شما اجازه مشاهده آن را نمی‌دهد." actionLabel="بازگشت" onAction={() => navigate(-1)} />;
   }
-  if (item.id === 'fin-liquidity') return <Navigate to="/finance?tab=treasury" replace />;
-  const Icon = tileIcon;
+  if (tile && !tile.path.startsWith('/planned')) return <Navigate to={tile.path} replace />;
+  const Icon = tile?.icon ?? CircleDashed;
 
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-col gap-5 px-3 pb-24 pt-4 sm:px-5" dir="rtl">

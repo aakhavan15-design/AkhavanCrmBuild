@@ -105,7 +105,7 @@ function moduleOwnerOfRoute(pathname: string, search = ''): string | null {
   }
 
   if (pathname === '/finance') {
-    return tab === 'invoices' ? 'commerce' : 'finance';
+    return tab === 'invoices' && params.get('view') !== 'margin' ? 'commerce' : 'finance';
   }
 
   if (pathname === '/reports') {
@@ -173,6 +173,8 @@ const EXTENDED_PERMS: Record<string, (r: RBACService) => boolean> = {
   'audit': r => (['accounts', 'finance', 'operations_control', 'reports', 'settings', 'tasks', 'dashboard', 'leads'] as const)
     .some(tab => r.canAccessWorkspace(tab)),
   'users': r => r.hasPermission('users.manage') || r.hasPermission('roles.manage') || r.hasPermission('settings.manage'),
+  'hr.learningCatalog': r => r.canAccessWorkspace('onboarding') && r.hasPermission('users.manage') && r.canSeeRecord(),
+  'finance.invoiceMargin': r => r.canAccessWorkspace('finance') && r.canSeeRecord(),
   'ops.orders': r => r.can('quotes', 'VIEW') || r.can('finance', 'VIEW'),
   'ops.inventory': r => r.can('quotes', 'VIEW') || r.can('finance', 'VIEW'),
   'ops.dispatch': r => r.can('internal', 'VIEW'),

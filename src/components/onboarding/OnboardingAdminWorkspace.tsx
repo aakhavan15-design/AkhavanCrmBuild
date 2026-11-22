@@ -1,6 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import { AppState, AdvanceRequest } from '../../types';
 import { useCan } from '../../hooks/useCan';
+import { useTabParam } from '../../hooks/useTabParam';
+import { makeCanAccess } from '../../lib/navigation';
 import { Button } from '../ui/Button';
 import { Input, InputControl } from '../ui/Input';
 import { Modal } from '../ui/Modal';
@@ -39,14 +41,17 @@ import { RecruitmentReviewPanel } from './RecruitmentReviewPanel';
 import { LearningCatalogPanel } from './LearningCatalogPanel';
 
 type Tab = 'apps' | 'files' | 'payroll' | 'learning' | 'config';
+const TABS: readonly Tab[] = ['apps', 'files', 'payroll', 'learning', 'config'];
 const maskNid = (n?: string) => (n ? n.slice(0, 3) + '****' + n.slice(-3) : '—');
 
 export function OnboardingAdminWorkspace({ state, updateState }: { state: AppState; updateState: (u: (d: AppState) => AppState | void) => void }) {
-  const { can, denied } = useCan(state, updateState); 
+  const { rbac, can, denied } = useCan(state, updateState);
   const me = state.currentUserId; 
   const remote=getActiveDataProvider().name==='SQLSERVER_BACKEND';
   const cfg = getOnboardingConfig(state); 
-  const [tab, setTab] = useState<Tab>('apps'); 
+  const canManageLearning = makeCanAccess(rbac)('hr.learningCatalog');
+  const visibleTabs = TABS.filter(item => item !== 'learning' || canManageLearning);
+  const [tab, setTab] = useTabParam(visibleTabs, 'apps');
   const [q, setQ] = useState(''); 
   const [statusF, setStatusF] = useState<'ALL' | ApplicationStatus>('ALL'); 
   const [fileStatusF, setFileStatusF] = useState<'ALL' | 'INCOMPLETE' | 'SUBMITTED_FOR_REVIEW' | 'NEEDS_CORRECTION' | 'APPROVED'>('ALL');
@@ -143,7 +148,7 @@ export function OnboardingAdminWorkspace({ state, updateState }: { state: AppSta
         searchPlaceholder="جستجو در نام، کد یا عنوان..."
         filters={
           <div className="flex gap-1 overflow-x-auto no-scrollbar">
-            {(['apps', 'files', 'payroll', 'learning', 'config'] as Tab[]).filter(t=>t!=='learning' || remote && can('onboarding','EDIT')).map(t => (
+            {visibleTabs.map(t => (
               <FilterChip active={tab === t} key={t} onClick={() => setTab(t)} >
                 {t === 'apps' ? (remote ? 'درخواست‌های همکاری' : `درخواست‌های همکاری (${apps.length})`) :
                  t === 'files' ? `پرونده‌های پرسنلی (${files.length})` :
@@ -160,7 +165,9 @@ export function OnboardingAdminWorkspace({ state, updateState }: { state: AppSta
       {tab==='apps' && remote && <div id="onboarding-content" data-tour-primary>
         <RecruitmentReviewPanel key={me} search={q} viewer={me || ''} canEdit={can('onboarding','EDIT')} attachments={state.attachments ?? []}/>
       </div>}
-      {tab==='learning' && remote && can('onboarding','EDIT') && <LearningCatalogPanel key={me} viewer={me ?? ''}/>}
+      {tab === 'learning' && (remote && me ? <LearningCatalogPanel key={me} viewer={me} /> : (
+        <p role="status" className="rounded-xl border border-border bg-surface p-3 text-sm text-text-secondary">مدیریت دوره‌ها پس از اتصال به سرور در دسترس است.</p>
+      ))}
       {tab === 'apps' && !remote && (
         <div id="onboarding-content" data-tour-primary className="space-y-2">
           {visibleApps.map(a => (
