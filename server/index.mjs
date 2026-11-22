@@ -1009,7 +1009,7 @@ app.post('/api/v1/finance/collections/:accountId/actions', authenticate, wrap(as
 app.get('/api/v1/state/snapshot', authenticate, guardEntityDriver, wrap(async (req, res) => {
   const requested = typeof req.query.includeEmpty === 'string' ? req.query.includeEmpty.split(',') : [];
   const includeEmptyCollections = requested.filter(name => name === 'paymentAllocations' || name === 'zoneAssignments');
-  res.json(await entities.snapshot(req.auth, { includeEmptyCollections }));
+  res.json(await entities.snapshot(req.auth, { includeEmptyCollections, chatOnly: req.query.view === 'chat' }));
 }));
 app.get('/api/v1/state/counts', authenticate, guardEntityDriver, wrap(async (req, res) => {
   const requested = typeof req.query.includeEmpty === 'string' ? req.query.includeEmpty.split(',') : [];

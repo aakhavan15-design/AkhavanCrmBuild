@@ -369,7 +369,7 @@ export interface DataProvider {
   getAnalyticsReport(reportId: number, params?: any): Promise<any>;
 
   // SQL-first state layer: every AppState collection/setting goes through these (see services/stateSync.ts)
-  getStateSnapshot(): Promise<StateSnapshot>;
+  getStateSnapshot(view?: 'chat'): Promise<StateSnapshot>;
   getStateCounts(collections: readonly string[]): Promise<StateCollectionCounts>;
   getErpSyncOverview(): Promise<ErpSyncOverview>;
   syncStateChanges(change: { upserts: Record<string, any[]>; deletes: Record<string, string[]>; singletons: Record<string, any> }): Promise<StateSyncResult>;
@@ -1366,7 +1366,9 @@ export class HttpBackendDataProvider implements DataProvider {
   }
 
   // --- SQL-first state layer ---
-  async getStateSnapshot(): Promise<StateSnapshot> { return this.request<StateSnapshot>('/state/snapshot'); }
+  async getStateSnapshot(view?: 'chat'): Promise<StateSnapshot> {
+    return this.request<StateSnapshot>(view === 'chat' ? '/state/snapshot?view=chat' : '/state/snapshot');
+  }
   async syncStateChanges(change: { upserts: Record<string, any[]>; deletes: Record<string, string[]>; singletons: Record<string, any> }): Promise<StateSyncResult> {
     // Large change-sets (first connection, mass import) are posted in slices of ~150k characters (server cap is 1 MB/request).
     const slices: Array<typeof change> = [];

@@ -31,6 +31,15 @@ const taskNoticeVisibleSql = (notice, viewer) => `EXISTS (
   WHERE task.TenantId=${notice}.TenantId AND task.CollectionName=N'tasks' AND task.IsDeleted=0
     AND task.EntityId=JSON_VALUE(${notice}.JsonDoc,'$.requestId') AND task.EntityId LIKE N'taskreq-%'
 )`;
+const conversationMemberSql = `EXISTS (
+  SELECT 1 FROM sync.EntityStore AS conversation
+  CROSS APPLY OPENJSON(conversation.JsonDoc,'$.memberIds') AS membership
+  WHERE conversation.TenantId=record.TenantId AND conversation.CollectionName=N'groups'
+    AND conversation.IsDeleted=0
+    AND ISNULL(JSON_VALUE(conversation.JsonDoc,'$.active'),N'true')<>N'false'
+    AND conversation.EntityId=CASE WHEN record.CollectionName=N'groups' THEN record.EntityId ELSE JSON_VALUE(record.JsonDoc,'$.groupId') END
+    AND TRY_CONVERT(uniqueidentifier, membership.value)=TRY_CONVERT(uniqueidentifier,SESSION_CONTEXT(N'UserId'))
+)`;
 const now = () => new Date().toISOString();
 const bytes = (value) => Buffer.byteLength(JSON.stringify(value ?? null), 'utf8');
 
@@ -105,11 +114,15 @@ export class FileEntityDriver extends MemoryEntityDriver {
  *  executed sp_set_session_context(TenantId/UserId) (server/index.mjs withTenantContext). `sql` is the mssql module. */
 export class MssqlEntityDriver {
   constructor({ sql, run }) { this.sql = sql; this.run = run; this.kind = 'mssql'; }
-  async load(tenantId, userId) {
+  async load(tenantId, userId, { chatOnly = false } = {}) {
     const { sql } = this;
     return this.run({ tenantId, userId }, async (tx) => {
       const result = await new sql.Request(tx).input('tenantId', sql.UniqueIdentifier, tenantId)
-        .query(`SELECT record.CollectionName, record.EntityId,
+        .query(chatOnly ? `SELECT record.CollectionName,record.EntityId,record.JsonDoc
+          FROM sync.EntityStore AS record
+          WHERE record.TenantId=@tenantId AND record.IsDeleted=0
+            AND record.CollectionName IN(N'groups',N'messages') AND ${conversationMemberSql}
+          ORDER BY CreatedAtUtc,EntityId;` : `SELECT record.CollectionName, record.EntityId,
           CASE WHEN record.CollectionName=N'collectionPromises'
             AND JSON_VALUE(record.JsonDoc,'$.receiptEvidence.id') IS NOT NULL
             AND NOT EXISTS (SELECT 1 FROM crm.PaymentMirror AS payment
@@ -143,14 +156,7 @@ export class MssqlEntityDriver {
             AND (LOWER(record.CollectionName)<>N'tasks' OR (record.EntityId NOT LIKE N'taskreq-%' AND EXISTS (
               SELECT 1 FROM security.fn_TaskEntityScope(record.TenantId,record.JsonDoc,'VIEW')
             )))
-            AND (LOWER(record.CollectionName) NOT IN (N'groups',N'messages') OR EXISTS (
-              SELECT 1 FROM sync.EntityStore AS conversation
-              CROSS APPLY OPENJSON(conversation.JsonDoc,'$.memberIds') AS membership
-              WHERE conversation.TenantId=record.TenantId AND conversation.CollectionName=N'groups'
-                AND conversation.IsDeleted=0
-                AND conversation.EntityId=CASE WHEN record.CollectionName=N'groups' THEN record.EntityId ELSE JSON_VALUE(record.JsonDoc,'$.groupId') END
-                AND TRY_CONVERT(uniqueidentifier, membership.value)=TRY_CONVERT(uniqueidentifier,SESSION_CONTEXT(N'UserId'))
-            ))
+            AND (LOWER(record.CollectionName) NOT IN (N'groups',N'messages') OR ${conversationMemberSql})
             AND (LOWER(record.CollectionName)<>N'attachments' OR record.EntityId NOT LIKE N'request-file-%')
             AND (LOWER(record.CollectionName)<>N'attachments' OR
               UPPER(ISNULL(JSON_VALUE(record.JsonDoc,'$.entityType'),N'')) NOT IN(N'APPLICATION',N'PERSONNEL_FILE',N'PERSONNEL') OR EXISTS (
@@ -181,7 +187,7 @@ export class MssqlEntityDriver {
               WHERE currentFile.TenantId=legacy.TenantId AND currentFile.CollectionName=N'personnelFiles'
                 AND currentFile.EntityId=subject.UserId);`);
       const rows = [...result.recordset, ...(result.recordsets?.[1] ?? [])];
-      const version = (await new sql.Request(tx).input('tenantId', sql.UniqueIdentifier, tenantId)
+      const version = chatOnly ? null : (await new sql.Request(tx).input('tenantId', sql.UniqueIdentifier, tenantId)
         .query('SELECT ISNULL(MAX(Version),0) AS V FROM sync.EntityStore WHERE TenantId=@tenantId')).recordset[0]?.V || 0;
       const collections = {}, singletons = {};
       for (const row of rows) {
@@ -190,7 +196,7 @@ export class MssqlEntityDriver {
         else (collections[row.CollectionName] ||= []).push(json);
       }
       collections.tasks ??= [];
-      return { collections, singletons, version: Number(version) };
+      return { collections, singletons, version: version === null ? undefined : Number(version) };
     });
   }
   async apply(tenantId, userId, change) {
@@ -552,23 +558,26 @@ export function createEntityService({ driver, registry, hasPermission, excludeFi
     };
   };
 
-  async function snapshot(auth, { includeEmptyCollections = [] } = {}) {
-    const full = await driver.load(auth.tenantId, auth.userId);
+  async function snapshot(auth, { includeEmptyCollections = [], chatOnly = false } = {}) {
+    const full = await driver.load(auth.tenantId, auth.userId, { chatOnly });
     const canRead = await readableCache(auth);
     const collections = {};
     const hidden = [];
     // Preserve the distinction between a permitted empty collection and a hidden source.
     const visibleGroups = (full.collections.groups || []).filter(group =>
-      isConversationMember(group, auth.userId) && (!excludeFixtures || !isMarkedFixture(group)));
+      group.active !== false && isConversationMember(group, auth.userId) && (!excludeFixtures || !isMarkedFixture(group)));
     const visibleGroupIds = new Set(visibleGroups.map(group => group.id));
-    const mayReadApplications = await can(auth, 'users.manage');
-    const storedCollections = {
+    const chatCollections = {
+      groups: visibleGroups,
+      messages: (full.collections.messages || []).filter(message => visibleGroupIds.has(message.groupId)),
+    };
+    const mayReadApplications = !chatOnly && await can(auth, 'users.manage');
+    const storedCollections = chatOnly ? chatCollections : {
       ...Object.fromEntries(Object.entries(full.collections).filter(([name]) =>
         !['groups', 'messages', 'attachments', 'notifications', 'onboardingapplications', 'collectionpromises'].includes(name.toLowerCase()))),
       onboardingApplications: full.collections.onboardingApplications || [],
       collectionPromises: full.collections.collectionPromises || [],
-      groups: visibleGroups,
-      messages: (full.collections.messages || []).filter(message => visibleGroupIds.has(message.groupId)),
+      ...chatCollections,
       notifications: (full.collections.notifications || []).flatMap(item => {
         if (item.recipientId && item.recipientId !== auth.userId) return [];
         if (item.linkTab !== 'groups') return [item];
@@ -579,14 +588,16 @@ export function createEntityService({ driver, registry, hasPermission, excludeFi
       attachments: (full.collections.attachments || []).filter(item =>
         item.entityType !== 'APPLICATION' || mayReadApplications),
     };
-    for (const name of includeEmptyCollections) storedCollections[name] ??= [];
-    if (driver.kind === 'mssql') for (const name of PRIVATE_PERSONNEL_COLLECTIONS) storedCollections[name] ??= [];
+    if (!chatOnly) {
+      for (const name of includeEmptyCollections) storedCollections[name] ??= [];
+      if (driver.kind === 'mssql') for (const name of PRIVATE_PERSONNEL_COLLECTIONS) storedCollections[name] ??= [];
+    }
     for (const [name, list] of Object.entries(storedCollections)) {
       if (await canRead(name)) {
         collections[name] = excludeFixtures ? list.filter(row => !isMarkedFixture(row, recordId(row, name, registry))) : list;
       } else hidden.push(name);
     }
-    const singletons = excludeFixtures
+    const singletons = chatOnly ? {} : excludeFixtures
       ? Object.fromEntries(Object.entries(full.singletons).filter(([key, value]) =>
           !isMarkedFixture(value, key) && !(Array.isArray(value) && value.some(row => isMarkedFixture(row)))
         ))

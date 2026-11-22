@@ -1,22 +1,24 @@
 import { getStateSyncEngine } from '../services/stateSyncRuntime';
-import { useDataSyncStatus } from '../services/dataSyncController';
+import { dataSyncController, useDataSyncStatus } from '../services/dataSyncController';
 import { useDeepLinkCreate } from '../hooks/useDeepLinkCreate';
 import { BottomSheet } from './ui/BottomSheet';
 import { toast } from './ui/Toast';
 import { guard } from '../hooks/useCan';
-import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { AppState, UserGroup, GroupMessage, Mention, ID, CustomerTask, UserAccount, Attachment } from '../types';
 import { generateId } from '../lib/utils';
 import { processMessageMentions, processTaskCollaborationEvents } from '../lib/collaboration';
 import {
   Users, Send, Building2, CheckSquare, Search, Plus, MessageCircle, Paperclip, Check, CheckCheck, UserPlus, FileText, TrendingUp,
-  ShieldAlert, Activity, ArrowRight, Pin, PinOff, Reply, Pencil, Trash2, X, ImageIcon, Download, ListPlus, AtSign, Archive, Bell, BellOff, MoreHorizontal
+  ShieldAlert, Activity, ArrowDown, ArrowRight, Pin, PinOff, Reply, Pencil, Trash2, X, Download, ListPlus, AtSign, Archive, Bell, BellOff, MoreHorizontal
 } from 'lucide-react';
 import { Button } from './ui/Button';
 import { Input, Select, Textarea, InputControl, Checkbox } from './ui/Input';
 import { Modal } from './ui/Modal';
 import { Avatar } from './ui/Avatar';
+import { EmptyState } from './ui/EmptyState';
+import { LoadingState } from './ui/LoadingState';
 import { RBACService } from '../lib/rbac';
 import { haptics } from '../lib/haptics';
 import { playMechanicalTick } from '../lib/sound';
@@ -43,6 +45,8 @@ type LinkableRecord = { id: ID; name?: string; title?: string; subject?: string;
 
 const MAX_FILE = 1.5 * 1024 * 1024;
 const MAX_SQL_ATTACHMENTS = 600 * 1024;
+const CHAT_POLL_INTERVAL = 15_000;
+const atLatestMessage = (area: HTMLElement) => area.scrollHeight - area.scrollTop - area.clientHeight < 48;
 const fa = (n: number) => n.toLocaleString('fa-IR');
 const timeOf = (iso: string) => new Date(iso).toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit' });
 const dayOf = (iso: string) => new Intl.DateTimeFormat('fa-IR', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date(iso));
@@ -52,8 +56,32 @@ const ENTITY_ICON: Record<string, React.ElementType> = { ACCOUNT: Building2, CUS
 
 export function GroupsWorkspace({ state, updateState }: Props) {
   const navigate = useNavigate();
+  const location = useLocation();
   const [params, setParams] = useSearchParams();
   const syncStatus = useDataSyncStatus();
+  const chatReady = !syncStatus.isSqlActive || Boolean(getStateSyncEngine()?.hasSnapshot());
+  const connectionOffline = syncStatus.isSqlActive && syncStatus.state === 'offline';
+  const [refreshError, setRefreshError] = useState(false);
+  const refreshLock = useRef(false);
+  const refreshConversations = useCallback(async (manual = false) => {
+    if (refreshLock.current || !navigator.onLine) return;
+    const engine = getStateSyncEngine();
+    if (!manual && !engine?.hasSnapshot()) return;
+    refreshLock.current = true;
+    try {
+      const updated = engine?.hasSnapshot() ? await engine.hydrate('chat') : await dataSyncController.retrieveFromSqlServer();
+      if (updated || !engine?.hasSnapshot()) setRefreshError(!updated);
+    } catch {
+      setRefreshError(true);
+    } finally { refreshLock.current = false; }
+  }, []);
+  useEffect(() => {
+    if (!syncStatus.isSqlActive) return;
+    const refreshVisible = () => { if (document.visibilityState === 'visible') void refreshConversations(); };
+    const timer = window.setInterval(refreshVisible, CHAT_POLL_INTERVAL);
+    document.addEventListener('visibilitychange', refreshVisible);
+    return () => { window.clearInterval(timer); document.removeEventListener('visibilitychange', refreshVisible); };
+  }, [refreshConversations, syncStatus.isSqlActive]);
   const [retryingMessage, setRetryingMessage] = useState(false);
   async function retrySend() {
     if (retryingMessage) return;
@@ -94,6 +122,12 @@ export function GroupsWorkspace({ state, updateState }: Props) {
   const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
   const [pickQuery, setPickQuery] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
+  const logContentRef = useRef<HTMLDivElement>(null);
+  const inboxRef = useRef<HTMLUListElement>(null);
+  const inboxPosition = useRef(0);
+  const threadPositions = useRef(new Map<string, number>());
+  const [awayFromLatest, setAwayFromLatest] = useState(false);
+  const headerTitleRef = useRef<HTMLHeadingElement>(null);
   const chatAnchor = useRef({ group: null as string | null, atEnd: true });
   const fileRef = useRef<HTMLInputElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -102,9 +136,10 @@ export function GroupsWorkspace({ state, updateState }: Props) {
   const activeId = params.get('c');
   const attachmentSession = useRef(0);
   const openConv = (id: string | null) => {
+    if (!id && location.state?.chatFromInbox) { navigate(-1); return; }
     const next = new URLSearchParams(params);
     if (id) next.set('c', id); else next.delete('c');
-    setParams(next, { replace: false });
+    setParams(next, { replace: !id, state: id && !activeId ? { chatFromInbox: true } : null });
   };
   useLayoutEffect(() => {
     attachmentSession.current++;
@@ -123,6 +158,10 @@ export function GroupsWorkspace({ state, updateState }: Props) {
     setPendingEntityMentions([]);
     setMentionQuery(null);
   }, [activeId]);
+  useLayoutEffect(() => {
+    if (!activeId && inboxRef.current) inboxRef.current.scrollTop = inboxPosition.current;
+    headerTitleRef.current?.focus({ preventScroll: true });
+  }, [activeId]);
   useLayoutEffect(() => { sendLock.current = false; }, [activeId, text, files, attachedEntity, editing]);
 
   useDeepLinkCreate(() => {
@@ -134,17 +173,25 @@ export function GroupsWorkspace({ state, updateState }: Props) {
   const allGroups = state.groups || [];
   // Conversation confidentiality is membership-based. Admin privileges manage groups; they do not grant implicit access to every private conversation.
   const convs = useMemo(() => allGroups.filter(g => Array.isArray(g.memberIds) && g.memberIds.includes(me) && g.active !== false), [allGroups, me]);
-  const msgsOf = (gid: string): ConversationMessage[] => (state.messages || []).filter(m => m.groupId === gid).sort((a, b) => +new Date(a.createdAt) - +new Date(b.createdAt));
+  const messagesByGroup = useMemo(() => {
+    const groups = new Map<string, ConversationMessage[]>();
+    for (const message of state.messages ?? []) {
+      const list = groups.get(message.groupId);
+      if (list) list.push(message); else groups.set(message.groupId, [message]);
+    }
+    for (const list of groups.values()) list.sort((a, b) => +new Date(a.createdAt) - +new Date(b.createdAt));
+    return groups;
+  }, [state.messages]);
   const nameOf = (g: UserGroup) => (g.kind === 'DIRECT' ? userOf(g.memberIds.find((i: string) => i !== me) || me)?.name || 'کاربر' : g.name);
-  const previewOf = (m: ConversationMessage | null | undefined) => (!m ? 'هنوز پیامی نیست' : m.deleted ? 'پیام حذف شد' : (m.senderId === me ? 'شما: ' : '') + (m.content || (m.attachments?.length ? '📎 فایل پیوست' : m.relatedEntity ? '🔗 رکورد سامانه' : '')));
+  const previewOf = (m: ConversationMessage | null | undefined) => (!m ? 'هنوز پیامی نیست' : m.deleted ? 'پیام حذف شد' : (m.senderId === me ? 'شما: ' : '') + (m.content || (m.attachments?.length ? 'فایل پیوست' : m.relatedEntity ? 'پیوند به رکورد' : '')));
   const rows = useMemo(() => convs.map(g => {
-    const ms = msgsOf(g.id); const last = ms[ms.length - 1];
+    const ms = messagesByGroup.get(g.id) ?? []; const last = ms[ms.length - 1];
     const unread = ms.filter(m => !m.deleted && m.senderId !== me && !m.readBy?.includes(me));
     const archived = !!g.archivedBy?.includes(me);
     const muted = !!g.mutedBy?.includes(me);
     const mentioned = unread.filter(m => m.mentions?.some((x: Mention) => x.id === me)).length;
     return { g, last, unread: unread.length, mentioned, pinned: !!g.pinnedBy?.includes(me), archived, muted, name: nameOf(g), ms };
-  }), [convs, state.messages, users, me]); // eslint-disable-line react-hooks/exhaustive-deps
+  }), [convs, messagesByGroup, users, me]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const q = query.trim().toLowerCase();
   const visible = rows.filter(r => {
@@ -163,9 +210,9 @@ export function GroupsWorkspace({ state, updateState }: Props) {
   const members = activeGroup?.memberIds.map(userOf).filter((user): user is UserAccount => Boolean(user)) || [];
 
   // ---- نقطه «پیام‌های جدید» قبل از علامت‌گذاری خوانده‌شده ----
-  if (activeId && unreadAnchor.current?.id !== activeId) {
+  if (activeGroup && unreadAnchor.current?.id !== activeId) {
     const firstUnread = messages.find(m => !m.deleted && m.senderId !== me && !m.readBy?.includes(me));
-    unreadAnchor.current = { id: activeId, msgId: firstUnread?.id || null };
+    unreadAnchor.current = { id: activeGroup.id, msgId: firstUnread?.id || null };
   }
   useEffect(() => { if (!activeId) unreadAnchor.current = null; }, [activeId]);
 
@@ -201,12 +248,16 @@ export function GroupsWorkspace({ state, updateState }: Props) {
       return;
     }
     if (chatAnchor.current.group !== activeId) {
+      const saved = activeId ? threadPositions.current.get(activeId) : undefined;
       const firstUnread = area.querySelector<HTMLElement>('[data-first-unread]');
-      chatAnchor.current = { group: activeId, atEnd: !firstUnread };
-      if (firstUnread) area.scrollTop += firstUnread.getBoundingClientRect().top - area.getBoundingClientRect().top;
+      if (saved !== undefined) area.scrollTop = saved;
+      else if (firstUnread) area.scrollTop += firstUnread.getBoundingClientRect().top - area.getBoundingClientRect().top;
+      else area.scrollTop = area.scrollHeight;
+      chatAnchor.current = { group: activeId, atEnd: atLatestMessage(area) };
+      setAwayFromLatest(!chatAnchor.current.atEnd);
     }
     if (chatAnchor.current.atEnd) area.scrollTop = area.scrollHeight;
-  }, [messages.length, activeId]);
+  }, [messages.length, activeGroup?.id, activeId]);
   useLayoutEffect(() => {
     const area = scrollRef.current;
     if (!area || typeof ResizeObserver === 'undefined') return;
@@ -214,9 +265,10 @@ export function GroupsWorkspace({ state, updateState }: Props) {
       if (chatAnchor.current.atEnd) area.scrollTop = area.scrollHeight;
     });
     observer.observe(area);
+    if (logContentRef.current) observer.observe(logContentRef.current);
     return () => observer.disconnect();
   }, [activeGroup?.id]);
-  useEffect(() => { const el = inputRef.current; if (el) { el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 140) + 'px'; } }, [text]);
+  useLayoutEffect(() => { const el = inputRef.current; if (el) { el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 112) + 'px'; } }, [text, activeId]);
 
   // ---- ارسال / ویرایش ----
   const onTextChange = (v: string, caret: number) => {
@@ -399,91 +451,130 @@ export function GroupsWorkspace({ state, updateState }: Props) {
 
   const peopleForDM = users.filter(u => u.id !== me && (u.isActive ?? u.active) !== false && (!pickQuery || u.name?.includes(pickQuery) || u.username?.toLowerCase().includes(pickQuery.toLowerCase())));
   const totalUnread = rows.reduce((s, r) => s + r.unread, 0);
-  const FILTERS: [Filter, string][] = [['ALL', 'همه'], ['UNREAD', 'خوانده‌نشده'], ['MENTIONS', 'منشن'], ['GROUPS', 'گروه‌ها'], ['DIRECT', 'مستقیم'], ['ARCHIVED', 'بایگانی']];
 
-  // ============================ UI ============================
+  const unavailable = connectionOffline || refreshError || (!chatReady && syncStatus.state === 'failed');
+  const startConversation = () => { setPickQuery(''); setModal(canCreateGroup ? 'create' : 'dm'); };
+  const recipient = activeGroup?.kind === 'DIRECT' ? userOf(activeGroup.memberIds.find(id => id !== me)) : undefined;
+  const canSend = Boolean(activeGroup && rbac.canActOnRecord('messages', 'CREATE', scopeOf(me)));
+  const cancelReplyOrEdit = () => {
+    if (editing) setText('');
+    setReplyTo(null);
+    setEditing(null);
+    setMentionQuery(null);
+  };
+  const jumpToLatest = () => {
+    if (!scrollRef.current) return;
+    scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    chatAnchor.current.atEnd = true;
+    setAwayFromLatest(false);
+  };
+  const connectionStatus = unavailable && <div className="flex items-center justify-between gap-2 rounded-xl bg-sunken px-3 py-1 text-caption text-text-secondary">
+    <p role="status">{connectionOffline ? 'آفلاین · آخرین دادهٔ دریافت‌شده' : 'دریافت پیام‌های تازه ممکن نشد.'}</p>
+    {!connectionOffline && <Button variant="ghost" size="sm" type="button" onClick={() => void refreshConversations(true)}>تلاش دوباره</Button>}
+  </div>;
+
   return (
-    <div className="crm-page crm-page-groups flex h-full min-h-0 min-w-0 gap-2 sm:gap-3" dir="rtl">
-      {/* ---------------- Inbox ---------------- */}
-      <section id="chat-inbox" aria-label="صندوق گفتگوها" className={cn('se-card crm-chat-inbox min-h-0 w-full flex-col overflow-hidden md:w-(--size-360) md:shrink-0', activeId ? 'hidden md:flex' : 'flex')}>
-        <div className="space-y-3 border-b border-border p-3.5">
-          <div className="flex items-center justify-between">
-            <h1 data-tour-heading className="flex items-center gap-2 text-base font-extrabold text-text-main"><MessageCircle className="h-5 w-5 text-primary" />تعاملات{totalUnread > 0 && <span className="rounded-full bg-danger px-2 py-0.5 text-micro font-bold text-white">{fa(totalUnread)}</span>}</h1>
+    <div className="crm-page crm-page-groups h-full min-h-0 min-w-0 bg-canvas text-text-main" dir="rtl">
+      {!activeId && <section id="chat-inbox" aria-labelledby="chat-inbox-title" className="crm-chat-screen">
+        <header className="crm-chat-rail space-y-2.5 pb-2 pt-2 sm:pt-4">
+          <div className="flex min-h-12 items-center gap-2.5">
+            <Button type="button" variant="ghost" size="icon" className="size-11 min-h-11 shrink-0 rounded-full"
+              aria-label="بازگشت به فضای کار" onClick={() => navigate('/workspace/home')}><ArrowRight size={20} aria-hidden="true" /></Button>
+            <h1 id="chat-inbox-title" ref={headerTitleRef} tabIndex={-1} data-tour-heading className="min-w-0 flex-1 text-xl font-extrabold outline-none">پیام‌ها</h1>
+            {totalUnread > 0 && <span aria-label={`${fa(totalUnread)} پیام خوانده‌نشده`} className="rounded-full bg-primary/10 px-2.5 py-0.5 text-caption font-bold text-primary">{fa(totalUnread)}</span>}
+            <Button type="button" variant="ghost" size="icon" className="size-11 min-h-11 shrink-0 rounded-full"
+              aria-label="پیام جدید" aria-haspopup="dialog" title="پیام جدید" onClick={startConversation}><Pencil size={19} aria-hidden="true" /></Button>
           </div>
-          <div className="relative">
-            <Search size={15} className="pointer-events-none absolute end-3.5 top-1/2 -translate-y-1/2 text-text-secondary" />
-            <InputControl value={query} onChange={e => setQuery(e.target.value)} placeholder="جستجو در گفتگوها و پیام‌ها" aria-label="جستجو در گفتگوها"
-              className="pe-10" />
-          </div>
-          <label className="flex min-h-10 items-center gap-2 rounded-xl border border-border bg-surface px-3 text-xs">
-            <span className="shrink-0 font-semibold text-text-secondary">نمایش گفتگوها</span>
-            <Select value={filter} onChange={event => setFilter(event.target.value as Filter)} aria-label="فیلتر گفتگوها" className="min-w-0 flex-1">
-              {FILTERS.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
+          <div className="crm-chat-filters">
+            <div className="relative min-w-0 flex-1">
+              <Search size={17} className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 text-text-secondary" aria-hidden="true" />
+              <InputControl type="search" value={query} onChange={event => { setQuery(event.target.value); if (inboxRef.current) inboxRef.current.scrollTop = 0; }}
+                placeholder="جست‌وجوی گفتگو و پیام" aria-label="جست‌وجوی گفتگو و پیام" />
+            </div>
+            <Select value={filter} onChange={event => { setFilter(event.target.value as Filter); if (inboxRef.current) inboxRef.current.scrollTop = 0; }}
+              aria-label="فیلتر گفتگوها">
+              <option value="ALL">همه</option>
+              <option value="UNREAD">خوانده‌نشده</option>
+              <option value="MENTIONS">منشن</option>
+              <option value="GROUPS">گروه‌ها</option>
+              <option value="DIRECT">مستقیم</option>
+              <option value="ARCHIVED">بایگانی</option>
             </Select>
-          </label>
-        </div>
-        <ul className="min-h-0 flex-1 space-y-0.5 overflow-y-auto overscroll-contain p-2">
-          {visible.map((r, i) => {
-            const on = r.g.id === activeId; const isDm = r.g.kind === 'DIRECT'; const other = isDm ? userOf(r.g.memberIds.find((x: string) => x !== me)) : null;
-            return (
-              <li key={r.g.id}>
-                <button onClick={() => openConv(r.g.id)} aria-current={on ? 'true' : undefined} style={{ '--i': Math.min(i, 8) } as React.CSSProperties}
-                  className={cn('se-interactive anim-rise flex min-h-(--size-64) w-full cursor-pointer items-center gap-3 rounded-2xl border p-2.5 text-start', on ? 'border-primary/25 bg-primary/[.07]' : 'border-transparent hover:bg-canvas')}>
-                  {isDm ? <Avatar name={r.name} src={other?.avatar} size="sm" /> : <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-primary/10 text-primary"><Users size={16} /></span>}
-                  <span className="min-w-0 flex-1">
-                    <span className="flex items-center justify-between gap-2">
-                      <strong className={cn('flex min-w-0 items-center gap-1 wrap-break-word text-xs text-text-main', r.unread ? 'font-black' : 'font-bold')}>{r.pinned && <Pin size={11} className="shrink-0 text-gold" />}{r.muted && <BellOff size={11} className="shrink-0 text-text-secondary" />}<span className="truncate">{r.name}</span></strong>
-                      <span className="shrink-0 text-micro text-text-secondary">{r.last ? shortWhen(r.last.createdAt) : ''}</span>
-                    </span>
-                    <span className="mt-0.5 flex items-center justify-between gap-2">
-                      <span className={cn('line-clamp-2 wrap-break-word text-caption', r.unread ? 'font-bold text-text-main' : 'text-text-secondary')}>{previewOf(r.last)}</span>
-                      <span className="flex shrink-0 items-center gap-1">
-                        {r.mentioned > 0 && <span aria-label="منشن شده‌اید" className="grid h-5 min-w-5 place-items-center rounded-full bg-gold px-1 text-micro font-black text-primary-dark"><AtSign size={11} /></span>}
-                        {r.unread > 0 && <span aria-label={`${r.unread} پیام خوانده‌نشده`} className="grid h-5 min-w-5 place-items-center rounded-full bg-danger px-1.5 text-micro font-bold text-white">{fa(r.unread)}</span>}
-                      </span>
-                    </span>
+          </div>
+          {connectionStatus}
+        </header>
+        <ul ref={inboxRef} onScroll={event => { inboxPosition.current = event.currentTarget.scrollTop; }} className="crm-chat-scroll crm-chat-inbox-list">
+          {visible.map(row => {
+            const direct = row.g.kind === 'DIRECT';
+            const other = direct ? userOf(row.g.memberIds.find(id => id !== me)) : undefined;
+            return <li key={row.g.id} className="crm-chat-rail">
+              <button type="button" onClick={() => openConv(row.g.id)}
+                className="group flex min-h-[4.5rem] w-full items-center gap-3 rounded-xl px-2 py-2 text-start transition-colors hover:bg-sunken focus-visible:outline-2 focus-visible:outline-primary">
+                {direct ? <Avatar name={row.name} src={other?.avatar} size="lg" className="shrink-0" /> :
+                  <span className="grid size-12 shrink-0 place-items-center rounded-full bg-primary/10 text-primary"><Users size={20} aria-hidden="true" /></span>}
+                <span className="min-w-0 flex-1">
+                  <span className="flex min-w-0 items-center gap-1.5 text-sm font-bold">
+                    <bdi className="truncate">{row.name}</bdi>
+                    {row.pinned && <Pin size={13} className="shrink-0 text-text-secondary" aria-label="سنجاق‌شده" />}
+                    {row.muted && <BellOff size={13} className="shrink-0 text-text-muted" aria-label="بی‌صدا" />}
                   </span>
-                </button>
-              </li>
-            );
+                  <span className="mt-0.5 flex min-w-0 items-baseline gap-1.5 text-caption text-text-secondary">
+                    <bdi className={cn('truncate', row.unread > 0 && 'font-semibold text-text-main')}>{previewOf(row.last)}</bdi>
+                    {row.last && <time dateTime={row.last.createdAt} className="shrink-0 text-text-muted">· {shortWhen(row.last.createdAt)}</time>}
+                  </span>
+                </span>
+                <span className="flex min-w-2 shrink-0 items-center gap-1.5">
+                  {row.mentioned > 0 && <AtSign size={15} className="text-primary" aria-label="منشن شده‌اید" />}
+                  {row.unread > 0 && <><span className="size-2 rounded-full bg-primary" aria-hidden="true" /><span className="sr-only">{fa(row.unread)} پیام خوانده‌نشده</span></>}
+                </span>
+              </button>
+            </li>;
           })}
-          {visible.length === 0 && (
-            <li className="px-4 py-12 text-center text-xs text-text-secondary">
-              <MessageCircle size={34} className="mx-auto mb-2 opacity-25" />
-              {convs.length === 0 ? 'هنوز گفتگویی ندارید. با دکمه «پیام جدید» شروع کنید.' : 'گفتگویی با این فیلتر یا جستجو پیدا نشد.'}
-            </li>
-          )}
+          {visible.length === 0 && <li className="crm-chat-rail py-10">
+            {!chatReady && !unavailable ? <LoadingState label="در حال دریافت گفتگوها" /> :
+              <EmptyState surface="chat_inbox" compact title={unavailable && !chatReady ? 'گفتگوها در دسترس نیستند' : convs.length ? 'گفتگویی پیدا نشد' : 'هنوز گفتگویی ندارید'}
+                description={unavailable && !chatReady ? 'پس از برقراری اتصال دوباره تلاش کنید.' : convs.length ? 'نام دیگری جست‌وجو کنید یا فیلتر را تغییر دهید.' : 'برای شروع، به یکی از همکاران پیام بدهید.'}
+                actionLabel={!unavailable && !convs.length ? 'پیام جدید' : undefined} onAction={startConversation} />}
+          </li>}
         </ul>
-      </section>
+      </section>}
 
-      {/* ---------------- Conversation ---------------- */}
-      <section id="chat-conversation" aria-label="گفتگو" className={cn('se-card min-h-0 flex-1 flex-col overflow-hidden', activeId ? 'fixed inset-x-0 top-(--app-viewport-offset-top) z-(--z-modal) flex h-(--app-viewport-height) w-full rounded-none border-0 md:static md:h-auto md:w-auto md:rounded-2xl md:border' : 'hidden md:flex')}>
-        {activeGroup ? (
-          <>
-            <header className="flex shrink-0 items-center gap-2.5 border-b border-border px-3 pb-3 pt-[max(.75rem,var(--safe-top))] md:pt-3">
-              <button onClick={() => openConv(null)} aria-label="بازگشت به صندوق" className="se-float-btn se-interactive se-pressable md:hidden"><ArrowRight size={18} /></button>
-              {activeGroup.kind === 'DIRECT' ? <Avatar name={active!.name} src={userOf(activeGroup.memberIds.find((i: string) => i !== me))?.avatar} size="sm" /> : <span className="grid h-9 w-9 place-items-center rounded-full bg-primary/10 text-primary"><Users size={17} /></span>}
-              <div className="min-w-0 flex-1">
-                <h2 className="wrap-break-word text-sm font-extrabold text-text-main">{active!.name}</h2>
-                <p className="truncate text-caption text-text-secondary">{activeGroup.kind === 'DIRECT' ? 'پیام مستقیم' : `${fa(activeGroup.memberIds.length)} عضو${activeGroup.description ? ' · ' + activeGroup.description : ''}`}</p>
-              </div>
-              <Button type="button" variant="ghost" size="icon" aria-label="گزینه‌های گفتگو"
-                aria-haspopup="dialog" onClick={() => setModal('conversation-actions')}><MoreHorizontal size={20} /></Button>
-            </header>
-
-            <div ref={scrollRef} className="min-h-0 flex-1 space-y-1.5 overflow-y-auto overscroll-contain bg-canvas/60 p-3 sm:p-4"
+      {activeId && <section key={activeId} id="chat-conversation" aria-labelledby="chat-thread-title" className="crm-chat-screen">
+        <header className="crm-chat-rail space-y-1.5 pb-2 pt-2 sm:pt-4">
+          <div className="flex min-h-12 items-center gap-2.5">
+            <Button type="button" variant="ghost" size="icon" className="size-11 min-h-11 shrink-0 rounded-full"
+              aria-label="بازگشت به صندوق" onClick={() => openConv(null)}><ArrowRight size={20} aria-hidden="true" /></Button>
+            {activeGroup && (activeGroup.kind === 'DIRECT' ? <Avatar name={active?.name ?? ''} src={recipient?.avatar} size="md" className="shrink-0" /> :
+              <span className="grid size-10 shrink-0 place-items-center rounded-full bg-primary/10 text-primary"><Users size={17} aria-hidden="true" /></span>)}
+            <div className="min-w-0 flex-1">
+              <h1 id="chat-thread-title" ref={headerTitleRef} tabIndex={-1} className="truncate text-base font-extrabold outline-none">{active?.name ?? 'گفتگو'}</h1>
+              {activeGroup && <p className="truncate text-caption text-text-secondary">{activeGroup.kind === 'DIRECT'
+                ? (recipient?.username ? <bdi>@{recipient.username}</bdi> : 'پیام مستقیم')
+                : `${fa(activeGroup.memberIds.length)} عضو${activeGroup.description ? ' · ' + activeGroup.description : ''}`}</p>}
+            </div>
+            {activeGroup && <Button type="button" variant="ghost" size="icon" className="size-11 min-h-11 shrink-0 rounded-full"
+              aria-label="گزینه‌های گفتگو" aria-haspopup="dialog" onClick={() => setModal('conversation-actions')}><MoreHorizontal size={20} /></Button>}
+          </div>
+          {connectionStatus}
+        </header>
+        {activeGroup ? <>
+          <div className="relative grid min-h-0">
+            <div ref={scrollRef} className="crm-chat-scroll" role="log" aria-labelledby="chat-thread-title" aria-live="polite"
               onScroll={event => {
                 const area = event.currentTarget;
-                chatAnchor.current.atEnd = area.scrollHeight - area.scrollTop - area.clientHeight < 48;
-              }} role="log" aria-live="polite" onClick={() => setSelectedMsg(null)}>
+                threadPositions.current.set(activeGroup.id, area.scrollTop);
+                chatAnchor.current.atEnd = atLatestMessage(area);
+                setAwayFromLatest(!chatAnchor.current.atEnd);
+              }} onClick={() => setSelectedMsg(null)}>
+              <div ref={logContentRef} className="crm-chat-rail min-h-full space-y-1.5 pb-3 pt-1">
               {messages.length === 0 && (
                 <div className="flex h-full flex-col items-center justify-center gap-2 py-10 text-center text-xs text-text-secondary"><MessageCircle size={38} className="opacity-25" /><p className="font-semibold">هنوز پیامی ثبت نشده است.</p><p className="text-caption">اولین پیام را بنویسید؛ با @ همکاران را منشن کنید.</p></div>
               )}
               {messages.map((m, i) => {
                 const mine = m.senderId === me; const sender = userOf(m.senderId); const prev = messages[i - 1];
                 const newDay = !prev || !sameDay(prev.createdAt, m.createdAt);
-                const grouped = prev && !newDay && prev.senderId === m.senderId && !prev.deleted;
-                const next = messages[i + 1]; const groupedNext = !!next && sameDay(next.createdAt, m.createdAt) && next.senderId === m.senderId && !next.deleted && !m.deleted;
+                const grouped = prev && !newDay && prev.senderId === m.senderId && !prev.deleted && !m.deleted
+                  && Date.parse(m.createdAt) - Date.parse(prev.createdAt) < 180_000;
                 const reply = m.replyToId ? messages.find(x => x.id === m.replyToId) : null;
                 const others = activeGroup.memberIds.filter((id: string) => id !== m.senderId);
                 const seen = others.filter((id: string) => m.readBy?.includes(id)).length;
@@ -491,19 +582,22 @@ export function GroupsWorkspace({ state, updateState }: Props) {
                 const sel = selectedMsg === m.id;
                 return (
                   <React.Fragment key={m.id}>
-                    {newDay && <div className="se-day-sticky my-3"><span>{dayOf(m.createdAt)}</span></div>}
-                    {unreadAnchor.current?.msgId === m.id && <div data-first-unread className="my-2 flex items-center gap-2 text-micro font-bold text-danger"><span className="h-px flex-1 bg-danger/30" />پیام‌های جدید<span className="h-px flex-1 bg-danger/30" /></div>}
+                    {newDay && <div className="py-3 text-center text-caption font-medium text-text-secondary">{dayOf(m.createdAt)}</div>}
+                    {unreadAnchor.current?.msgId === m.id && <div data-first-unread className="my-2 flex items-center gap-2 text-caption font-semibold text-primary"><span className="h-px flex-1 bg-border" />پیام‌های جدید<span className="h-px flex-1 bg-border" /></div>}
                     <div data-unread-message={!mine && !m.deleted && !m.readBy?.includes(me) ? m.id : undefined}
                       className={cn('flex items-end gap-2', mine ? 'flex-row-reverse' : 'flex-row', grouped ? 'mt-0.5' : 'mt-2')}>
                       {!mine && (grouped ? <span className="w-8 shrink-0" /> : <Avatar name={sender?.name || 'کاربر'} src={sender?.avatar} size="sm" className="shrink-0" />)}
-                      <SwipeReply disabled={!!m.deleted} onReply={() => { setReplyTo(m); inputRef.current?.focus(); }} className={cn('flex max-w-(--pct-bubble) flex-col', mine ? 'items-end' : 'items-start')}>
+                      <SwipeReply disabled={!!m.deleted || !canSend} onReply={() => { setReplyTo(m); inputRef.current?.focus(); }} className={cn('crm-chat-bubble flex min-w-0 flex-col', mine ? 'items-end' : 'items-start')}>
                         {!mine && !grouped && activeGroup.kind !== 'DIRECT' && <span className="mb-0.5 px-1 text-micro font-bold text-text-secondary">{sender?.name}</span>}
-                        <div onClick={e => { e.stopPropagation(); if (!m.deleted) setSelectedMsg(sel ? null : m.id); }} role="button" tabIndex={0} onKeyDown={e => { if (e.key === 'Enter') setSelectedMsg(sel ? null : m.id); }}
-                          className={cn('relative cursor-pointer rounded-2xl px-3.5 py-2.5 text-xs leading-relaxed shadow-subtle outline-none focus-visible:ring-2 focus-visible:ring-accent', m.deleted ? 'border border-dashed border-border bg-transparent italic text-text-secondary' : mine ? cn('bg-primary text-white', grouped && 'rounded-te-md', groupedNext && 'rounded-be-md', !groupedNext && 'rounded-be-md') : cn('border border-[var(--glass-border)] bg-[var(--glass-bg)] text-text-main backdrop-blur-md', grouped && 'rounded-ts-md', groupedNext && 'rounded-bs-md', !groupedNext && 'rounded-bs-md'))}>
+                        <div onClick={e => { e.stopPropagation(); if (!m.deleted) setSelectedMsg(sel ? null : m.id); }}
+                          className={cn('max-w-full rounded-[1.35rem] px-3.5 py-2 text-sm leading-relaxed', !m.deleted && 'cursor-pointer',
+                            m.deleted ? 'border border-dashed border-border italic text-text-secondary'
+                              : mine ? cn('crm-chat-sent text-white', grouped && 'rounded-te-lg')
+                                : cn('bg-surface text-text-main', grouped && 'rounded-ts-lg'))}>
                           {m.deleted ? 'این پیام حذف شد' : (
                             <>
                               {reply && <div className={cn('mb-1.5 rounded-lg border-s-2 px-2 py-1 text-caption', mine ? 'border-white/60 bg-white/15' : 'border-primary bg-primary/[.06]')}><b>{userOf(reply.senderId)?.name}</b><div className="line-clamp-2 opacity-90">{reply.deleted ? 'پیام حذف شد' : reply.content || 'پیوست'}</div></div>}
-                              {m.content && <p className="whitespace-pre-wrap break-words">{renderContent(m, mine)}</p>}
+                              {m.content && <p dir="auto" className="whitespace-pre-wrap wrap-anywhere">{renderContent(m, mine)}</p>}
                               {Array.isArray(m.entityMentions) && m.entityMentions.length > 0 && (
                                 <div className="mt-2 grid w-full gap-1.5" aria-label="رکوردهای ارجاع‌شده">
                                   {m.entityMentions.map(ref => {
@@ -521,7 +615,7 @@ export function GroupsWorkspace({ state, updateState }: Props) {
                                 </div>
                               )}
                               {(m.attachments || []).map(a => a.fileType?.startsWith('image/') ? (
-                                <img key={a.id} src={a.base64Data} alt={a.fileName} className="mt-1.5 max-h-52 rounded-xl object-cover" />
+                                <img key={a.id} src={a.base64Data} alt={a.fileName} className="mt-1.5 max-h-52 max-w-full rounded-xl object-contain" />
                               ) : (
                                 <a key={a.id} href={a.base64Data} download={a.fileName} onClick={e => e.stopPropagation()} className={cn('mt-1.5 flex min-h-control items-center gap-2 rounded-xl border px-2.5 py-1.5 text-caption font-bold', mine ? 'border-white/30 bg-white/10 text-white' : 'border-border bg-canvas text-text-main')}><Download size={14} /><span className="truncate" dir="ltr">{a.fileName}</span></a>
                               ))}
@@ -533,22 +627,25 @@ export function GroupsWorkspace({ state, updateState }: Props) {
                         </div>
                         {Array.isArray(m.reactions) && m.reactions.some(r => (r.userIds || []).length) && <div className="mt-1 flex flex-wrap gap-1" aria-label="واکنش‌ها">{m.reactions.filter(r => (r.userIds || []).length).map(r => <button key={r.emoji} onClick={e => { e.stopPropagation(); toggleReaction(m, r.emoji); }} aria-pressed={(r.userIds || []).includes(me)} className={cn('rounded-full border px-2 py-0.5 text-caption', (r.userIds || []).includes(me) ? 'border-primary/40 bg-primary/10' : 'border-border bg-surface')}>{r.emoji} {fa(r.userIds.length)}</button>)}</div>}
                         <div className="mt-0.5 flex items-center gap-1.5 px-1 text-micro text-text-secondary">
-                          <span>{timeOf(m.createdAt)}</span>{m.editedAt && <span>· ویرایش‌شده</span>}
+                          <time dateTime={m.createdAt}>{timeOf(m.createdAt)}</time>{m.editedAt && <span>· ویرایش‌شده</span>}
                           {mine && !m.deleted && (pending
-                            ? <><span>{syncStatus.lastError ? 'تأیید سرور نرسید' : 'در صف ارسال'}</span>
-                              {syncStatus.lastError && <Button type="button" variant="ghost" size="xs" disabled={retryingMessage}
+                            ? <><span>{connectionOffline ? 'در صف ارسال پس از اتصال' : syncStatus.lastError ? 'تأیید سرور نرسید' : 'در حال ارسال'}</span>
+                              {!connectionOffline && syncStatus.lastError && <Button type="button" variant="ghost" size="xs" disabled={retryingMessage}
                                 onClick={() => void retrySend()}>تلاش دوباره</Button>}</>
                             : !syncStatus.isSqlActive ? <span>ذخیرهٔ محلی</span>
                             : seen >= others.length && others.length > 0
                               ? <CheckCheck size={13} className="text-success" aria-label="خوانده شد" />
                               : seen > 0 ? <span className="flex items-center gap-0.5"><CheckCheck size={13} aria-hidden />{fa(seen)}/{fa(others.length)}</span>
                                 : <Check size={13} aria-label="ثبت در سرور" />)}
+                          {!m.deleted && <button type="button" aria-label="گزینه‌های پیام" aria-expanded={sel}
+                            onClick={event => { event.stopPropagation(); setSelectedMsg(sel ? null : m.id); }}
+                            className="sr-only focus:not-sr-only focus:min-h-11 focus:min-w-11 focus:rounded-full focus:outline-2 focus:outline-primary"><MoreHorizontal size={16} aria-hidden="true" /></button>}
                         </div>
                         {sel && !m.deleted && (
                           <div className="se-panel-enter mt-1 flex flex-wrap items-center gap-1 rounded-2xl border border-border bg-surface p-1.5 shadow-card" onClick={e => e.stopPropagation()}>
                             {['👍','❤️','😂','👏','🙏'].map(emoji => <button key={emoji} onClick={() => toggleReaction(m, emoji)} aria-label={`واکنش ${emoji}`} className="grid h-8 w-8 place-items-center rounded-full hover:bg-canvas">{emoji}</button>)}
                             <span className="mx-1 h-5 w-px bg-border" />
-                            <button onClick={() => { setReplyTo(m); setSelectedMsg(null); inputRef.current?.focus(); }} className="se-interactive flex min-h-control-sm cursor-pointer items-center gap-1 rounded-full px-3 text-caption font-bold text-text-main hover:bg-canvas"><Reply size={13} />پاسخ</button>
+                            {canSend && <button onClick={() => { setReplyTo(m); setSelectedMsg(null); inputRef.current?.focus(); }} className="se-interactive flex min-h-11 cursor-pointer items-center gap-1 rounded-full px-3 text-caption font-bold text-text-main hover:bg-canvas"><Reply size={13} />پاسخ</button>}
                             {m.content && !m.taskId && <button onClick={() => { openTaskFrom(m); setSelectedMsg(null); }} className="se-interactive flex min-h-control-sm cursor-pointer items-center gap-1 rounded-full px-3 text-caption font-bold text-text-main hover:bg-canvas"><ListPlus size={13} />ساخت وظیفه</button>}
                             {mine && m.content && <button onClick={() => { setEditing(m); setText(m.content); setSelectedMsg(null); inputRef.current?.focus(); }} className="se-interactive flex min-h-control-sm cursor-pointer items-center gap-1 rounded-full px-3 text-caption font-bold text-text-main hover:bg-canvas"><Pencil size={13} />ویرایش</button>}
                             {mine && <button onClick={() => removeMsg(m)} className="se-interactive flex min-h-control-sm cursor-pointer items-center gap-1 rounded-full px-3 text-caption font-bold text-danger hover:bg-danger-soft"><Trash2 size={13} />حذف</button>}
@@ -559,24 +656,30 @@ export function GroupsWorkspace({ state, updateState }: Props) {
                   </React.Fragment>
                 );
               })}
+              </div>
             </div>
+            {awayFromLatest && <div className="crm-chat-rail pointer-events-none absolute inset-x-0 bottom-2 flex justify-end">
+                <Button type="button" size="icon" variant="secondary" className="pointer-events-auto size-11 min-h-11 rounded-full bg-surface"
+                  aria-label="رفتن به آخرین پیام" onClick={jumpToLatest}><ArrowDown size={17} aria-hidden="true" /></Button>
+              </div>}
+          </div>
 
             {/* Composer */}
-            <div id="chat-composer" className="relative shrink-0 space-y-2 border-t border-border bg-surface p-2.5 pb-[calc(env(safe-area-inset-bottom,0px)+10px)]">
-              {entityMentionOptions.length > 0 && (
-                <ul role="listbox" aria-label="منشن موجودیت‌های سامانه" className="se-panel-enter absolute inset-x-3 bottom-full mb-1 max-h-64 overflow-y-auto rounded-2xl border border-border bg-surface shadow-raised">
-                  {entityMentionOptions.map(entity => <li key={`${entity.entityType}:${entity.entityId}`}><button role="option" aria-selected={false} onMouseDown={e => e.preventDefault()} onClick={() => pickEntityMention(entity)} className="flex min-h-touch w-full cursor-pointer items-center gap-2 px-3 text-start text-xs hover:bg-canvas"><span className="grid h-8 w-8 place-items-center rounded-full bg-primary/10 text-primary"><AtSign size={14} /></span><span className="min-w-0 flex-1"><b className="block truncate text-text-main">{entity.displayText}</b><span className="block truncate text-micro text-text-secondary">{referenceScope.get(entity.entityType, entity.entityId)?.label || 'رکورد'}</span></span><span className="text-micro text-text-secondary">{entity.source === 'ERP_MIRROR' ? 'نمایهٔ سامانهٔ مالی' : 'سامانهٔ داخلی'}</span></button></li>)}
-                </ul>
-              )}
-              {mentionOptions.length > 0 && (
-                <ul role="listbox" aria-label="منشن همکار" className="se-panel-enter absolute inset-x-3 bottom-full mb-1 overflow-hidden rounded-2xl border border-border bg-surface shadow-raised">
-                  {mentionOptions.map(u => <li key={u.id}><button role="option" aria-selected={false} onMouseDown={e => e.preventDefault()} onClick={() => pickMention(u)} className="flex min-h-touch w-full cursor-pointer items-center gap-2 px-3 text-start text-xs hover:bg-canvas"><Avatar name={u.name} src={u.avatar} size="sm" /><b className="text-text-main">{u.name}</b><span className="text-text-secondary" dir="ltr">@{u.username}</span></button></li>)}
-                </ul>
+            <div id="chat-composer" className="crm-chat-rail crm-chat-composer relative space-y-2 bg-canvas pt-1.5">
+              {(entityMentionOptions.length > 0 || mentionOptions.length > 0) && (
+                <div className="se-panel-enter absolute inset-x-3 bottom-full z-10 mb-1 crm-chat-suggestions overflow-y-auto rounded-2xl border border-border bg-surface shadow-raised">
+                {mentionOptions.length > 0 && <ul aria-label="منشن همکار">
+                  {mentionOptions.map(u => <li key={u.id}><button type="button" onMouseDown={e => e.preventDefault()} onClick={() => pickMention(u)} className="flex min-h-touch w-full cursor-pointer items-center gap-2 px-3 text-start text-xs hover:bg-canvas"><Avatar name={u.name} src={u.avatar} size="sm" /><b className="truncate text-text-main">{u.name}</b><bdi className="truncate text-text-secondary">@{u.username}</bdi></button></li>)}
+                </ul>}
+                {entityMentionOptions.length > 0 && <ul aria-label="منشن موجودیت‌های سامانه">
+                  {entityMentionOptions.map(entity => <li key={`${entity.entityType}:${entity.entityId}`}><button type="button" onMouseDown={e => e.preventDefault()} onClick={() => pickEntityMention(entity)} className="flex min-h-touch w-full cursor-pointer items-center gap-2 px-3 text-start text-xs hover:bg-canvas"><span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-primary/10 text-primary"><AtSign size={14} /></span><span className="min-w-0 flex-1"><b className="block truncate text-text-main">{entity.displayText}</b><span className="block truncate text-micro text-text-secondary">{referenceScope.get(entity.entityType, entity.entityId)?.label || 'رکورد'}</span></span><span className="text-micro text-text-secondary">{entity.source === 'ERP_MIRROR' ? 'نمایهٔ سامانهٔ مالی' : 'سامانهٔ داخلی'}</span></button></li>)}
+                </ul>}
+                </div>
               )}
               {draftMessage && (
                 <div className="flex items-center justify-between rounded-xl border-s-2 border-primary bg-primary/[.06] px-3 py-1.5 text-caption">
                   <span className="min-w-0 truncate"><b className="text-primary">{editing ? 'ویرایش پیام' : `پاسخ به ${userOf(draftMessage.senderId)?.name || 'کاربر'}`}</b> · {draftMessage.content || 'پیوست'}</span>
-                  <button aria-label="لغو" onClick={() => { setReplyTo(null); setEditing(null); setText(''); }} className="grid h-8 w-8 shrink-0 cursor-pointer place-items-center rounded-full hover:bg-ink/10"><X size={14} /></button>
+                  <button type="button" aria-label={editing ? 'لغو ویرایش' : 'لغو پاسخ'} onClick={cancelReplyOrEdit} className="grid size-11 shrink-0 place-items-center rounded-full hover:bg-sunken"><X size={15} /></button>
                 </div>
               )}
               {attachedEntity && <div className="flex items-center justify-between rounded-xl bg-gold/15 px-3 py-1.5 text-caption font-bold text-text-main"><span className="flex items-center gap-1.5 truncate"><Paperclip size={13} />{attachedEntity.display}</span><button aria-label="حذف رکورد" onClick={() => setAttachedEntity(undefined)} className="grid h-8 w-8 cursor-pointer place-items-center rounded-full hover:bg-ink/10"><X size={14} /></button></div>}
@@ -591,26 +694,29 @@ export function GroupsWorkspace({ state, updateState }: Props) {
               </ul>}
               {readingFiles && <p role="status" className="text-caption text-text-secondary">در حال آماده‌سازی پیوست…</p>}
               {fileError && <p role="alert" className="text-caption font-bold text-danger">{fileError}</p>}
-              <div className="flex items-end gap-1.5">
+              {canSend ? <form onSubmit={event => { event.preventDefault(); send(); }} className="crm-chat-compose-field flex min-w-0 items-end gap-0.5 rounded-[1.65rem] border border-border/70 bg-surface p-1">
                 <input ref={fileRef} type="file" multiple hidden onChange={e => void readFiles(e.target.files)} />
-                <button onClick={() => fileRef.current?.click()} disabled={readingFiles || files.length >= 4 || !!editing} aria-label="پیوست فایل" title={syncStatus.isSqlActive ? 'حداکثر چهار فایل، مجموع ۶۰۰ کیلوبایت' : 'حداکثر چهار فایل، هرکدام ۱٫۵ مگابایت'} className="se-float-btn se-interactive se-pressable shrink-0 disabled:opacity-40"><Paperclip size={18} /></button>
-                <button onClick={() => { setPickQuery(''); setModal('record'); }} disabled={!!editing} aria-label="اتصال رکورد سامانه" title="اتصال رکورد سامانه" className="se-float-btn se-interactive se-pressable shrink-0 disabled:opacity-40"><Building2 size={18} /></button>
-                <Textarea ref={inputRef} rows={1} value={text} aria-label="متن پیام" placeholder="پیام بنویسید… (@ برای منشن، اینتر برای ارسال)"
+                <Button type="button" size="icon" variant="ghost" onClick={() => fileRef.current?.click()} disabled={readingFiles || files.length >= 4 || !!editing} aria-label="پیوست فایل" title={syncStatus.isSqlActive ? 'حداکثر چهار فایل، مجموع ۶۰۰ کیلوبایت' : 'حداکثر چهار فایل، هرکدام ۱٫۵ مگابایت'} className="size-11 min-h-11 shrink-0 rounded-full"><Paperclip size={18} /></Button>
+                <Textarea ref={inputRef} rows={1} value={text} aria-label="متن پیام" placeholder="پیام بنویسید…" dir="auto" enterKeyHint="send"
                   onChange={e => onTextChange(e.target.value, e.target.selectionStart)}
-                  onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); send(); } if (e.key === 'Escape') { setReplyTo(null); setEditing(null); setMentionQuery(null); } }}
-                  className="flex-1 resize-none" />
-                <button onClick={send} disabled={readingFiles || (!text.trim() && !attachedEntity && files.length === 0)} aria-label={editing ? 'ثبت ویرایش' : 'ارسال'} className="grid h-11 w-11 shrink-0 cursor-pointer place-items-center rounded-full bg-primary text-white shadow-lux transition active:scale-95 disabled:opacity-40"><Send size={17} className="-scale-x-100" /></button>
-              </div>
+                  onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); send(); } if (e.key === 'Escape') cancelReplyOrEdit(); }}
+                  className="flex-1" />
+                <Button type="button" size="icon" variant="ghost" onClick={() => { setPickQuery(''); setModal('record'); }} disabled={!!editing} aria-label="اتصال رکورد سامانه" title="اتصال رکورد سامانه" className="size-11 min-h-11 shrink-0 rounded-full"><Building2 size={17} /></Button>
+                <Button type="submit" size="icon" variant="primary" onMouseDown={event => { if (document.activeElement === inputRef.current) event.preventDefault(); }}
+                  disabled={readingFiles || (!text.trim() && (Boolean(editing) || (!attachedEntity && files.length === 0)))}
+                  aria-label={editing ? 'ثبت ویرایش' : 'ارسال'} className="crm-chat-sent size-11 min-h-11 shrink-0 rounded-full">
+                  {editing ? <Check size={18} aria-hidden="true" /> : <Send size={17} className="-scale-x-100" aria-hidden="true" />}
+                </Button>
+              </form> : <p className="rounded-xl bg-sunken px-3 py-2 text-center text-caption text-text-secondary">این گفتگو برای شما فقط خواندنی است.</p>}
             </div>
-          </>
-        ) : (
-          <div className={cn('h-full flex-col items-center justify-center gap-3 p-8 text-center text-xs text-text-secondary', activeId ? 'flex' : 'hidden md:flex')}>
-            <MessageCircle size={36} className="opacity-25" aria-hidden="true" />
-            <p className="font-semibold text-text-main">{activeId ? 'گفت‌وگو در دسترس نیست' : 'یک گفت‌وگو را انتخاب کنید'}</p>
-            {activeId && <Button type="button" variant="secondary" onClick={() => openConv(null)}>بازگشت به صندوق</Button>}
+        </> : <div className="crm-chat-scroll">
+          <div className="crm-chat-rail py-10">
+            {!chatReady && !unavailable ? <LoadingState label="در حال دریافت گفتگو" /> :
+              <EmptyState surface="chat_thread" compact title="گفتگو در دسترس نیست"
+                description={unavailable ? 'پس از برقراری اتصال دوباره تلاش کنید.' : 'این گفتگو پیدا نشد یا دسترسی شما به آن تغییر کرده است.'} />}
           </div>
-        )}
-      </section>
+        </div>}
+      </section>}
       {modal === 'conversation-actions' && activeGroup && active && <BottomSheet isOpen title="گزینه‌های گفتگو" onClose={() => setModal(null)}>
         <div className="grid gap-2">
           <Button type="button" variant="ghost" onClick={() => { toggleGroupFlag(activeGroup, 'mutedBy'); setModal(null); }}

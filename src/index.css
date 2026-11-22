@@ -182,8 +182,6 @@
       padding-top: 4px;
       padding-bottom: calc(var(--safe-bottom) + 84px);
     }
-    /* Chat screen hides the bottom nav, so no reserved space */
-    .main-content-scroll[data-chat="true"] { padding-bottom: var(--safe-bottom); }
   }
 
   /* Drawer / overlay motion (no plugin required) */
@@ -737,14 +735,66 @@
 .crm-page-quotes > :where(section, .crm-workspace-section) { min-width: 0; }
 .crm-page-customers :where([data-table-toolbar], .data-table-toolbar) { min-width: 0; }
 .crm-page-dashboard :where(.grid) { min-width: 0; }
-.crm-page-groups .crm-chat-inbox { min-width: 0; }
-.main-content-scroll[data-chat="true"] { min-height: 0; overflow: hidden; padding-bottom: 0; }
-.main-content-scroll[data-chat="true"] > .se-island-clearance {
-  height: 100%;
-  min-height: 0;
-  padding-bottom: max(var(--space-2), var(--safe-bottom));
+.crm-chat-viewport {
+  position: fixed;
+  inset-inline: 0;
+  inset-block-start: var(--app-viewport-offset-top, 0px);
+  block-size: 100vh;
+  block-size: var(--app-viewport-height, 100dvh);
+  overflow: hidden;
+  overscroll-behavior: none;
+  --chat-safe-bottom: max(0px, calc(var(--safe-bottom) - var(--app-viewport-bottom-gap, 0px)));
 }
-.main-content-scroll[data-chat="true"] .crm-workspace { height: 100%; }
+.crm-chat-viewport > .crm-workspace { padding-block-end: 0; }
+.crm-chat-viewport :where(input, select, textarea, button, a) { scroll-margin-block: 0; }
+
+.crm-chat-screen {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  block-size: 100%;
+  min-inline-size: 0;
+  padding-block-start: var(--safe-top);
+  overflow: hidden;
+}
+
+.crm-chat-rail {
+  inline-size: min(100%, 46rem);
+  min-inline-size: 0;
+  margin-inline: auto;
+  padding-inline-start: max(var(--space-3), env(safe-area-inset-right, 0px));
+  padding-inline-end: max(var(--space-3), env(safe-area-inset-left, 0px));
+}
+
+.crm-chat-scroll {
+  min-block-size: 0;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  scrollbar-gutter: stable;
+}
+
+.crm-chat-inbox-list { padding-block-end: max(var(--space-3), var(--chat-safe-bottom)); }
+.crm-chat-filters { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 7rem); gap: calc(var(--space-3) / 2); }
+.crm-chat-filters input[type="search"], .crm-chat-filters select {
+  inline-size: 100%;
+  min-block-size: var(--size-touch-target);
+  border-radius: 9999px;
+}
+.crm-chat-filters input[type="search"] { padding-inline-start: 2.5rem; }
+.crm-chat-composer { padding-block-end: max(calc(var(--space-3) / 2), var(--chat-safe-bottom)); }
+.crm-chat-compose-field:focus-within { border-color: var(--c-primary); }
+.crm-chat-compose-field textarea, .crm-chat-compose-field textarea:focus, .crm-chat-compose-field textarea:hover {
+  min-block-size: var(--size-touch-target);
+  min-inline-size: 0;
+  padding: .6rem .375rem;
+  resize: none;
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+  font-size: max(1em, var(--font-size-input));
+}
+.crm-chat-suggestions { max-block-size: min(15rem, calc(var(--app-viewport-height, 100dvh) * .32)); }
+.crm-chat-bubble { max-inline-size: min(82%, 34rem); }
+.crm-chat-sent { background-color: color-mix(in srgb, var(--c-primary) 82%, var(--c-avatar-deep)); }
 @media (max-width: 767px) {
   .crm-page-finance .crm-kpi-grid > * { padding: .7rem !important; }
   .crm-page-finance .crm-kpi-grid :where(.text-lg) { font-size: clamp(.9rem, 4vw, 1.05rem); }

@@ -13,7 +13,7 @@ export interface StateSyncResult { ok: boolean; upserted: number; deleted: numbe
 /** The slice of DataProvider the sync engine needs (both providers implement it). */
 export interface StateSyncProvider {
   name: string;
-  getStateSnapshot(): Promise<StateSnapshot>;
+  getStateSnapshot(view?: 'chat'): Promise<StateSnapshot>;
   syncStateChanges(change: Omit<ChangeSet, 'count'>): Promise<StateSyncResult>;
   bootstrapState(state: unknown): Promise<{ ok: boolean; upserted: number; rejected: RejectedChange[]; serverVersion: number }>;
 }
@@ -36,6 +36,8 @@ export class StateSyncEngine {
   private hydrated = false;
   private generation = 0;
   private snapshotRequest = 0;
+  private readingSnapshot = false;
+  private writesStarted = 0;
   private failures = 0;
   private listeners = new Set<(s: SyncStatus) => void>();
   private status: SyncStatus = { phase: 'stopped', pending: 0, lastSyncedAt: null, lastError: null, serverVersion: 0, rejected: 0 };
@@ -50,6 +52,7 @@ export class StateSyncEngine {
   }
 
   getStatus(): SyncStatus { return this.status; }
+  hasSnapshot(): boolean { return this.hydrated; }
   isRecordAcknowledged(collection: string, id: string): boolean { return this.index.collections[collection]?.has(id) ?? false; }
 
   /** Adopt an authoritative API receipt without sending the same write through state sync. */
@@ -100,6 +103,7 @@ export class StateSyncEngine {
     this.active = false;
     this.generation++;
     this.running = false;
+    this.readingSnapshot = false;
     this.hydrated = false;
     this.index = { collections: {}, singletons: {} };
     this.unsubscribe?.();
@@ -109,12 +113,21 @@ export class StateSyncEngine {
     this.set({ phase: 'stopped' });
   }
 
-  async hydrate(): Promise<boolean> {
-    if (!this.active) return false;
+  async hydrate(view?: 'chat'): Promise<boolean> {
+    if (!this.active || (view && (!this.hydrated || this.readingSnapshot || this.running))) return false;
     const generation = this.generation;
     const request = ++this.snapshotRequest;
-    const snapshot = await this.provider.getStateSnapshot();
+    const writesStarted = this.writesStarted;
+    this.readingSnapshot = true;
+    let snapshot: StateSnapshot;
+    try {
+      snapshot = await this.provider.getStateSnapshot(view);
+    } finally {
+      if (generation === this.generation && request === this.snapshotRequest) this.readingSnapshot = false;
+    }
     if (generation !== this.generation || request !== this.snapshotRequest) return false;
+    // A chat response that raced a write may predate its receipt. Keep the local queue and wait for the next poll.
+    if (view && writesStarted !== this.writesStarted) return false;
     const current = this.store.getState().state;
     const { patch, index } = mergeSnapshot(current, snapshot, this.index, this.registry);
     const revoked = new Set(snapshot.hiddenCollections ?? []);
@@ -137,7 +150,7 @@ export class StateSyncEngine {
       this.suppress = false;
     }
     this.hydrated = true;
-    this.set({ phase: 'idle', serverVersion: snapshot.serverVersion ?? 0, lastError: null });
+    if (!view) this.set({ phase: 'idle', serverVersion: snapshot.serverVersion ?? 0, lastError: null });
     return true;
   }
 
@@ -184,6 +197,7 @@ export class StateSyncEngine {
       if (change.count === 0) { this.set({ phase: 'idle', lastError: null, rejected: 0 }); this.failures = 0; return true; }
       this.set({ phase: 'syncing' });
       const { count, ...payload } = change;
+      this.writesStarted++;
       const result = await this.provider.syncStateChanges(payload);
       if (generation !== this.generation) return false;
       if (!result.ok) throw new Error('سرور تغییرات را نپذیرفت.');

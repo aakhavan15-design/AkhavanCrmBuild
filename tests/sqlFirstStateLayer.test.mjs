@@ -110,6 +110,32 @@ test('tenant isolation: one tenant never sees another tenant rows', async () => 
   assert.equal(Object.keys((await svc.snapshot({ tenantId: 'B', userId: 'u' })).collections).length, 0);
 });
 
+test('chat refresh returns only active conversation memberships and their messages', async () => {
+  const groups = [
+    { id: 'visible', active: true, memberIds: [auth.userId] },
+    { id: 'private', active: true, memberIds: ['colleague'] },
+    { id: 'inactive', active: false, memberIds: [auth.userId] },
+  ];
+  const messages = groups.map(group => ({ id: `message-${group.id}`, groupId: group.id }));
+  const queries = [];
+  class Request {
+    input() { return this; }
+    async query(sql) {
+      queries.push(sql);
+      const records = Object.entries({ groups, messages, accounts: [{ id: 'account' }] });
+      return { recordset: records.flatMap(([CollectionName, list]) => list.map(row => ({ CollectionName, EntityId: row.id, JsonDoc: JSON.stringify(row) }))) };
+    }
+  }
+  const driver = new MssqlEntityDriver({ sql: { Request, UniqueIdentifier: 'uuid' }, run: async (_claims, work) => work({}) });
+  const snapshot = await createEntityService({ driver, registry, hasPermission: allow }).snapshot(auth, { chatOnly: true });
+  assert.deepEqual(snapshot.collections, { groups: [groups[0]], messages: [messages[0]] });
+  assert.deepEqual(snapshot.singletons, {});
+  assert.equal(queries.length, 1);
+  assert.match(queries[0], /record\.CollectionName IN\(N'groups',N'messages'\)/);
+  assert.match(queries[0], /conversation\.TenantId=record\.TenantId/);
+  assert.match(queries[0], /OPENJSON\(conversation\.JsonDoc,'\$\.memberIds'\)/);
+});
+
 test('collection counts distinguish granted empty, populated and denied partitions', async () => {
   const driver = new MemoryEntityDriver();
   const admin = createEntityService({ driver, registry, hasPermission: allow });
@@ -441,6 +467,39 @@ test('private HR records leave the browser cache and prior SQL rows disappear af
     assert.ok(snapshot.hiddenCollections.includes('onboardingApplications'));
     await engine.hydrate();
     for (const name of PRIVATE_PERSONNEL_COLLECTIONS) assert.deepEqual(store.getState().state[name], []);
+  } finally { engine.stop(); }
+});
+
+test('chat refresh discards a response that predates a write receipt and leaves other state intact', async () => {
+  const group = { id: 'group', memberIds: [auth.userId] };
+  const sent = { id: 'sent', groupId: group.id, content: 'متن' };
+  const incoming = { id: 'incoming', groupId: group.id, content: 'پاسخ' };
+  const accounts = [{ id: 'customer' }];
+  let resolveRead;
+  let holdRead = true;
+  const store = fakeStore({});
+  const engine = new StateSyncEngine(store, {
+    name: 'SQLSERVER_BACKEND',
+    async getStateSnapshot(view) {
+      if (!view) return { collections: { groups: [group], messages: [], accounts }, singletons: {}, serverVersion: 1 };
+      if (holdRead) return new Promise(resolve => { resolveRead = resolve; });
+      return { collections: { groups: [group], messages: [sent, incoming] }, singletons: {} };
+    },
+    async syncStateChanges() { return { ok: true, upserted: 1, deleted: 0, rejected: [], serverVersion: 2 }; },
+  }, registry, { debounceMs: 60_000 });
+  try {
+    await engine.start();
+    const stale = engine.hydrate('chat');
+    store.setState(previous => ({ state: { ...previous.state, messages: [sent] } }));
+    assert.equal(await engine.flush(), true);
+    resolveRead({ collections: { groups: [group], messages: [] }, singletons: {} });
+    assert.equal(await stale, false);
+    assert.deepEqual(store.getState().state.messages, [sent]);
+    holdRead = false;
+    assert.equal(await engine.hydrate('chat'), true);
+    assert.deepEqual(store.getState().state.messages, [sent, incoming]);
+    assert.deepEqual(store.getState().state.accounts, accounts);
+    assert.equal(engine.getStatus().serverVersion, 2);
   } finally { engine.stop(); }
 });
 

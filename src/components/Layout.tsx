@@ -70,6 +70,7 @@ export function Layout({
 
   useEffect(() => {
     const viewport = window.visualViewport;
+    let frame = 0;
     const updateViewport = () => {
       // A zoom gesture changes visualViewport too. Keep the layout stable while magnified.
       const unzoomedViewport = viewport && Math.abs(viewport.scale - 1) < 0.01 ? viewport : null;
@@ -77,17 +78,24 @@ export function Layout({
       const offsetTop = unzoomedViewport?.offsetTop || 0;
       document.documentElement.style.setProperty('--app-viewport-height', `${height}px`);
       document.documentElement.style.setProperty('--app-viewport-offset-top', `${offsetTop}px`);
+      document.documentElement.style.setProperty('--app-viewport-bottom-gap', `${Math.max(0, window.innerHeight - height - offsetTop)}px`);
+    };
+    const scheduleViewport = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(updateViewport);
     };
     updateViewport();
-    viewport?.addEventListener('resize', updateViewport);
-    viewport?.addEventListener('scroll', updateViewport);
-    window.addEventListener('resize', updateViewport);
+    viewport?.addEventListener('resize', scheduleViewport);
+    viewport?.addEventListener('scroll', scheduleViewport);
+    window.addEventListener('resize', scheduleViewport);
     return () => {
-      viewport?.removeEventListener('resize', updateViewport);
-      viewport?.removeEventListener('scroll', updateViewport);
-      window.removeEventListener('resize', updateViewport);
+      cancelAnimationFrame(frame);
+      viewport?.removeEventListener('resize', scheduleViewport);
+      viewport?.removeEventListener('scroll', scheduleViewport);
+      window.removeEventListener('resize', scheduleViewport);
       document.documentElement.style.removeProperty('--app-viewport-height');
       document.documentElement.style.removeProperty('--app-viewport-offset-top');
+      document.documentElement.style.removeProperty('--app-viewport-bottom-gap');
     };
   }, []);
 
@@ -101,7 +109,7 @@ export function Layout({
   );
 
   const isDetailPage = /^\/(customers|accounts|tasks|quotes|operations_control|finance)\/.+/.test(location.pathname);
-  const inChat = location.pathname.startsWith('/groups');
+  const inChat = location.pathname === '/groups';
 
   // Dynamic Title Resolution in clear Persian
   const activePageLabel = useMemo(() => {
@@ -124,6 +132,12 @@ export function Layout({
       (t: Record<string, unknown>) => t.status !== 'COMPLETED' && (t.priority === 'HIGH' || t.slaStatus === 'BREACHED')
     ).length;
   }, [state?.tasks]);
+
+  if (inChat) return (
+    <main id="main-scroll-container" className="crm-chat-viewport bg-canvas font-sans" data-route="groups" dir="rtl">
+      <div id="tour-page" className="crm-workspace h-full" data-ui-density="compact">{children}</div>
+    </main>
+  );
 
   return (
     <div
@@ -166,7 +180,6 @@ export function Layout({
           <main
             id="main-scroll-container"
             data-route={location.pathname.split('/').filter(Boolean)[0] || 'home'}
-            data-chat={inChat ? 'true' : 'false'}
             className="w-full flex-1 overflow-y-auto main-content-scroll no-scrollbar"
           >
             <div className="se-island-clearance mx-auto min-h-full w-full max-w-7xl px-2.5 pb-4 sm:px-4">
@@ -179,14 +192,12 @@ export function Layout({
       </div>
 
       {/* Floating Bottom Nav (Mobile) */}
-      {!inChat && (
-        <BottomNav
+      <BottomNav
           opsBadgeCount={opsBadgeCount}
           canAccess={canAccess}
           onOpenMenu={() => setNavDrawerOpen(true)}
           className="md:hidden"
-        />
-      )}
+      />
 
       {/* Mobile Drawer */}
       <NavigationDrawer
