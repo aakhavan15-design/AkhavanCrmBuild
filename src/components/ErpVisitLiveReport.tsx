@@ -6,7 +6,7 @@ import type {GeoMapPin} from './GeoZoneMapEditor';
 import {Card} from './ui/Card';
 import type {GeoPolygonGeometry} from '../types';
 import {inspectRouteCoordinates,suggestRoutePolygonFromCustomers} from '../lib/geoRouteAnalysis';
-import {readCustomerGeoPoint} from '../lib/geoIntelligence';
+import {readCustomerGeoPoint,isPointInsideZone} from '../lib/geoIntelligence';
 
 interface LiveRoute {
  RouteId:string;RouteCode:string;RouteName:string;VisibleCustomerCount:number;SourceSystemCode:string;ExternalRouteId:string;
@@ -81,6 +81,12 @@ export function ErpVisitLiveReport({canManage=false}:{canManage?:boolean}){
  const sourceCustomers=useMemo(()=>customers.map(c=>({id:c.AccountId,name:c.Name,latitude:c.Latitude,longitude:c.Longitude})),[detail]);
  const suggested=useMemo(()=>suggestRoutePolygonFromCustomers(sourceCustomers),[sourceCustomers]);
  const boundary=editedGeometry||detail?.analysisBoundary?.geometry||suggested.geometry;
+ const mappedCount=sourceCustomers.filter(customer=>readCustomerGeoPoint(customer)!==null).length;
+ const actualCoveragePercent=boundary&&mappedCount>0
+  ? Math.round(sourceCustomers.filter(customer=>{
+      const point=readCustomerGeoPoint(customer);
+      return point!==null && isPointInsideZone(point,boundary);
+    }).length*10000/mappedCount)/100 : null;
  const anomaly=useMemo(()=>boundary?inspectRouteCoordinates(sourceCustomers,visits.map(v=>({
   id:v.ExternalVisitId,customerId:v.AccountId,latitude:v.Latitude,longitude:v.Longitude,
  })),boundary):null,[sourceCustomers,visits,boundary]);
@@ -153,13 +159,13 @@ export function ErpVisitLiveReport({canManage=false}:{canManage?:boolean}){
         const resp=await fetch('/api/v1/erp/visit-routes/'+encodeURIComponent(selected.RouteId)+'/geometry',{
           method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},
           body:JSON.stringify({geometry:boundary,method:editedGeometry?'MANUAL':'AUTO_80_PERCENT',
-            coveragePercent:suggested.actualCoveragePercent,sourceCount:suggested.validCustomerCount})
+            coveragePercent:actualCoveragePercent,sourceCount:suggested.validCustomerCount})
         });
         const result=await resp.json();
         if(!resp.ok)throw new Error(result.error?.message||'ذخیره مرز ناموفق بود.');
         setDetail(current=>current?{...current,analysisBoundary:{
           version:result.VersionNumber,status:'DRAFT',method:editedGeometry?'MANUAL':'AUTO_80_PERCENT',
-          geometry:boundary,coveragePercent:suggested.actualCoveragePercent,sourceCount:suggested.validCustomerCount}}:current);
+          geometry:boundary,coveragePercent:actualCoveragePercent,sourceCount:suggested.validCustomerCount}}:current);
         setEditedGeometry(null);setSaveMessage('نسخه پیشنهادی مرز در SQL ذخیره شد؛ برای قطعی‌شدن به بازبینی مدیریتی نیاز دارد.');
       }catch(e){setSaveMessage(e instanceof Error?e.message:'خطای ثبت مرز');}
       finally{setSaving(false);}
