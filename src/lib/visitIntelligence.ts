@@ -45,12 +45,13 @@ export interface VisitIntelArgs {
   invoiceHistoryComplete?: boolean;
   visitTargetDays?: number;
 }
-export type VisitIntelLabel = 'NO_RECORDED_VISIT'|'OVERDUE_VISIT'|'HIGH_VALUE'|'WHOLESALE'|'NO_ORDER'|'RETURN_REVIEW'|'COLLECTION_DUE'|'IN_WEEK_TOUR'|'OUTSIDE_WEEK_TOUR'|'UNCONFIRMED_TOUR_STOP';
+export type VisitIntelLabel = 'NO_RECORDED_VISIT'|'OVERDUE_VISIT'|'HIGH_VALUE'|'WHOLESALE'|'NO_ORDER'|'RETURN_REVIEW'|'COLLECTION_DUE'|'IN_WEEK_TOUR'|'OUTSIDE_WEEK_TOUR'|'UNCONFIRMED_TOUR_STOP'|'PURCHASE_CYCLE_DUE';
 export interface VisitIntelRow {
   customerId: string; name: string; score: number; reasons: VisitIntelLabel[];
   recordedVisits: number; lastVisitDate: string | null; lastVisitOutcome: string | null; lastNoOrderReason: string | null;
   daysSinceVisit: number | null; invoiceCount: number; salesTotal: number | null;
   visitLinkedInvoice: VisitIntelInvoice | null; unconfirmedTourStops: number;
+  purchaseCycleDays: number | null; daysSincePurchase: number | null; purchaseDue: boolean;
   averageInvoice: number | null; lastInvoiceDate: string | null; lastInvoice: VisitIntelInvoice | null;
   returnedInvoiceIds: string[]; returnCount: number;
   receivable: VisitIntelReceivable | null;
@@ -86,6 +87,7 @@ export const visitReasonLabel: Record<VisitIntelLabel,string> = {
   NO_ORDER:'ویزیت بدون سفارش',RETURN_REVIEW:'برگشت فروش نیازمند بررسی',
   COLLECTION_DUE:'مانده معوق معتبر',IN_WEEK_TOUR:'در تور رسمی این هفته',
   UNCONFIRMED_TOUR_STOP:'ایستگاه گذشته بدون ثبت مراجعه',
+  PURCHASE_CYCLE_DUE:'زمان خرید بعدی بر اساس سابقه گذشته',
   OUTSIDE_WEEK_TOUR:'خارج از تور رسمی هفته',
 };
 export function buildVisitIntelligence(args: VisitIntelArgs): VisitIntelReport {
@@ -140,16 +142,24 @@ export function buildVisitIntelligence(args: VisitIntelArgs): VisitIntelReport {
       String(r.customerId||r.accountId||'')===customer.id ||
       ci.some(i=>r.invoiceId===i.id||r.externalInvoiceId===i.id||r.externalInvoiceId===i.invoiceNumber));
     const first=ci[0]||null;
-    return {customer,cv,ci,last,lastDate,amounts,salesTotal,matches,first};
+    const purchaseDates=[...new Set(ci.map(i=>ymd(i.date)).filter((d):d is string=>Boolean(d)))].sort();
+    const purchaseGaps=purchaseDates.slice(1).map((date,index)=>diffDays(purchaseDates[index],date)).filter(gap=>gap>0).sort((a,b)=>a-b);
+    const purchaseCycleDays=purchaseDates.length>=3 ? (purchaseGaps.length%2===1
+      ? purchaseGaps[Math.floor(purchaseGaps.length/2)] :
+      (purchaseGaps[purchaseGaps.length/2-1]+purchaseGaps[purchaseGaps.length/2])/2) : null;
+    const daysSincePurchase=first ? diffDays(first.date,asOf) : null;
+    const purchaseDue=purchaseCycleDays!==null && daysSincePurchase!==null && daysSincePurchase>=Math.max(7,Math.ceil(purchaseCycleDays*1.3));
+    return {customer,cv,ci,last,lastDate,amounts,salesTotal,matches,first,purchaseCycleDays,daysSincePurchase,purchaseDue};
   });
   const historical=provisional.map(p=>p.salesTotal).filter((n):n is number=>n!==null && n>0).sort((a,b)=>a-b);
   const highValueThreshold=historical.length>=4?historical[Math.max(0,Math.ceil(historical.length*.75)-1)]:null;
   const customerRows:VisitIntelRow[]=provisional.map(p=>{
-    const {customer,cv,ci,last,lastDate,salesTotal,matches,first}=p;
+    const {customer,cv,ci,last,lastDate,salesTotal,matches,first,purchaseCycleDays,daysSincePurchase,purchaseDue}=p;
     const recordedVisits=cv.length,daysSinceVisit=lastDate?diffDays(lastDate,asOf):null;
     const reasons:VisitIntelLabel[]=[];const evidence:string[]=[];const warnings:string[]=[];
     const add=(r:VisitIntelLabel)=>{if(!reasons.includes(r))reasons.push(r)};
     if(!recordedVisits) add('NO_RECORDED_VISIT');
+    if(purchaseDue)add('PURCHASE_CYCLE_DUE');
     if(daysSinceVisit!==null && daysSinceVisit>=target) add('OVERDUE_VISIT');
     if(highValueThreshold!==null&&salesTotal!==null&&salesTotal>=highValueThreshold&&salesTotal>0)add('HIGH_VALUE');
     if(/عمده|تعاون|wholesale|cooperativ|horeca|هتل|رستوران/.test(normalizedChannel(customer)))add('WHOLESALE');
@@ -169,7 +179,7 @@ export function buildVisitIntelligence(args: VisitIntelArgs): VisitIntelReport {
     if(!args.historyComplete)warnings.push('پوشش تاریخچه ویزیت تأیید نشده؛ نبود رکورد به معنی هرگز ویزیت‌نشدن نیست.');
     if(!args.invoiceHistoryComplete)warnings.push('پوشش تاریخچه فاکتور تأیید نشده؛ رتبه خرید نسبی به داده موجود است.');
     if(!receivable)warnings.push('مانده رسمی قابل اتکا برای این مشتری ارائه نشده است.');
-    const score=(reasons.includes('UNCONFIRMED_TOUR_STOP')?20:0)+(reasons.includes('NO_RECORDED_VISIT')?22:0)+(reasons.includes('OVERDUE_VISIT')?18:0)+
+    const score=(reasons.includes('PURCHASE_CYCLE_DUE')?14:0)+(reasons.includes('UNCONFIRMED_TOUR_STOP')?20:0)+(reasons.includes('NO_RECORDED_VISIT')?22:0)+(reasons.includes('OVERDUE_VISIT')?18:0)+
       (reasons.includes('HIGH_VALUE')?18:0)+(reasons.includes('WHOLESALE')?10:0)+
       (reasons.includes('NO_ORDER')?12:0)+(reasons.includes('RETURN_REVIEW')?8:0)+
       (reasons.includes('COLLECTION_DUE')?15:0)+(reasons.includes('IN_WEEK_TOUR')?12:0);
@@ -177,7 +187,7 @@ export function buildVisitIntelligence(args: VisitIntelArgs): VisitIntelReport {
       lastVisitOutcome:last?String(last.outcome||last.status||'ثبت نشده'):null,
       lastNoOrderReason:last?String(last.noOrderReason||last.reasonCode||last.description||last.notes||'').trim()||null:null,
       daysSinceVisit,invoiceCount:ci.length,salesTotal,
-      unconfirmedTourStops,
+      unconfirmedTourStops,purchaseCycleDays,daysSincePurchase,purchaseDue,
       visitLinkedInvoice:last ? ci.find(i=>(last.invoiceId&&[i.id,i.invoiceNumber].includes(last.invoiceId))||(last.salesOrderId||last.orderId)&&i.salesOrderId===(last.salesOrderId||last.orderId))||null : null,
       averageInvoice:salesTotal===null||!ci.length?null:salesTotal/ci.length,
       lastInvoiceDate:first?.date||null,lastInvoice:first,
