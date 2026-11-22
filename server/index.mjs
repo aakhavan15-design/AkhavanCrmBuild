@@ -581,7 +581,7 @@ app.get('/api/v1/erp/route-map/:id/detail',authenticate,requirePermission('geo.v
  const returnAllowed=(await hasSqlPermission(req.auth,'finance.view')) && (await hasSqlPermission(req.auth,'route_map.returns.view'));
  const receivableAllowed=(await hasSqlPermission(req.auth,'finance.view')) && (await hasSqlPermission(req.auth,'route_map.receivables.view'));
  const financeOrganizationWide=financeAllowed&&await hasSqlPermission(req.auth,'finance.view',{organizationWide:true});
- const report=await routeCustomerDetail(req.auth,{routeId:req.params.id,filters,organizationWide,financeAllowed,financeOrganizationWide});
+ const report=await routeCustomerDetail(req.auth,{routeId:req.params.id,filters,organizationWide,financeAllowed,financeOrganizationWide,returnAllowed,receivableAllowed});
  if(!report)return res.status(404).json({error:{code:'ROUTE_NOT_FOUND',message:'مسیر مجاز پیدا نشد.'}});
  res.json(report);
 }));
