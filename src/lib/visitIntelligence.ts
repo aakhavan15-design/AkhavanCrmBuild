@@ -73,7 +73,9 @@ const money = (n: unknown): number | null => typeof n==='number' && Number.isFin
 const emptyOrVoided = (record: {deletedAt?:string|null; isVoided?:boolean;status?:string;statusCode?:string}): boolean =>
   !!record.deletedAt || record.isVoided === true || ['VOID','VOIDED','CANCELLED','CANCELED','DELETED'].includes(String(record.statusCode||record.status||'').toUpperCase());
 const realVisit = (v: VisitIntelVisit): boolean =>
-  v.type==='VISIT' ? Boolean(ymd(v.checkInAt||v.dateTime)) : Boolean(v.checkInAt && ymd(v.checkInAt) && ['COMPLETED','DONE'].includes(String(v.status||'').toUpperCase()));
+  v.type==='VISIT'
+    ? Boolean(ymd(v.checkInAt||v.dateTime) && !['PLANNED','PENDING','CANCELLED','CANCELED'].includes(String(v.status||'').toUpperCase()))
+    : Boolean(v.checkInAt && ymd(v.checkInAt) && ['COMPLETED','DONE'].includes(String(v.status||'').toUpperCase()));
 const normalizedChannel = (c: VisitIntelCustomer) => [c.channel,c.customerClass,c.businessType,...(c.tags||[])].filter(Boolean).join(' ').toLowerCase();
 export const visitReasonLabel: Record<VisitIntelLabel,string> = {
   NO_RECORDED_VISIT:'فاقد مراجعه ثبت‌شده',OVERDUE_VISIT:'فاصله زیاد از مراجعه قبلی',
@@ -93,7 +95,7 @@ export function buildVisitIntelligence(args: VisitIntelArgs): VisitIntelReport {
   const ids=new Set(args.customers.map(c=>c.id));
   const visits=(args.visits||[]).filter(v=>ids.has(String(v.customerId||v.accountId||'')) && realVisit(v) && (ymd(v.checkInAt||v.dateTime)||'')<=asOf);
   const invoices=(args.invoices||[]).filter(i=>ids.has(String(i.customerId||i.accountId||'')) && !emptyOrVoided(i) && !!ymd(i.date) && (ymd(i.date)||'')<=asOf);
-  const returns=(args.returns||[]).filter(r=>!emptyOrVoided(r)&&(!ymd(r.returnDate)||ymd(r.returnDate)!<=asOf));
+  const returns=(args.returns||[]).filter(r=>!emptyOrVoided(r) && !!ymd(r.returnDate) && (ymd(r.returnDate) as string) <= asOf);
   const tourStops=new Map<string,VisitIntelRow['tourStops']>();
   for(const tour of args.tours||[]) {
     if(tour.isDeleted||!ymd(tour.tourDate)||tour.tourDate<weekStart||tour.tourDate>weekEnd || emptyOrVoided(tour)) continue;
@@ -111,7 +113,7 @@ export function buildVisitIntelligence(args: VisitIntelArgs): VisitIntelReport {
     const ci=invoices.filter(i=>String(i.customerId||i.accountId||'')===customer.id).sort((a,b)=>b.date.localeCompare(a.date));
     const last=cv[0];const lastDate=last?ymd(last.checkInAt||last.dateTime):null;
     const amounts=ci.map(i=>money(i.totalAmount));
-    const salesTotal=amounts.every(a=>a!==null)?amounts.reduce<number>((sum,a)=>sum+(a||0),0):null;
+    const salesTotal=ci.length > 0 && amounts.every(a=>a!==null)?amounts.reduce<number>((sum,a)=>sum+(a||0),0):null;
     const matches=returns.filter(r=>
       String(r.customerId||r.accountId||'')===customer.id ||
       ci.some(i=>r.invoiceId===i.id||r.externalInvoiceId===i.id||r.externalInvoiceId===i.invoiceNumber));
@@ -119,7 +121,7 @@ export function buildVisitIntelligence(args: VisitIntelArgs): VisitIntelReport {
     return {customer,cv,ci,last,lastDate,amounts,salesTotal,matches,first};
   });
   const historical=provisional.map(p=>p.salesTotal).filter((n):n is number=>n!==null && n>0).sort((a,b)=>a-b);
-  const highValueThreshold=historical.length?historical[Math.max(0,Math.ceil(historical.length*.75)-1)]:null;
+  const highValueThreshold=historical.length>=4?historical[Math.max(0,Math.ceil(historical.length*.75)-1)]:null;
   const customerRows:VisitIntelRow[]=provisional.map(p=>{
     const {customer,cv,ci,last,lastDate,salesTotal,matches,first}=p;
     const recordedVisits=cv.length,daysSinceVisit=lastDate?diffDays(lastDate,asOf):null;
@@ -156,10 +158,13 @@ export function buildVisitIntelligence(args: VisitIntelArgs): VisitIntelReport {
       returnedInvoiceIds:[...new Set(matches.map(r=>String(r.invoiceId||r.externalInvoiceId||'')).filter(Boolean))],
       returnCount:matches.length,receivable,tourStops:stops,evidence,warnings};
   }).sort((a,b)=>b.score-a.score||b.invoiceCount-a.invoiceCount||a.name.localeCompare(b.name,'fa'));
-  const reasonCounts = [...new Map(visits.filter(v=>String(v.outcome||'').toUpperCase()!=='ORDER_TAKEN').map(v=>[
-    String(v.noOrderReason||v.reasonCode||v.outcome||'علت ثبت نشده'),0])).keys()].map(reason=>({
-    reason,count:visits.filter(v=>String(v.noOrderReason||v.reasonCode||v.outcome||'علت ثبت نشده')===reason).length
-  })).sort((a,b)=>b.count-a.count);
+  const reasonMap=new Map<string,number>();
+  for(const v of visits){
+    const reason=String(v.noOrderReason||v.reasonCode||
+      (['NO_ORDER','NO_NEED','FOLLOW_UP','PRICE_OBJECTION','NOT_ORDERED','NO_PURCHASE'].includes(String(v.outcome||'').toUpperCase())?v.outcome:'')).trim();
+    if(reason)reasonMap.set(reason,(reasonMap.get(reason)||0)+1);
+  }
+  const reasonCounts=[...reasonMap].map(([reason,count])=>({reason,count})).sort((a,b)=>b.count-a.count);
   return {asOf,weekStart,weekEnd,customerCount:args.customers.length,
     withRecordedVisits:customerRows.filter(r=>r.recordedVisits>0).length,
     withoutRecordedVisits:customerRows.filter(r=>!r.recordedVisits).length,
