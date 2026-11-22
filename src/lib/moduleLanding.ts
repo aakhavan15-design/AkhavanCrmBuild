@@ -186,7 +186,7 @@ export const MODULE_LANDINGS: ModuleLandingDefinition[] = [
         tiles: [
           tile('dispatch', 'برنامه پخش', 'برنامه‌ریزی خودروها، ظرفیت و مسیر ارسال', '/operations?tab=dispatch', 'ops.dispatch', Truck),
           tile('geo', 'هوش مکانی و زون‌ها', 'محدوده‌های جغرافیایی و پوشش مشتریان', '/geo-intelligence', 'geo_intelligence', MapPinned),
-          tile('dist-route-planning', 'برنامه‌ریزی مسیر و تور ویزیت', 'مسیرها و تور ویزیت روزانه', '/planned?item=dist-route-planning', 'ops.dispatch', Route),
+          tile('dist-route-planning', 'مسیر پیشنهادی مراجعه', 'چینش مشتریان زون با مختصات معتبر؛ تور رسمی هنوز در دست تکمیل است', '/geo-intelligence?mode=operations', 'geo_intelligence', Route),
           tile('dist-operations', 'یکپارچگی عملیات توزیع', 'فاکتور، موجودی، خودرو، راننده و تسویه', '/planned?item=dist-operations', 'ops.dispatch', Layers),
         ],
       },
