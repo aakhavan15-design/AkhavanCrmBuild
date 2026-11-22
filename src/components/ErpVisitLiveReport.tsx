@@ -19,6 +19,7 @@ interface RouteOverview{
  tours:Array<{TourId:string;TourCode?:string|null;ExternalTourId:string;TourDate:string;ExternalSalesRepId:string;StopSequence?:number|null;AccountId?:string|null;ExternalCustomerId?:string|null}>;
  visits:Array<{ExternalVisitId:string;AccountId?:string;ExternalSalesRepId:string;VisitedAtUtc:string;OutcomeCode?:string|null;NoOrderReasonCode?:string|null;ReasonTitleFa?:string|null;Latitude?:number|null;Longitude?:number|null}>;
  gps:Array<{ExternalLocationId:string;ExternalSalesRepId:string;RecordedAtUtc:string;Latitude:number;Longitude:number;AccuracyMeters?:number|null}>;
+ analysisBoundary?:{version:number;status:string;method:string;coveragePercent?:number|null;sourceCount?:number|null;geometry:GeoPolygonGeometry}|null;
  limits:{mayBeTruncated:boolean};
 }
 const fa=(n:number)=>n.toLocaleString('fa-IR');
@@ -38,7 +39,7 @@ async function authorizedGet<T>(url:string,signal:AbortSignal):Promise<T>{
  * Read-only SQL projection for every role. Server decides which routes/accounts/tours
  * the caller may see. No local state snapshot or client-side scope is trusted.
  */
-export function ErpVisitLiveReport(){
+export function ErpVisitLiveReport({canManage=false}:{canManage?:boolean}){
  const [date,setDate]=useState(day);
  const [routes,setRoutes]=useState<LiveRoute[]>([]);
  const [routeId,setRouteId]=useState('');
@@ -48,6 +49,10 @@ export function ErpVisitLiveReport(){
  const [showGps,setShowGps]=useState(false);
  const [showVisits,setShowVisits]=useState(true);
  const [showCustomers,setShowCustomers]=useState(true);
+ const [editedGeometry,setEditedGeometry]=useState<GeoPolygonGeometry|null>(null);
+ const [saveMessage,setSaveMessage]=useState('');
+ const [saving,setSaving]=useState(false);
+ useEffect(()=>{setEditedGeometry(null);setSaveMessage('');},[routeId,date]);
  useEffect(()=>{
   const controller=new AbortController();
   setLoading(true);setError('');
@@ -75,7 +80,7 @@ export function ErpVisitLiveReport(){
  const orderedStops=[...officialStops].sort((a,b)=>(a.StopSequence||0)-(b.StopSequence||0));
  const sourceCustomers=useMemo(()=>customers.map(c=>({id:c.AccountId,name:c.Name,latitude:c.Latitude,longitude:c.Longitude})),[detail]);
  const suggested=useMemo(()=>suggestRoutePolygonFromCustomers(sourceCustomers),[sourceCustomers]);
- const boundary=suggested.geometry;
+ const boundary=editedGeometry||detail?.analysisBoundary?.geometry||suggested.geometry;
  const anomaly=useMemo(()=>boundary?inspectRouteCoordinates(sourceCustomers,visits.map(v=>({
   id:v.ExternalVisitId,customerId:v.AccountId,latitude:v.Latitude,longitude:v.Longitude,
  })),boundary):null,[sourceCustomers,visits,boundary]);
@@ -136,15 +141,43 @@ export function ErpVisitLiveReport(){
     پیشنهاد محدوده ۸۰٪ مشتریان صرفاً تحلیل است و هنوز تأیید مدیریتی ندارد؛ تشخیص خروج از مرز، نیازمند بررسی علت، دقت GPS و تأیید مرز رسمی تحلیلی است.
     {anomaly&&<> مشتری مشکوک خارج از مرز: {fa(anomaly.customersOutside.length)}؛ ویزیت خارج از مرز: {fa(anomaly.visitsOutside.length)}؛ مختصات نامشخص: {fa(anomaly.unknownCustomers.length+anomaly.unknownVisits.length)}.</>}
    </p>
+   <div className="flex flex-wrap items-center gap-2">
+    <span className="text-xs text-text-secondary">{detail.analysisBoundary
+      ? 'نسخه ذخیره‌شده '+fa(detail.analysisBoundary.version)+' · وضعیت '+detail.analysisBoundary.status
+      : 'مرز فعلی پیشنهاد اولیه ۸۰٪ و ذخیره نشده است'}</span>
+    {canManage&&boundary&&<button type="button" disabled={saving} onClick={async()=>{
+      setSaveMessage('');setSaving(true);
+      try{
+        const token=AuthService.getAccessToken();
+        if(!token)throw new Error('نشست معتبر نیست.');
+        const resp=await fetch('/api/v1/erp/visit-routes/'+encodeURIComponent(selected.RouteId)+'/geometry',{
+          method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},
+          body:JSON.stringify({geometry:boundary,method:editedGeometry?'MANUAL':'AUTO_80_PERCENT',
+            coveragePercent:suggested.actualCoveragePercent,sourceCount:suggested.validCustomerCount})
+        });
+        const result=await resp.json();
+        if(!resp.ok)throw new Error(result.error?.message||'ذخیره مرز ناموفق بود.');
+        setDetail(current=>current?{...current,analysisBoundary:{
+          version:result.VersionNumber,status:'DRAFT',method:editedGeometry?'MANUAL':'AUTO_80_PERCENT',
+          geometry:boundary,coveragePercent:suggested.actualCoveragePercent,sourceCount:suggested.validCustomerCount}}:current);
+        setEditedGeometry(null);setSaveMessage('نسخه پیشنهادی مرز در SQL ذخیره شد؛ برای قطعی‌شدن به بازبینی مدیریتی نیاز دارد.');
+      }catch(e){setSaveMessage(e instanceof Error?e.message:'خطای ثبت مرز');}
+      finally{setSaving(false);}
+    }} className="min-h-10 rounded-xl bg-primary px-3 text-xs font-bold text-white disabled:opacity-50">
+     {saving?'در حال ثبت…':'ثبت نسخه مرز در SQL'}
+    </button>}
+    {saveMessage&&<span role="status" className="text-xs text-text-secondary">{saveMessage}</span>}
+   </div>
    <div className="flex flex-wrap gap-3 text-xs">
     <label><input type="checkbox" checked={showCustomers} onChange={e=>setShowCustomers(e.target.checked)}/> مشتریان</label>
     <label><input type="checkbox" checked={showVisits} onChange={e=>setShowVisits(e.target.checked)}/> ویزیت‌ها</label>
     <label><input type="checkbox" checked={showGps} onChange={e=>setShowGps(e.target.checked)}/> GPS فروشنده</label>
    </div>
    <GeoZoneMapEditor
-    key={selected.RouteId+date}
+    key={selected.RouteId+date+':'+(detail.analysisBoundary?.version??'proposal')}
     geometry={boundary||undefined} coordinateText={toStringGeometry(boundary)}
-    disabled onChange={()=>{}} markers={markers} gpsTrack={gpsTrack}
+    disabled={!canManage} onChange={geometry=>setEditedGeometry(geometry)}
+    markers={markers} gpsTrack={gpsTrack}
    />
    {anomaly&&<div className="grid gap-2 sm:grid-cols-2">
     <section className="rounded-xl border border-border p-3 text-xs">
