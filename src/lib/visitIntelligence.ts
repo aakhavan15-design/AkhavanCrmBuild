@@ -61,7 +61,7 @@ export interface VisitIntelReport {
   customerCount: number; withRecordedVisits: number; withoutRecordedVisits: number;
   inErpTour: number; totalActualVisits: number; customerRows: VisitIntelRow[];
   incompleteSources: string[]; reasonCounts: Array<{reason: string; count: number}>;
-  routes: Array<{routeId: string; repId: string; plannedStops: number; recordedVisitsOnTourDate: number; unconfirmedPastStops: number; collectionDueStops: number}>;
+  routes: Array<{routeId: string; repId: string; plannedStops: number; recordedVisitsOnTourDate: number; recordedOrderOutcomes: number; unconfirmedPastStops: number; collectionDueStops: number}>;
 }
 const DAY_MS = 86400000;
 const ymd = (value: unknown): string | null => {
@@ -140,9 +140,9 @@ export function buildVisitIntelligence(args: VisitIntelArgs): VisitIntelReport {
     if(receivable&&receivable.overdueAmount>0)add('COLLECTION_DUE');
     const stops=(tourStops.get(customer.id)||[]).sort((a,b)=>a.date.localeCompare(b.date)||a.sequence-b.sequence);
     if(stops.length)add('IN_WEEK_TOUR');
-    const unconfirmedTourStops=stops.filter(stop=>stop.date<asOf&&!cv.some(v=>ymd(v.checkInAt||v.dateTime)===stop.date && (!v.repId&&!v.ownerId||[v.repId,v.ownerId].includes(stop.repId)))).length;
+    const unconfirmedTourStops=stops.filter(stop=>stop.date<asOf&&!cv.some(v=>ymd(v.checkInAt||v.dateTime)===stop.date && [v.repId,v.ownerId].filter(Boolean).includes(stop.repId))).length;
     if(unconfirmedTourStops)add('UNCONFIRMED_TOUR_STOP');
-    else if((args.tours||[]).length)add('OUTSIDE_WEEK_TOUR');
+    if(!stops.length && (args.tours||[]).length)add('OUTSIDE_WEEK_TOUR');
     if(last) evidence.push('VISIT:'+last.id);
     if(first) evidence.push('INVOICE:'+first.id);
     for(const r of matches) if(r.id)evidence.push('RETURN:'+r.id);
@@ -175,9 +175,12 @@ export function buildVisitIntelligence(args: VisitIntelArgs): VisitIntelReport {
   const routesMap=new Map<string,{routeId:string;repId:string;plannedStops:number;recordedVisitsOnTourDate:number;unconfirmedPastStops:number;collectionDueStops:number}>();
   for(const row of customerRows)for(const stop of row.tourStops){
     const key=stop.routeId+'|'+stop.repId;
-    const entry=routesMap.get(key)||{routeId:stop.routeId,repId:stop.repId,plannedStops:0,recordedVisitsOnTourDate:0,unconfirmedPastStops:0,collectionDueStops:0};
+    const entry=routesMap.get(key)||{routeId:stop.routeId,repId:stop.repId,plannedStops:0,recordedVisitsOnTourDate:0,recordedOrderOutcomes:0,unconfirmedPastStops:0,collectionDueStops:0};
     entry.plannedStops++;
-    const done=visits.some(v=>String(v.customerId||v.accountId||'')===row.customerId && ymd(v.checkInAt||v.dateTime)===stop.date && (!v.repId&&!v.ownerId||[v.repId,v.ownerId].includes(stop.repId)));
+    const matchedVisits=visits.filter(v=>String(v.customerId||v.accountId||'')===row.customerId &&
+      ymd(v.checkInAt||v.dateTime)===stop.date && [v.repId,v.ownerId].filter(Boolean).includes(stop.repId));
+    const done=matchedVisits.length>0;
+    if(matchedVisits.some(v=>String(v.outcome||'').toUpperCase()==='ORDER_TAKEN'))entry.recordedOrderOutcomes++;
     if(done)entry.recordedVisitsOnTourDate++;
     else if(stop.date<asOf)entry.unconfirmedPastStops++;
     if(row.receivable && row.receivable.overdueAmount>0)entry.collectionDueStops++;
