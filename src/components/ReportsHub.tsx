@@ -15,7 +15,6 @@ import { ExportMenuButton } from './ui/ExportMenuButton';
 import { KpiCard } from './charts/KpiCard';
 import { ChartCard } from './charts/ChartCard';
 import { SectionHeader } from './charts/ReportPrimitives';
-import { ProgressRows } from './charts/ProgressRows';
 import { BarChart } from './charts/BarChart';
 import { NeoLineChart } from './charts/NeoLineChart';
 import { NeoDonutChart } from './charts/NeoDonutChart';
@@ -32,6 +31,7 @@ import { CreditorBalanceReview } from './reports/CreditorBalanceReview';
 import { ReceivablesLifoPanel } from './reports/ReceivablesLifoPanel';
 import { ProfitLossWidget } from './finance/ProfitLossWidget';
 import { CashFlowPanel } from './finance/CashFlowPanel';
+import { JournalCoveragePanel } from './finance/JournalCoveragePanel';
 import { PurchaseCycleFollowUp } from './reports/PurchaseCycleFollowUp';
 import { getActiveDataProvider } from '../services/dataProvider';
 import type { CreditNoteEvidenceRow } from '../services/dataProvider';
@@ -42,6 +42,8 @@ interface ReportsHubProps {
   setActiveTab: (tab: NavigationTab) => void;
   canViewFinance: boolean;
   canViewPayments: boolean;
+  canOpenJournalCoverage: boolean;
+  canFollowUpJournalCoverage: boolean;
   canViewChurn: boolean;
   canCreateFollowUp: boolean;
   receivableAccounts: Account[];
@@ -67,7 +69,7 @@ const REPORT_DEFS: {
   { id: 'proposals', num: 5, label: 'پیشنهادهای تجاری', domain: 'inventory', chart: 'list', icon: <FileText size={22} /> },
   { id: 'visit', num: 6, label: 'ویزیت و پخش', domain: 'team', chart: 'bar', heatmap: true, icon: <MapPin size={22} /> },
   { id: 'routes', num: 7, label: 'عملکرد مسیرها و توزیع', domain: 'distribution', chart: 'bar', heatmap: true, icon: <Truck size={22} /> },
-  { id: 'returns', num: 8, label: 'مرجوعی و نشت فروش', domain: 'distribution', chart: 'progress', heatmap: true, icon: <RotateCcw size={22} /> },
+  { id: 'returns', num: 8, label: 'مرجوعی و نشت فروش', domain: 'distribution', chart: 'ledger', icon: <RotateCcw size={22} /> },
   { id: 'team-activity', num: 9, label: 'فعالیت تیم فروش', domain: 'team', chart: 'list', heatmap: true, icon: <Activity size={22} /> },
   { id: 'delivery', num: 10, label: 'کیفیت تحویل', domain: 'distribution', chart: 'gauge', heatmap: true, icon: <ClipboardList size={22} /> },
   { id: 'discrepancy', num: 11, label: 'مغایرت‌ها و استثناها', domain: 'distribution', chart: 'list', icon: <Activity size={22} /> },
@@ -90,7 +92,7 @@ const PERIOD_OPTIONS = [
   { value: 'all', label: 'کل سوابق', days: null },
 ];
 
-export function ReportsHub({ state, canViewFinance, canViewPayments, canViewChurn, canCreateFollowUp, receivableAccounts }: ReportsHubProps) {
+export function ReportsHub({ state, canViewFinance, canViewPayments, canOpenJournalCoverage, canFollowUpJournalCoverage, canViewChurn, canCreateFollowUp, receivableAccounts }: ReportsHubProps) {
   const [params] = useSearchParams();
   const churn = params.get('churn');
   const audience = churn === 'owner' || churn === 'supervisor' || churn === 'manager' ? churn : undefined;
@@ -110,13 +112,16 @@ export function ReportsHub({ state, canViewFinance, canViewPayments, canViewChur
   const now = useMemo(() => new Date(), []);
   const periodMeta = useMemo(() => PERIOD_OPTIONS.find((p) => p.value === period) || PERIOD_OPTIONS[1], [period]);
 
+  const today = toLocalDateISO(now);
   const cutoffIso = useMemo(() => {
     if (periodMeta.days === null) return null;
-    return new Date(now.getTime() - periodMeta.days * 86400000).toISOString().slice(0, 10);
+    const from = new Date(now);
+    from.setDate(from.getDate() - periodMeta.days + 1);
+    return toLocalDateISO(from);
   }, [periodMeta, now]);
 
   const monthFormatter = useMemo(
-    () => new Intl.DateTimeFormat('fa-IR-u-ca-persian', { month: 'short' }),
+    () => new Intl.DateTimeFormat('fa-IR-u-ca-persian', { month: 'long', year: 'numeric', timeZone: 'UTC' }),
     []
   );
 
@@ -131,7 +136,7 @@ export function ReportsHub({ state, canViewFinance, canViewPayments, canViewChur
     const matchDate = (isoStr?: string) => {
       if (!isoStr) return false;
       const day = String(isoStr).slice(0, 10);
-      return !cutoffIso || day >= cutoffIso;
+      return day <= today && (!cutoffIso || day >= cutoffIso);
     };
 
     const invoices = rawInvoices.filter(i => matchDate(i.date || i.createdAt));
@@ -150,19 +155,18 @@ export function ReportsHub({ state, canViewFinance, canViewPayments, canViewChur
       .reduce((sum, t) => sum + Math.max(0, Number(t.revenueTargetRials) || 0), 0);
     const achievement = target > 0 ? Math.min(100, Math.round((totalSales / target) * 100)) : 0;
 
-    const countBuckets = period === '12m' ? 12 : 6;
-    const buckets = Array.from({ length: countBuckets }, (_, idx) => {
-      const d = new Date(now.getFullYear(), now.getMonth() - (countBuckets - 1 - idx), 1);
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-      return { key, label: monthFormatter.format(d), total: 0 };
-    });
-    const byKey = new Map(buckets.map(b => [b.key, b]));
-    invoices.forEach(inv => {
-      const key = String(inv.date || '').slice(0, 7);
-      const bucket = byKey.get(key);
-      const amount = Number(inv.totalAmount) || 0;
-      if (bucket && Number.isFinite(amount) && amount > 0) bucket.total += amount;
-    });
+    const monthKeys = new Intl.DateTimeFormat('en-u-ca-persian-nu-latn', { year: 'numeric', month: '2-digit', timeZone: 'UTC' });
+    const byMonth = new Map<string, { label: string; total: number }>();
+    for (const invoice of [...invoices].sort((a,b) => String(a.date || a.createdAt).localeCompare(String(b.date || b.createdAt)))) {
+      const day = new Date(String(invoice.date || invoice.createdAt).slice(0, 10) + 'T00:00:00Z');
+      const amount = Number(invoice.totalAmount);
+      if (!Number.isFinite(day.getTime()) || invoice.totalAmount == null || !Number.isFinite(amount)) continue;
+      const key = monthKeys.format(day);
+      const bucket = byMonth.get(key) ?? { label:monthFormatter.format(day),total:0 };
+      bucket.total += amount;
+      byMonth.set(key,bucket);
+    }
+    const buckets = [...byMonth.values()];
 
     const payByMethod = new Map<string, number>();
     payments.forEach(p => {
@@ -225,10 +229,12 @@ export function ReportsHub({ state, canViewFinance, canViewPayments, canViewChur
       heatY,
       heatCells,
     };
-  }, [state, cutoffIso, now, monthFormatter, period]);
+  }, [state, cutoffIso, now, monthFormatter, today]);
 
   const periodLabel = periodMeta.label;
-  const activeDef = REPORT_DEFS.find((r) => r.id === activeReport);
+  const activeDef = domainReports.find((r) => r.id === activeReport);
+  const returnReport = activeDef?.id === 'returns';
+  const officialReturnReport = returnReport && canOpenJournalCoverage && getActiveDataProvider().name === 'SQLSERVER_BACKEND';
 
   const exportCurrentReport = () => {
     const content = csvRows([
@@ -257,14 +263,12 @@ export function ReportsHub({ state, canViewFinance, canViewPayments, canViewChur
             className="w-auto rounded-full"
             aria-label="بازه زمانی"
           >
-            {PERIOD_OPTIONS.map((o) => (
+            {PERIOD_OPTIONS.filter(o => !returnReport || o.days !== null).map((o) => (
               <option key={o.value} value={o.value}>{o.label}</option>
             ))}
           </Select>
         </div>
-        <ExportMenuButton
-          onExportCsv={exportCurrentReport}
-        />
+        {!returnReport && <ExportMenuButton onExportCsv={exportCurrentReport} />}
       </div>}
 
       <div id="reports-domain-selector" data-tour-actions className="flex flex-wrap gap-1.5">
@@ -314,7 +318,7 @@ export function ReportsHub({ state, canViewFinance, canViewPayments, canViewChur
                 <button
                   key={r.id}
                   type="button"
-                  onClick={() => setActiveReport(r.id)}
+                  onClick={() => { if (r.id === 'returns' && !cutoffIso) setPeriod('30d'); setActiveReport(r.id); }}
                   className="relative flex flex-col items-center gap-2 p-3 rounded-2xl border border-border/80 bg-canvas/70 hover:bg-surface hover:border-primary/40 transition-colors cursor-pointer"
                 >
                   {r.heatmap && (
@@ -373,6 +377,11 @@ export function ReportsHub({ state, canViewFinance, canViewPayments, canViewChur
             بازگشت به فهرست گزارشات
           </button>
 
+          {returnReport ? (
+            officialReturnReport && cutoffIso ? <JournalCoveragePanel key={state.currentUserId}
+              period={{from:cutoffIso,to:today,dimension:'category'}} focusReturns canFollowUp={canFollowUpJournalCoverage} />
+              : <p role="status" className="text-xs text-text-secondary">گزارش مرجوعی به دسترسی سازمانی مالی و اسناد SQL Server نیاز دارد.</p>
+          ) : <>
           <div className="grid grid-cols-2 gap-2.5">
             <KpiCard
               label="مبلغ کلیدی"
@@ -440,30 +449,6 @@ export function ReportsHub({ state, canViewFinance, canViewPayments, canViewChur
             </ChartCard>
           )}
 
-          {(activeDef.chart === 'progress' || activeDef.id === 'returns') && (
-            <ChartCard title={activeDef.label} periodLabel={periodLabel}>
-              <ProgressRows
-                items={[
-                  { label: 'تحقق فروش', value: metrics.achievement },
-                  {
-                    label: 'نسبت وصول',
-                    value:
-                      metrics.totalSales > 0
-                        ? Math.min(100, (metrics.totalPaid / metrics.totalSales) * 100)
-                        : 0,
-                  },
-                  {
-                    label: 'پیشنهاد به فاکتور',
-                    value:
-                      metrics.quoteCount > 0
-                        ? Math.min(100, (metrics.invoiceCount / metrics.quoteCount) * 100)
-                        : 0,
-                  },
-                ]}
-              />
-            </ChartCard>
-          )}
-
           {(activeDef.chart === 'leaderboard' || activeDef.id === 'rep-perf') && (
             <ChartCard
               title="رتبه‌بندی فروشندگان"
@@ -526,6 +511,7 @@ export function ReportsHub({ state, canViewFinance, canViewPayments, canViewChur
               </div>
             </ChartCard>
           )}
+          </>}
         </div>
       )}
     </div>

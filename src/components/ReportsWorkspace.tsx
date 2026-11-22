@@ -35,7 +35,7 @@ interface ReportsWorkspaceProps {
 }
 
 export function ReportsWorkspace({ state, updateState, setActiveTab }: ReportsWorkspaceProps) {
-  const { canOn, can } = useCan(state);
+  const { canOn, can, rbac } = useCan(state);
   // The same DataPort used by analytics; the UI receives only permission-scoped collections.
   const reportPort = useMemo(() => portFromAppState(state as unknown as Record<string, unknown>), [state]);
   const reportCols = useMemo(() => readReportCollections(reportPort), [reportPort]);
@@ -127,6 +127,8 @@ export function ReportsWorkspace({ state, updateState, setActiveTab }: ReportsWo
         setActiveTab={setActiveTab}
         canViewFinance={can('finance', 'VIEW')}
         canViewPayments={can('payments', 'VIEW')}
+        canOpenJournalCoverage={rbac.hasPermission('finance.view') && rbac.canSeeRecord()}
+        canFollowUpJournalCoverage={can('finance','EDIT') && can('tasks','CREATE')}
         receivableAccounts={receivableAccounts}
       />
     </main>
