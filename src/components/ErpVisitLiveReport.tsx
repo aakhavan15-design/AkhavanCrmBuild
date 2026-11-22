@@ -1,0 +1,167 @@
+import React, {useEffect,useMemo,useState} from 'react';
+import {Link} from 'react-router-dom';
+import {AuthService} from '../services/AuthService';
+import {GeoZoneMapEditor} from './GeoZoneMapEditor';
+import type {GeoMapPin} from './GeoZoneMapEditor';
+import {Card} from './ui/Card';
+import type {GeoPolygonGeometry} from '../types';
+import {inspectRouteCoordinates,suggestRoutePolygonFromCustomers} from '../lib/geoRouteAnalysis';
+import {readCustomerGeoPoint} from '../lib/geoIntelligence';
+
+interface LiveRoute {
+ RouteId:string;RouteCode:string;RouteName:string;VisibleCustomerCount:number;SourceSystemCode:string;ExternalRouteId:string;
+}
+interface RouteOverview{
+ source:string;asOf:string;
+ route:LiveRoute;
+ customers:Array<{AccountId:string;AccountCode?:string;Name:string;Latitude?:number|null;Longitude?:number|null;SubRouteCode?:string}>;
+ staff:Array<{ExternalStaffId:string;StaffRoleCode:string;StaffUserId?:string}>;
+ tours:Array<{TourId:string;TourCode?:string|null;ExternalTourId:string;TourDate:string;ExternalSalesRepId:string;StopSequence?:number|null;AccountId?:string|null;ExternalCustomerId?:string|null}>;
+ visits:Array<{ExternalVisitId:string;AccountId?:string;ExternalSalesRepId:string;VisitedAtUtc:string;OutcomeCode?:string|null;NoOrderReasonCode?:string|null;ReasonTitleFa?:string|null;Latitude?:number|null;Longitude?:number|null}>;
+ gps:Array<{ExternalLocationId:string;ExternalSalesRepId:string;RecordedAtUtc:string;Latitude:number;Longitude:number;AccuracyMeters?:number|null}>;
+ limits:{mayBeTruncated:boolean};
+}
+const fa=(n:number)=>n.toLocaleString('fa-IR');
+const toStringGeometry=(geometry?:GeoPolygonGeometry|null)=>geometry?.coordinates?.[0]?.slice(0,-1).map(p=>p[0]+', '+p[1]).join('\n')||'';
+const day=()=>new Date().toISOString().slice(0,10);
+async function authorizedGet<T>(url:string,signal:AbortSignal):Promise<T>{
+ const token=AuthService.getAccessToken();
+ if(!token)throw new Error('برای دریافت داده زنده باید مجدداً وارد حساب شوید.');
+ const response=await fetch(url,{headers:{Authorization:'Bearer '+token,Accept:'application/json'},signal});
+ if(!response.ok){
+  const error=await response.json().catch(()=>({}));
+  throw new Error(error.error?.message||'خواندن اطلاعات ERP ناموفق بود.');
+ }
+ return response.json() as Promise<T>;
+}
+/**
+ * Read-only SQL projection for every role. Server decides which routes/accounts/tours
+ * the caller may see. No local state snapshot or client-side scope is trusted.
+ */
+export function ErpVisitLiveReport(){
+ const [date,setDate]=useState(day);
+ const [routes,setRoutes]=useState<LiveRoute[]>([]);
+ const [routeId,setRouteId]=useState('');
+ const [detail,setDetail]=useState<RouteOverview|null>(null);
+ const [loading,setLoading]=useState(false);
+ const [error,setError]=useState('');
+ const [showGps,setShowGps]=useState(false);
+ const [showVisits,setShowVisits]=useState(true);
+ const [showCustomers,setShowCustomers]=useState(true);
+ useEffect(()=>{
+  const controller=new AbortController();
+  setLoading(true);setError('');
+  void authorizedGet<{rows:LiveRoute[]}>('/api/v1/erp/visit-routes?date='+encodeURIComponent(date),controller.signal)
+    .then(result=>{setRoutes(result.rows||[]);setRouteId(current=>(result.rows||[]).some(r=>r.RouteId===current)?current:(result.rows?.[0]?.RouteId||''));})
+    .catch(e=>{if(!controller.signal.aborted){setRoutes([]);setDetail(null);setError(String(e.message||e));}})
+    .finally(()=>{if(!controller.signal.aborted)setLoading(false)});
+  return ()=>controller.abort();
+ },[date]);
+ useEffect(()=>{
+  const controller=new AbortController();
+  if(!routeId){setDetail(null);return ()=>controller.abort();}
+  setLoading(true);setError('');
+  void authorizedGet<RouteOverview>('/api/v1/erp/visit-routes/'+encodeURIComponent(routeId)+'/overview?date='+encodeURIComponent(date),controller.signal)
+    .then(result=>setDetail(result))
+    .catch(e=>{if(!controller.signal.aborted){setDetail(null);setError(String(e.message||e));}})
+    .finally(()=>{if(!controller.signal.aborted)setLoading(false)});
+  return ()=>controller.abort();
+ },[routeId,date]);
+ const selected=routes.find(r=>r.RouteId===routeId);
+ const customers=detail?.customers||[];
+ const visits=detail?.visits||[];
+ const gps=detail?.gps||[];
+ const officialStops=(detail?.tours||[]).filter(r=>r.AccountId&&Number.isInteger(r.StopSequence));
+ const orderedStops=[...officialStops].sort((a,b)=>(a.StopSequence||0)-(b.StopSequence||0));
+ const sourceCustomers=useMemo(()=>customers.map(c=>({id:c.AccountId,name:c.Name,latitude:c.Latitude,longitude:c.Longitude})),[detail]);
+ const suggested=useMemo(()=>suggestRoutePolygonFromCustomers(sourceCustomers),[sourceCustomers]);
+ const boundary=suggested.geometry;
+ const anomaly=useMemo(()=>boundary?inspectRouteCoordinates(sourceCustomers,visits.map(v=>({
+  id:v.ExternalVisitId,customerId:v.AccountId,latitude:v.Latitude,longitude:v.Longitude,
+ })),boundary):null,[sourceCustomers,visits,boundary]);
+ const markers:GeoMapPin[]=[
+  ...(showCustomers?customers.flatMap(c=>{
+   const point=readCustomerGeoPoint({latitude:c.Latitude,longitude:c.Longitude});
+   if(!point)return [];
+   return [{id:c.AccountId,name:c.Name,point,kind:'CUSTOMER' as const,
+    sequence:orderedStops.find(t=>t.AccountId===c.AccountId)?.StopSequence ?? undefined,
+    outside:!!anomaly?.customersOutside.some(x=>x.id===c.AccountId),
+    detailPath:'/accounts/'+encodeURIComponent(c.AccountId)}];
+  }):[]),
+  ...(showVisits?visits.flatMap(v=>{
+   const point=readCustomerGeoPoint({latitude:v.Latitude,longitude:v.Longitude});
+   if(!point)return [];
+   return [{id:v.ExternalVisitId,name:'ویزیت '+(customers.find(c=>c.AccountId===v.AccountId)?.Name||v.AccountId||''),point,
+    kind:'VISIT' as const,outside:!!anomaly?.visitsOutside.some(x=>x.id===v.ExternalVisitId)}];
+  }):[]),
+  ...(showGps?gps.slice(0,300).flatMap(g=>{
+   const point=readCustomerGeoPoint({latitude:g.Latitude,longitude:g.Longitude});
+   if(!point)return [];
+   return [{id:g.ExternalLocationId,name:g.ExternalSalesRepId+' · '+g.RecordedAtUtc,point,kind:'GPS' as const}];
+  }):[]),
+ ];
+ return <Card padding="lg" className="space-y-4" >
+  <header className="space-y-2">
+   <h2 className="text-base font-black text-text-main">نقشه و گزارش رسمی مسیر و تور ERP</h2>
+   <p className="text-xs leading-6 text-text-secondary">نمای فقط‌خواندنی و محدود به مجوز SQL: مسیر اصلی، زیرمسیر، فروشنده‌ها، سرپرست، تور تاریخ انتخاب‌شده، ویزیت‌ها و GPS.</p>
+  </header>
+  <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)]">
+   <label className="text-xs font-bold text-text-secondary">تاریخ تور<input type="date" value={date} onChange={e=>setDate(e.target.value)} className="mt-1 min-h-11 w-full rounded-xl border border-border bg-canvas px-3"/></label>
+   <label className="text-xs font-bold text-text-secondary">مسیر قابل مشاهده در دسترسی فعلی
+    <select value={routeId} onChange={e=>setRouteId(e.target.value)} className="mt-1 min-h-11 w-full rounded-xl border border-border bg-canvas px-3">
+     <option value="">انتخاب مسیر</option>{routes.map(r=><option key={r.RouteId} value={r.RouteId}>{r.RouteCode} — {r.RouteName} ({fa(r.VisibleCustomerCount||0)} مشتری مجاز)</option>)}
+    </select>
+   </label>
+  </div>
+  {loading&&<p role="status" className="text-xs text-text-secondary">در حال دریافت اطلاعات مجاز از SQL...</p>}
+  {error&&<p role="alert" className="rounded-xl border border-warning/30 bg-warning-soft p-3 text-xs text-warning">{error}</p>}
+  {!error&&!loading&&!routes.length&&<p className="text-xs text-text-secondary">مسیر قابل مشاهده‌ای در SQL موجود نیست یا برای شما تعریف نشده است.</p>}
+  {detail&&selected&&<>
+   <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+    {[['مشتری',customers.length],['ایستگاه رسمی امروز',officialStops.length],['ویزیت ثبت‌شده',visits.length],['GPS دریافت‌شده',gps.length]].map(([label,value])=>
+      <div key={String(label)} className="rounded-xl border border-border bg-canvas p-3"><div className="text-xs text-text-secondary">{label}</div><strong className="text-lg">{fa(Number(value))}</strong></div>)}
+   </div>
+   <div className="flex flex-wrap gap-2 text-xs">
+    <span className="rounded-lg border border-border p-2">فروشندگان: {detail.staff.filter(s=>s.StaffRoleCode==='SALES_REP').map(s=>s.ExternalStaffId).join('، ')||'ثبت نشده'}</span>
+    <span className="rounded-lg border border-border p-2">سرپرستان: {detail.staff.filter(s=>s.StaffRoleCode==='SUPERVISOR').map(s=>s.ExternalStaffId).join('، ')||'ثبت نشده'}</span>
+    <span className="rounded-lg border border-border p-2">زیرمسیرها: {[...new Set(customers.map(c=>c.SubRouteCode).filter(Boolean))].join('، ')||'ثبت نشده'}</span>
+   </div>
+   {detail.limits?.mayBeTruncated&&<p className="text-xs text-warning">بخشی از ویزیت‌ها یا GPS به سقف واکشی صفحه رسید؛ نتیجه کامل نیست.</p>}
+   <p className="rounded-xl border border-warning/30 bg-warning-soft p-3 text-xs leading-6 text-text-main">
+    پیشنهاد محدوده ۸۰٪ مشتریان صرفاً تحلیل است و هنوز تأیید مدیریتی ندارد؛ تشخیص خروج از مرز، نیازمند بررسی علت، دقت GPS و تأیید مرز رسمی تحلیلی است.
+    {anomaly&&<> مشتری مشکوک خارج از مرز: {fa(anomaly.customersOutside.length)}؛ ویزیت خارج از مرز: {fa(anomaly.visitsOutside.length)}؛ مختصات نامشخص: {fa(anomaly.unknownCustomers.length+anomaly.unknownVisits.length)}.</>}
+   </p>
+   <div className="flex flex-wrap gap-3 text-xs">
+    <label><input type="checkbox" checked={showCustomers} onChange={e=>setShowCustomers(e.target.checked)}/> مشتریان</label>
+    <label><input type="checkbox" checked={showVisits} onChange={e=>setShowVisits(e.target.checked)}/> ویزیت‌ها</label>
+    <label><input type="checkbox" checked={showGps} onChange={e=>setShowGps(e.target.checked)}/> GPS فروشنده</label>
+   </div>
+   <GeoZoneMapEditor
+    key={selected.RouteId+date}
+    geometry={boundary||undefined} coordinateText={toStringGeometry(boundary)}
+    disabled onChange={()=>{}} markers={markers}
+   />
+   <div className="space-y-2">
+    <h3 className="text-sm font-black text-text-main">فهرست رسمی ترتیب مراجعه</h3>
+    {!orderedStops.length?<p className="text-xs text-text-secondary">تور یا ایستگاه مجاز برای این تاریخ موجود نیست.</p>:<ol className="max-h-64 space-y-2 overflow-auto">
+     {orderedStops.map((stop,index)=>{
+      const customer=customers.find(c=>c.AccountId===stop.AccountId);
+      return <li key={stop.TourId+':'+stop.StopSequence} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border p-3 text-xs">
+       <span><strong>{fa(stop.StopSequence||index+1)}. </strong>{customer?.Name||'نام مشتری نامشخص'} · ویزیتور {stop.ExternalSalesRepId}</span>
+       {customer&&<Link to={'/accounts/'+encodeURIComponent(customer.AccountId)} className="font-bold text-primary">مشاهده جزئیات</Link>}
+      </li>;
+     })}
+    </ol>}
+   </div>
+   <div className="space-y-2">
+    <h3 className="text-sm font-black text-text-main">نتایج و علت‌های عدم سفارش ثبت‌شده</h3>
+    {!visits.length?<p className="text-xs text-text-secondary">ویزیت ثبت‌شده و قابل انتساب در این روز وجود ندارد.</p>:<div className="max-h-72 overflow-auto">
+     {visits.slice(0,100).map(v=><div key={v.ExternalVisitId} className="border-b border-border py-2 text-xs">
+      <strong>{customers.find(c=>c.AccountId===v.AccountId)?.Name||'مشتری نامشخص'}</strong> · {v.VisitedAtUtc} · نتیجه {v.OutcomeCode||'نامشخص'}
+      {v.NoOrderReasonCode&&<p className="text-warning">علت عدم سفارش: {v.ReasonTitleFa||v.NoOrderReasonCode}</p>}
+     </div>)}
+    </div>}
+   </div>
+  </>}
+ </Card>;
+}
