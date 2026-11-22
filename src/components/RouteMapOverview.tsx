@@ -18,7 +18,7 @@ interface RouteSummary {
 }
 interface MapResult {rows:RouteSummary[];source:string;period:{dateFrom:string;dateTo:string};caveats:string[]}
 interface Choice{id:string;name:string}
-interface FilterOptions{salesReps:Choice[];products:Choice[];unavailable:string[]}
+interface FilterOptions{salesReps:Choice[];products:Choice[];suppliers:Choice[];brands:Choice[];categories:Choice[];unavailable:string[]}
 interface DetailCustomer {
  id:string;name:string;code?:string;statusCode?:string;subRouteCode?:string;
  latitude:number|null;longitude:number|null;visitCount:number;lastVisitAt:string|null;
@@ -97,8 +97,11 @@ export function RouteMapOverview(){
  const [selectedRoutes,setSelectedRoutes]=useState<string[]>([]);
  const [selectedReps,setSelectedReps]=useState<string[]>([]);
  const [selectedProducts,setSelectedProducts]=useState<string[]>([]);
+ const [selectedSuppliers,setSelectedSuppliers]=useState<string[]>([]);
+ const [selectedBrands,setSelectedBrands]=useState<string[]>([]);
+ const [selectedCategories,setSelectedCategories]=useState<string[]>([]);
  const [report,setReport]=useState<MapResult|null>(null);
- const [choices,setChoices]=useState<FilterOptions>({salesReps:[],products:[],unavailable:[]});
+ const [choices,setChoices]=useState<FilterOptions>({salesReps:[],products:[],suppliers:[],brands:[],categories:[],unavailable:[]});
  const [selectedRoute,setSelectedRoute]=useState<string|null>(null);
  const [detail,setDetail]=useState<Detail|null>(null);
  const [detailOpen,setDetailOpen]=useState(false);
@@ -114,8 +117,11 @@ export function RouteMapOverview(){
   for(const id of selectedRoutes)p.append('routeIds',id);
   for(const id of selectedReps)p.append('salesRepIds',id);
   for(const id of selectedProducts)p.append('productIds',id);
+  for(const id of selectedSuppliers)p.append('supplierIds',id);
+  for(const id of selectedBrands)p.append('brandIds',id);
+  for(const id of selectedCategories)p.append('customerCategoryIds',id);
   return p.toString();
- },[dateFrom,dateTo,selectedRoutes,selectedReps,selectedProducts]);
+ },[dateFrom,dateTo,selectedRoutes,selectedReps,selectedProducts,selectedSuppliers,selectedBrands,selectedCategories]);
  useEffect(()=>{
   const ctrl=new AbortController();setLoading(true);setError('');
   void getJson<MapResult>('/api/v1/erp/route-map/summary?'+filterQuery,ctrl.signal)
@@ -126,7 +132,7 @@ export function RouteMapOverview(){
  useEffect(()=>{
   const ctrl=new AbortController();
   void getJson<FilterOptions>('/api/v1/erp/route-map/filter-options?date='+dateTo,ctrl.signal)
-    .then(setChoices).catch(()=>{if(!ctrl.signal.aborted)setChoices({salesReps:[],products:[],unavailable:[]});});
+    .then(setChoices).catch(()=>{if(!ctrl.signal.aborted)setChoices({salesReps:[],products:[],suppliers:[],brands:[],categories:[],unavailable:[]});});
   return ()=>ctrl.abort();
  },[dateTo]);
  useEffect(()=>{
@@ -194,8 +200,11 @@ export function RouteMapOverview(){
     <MultiFilter title="مسیر" options={routeChoices} selected={selectedRoutes} onChange={setSelectedRoutes}/>
     <MultiFilter title="فروشنده" options={choices.salesReps} selected={selectedReps} onChange={setSelectedReps}/>
     <MultiFilter title="کالا" options={choices.products} selected={selectedProducts} onChange={setSelectedProducts}/>
+    <MultiFilter title="برند" options={choices.brands} selected={selectedBrands} onChange={setSelectedBrands}/>
+    <MultiFilter title="تأمین‌کننده" options={choices.suppliers} selected={selectedSuppliers} onChange={setSelectedSuppliers}/>
+    <MultiFilter title="صنف مشتری" options={choices.categories} selected={selectedCategories} onChange={setSelectedCategories}/>
     <div className="col-span-full text-xs text-text-secondary">
-     فیلتر تأمین‌کننده، برند و صنف تا رسیدن نگاشت رسمی ERP فعال نیست؛ انتخاب آن‌ها بدون اثر بر گزارش مجاز نیست.
+     گزینه‌های برند، تأمین‌کننده و صنف تنها در صورت ورود کد معتبر از ERP فعال می‌شوند. نبود گزینه به معنی نبود داده قابل اتکا است؛ فیلتر سرپرست هنوز به نگاشت مجوز نیاز دارد.
     </div>
    </div>}
    <div className="space-y-2">
