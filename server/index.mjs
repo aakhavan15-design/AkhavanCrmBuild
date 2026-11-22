@@ -438,26 +438,6 @@ app.post('/api/v1/accounts/proposals', authenticate, requirePermission('accounts
   } catch (error) { next(error); }
 });
 
-const visitRouteReader = createErpVisitRouteReader({ sql,run:withTenantContext });
-app.get('/api/v1/erp/visit-routes',authenticate,requirePermission('geo.view'),wrap(async(req,res)=>{
-  if(!isUuid(req.auth.tenantId)||!isUuid(req.auth.userId))
-    return bad(req,res,503,'AUTH_CONTEXT_INVALID','شناسه کاربر و سازمان برای گزارش زنده معتبر نیست.');
-  const date=String(req.query.date||new Date().toISOString().slice(0,10));
-  const organizationWide=await hasSqlPermission(req.auth,'geo.view',{organizationWide:true});
-  const result=await visitRouteReader.list(req.auth,{date,organizationWide,limit:200});
-  res.json(result);
-}));
-app.get('/api/v1/erp/visit-routes/:id/overview',authenticate,requirePermission('geo.view'),wrap(async(req,res)=>{
-  if(!isUuid(req.auth.tenantId)||!isUuid(req.auth.userId))
-    return bad(req,res,503,'AUTH_CONTEXT_INVALID','شناسه کاربر و سازمان برای گزارش زنده معتبر نیست.');
-  if(!isUuid(req.params.id))return bad(req,res,400,'INVALID_ROUTE_ID','شناسه مسیر معتبر نیست.');
-  const date=String(req.query.date||new Date().toISOString().slice(0,10));
-  const organizationWide=await hasSqlPermission(req.auth,'geo.view',{organizationWide:true});
-  const result=await visitRouteReader.overview(req.auth,{routeId:req.params.id,date,organizationWide});
-  if(!result)return bad(req,res,404,'ROUTE_NOT_FOUND','مسیر برای این کاربر در دسترس نیست.');
-  res.json(result);
-}));
-
 app.get('/api/v1/accounts', typedAccountsOnly, authenticate, requirePermission('accounts.VIEW'), async (req, res, next) => {
   try {
     const take = Math.min(100, Math.max(1, Number.parseInt(req.query.take || '25', 10) || 25));
@@ -554,6 +534,28 @@ const guardEntityDriver = (_req, res, next) => {
   next();
 };
 const wrap = (handler) => async (req, res, next) => { try { await handler(req, res); } catch (error) { next(error); } };
+
+const visitRouteReader = createErpVisitRouteReader({ sql,run:withTenantContext });
+app.get('/api/v1/erp/visit-routes',authenticate,requirePermission('geo.view'),wrap(async(req,res)=>{
+  if(!isUuid(req.auth.tenantId)||!isUuid(req.auth.userId))
+    return bad(req,res,503,'AUTH_CONTEXT_INVALID','شناسه کاربر و سازمان برای گزارش زنده معتبر نیست.');
+  const date=String(req.query.date||new Date().toISOString().slice(0,10));
+  const organizationWide=await hasSqlPermission(req.auth,'geo.view',{organizationWide:true});
+  const result=await visitRouteReader.list(req.auth,{date,organizationWide,limit:200});
+  res.json(result);
+}));
+app.get('/api/v1/erp/visit-routes/:id/overview',authenticate,requirePermission('geo.view'),wrap(async(req,res)=>{
+  if(!isUuid(req.auth.tenantId)||!isUuid(req.auth.userId))
+    return bad(req,res,503,'AUTH_CONTEXT_INVALID','شناسه کاربر و سازمان برای گزارش زنده معتبر نیست.');
+  if(!isUuid(req.params.id))return bad(req,res,400,'INVALID_ROUTE_ID','شناسه مسیر معتبر نیست.');
+  const date=String(req.query.date||new Date().toISOString().slice(0,10));
+  const organizationWide=await hasSqlPermission(req.auth,'geo.view',{organizationWide:true});
+  const result=await visitRouteReader.overview(req.auth,{routeId:req.params.id,date,organizationWide});
+  if(!result)return bad(req,res,404,'ROUTE_NOT_FOUND','مسیر برای این کاربر در دسترس نیست.');
+  res.json(result);
+}));
+
+
 const bad = (req, res, status, code, message, extra = {}) => res.status(status).json({ error: { code, message, ...extra }, correlationId: req.correlationId });
 
 app.get('/api/v1/ledger/credit-notes', authenticate, requirePermission('finance.view'), wrap(async (req, res) => {
