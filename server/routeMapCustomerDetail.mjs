@@ -4,12 +4,13 @@
  * return/receivable/target data into 0.
  */
 export function createRouteCustomerDetailReader({sql,run}){
- return async(auth,{routeId,filters,organizationWide=false,financeAllowed=false})=>run(auth,async transaction=>{
+ return async(auth,{routeId,filters,organizationWide=false,financeAllowed=false,financeOrganizationWide=false})=>run(auth,async transaction=>{
   const request=()=>new sql.Request(transaction)
    .input('tenant',sql.UniqueIdentifier,auth.tenantId)
    .input('actor',sql.UniqueIdentifier,auth.userId)
    .input('routeId',sql.UniqueIdentifier,routeId)
    .input('organizationWide',sql.Bit,organizationWide?1:0)
+   .input('financeWide',sql.Bit,financeOrganizationWide?1:0)
    .input('dateFrom',sql.Date,filters.from).input('dateTo',sql.Date,filters.to)
    .input('productJson',sql.NVarChar(sql.MAX),JSON.stringify(filters.productIds))
    .input('repJson',sql.NVarChar(sql.MAX),JSON.stringify(filters.repIds));
@@ -67,7 +68,7 @@ export function createRouteCustomerDetailReader({sql,run}){
         AND m.EffectiveFrom<=@dateTo AND (m.EffectiveTo IS NULL OR m.EffectiveTo>=@dateFrom))
       AND EXISTS(SELECT 1 FROM security.fn_RecordReadScope(a.TenantId,N'accounts.view',a.OwnerUserId,a.BranchId,a.TerritoryId,a.TeamId))
       AND (NOT EXISTS(SELECT 1 FROM OPENJSON(@repJson)) OR i.SalesRepExternalId IN(SELECT value FROM OPENJSON(@repJson)))
-      AND (@organizationWide=1 OR i.SalesRepUserId=@actor OR EXISTS(
+      AND (@financeWide=1 OR i.SalesRepUserId=@actor OR EXISTS(
         SELECT 1 FROM crm.VisitRouteStaffMirror manager WHERE manager.TenantId=@tenant
         AND manager.RouteId=@routeId AND manager.StaffRoleCode='SUPERVISOR' AND manager.StaffUserId=@actor
         AND manager.EffectiveFrom<=@dateTo AND (manager.EffectiveTo IS NULL OR manager.EffectiveTo>=@dateFrom)))
@@ -87,7 +88,7 @@ export function createRouteCustomerDetailReader({sql,run}){
       AND EXISTS(SELECT 1 FROM security.fn_RecordReadScope(a.TenantId,N'accounts.view',a.OwnerUserId,a.BranchId,a.TerritoryId,a.TeamId))
       AND (NOT EXISTS(SELECT 1 FROM OPENJSON(@repJson)) OR i.SalesRepExternalId IN(SELECT value FROM OPENJSON(@repJson)))
       AND (NOT EXISTS(SELECT 1 FROM OPENJSON(@productJson)) OR l.ExternalProductId IN(SELECT value FROM OPENJSON(@productJson)))
-      AND (@organizationWide=1 OR i.SalesRepUserId=@actor OR EXISTS(
+      AND (@financeWide=1 OR i.SalesRepUserId=@actor OR EXISTS(
         SELECT 1 FROM crm.VisitRouteStaffMirror manager WHERE manager.TenantId=@tenant
         AND manager.RouteId=@routeId AND manager.StaffRoleCode='SUPERVISOR' AND manager.StaffUserId=@actor
         AND manager.EffectiveFrom<=@dateTo AND (manager.EffectiveTo IS NULL OR manager.EffectiveTo>=@dateFrom)))
