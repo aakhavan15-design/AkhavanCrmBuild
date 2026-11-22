@@ -4,6 +4,7 @@ import {AuthService} from '../services/AuthService';
 import {GeoZoneMapEditor} from './GeoZoneMapEditor';
 import type {GeoMapPin} from './GeoZoneMapEditor';
 import {Card} from './ui/Card';
+import {assessRouteMetric} from '../lib/routeMetricHealth';
 
 type MetricId='customerCount'|'activeCustomerCount'|'invoiceCount'|'netSales'|'visitCount'|'attentionPercent'|'returnAmount'|'receivableAmount'|'profitAmount'|'targetAchievedPercent';
 type Tone='good'|'warn'|'bad'|'unknown';
@@ -150,13 +151,8 @@ export function RouteMapOverview(){
  const permitted=new Set<MetricId>(report?.permittedMetrics||['customerCount','visitCount','attentionPercent']);
  const currentPrimary=permitted.has(primary)?primary:'customerCount';
  const visibleMetricIds=metrics.filter(id=>id==='customerCount'||id===primary||id!=='customerCount');
- const color=(r:RouteSummary):Tone=>{
-  // Thresholds are an explicit VISIT COVERAGE indicator only, not "route health".
-  if(r.attentionPercent==null)return 'unknown';
-  if(r.attentionPercent>=70)return 'good';
-  if(r.attentionPercent>=35)return 'warn';
-  return 'bad';
- };
+ const color=(r:RouteSummary):Tone=>assessRouteMetric(r,rows,currentPrimary).tone;
+ const colorBasis=rows.length?assessRouteMetric(rows[0],rows,currentPrimary).basis:'';
  const markers:GeoMapPin[]=rows.flatMap(r=>{
   const point=r.location;
   if(point.latitude==null||point.longitude==null)return [];
@@ -243,12 +239,12 @@ export function RouteMapOverview(){
       onMarkerSelect={marker=>openRoute(marker.id)}/>
    </div>
    <div className="flex flex-wrap gap-2 text-micro text-text-secondary">
-    <span className="rounded-md bg-emerald-100 px-2 py-1">سبز: پوشش ویزیت ≥۷۰٪</span>
-    <span className="rounded-md bg-amber-100 px-2 py-1">زرد: ۳۵–۷۰٪</span>
-    <span className="rounded-md bg-rose-100 px-2 py-1">قرمز: کمتر از ۳۵٪</span>
+    <span className="rounded-md bg-emerald-100 px-2 py-1">سبز: عملکرد قوی در شاخص انتخابی</span>
+    <span className="rounded-md bg-amber-100 px-2 py-1">زرد: میانه / نیازمند توجه</span>
+    <span className="rounded-md bg-rose-100 px-2 py-1">قرمز: عملکرد ضعیف / ریسک بالا</span>
     <span className="rounded-md bg-slate-100 px-2 py-1">خاکستری: داده ناکافی</span>
    </div>
-   <p className="text-micro leading-5 text-text-secondary">رنگ فقط نشان‌دهنده پوشش مراجعه در بازه انتخابی است، نه سودآوری یا تحقق هدف. مقادیر نامشخص را صفر در نظر نگیرید.</p>
+   <p className="text-micro leading-5 text-text-secondary">منطق رنگ: {colorBasis}. رنگ صرفاً ارزیابی همین شاخص و داده‌های مجاز است؛ تشخیص قطعی عملکرد یا تخلف نیست.</p>
    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
     {rows.map(row=><button key={row.routeId} type="button" onClick={()=>openRoute(row.routeId)}
       className="rounded-2xl border border-border bg-canvas p-3 text-right transition-colors hover:border-primary/40">
