@@ -32,6 +32,10 @@ export interface ERPCustomerMirrorContract extends ERPImportRecord {
   balance?: number | null;
   salesRepExternalId?: string | null;
   territoryExternalId?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  geoAccuracyMeters?: number | null;
+  geoSourceCode?: 'ERP' | 'GPS' | 'MANUAL' | null;
   isActive: boolean;
   isDeleted: boolean;
 }
