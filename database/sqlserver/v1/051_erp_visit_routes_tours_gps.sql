@@ -202,3 +202,41 @@ BEGIN
   ALTER SECURITY POLICY security.TenantIsolationPolicy ADD FILTER PREDICATE security.fn_TenantAccessPredicate(TenantId) ON crm.VisitRouteZoneGeometry;
 END;
 GO
+
+/*
+ Source-safe customer GPS hydration. CRM Account remains canonical. ExternalIdentityMap
+ must already resolve the ERP customer to one AccountId; no name/code matching.
+ Missing/ambiguous mappings are rejected for integration quarantine.
+*/
+CREATE OR ALTER PROCEDURE integration.ApplyErpAccountCoordinates
+ @TenantId uniqueidentifier,
+ @SourceSystemCode varchar(40),
+ @ExternalCustomerId nvarchar(200),
+ @Latitude decimal(9,6),
+ @Longitude decimal(9,6),
+ @AccuracyMeters decimal(9,2)=NULL,
+ @ModifiedAtUtc datetime2(3)
+AS
+BEGIN
+ SET NOCOUNT ON; SET XACT_ABORT ON;
+ IF @Latitude IS NULL OR @Longitude IS NULL OR @Latitude NOT BETWEEN -90 AND 90
+    OR @Longitude NOT BETWEEN -180 AND 180 OR (@Latitude=0 AND @Longitude=0)
+    OR @ModifiedAtUtc IS NULL
+   THROW 51051,N'ERP customer coordinates are missing or invalid.',1;
+ IF @AccuracyMeters<0 THROW 51052,N'GPS accuracy must not be negative.',1;
+ DECLARE @Id uniqueidentifier;
+ SELECT @Id=MIN(LocalEntityId)
+ FROM integration.ExternalIdentityMap
+ WHERE TenantId=@TenantId AND SourceSystemCode=@SourceSystemCode
+   AND EntityType IN (N'ACCOUNT',N'CUSTOMER') AND ExternalRecordId=@ExternalCustomerId
+ HAVING COUNT(DISTINCT LocalEntityId)=1;
+ IF @Id IS NULL THROW 51053,N'ERP customer identity cannot be mapped unambiguously.',1;
+ UPDATE crm.Account WITH (UPDLOCK)
+ SET Latitude=@Latitude,Longitude=@Longitude,GeoAccuracyMeters=@AccuracyMeters,
+     GeoSourceCode='ERP',GeoUpdatedAtUtc=@ModifiedAtUtc,UpdatedAtUtc=SYSUTCDATETIME()
+ WHERE TenantId=@TenantId AND AccountId=@Id
+   AND (GeoSourceCode IS NULL OR GeoSourceCode='ERP')
+   AND (GeoUpdatedAtUtc IS NULL OR GeoUpdatedAtUtc<=@ModifiedAtUtc);
+ SELECT CASE WHEN @@ROWCOUNT=1 THEN N'APPLIED' ELSE N'SKIPPED_STALE_OR_MANUAL' END AS OutcomeCode,@Id AS AccountId;
+END;
+GO
