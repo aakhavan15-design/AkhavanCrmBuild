@@ -880,7 +880,7 @@ export class HttpBackendDataProvider implements DataProvider {
   async getPurchaseCycle(search:string,view:PurchaseCycleView,page:number,scope?:PurchaseCoverageScope,audience?:PurchaseCycleAudience): Promise<PurchaseCycleResult> {
     const params=new URLSearchParams({search,view,page:String(page)});
     if (scope) {params.set('territory',scope.territory);params.set('owner',scope.owner);}
-    if (audience && audience!=='manager') params.set('audience',audience);
+    if (audience) params.set('audience',audience);
     return this.request(`/analytics/purchase-cycle?${params}`);
   }
   async getPurchaseProductHints(account:string,source:string): Promise<PurchaseProductResult> {

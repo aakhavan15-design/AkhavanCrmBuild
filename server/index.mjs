@@ -1282,7 +1282,9 @@ app.get('/api/v1/analytics/purchase-cycle',authenticate,requirePermission('quote
   if (entityDriverKind!=='mssql') return bad(req,res,503,'SALES_SOURCE_UNAVAILABLE','چرخهٔ خرید به آینهٔ ERP در SQL نیاز دارد.');
   const filter=parsePurchaseCycleQuery(req.query);
   if (!filter) return bad(req,res,400,'INVALID_PURCHASE_FILTER','فیلتر چرخهٔ خرید معتبر نیست.');
-  res.json(await readPurchaseCycle(req.auth,filter));
+  const report=await readPurchaseCycle(req.auth,filter);
+  if (report.forbidden) return bad(req,res,403,'PURCHASE_AUDIENCE_FORBIDDEN','مشاهدهٔ گزارش مدیریتی ریزش به مجوز فروش و مشتری در سطح سازمان نیاز دارد.');
+  res.json(report);
 }));
 app.get('/api/v1/analytics/purchase-cycle/products',authenticate,requirePermission('quotes.view'),wrap(async(req,res)=>{
   res.set('Cache-Control','private, no-store');

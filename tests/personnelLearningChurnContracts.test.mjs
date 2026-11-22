@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createPersonnelLearning, gradeLearningExam, learningAction, learningCourse } from '../server/personnelLearning.mjs';
-import { churnNotice, createChurnAlertPublisher, parsePurchaseCycleQuery } from '../server/purchaseCycle.mjs';
+import { churnNotice, createChurnAlertPublisher, createPurchaseCycleReader, parsePurchaseCycleQuery } from '../server/purchaseCycle.mjs';
 
 const commandId = '444c593e-2848-4f99-88fa-0be038e24a08';
 const employeeId = '854d987a-ff05-4bd8-a256-fb09e20501c1';
@@ -72,6 +72,14 @@ assert.equal(approved.status, 'APPROVED');
 assert.equal(passedStudy.calls[3].params.next, 'APPROVED');
 
 assert.equal(parsePurchaseCycleQuery({ audience: 'supervisor' }).audience, 'supervisor');
+const managerFilter = parsePurchaseCycleQuery({ audience: 'manager' });
+assert.equal(managerFilter.audience, 'manager');
+const restrictedReader = queries([{ recordsets: [[{ denied: true }]] }]);
+assert.deepEqual(await createPurchaseCycleReader(restrictedReader)(auth, managerFilter), { forbidden: true });
+assert.equal(restrictedReader.calls[0].params.audience, 'manager');
+assert.match(restrictedReader.calls[0].sqlText, /IF @audience='manager' AND NOT EXISTS/);
+assert.match(restrictedReader.calls[0].sqlText, /fn_TaskRequestGrant\(@tenantId,viewer\.UserId,N'quotes\.approve',NULL,NULL,NULL,NULL,1\)/);
+assert.match(restrictedReader.calls[0].sqlText, /fn_TaskRequestGrant\(@tenantId,viewer\.UserId,N'accounts\.view',NULL,NULL,NULL,NULL,0\)/);
 assert.equal(parsePurchaseCycleQuery({ audience: 'arbitrary-recipient' }), null);
 assert.equal(parsePurchaseCycleQuery({}).view, 'follow-up');
 assert.deepEqual([1, 2, 3].map(rank => churnNotice(rank, 12).linkTab), ['churn-owner', 'churn-supervisor', 'churn-manager']);
@@ -83,6 +91,7 @@ const notices = queries([
 ]);
 await createChurnAlertPublisher(notices)(auth, '2026-11-22');
 assert.match(notices.calls[0].sqlText, /sp_getapplock/);
+assert.match(notices.calls[0].sqlText, /IF @lock<0 THROW 50408/);
 assert.match(notices.calls[0].sqlText, /COUNT_BIG\(DISTINCT c\.AccountId\)/);
 assert.match(notices.calls[0].sqlText, /DATEADD\(day,-7,SYSUTCDATETIME\(\)\)/);
 assert.deepEqual(JSON.parse(notices.calls[1].params.articles).map(item => item.linkTab), [

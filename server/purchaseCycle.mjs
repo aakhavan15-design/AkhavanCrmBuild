@@ -11,6 +11,10 @@ const verifiedInvoiceStatus = `CROSS APPLY (
 
 const accountScope = `CROSS APPLY security.fn_RecordReadScope(a.TenantId,N'accounts.view',a.OwnerUserId,a.BranchId,a.TerritoryId,a.TeamId) accountGrant
   CROSS APPLY security.fn_RecordReadScope(a.TenantId,N'quotes.view',a.OwnerUserId,a.BranchId,a.TerritoryId,a.TeamId) quoteGrant`;
+const organizationManagerGrants = viewer => `
+  CROSS APPLY security.fn_TaskRequestGrant(@tenantId,${viewer},N'accounts.view',NULL,NULL,NULL,NULL,0) accountGrant
+  CROSS APPLY security.fn_TaskRequestGrant(@tenantId,${viewer},N'quotes.view',NULL,NULL,NULL,NULL,0) quoteGrant
+  CROSS APPLY security.fn_TaskRequestGrant(@tenantId,${viewer},N'quotes.approve',NULL,NULL,NULL,NULL,1) decisionGrant`;
 
 const thresholdsSql = `
 DECLARE @minimumSales decimal(19,4),@minimumDays int;
@@ -59,12 +63,20 @@ WITH visibleAccounts AS (
 SELECT * INTO #rankedPurchase FROM ranked;`;
 
 const query = `
+IF @audience='manager' AND NOT EXISTS(
+  SELECT 1 FROM core.AppUser viewer ${organizationManagerGrants('viewer.UserId')}
+  WHERE viewer.TenantId=@tenantId AND viewer.UserId=@viewer AND viewer.IsActive=1
+)
+BEGIN
+  SELECT CAST(1 AS bit) AS denied;
+  RETURN;
+END;
 ${thresholdsSql}
 SELECT @minimumDays AS minimumDays,CONVERT(varchar(42),@minimumSales) AS minimumSales;
 ${purchaseRiskSql(`SELECT a.AccountId,a.Name,a.OwnerUserId,a.TerritoryId FROM crm.Account a
   ${accountScope}
   WHERE a.TenantId=@tenantId AND a.DeletedAtUtc IS NULL AND (@search=N'' OR CHARINDEX(@search,a.Name)>0)
-    AND (@audience='' OR (@audience='owner' AND a.OwnerUserId=@viewer) OR (@audience='supervisor' AND EXISTS(
+    AND (@audience IN('','manager') OR (@audience='owner' AND a.OwnerUserId=@viewer) OR (@audience='supervisor' AND EXISTS(
       SELECT 1 FROM core.AppUser owner WHERE owner.TenantId=a.TenantId AND owner.UserId=a.OwnerUserId
         AND owner.ManagerUserId=@viewer AND owner.IsActive=1 AND owner.UserId<>@viewer)))`)}
 
@@ -142,7 +154,7 @@ export function parsePurchaseCycleQuery(params) {
   const search=params.search ?? '', view=params.view ?? 'follow-up', page=Number(params.page ?? 1);
   const territory=params.territory ?? null, owner=params.owner ?? null, audience=params.audience ?? '';
   return typeof search==='string' && search.length<=100 && ['all','follow-up'].includes(view) &&
-    Number.isInteger(page) && page>=1 && page<=500 && ['','owner','supervisor'].includes(audience) && ((territory===null && owner===null) || (uuid(territory) && uuid(owner)))
+    Number.isInteger(page) && page>=1 && page<=500 && ['','owner','supervisor','manager'].includes(audience) && ((territory===null && owner===null) || (uuid(territory) && uuid(owner)))
     ? {search:search.trim(),view,page,territory,owner,...(audience ? {audience} : {})} : null;
 }
 
@@ -174,6 +186,7 @@ export function createPurchaseCycleReader({sql,run}) {
       .input('nowUtc',sql.DateTime2,now)
       .input('onlyRisk',sql.Bit,filter.view==='follow-up').input('offset',sql.Int,(filter.page-1)*20).query(query);
     const thresholds=result.recordsets[0][0];
+    if (thresholds.denied) return { forbidden:true };
     const rows=result.recordsets[1];
     return {asOf,configured:thresholds.minimumDays>0 && Number(thresholds.minimumSales)>0,
       rows:rows.slice(0,20),hasMore:filter.page<500 && rows.length>20,coverage:result.recordsets[2]};
@@ -184,7 +197,7 @@ const churnAudienceSql = `
 SET NOCOUNT ON;
 DECLARE @lock int,@lockName nvarchar(120)=CONCAT('churn-alerts:',@tenantId);
 EXEC @lock=sys.sp_getapplock @Resource=@lockName,@LockMode='Exclusive',@LockOwner='Transaction',@LockTimeout=1000;
-IF @lock<0 BEGIN SELECT CAST(NULL AS uniqueidentifier) AS recipient WHERE 1=0; RETURN; END;
+IF @lock<0 THROW 50408,N'Could not acquire churn publication lock.',1;
 IF NOT EXISTS(SELECT 1 FROM security.fn_TaskRequestGrant(@tenantId,@actor,N'settings.manage',NULL,NULL,NULL,NULL,1))
   BEGIN SELECT CAST(NULL AS uniqueidentifier) AS recipient WHERE 1=0; RETURN; END;
 ${thresholdsSql}
@@ -200,10 +213,7 @@ FROM #rankedPurchase r JOIN crm.Account a ON a.TenantId=@tenantId AND a.AccountI
 WHERE r.followUp=1 AND a.DeletedAtUtc IS NULL;
 
 WITH organizationManagers AS (
-  SELECT u.UserId FROM core.AppUser u
-  CROSS APPLY security.fn_TaskRequestGrant(@tenantId,u.UserId,N'accounts.view',NULL,NULL,NULL,NULL,0) accountGrant
-  CROSS APPLY security.fn_TaskRequestGrant(@tenantId,u.UserId,N'quotes.view',NULL,NULL,NULL,NULL,0) quoteGrant
-  CROSS APPLY security.fn_TaskRequestGrant(@tenantId,u.UserId,N'quotes.approve',NULL,NULL,NULL,NULL,1) decisionGrant
+  SELECT u.UserId FROM core.AppUser u ${organizationManagerGrants('u.UserId')}
   WHERE u.TenantId=@tenantId AND u.IsActive=1
 ), candidates AS (
   SELECT a.AccountId,a.OwnerUserId,a.BranchId,a.TerritoryId,a.TeamId,recipient.userId,recipient.tier
