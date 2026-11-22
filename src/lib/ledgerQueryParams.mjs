@@ -1,7 +1,7 @@
 /** Shared ledger request serialization: preserve explicit false and reject invalid pagination. */
 export function journalQueryParams(filter = {}, pagination = {}) {
   const query = new URLSearchParams();
-  for (const key of ['journalId', 'source', 'currency', 'detailKey', 'withoutDetail', 'role', 'activityOnly', 'subsidiaryCode', 'periodCode', 'fromDate', 'toDate', 'unmapped']) {
+  for (const key of ['journalId', 'source', 'currency', 'detailKey', 'withoutDetail', 'role', 'activityOnly', 'balanceWindow', 'subsidiaryCode', 'periodCode', 'fromDate', 'toDate', 'unmapped']) {
     const value = filter?.[key];
     if (value !== undefined && value !== null && value !== '') query.set(key, String(value));
   }

@@ -16,6 +16,12 @@ INTO #approved FROM analytics.MoneyReportSource s
 JOIN core.AppUser approver ON approver.TenantId=s.TenantId AND approver.UserId=s.ApprovedBy
 WHERE s.TenantId=@tenantId AND s.SourceSystemCode=@source AND @currency='IRR';`;
 
+// The posted article set behind a balance and its drill-down share the same approved window.
+export function ledgerBalanceWindow(article, approved) {
+  return `(${approved}.OpeningDate IS NULL OR (${article}.AccountingDate BETWEEN ${approved}.OpeningDate AND ${approved}.VerifiedThrough
+    AND (${article}.DocumentTypeCode<>${approved}.OpeningDocumentTypeCode OR ${article}.AccountingDate=${approved}.OpeningDate)))`;
+}
+
 const officialPnlSql = `
 SET NOCOUNT ON;
 ${approvedScope}
@@ -72,8 +78,7 @@ SELECT l.ExternalDetailCode,l.ExternalAccountCode,${byPeriod ? 'l.ExternalPeriod
   COUNT_BIG(*) AS CountedLineCount,COUNT(CASE WHEN l.LedgerAccountId IS NULL THEN 1 END) AS UnmappedStatusLineCount
 FROM analytics.vw_FinancialJournalArticle l LEFT JOIN #approved p ON 1=1
 WHERE l.TenantId=@tenantId AND l.SourceSystemCode=@source AND l.CurrencyCode=@currency
-  AND (p.OpeningDate IS NULL OR (l.AccountingDate BETWEEN p.OpeningDate AND p.VerifiedThrough
-    AND (l.DocumentTypeCode<>p.OpeningDocumentTypeCode OR l.AccountingDate=p.OpeningDate)))
+  AND ${ledgerBalanceWindow('l','p')}
   AND l.ExternalDetailCode IS NOT NULL AND (@detail IS NULL OR l.ExternalDetailCode=@detail)
   AND (@role IS NULL OR l.MoneyRoleCode=@role)
   AND EXISTS(SELECT 1 FROM security.fn_LedgerDetailReadScope(l.TenantId,l.SourceSystemCode,l.ExternalDetailCode))
@@ -176,7 +181,7 @@ export function createOfficialLedgerReader({ sql, run }) {
       if (filter.role && coverage[0]?.verified!==1) return { blocked: {
         status:'UNAVAILABLE', reason:'ماندهٔ رسمی مطالبات یا بدهی به افتتاحیه، پوشش معتبر و کدینگ تأییدشدهٔ دفتر نیاز دارد.',
       } };
-      return { rows, source:{...scopes[0], asOf:coverage[0]?.asOf ?? null, verified:coverage[0]?.verified===1 } };
+      return { rows, source:{...scopes[0], role:filter.role, asOf:coverage[0]?.asOf ?? null, verified:coverage[0]?.verified===1 } };
     }),
     books: (auth,filter) => run(auth,async tx => {
       const scopes = await scope(tx,auth,filter);

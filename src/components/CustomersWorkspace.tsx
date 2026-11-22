@@ -29,6 +29,9 @@ import { FilterChip } from './ui/Tabs';
 import { RecordTaskAction } from './shared/RecordTaskAction';
 import { matchExistingCustomers } from '../lib/enterprise';
 import { proposalStatusOf, CUSTOMER_PROPOSAL_STATUS_LABEL } from '../lib/customerProposal';
+import { useLedgerBookScope } from '../hooks/useLedgerBookScope';
+import { LedgerBookSourceSelect } from './finance/LedgerBookSourceSelect';
+import { useDataSyncStatus } from '../services/dataSyncController';
 
 interface CustomersWorkspaceProps {
   state: AppState;
@@ -53,10 +56,17 @@ export function CustomersWorkspace({ state, updateState }: CustomersWorkspacePro
   const canSeeBalance = can('finance', 'VIEW');
   // مانده = Σ بدهکار − Σ بستانکار به‌ازای (تفصیلی × معین) از مسیر DataProvider (نه خواندن مستقیم state)؛ بدون مجوز مالی اصلاً درخواست نمی‌شود
   const journalLineCount = Array.isArray((state as { journalLines?: unknown[] }).journalLines) ? (state as { journalLines?: unknown[] }).journalLines!.length : 0;
-  const { data: detailBalances, error: balancesError } = useDataQuery(
-    async provider => (canSeeBalance ? provider.getDetailSubsidiaryBalances({ role:'RECEIVABLE' }) : null),
-    [canSeeBalance, journalLineCount]
+  const { scope: ledgerScope } = useLedgerBookScope();
+  const { serverVersion, isSqlActive } = useDataSyncStatus();
+  const ledgerKey = JSON.stringify([state.currentUserId, ledgerScope, serverVersion, journalLineCount]);
+  const { data: balanceQuery, error: balancesError } = useDataQuery(
+    async provider => canSeeBalance ? { key: ledgerKey, balances: await provider.getDetailSubsidiaryBalances(
+      provider.name==='SQLSERVER_BACKEND' ? { ...ledgerScope, role:'RECEIVABLE' } : undefined
+    ) } : null,
+    [canSeeBalance, ledgerKey]
   );
+  const detailBalances = canSeeBalance && balanceQuery?.key===ledgerKey ? balanceQuery.balances : null;
+  const ledgerSearch = ledgerScope ? new URLSearchParams({ ledgerSource:ledgerScope.source, ledgerCurrency:ledgerScope.currency }).toString() : '';
   const navigate = useNavigate();
   const location = useLocation();
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -108,12 +118,12 @@ export function CustomersWorkspace({ state, updateState }: CustomersWorkspacePro
     listScroll.current = document.getElementById('main-scroll-container')?.scrollTop ?? 0;
     triggerFocusId.current = document.activeElement?.id || '';
     updateState(draft => { draft.activeContextAccountId = account.id; draft.activeContextCustomerId = account.id; });
-    navigate(`/accounts/${encodeURIComponent(account.id)}`, { state: { returnToCustomerList: true } });
+    navigate({ pathname:`/accounts/${encodeURIComponent(account.id)}`, search:ledgerSearch }, { state: { returnToCustomerList: true } });
   };
   const goBackToCustomers = () => {
     updateState(draft => { draft.activeContextAccountId = null; draft.activeContextCustomerId = null; });
     if (location.state?.returnToCustomerList === true) navigate(-1);
-    else navigate('/accounts', { replace: true });
+    else navigate({ pathname:'/accounts', search:ledgerSearch }, { replace: true });
   };
 
   const handleDynamicFormSubmit = (formValues: Record<string, any>) => {
@@ -319,6 +329,7 @@ export function CustomersWorkspace({ state, updateState }: CustomersWorkspacePro
       {successNotice && <div role="status" className="se-rise-in flex items-start gap-2 rounded-xl border border-primary/20 bg-primary-soft px-3 py-2 text-xs font-semibold text-text-main shadow-xs"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden="true" /><span>{successNotice}</span></div>}
 
       <h1 className="sr-only">فهرست مشتریان و طرف‌های حساب</h1>
+      {canSeeBalance && isSqlActive && <LedgerBookSourceSelect viewer={state.currentUserId} />}
       <div className="relative z-20 w-full" onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) setSearchFocused(false); }}>
         <Search size={15} className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 text-text-muted" aria-hidden="true" />
         <InputControl

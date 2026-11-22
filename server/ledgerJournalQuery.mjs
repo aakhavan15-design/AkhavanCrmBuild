@@ -13,7 +13,7 @@ export function parseJournalQuery(query = {}) {
     }
     filter.journalId = query.journalId;
   }
-  for (const key of ['unmapped','withoutDetail','activityOnly']) {
+  for (const key of ['unmapped','withoutDetail','activityOnly','balanceWindow']) {
     if (query[key] === undefined) continue;
     if (typeof query[key]!=='string' || !['true','false','1','0'].includes(query[key])) throw new RangeError(`INVALID_${key}`);
     filter[key] = ['true','1'].includes(query[key]);
@@ -29,6 +29,9 @@ export function parseJournalQuery(query = {}) {
     filter[key] = v;
   }
   if (filter.fromDate && filter.toDate && filter.fromDate > filter.toDate) throw new RangeError('INVALID_DATE_RANGE');
+  if (filter.balanceWindow && (!filter.detailKey || filter.activityOnly || filter.fromDate || filter.toDate || filter.withoutDetail)) {
+    throw new RangeError('INVALID_BALANCE_WINDOW');
+  }
   const integer = (value, fallback, max) => {
     if (value === undefined) return fallback;
     if (!/^\d+$/.test(String(value))) throw new RangeError('INVALID_PAGINATION');

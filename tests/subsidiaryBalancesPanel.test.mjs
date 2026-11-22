@@ -21,8 +21,9 @@ for (const row of view.subsidiaries) {
 assert.equal(view.incomplete, true);
 
 const panel = readFileSync('src/components/shared/SubsidiaryBalancesPanel.tsx', 'utf8');
-assert.ok(/enabled \? p\.getDetailSubsidiaryBalances\(\) : null/.test(panel), 'بدون مجوز درخواستی ارسال نشود');
-assert.ok(/p\.getJournalLines\(/.test(panel) && !/state\.journalLines/.test(panel), 'Drill-down فقط از DataProvider');
+assert.ok(/enabled\s*\? \{ key, data:await provider\.getDetailSubsidiaryBalances\(scope\) \} : null/.test(panel), 'بدون مجوز درخواستی ارسال نشود');
+assert.ok(/provider\.getJournalLines\(/.test(panel) && !/state\.journalLines/.test(panel), 'Drill-down فقط از DataProvider');
+assert.match(panel, /detailKey, source:row.source, currency:row.currency, role:row.role,[\s\S]*?balanceWindow:true/);
 assert.ok(/فاقد نگاشت معین/.test(panel) && /جمع تفصیلی/.test(panel) && /aria-expanded/.test(panel));
 assert.ok(/aria-busy/.test(panel), 'Skeleton');
 assert.ok(!/localStorage|window\.storage/.test(panel));

@@ -26,7 +26,7 @@ import { getVapidPublicKey, saveSubscription, removeSubscription, sendPushToUser
 import { recordId } from '../src/lib/stateModel.mjs';
 import { projectLedgerBalances } from './ledgerBalances.mjs';
 import { parseJournalQuery } from './ledgerJournalQuery.mjs';
-import { createOfficialLedgerReader, parseLedgerSource } from './officialLedgerReads.mjs';
+import { createOfficialLedgerReader, ledgerBalanceWindow, parseLedgerSource } from './officialLedgerReads.mjs';
 import { createTaskRequests } from './taskRequests.mjs';
 import { uuid } from './taskRequestContract.mjs';
 import { createTaskWorkflowStore, parseTaskWorkflowInput, TaskWorkflowError } from './taskWorkflowStore.mjs';
@@ -682,12 +682,15 @@ app.get('/api/v1/ledger/books', authenticate, requirePermission('finance.VIEW',{
 // F0-14: read-only journal drill-down using the existing DataProvider contract.
 // Only finalized, numbered ERP documents; unknown statuses are not treated as posted.
 app.get('/api/v1/ledger/journal-lines', authenticate, requirePermission('finance.VIEW'), wrap(async (req, res) => {
+  res.set('Cache-Control','private, no-store');
   let parsed;
   try { parsed = parseJournalQuery(req.query); }
   catch { return bad(req, res, 400, 'INVALID_FILTER', 'فیلتر یا صفحه‌بندی گردش حساب نامعتبر است.'); }
   const { filter, page, pageSize } = parsed;
   const scope = parseLedgerSource(req.query);
-  if (!scope) return bad(req,res,400,'INVALID_SOURCE','شرکت یا ارز دفتر معتبر نیست.');
+  if (!scope || (filter.balanceWindow && (!scope.source || scope.currency!=='IRR'))) {
+    return bad(req,res,400,'INVALID_SOURCE','شرکت یا ارز دفتر معتبر نیست.');
+  }
   const result = await withTenantContext(req.auth, async (transaction) => {
     const request = new sql.Request(transaction)
       .input('tenantId', sql.UniqueIdentifier, req.auth.tenantId)
@@ -715,8 +718,13 @@ app.get('/api/v1/ledger/journal-lines', authenticate, requirePermission('finance
     if (filter.unmapped === false) conditions.push("NULLIF(LTRIM(RTRIM(jl.ExternalAccountCode)), '') IS NOT NULL");
     if (filter.fromDate) { request.input('fromDate', sql.Date, filter.fromDate); conditions.push('je.AccountingDate>=@fromDate'); }
     if (filter.toDate) { request.input('toDate', sql.Date, filter.toDate); conditions.push('je.AccountingDate<=@toDate'); }
+    const approvedWindowJoin = filter.balanceWindow ? `LEFT JOIN analytics.MoneyReportSource approved
+      ON approved.TenantId=je.TenantId AND approved.SourceSystemCode=je.SourceSystemCode AND je.CurrencyCode='IRR'
+      AND EXISTS(SELECT 1 FROM core.AppUser approver WHERE approver.TenantId=approved.TenantId AND approver.UserId=approved.ApprovedBy)` : '';
+    if (filter.balanceWindow) conditions.push(ledgerBalanceWindow('je','approved'));
     const from = `FROM crm.JournalLineMirror jl
       JOIN analytics.vw_FinancialJournalState je ON je.JournalEntryMirrorId=jl.JournalEntryMirrorId AND je.TenantId=jl.TenantId
+      ${approvedWindowJoin}
       WHERE ${conditions.join(' AND ')}`;
     return request.query(`SELECT COUNT_BIG(1) AS Total ${from};
       SELECT jl.JournalLineMirrorId AS id, jl.ExternalDetailCode AS detailKey,

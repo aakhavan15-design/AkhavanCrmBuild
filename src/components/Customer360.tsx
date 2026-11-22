@@ -730,7 +730,7 @@ export function Customer360({ customer, state, onBack, updateState, setActiveTab
 
         {activeHub === 'FINANCE_SUPPORT' && (
           <div className="space-y-3">
-            <SubsidiaryBalancesPanel account={customer} enabled={canViewFinance} />
+            <SubsidiaryBalancesPanel account={customer} enabled={canViewFinance} viewer={state.currentUserId} />
 
             <Card padding="md" className="space-y-2 rounded-xl border border-border">
               <span className="text-xs font-bold text-text-main block">رسیدهای پرداخت مشتری ({accountPayments.length})</span>

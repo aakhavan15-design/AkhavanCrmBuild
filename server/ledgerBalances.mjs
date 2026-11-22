@@ -19,7 +19,7 @@ export function projectLedgerBalances(rows, { detailKey, byPeriod = false, scope
       return { status:'UNAVAILABLE',source:'SQLSERVER_BACKEND',balances:[],reason:'برای نمایش بدون گردکردن مبلغ، از مرور دفتر و تراز استفاده کنید.' };
     }
     const balance = Number(debitUnits-creditUnits)/10000;
-    item.subsidiaries.push({ subsidiaryCode, periodCode, source: scope?.source, currency: scope?.currency, debit, credit, balance, nature: balance > 0 ? 'DEBIT' : balance < 0 ? 'CREDIT' : 'SETTLED', lineCount });
+    item.subsidiaries.push({ subsidiaryCode, periodCode, source: scope?.source, currency: scope?.currency, role: scope?.role ?? undefined, debit, credit, balance, nature: balance > 0 ? 'DEBIT' : balance < 0 ? 'CREDIT' : 'SETTLED', lineCount });
     const exact = exactTotals.get(key) ?? {debit:0n,credit:0n};
     exact.debit += debitUnits;
     exact.credit += creditUnits;

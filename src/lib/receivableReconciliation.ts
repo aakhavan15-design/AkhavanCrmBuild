@@ -118,7 +118,7 @@ export function computeCustomerLedgerBalances(journalLines: unknown): Map<string
  * (نه مانده ساختگی و نه ادغام در یک معین). کد معین عیناً از ERP است؛ CRM کد اختراع نمی‌کند. */
 export type BalanceNature = 'DEBIT' | 'CREDIT' | 'SETTLED';
 export const balanceNature = (balance: number): BalanceNature => (balance > 0 ? 'DEBIT' : balance < 0 ? 'CREDIT' : 'SETTLED');
-export interface SubsidiaryBalance { source?: string; currency?: string; subsidiaryCode: string | null; periodCode: string | null; debit: number; credit: number; balance: number; nature: BalanceNature; lineCount: number }
+export interface SubsidiaryBalance { source?: string; currency?: string; role?: 'RECEIVABLE' | 'PAYABLE'; subsidiaryCode: string | null; periodCode: string | null; debit: number; credit: number; balance: number; nature: BalanceNature; lineCount: number }
 export interface DetailBalance {
   detailKey: string;
   accountId?: string | null;
@@ -161,7 +161,7 @@ export function computeDetailSubsidiaryBalances(journalLines: unknown, options: 
 }
 
 /* ───────── قرارداد خواندن گردش و مانده (مصرف‌شده توسط DataProvider؛ F0-14) ───────── */
-export interface JournalLineFilter { journalId?: string; source?: string; currency?: string; withoutDetail?: boolean; role?: 'RECEIVABLE' | 'PAYABLE'; activityOnly?: boolean; detailKey?: string; subsidiaryCode?: string; /** فقط سطرهای فاقد کد معین (سطل «فاقد نگاشت») */ unmapped?: boolean; periodCode?: string; fromDate?: string; toDate?: string }
+export interface JournalLineFilter { journalId?: string; source?: string; currency?: string; withoutDetail?: boolean; role?: 'RECEIVABLE' | 'PAYABLE'; activityOnly?: boolean; balanceWindow?: boolean; detailKey?: string; subsidiaryCode?: string; /** فقط سطرهای فاقد کد معین (سطل «فاقد نگاشت») */ unmapped?: boolean; periodCode?: string; fromDate?: string; toDate?: string }
 export interface JournalLinePage { items: Array<Record<string, unknown>>; total: number; page: number; pageSize: number; totalPages: number }
 export type LedgerResultStatus = 'LIVE' | 'EMPTY' | 'UNAVAILABLE';
 export interface DetailBalancesResult { status: LedgerResultStatus; source: 'CLIENT_INDEXEDDB' | 'SQLSERVER_BACKEND'; balances: DetailBalance[]; sourceSystem?: string; currency?: string; asOf?: string | null; reason?: string }

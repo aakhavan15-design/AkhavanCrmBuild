@@ -4,13 +4,13 @@ import assert from 'node:assert/strict';
 import { computeCustomerLedgerBalances } from '../src/lib/receivableReconciliation.ts';
 const s = readFileSync('src/components/CustomersWorkspace.tsx', 'utf8');
 assert.ok(/const canSeeBalance = can\('finance', 'VIEW'\);/.test(s), 'باید مجوز مالی چک شود');
-assert.ok(/canSeeBalance \? provider\.getDetailSubsidiaryBalances\(\) : null/.test(s), 'دریافت مانده باید پشت مجوز و از مسیر DataProvider باشد');
+assert.ok(/canSeeBalance \? \{ key: ledgerKey, balances: await provider\.getDetailSubsidiaryBalances\(\s*provider.name==='SQLSERVER_BACKEND' \? \{ \.\.\.ledgerScope, role:'RECEIVABLE' \} : undefined/.test(s), 'مانده از دفتر منتخب و پشت مجوز مالی خوانده شود');
 assert.ok(!/state\.journalLines/.test(s), 'نباید مستقیم از state.journalLines خواند (قانون اساسی §D)');
 assert.ok(/resolveCustomerBalanceView\(/.test(s), 'نمای مانده از نتیجهٔ Provider ساخته شود');
 assert.ok(!/invoice\.balance|Number\(invoice\.balance\)/.test(s), 'مانده نباید از Invoice.balance بیاید');
 assert.ok(/\{canSeeBalance && \(\s*<div className="text-end shrink-0">[\s\S]*?<Wallet[\s\S]*?\n\s*\)\}/.test(s), 'نمایش کیف‌پول/بدهی باید شرطی باشد');
 const wallet = s.split('\n').findIndex(l => l.includes('<Wallet size'));
-const guard = s.split('\n').findIndex(l => l.includes('{canSeeBalance && ('));
+const guard = s.split('\n').findIndex((l, i) => l.includes('{canSeeBalance && (') && i < wallet);
 assert.ok(guard > 0 && guard < wallet && wallet - guard < 4, 'Wallet باید داخل گارد باشد');
 // نگاشت RBAC: finance.VIEW ⇒ finance.view
 const rbac = readFileSync('src/lib/rbac.ts', 'utf8');
