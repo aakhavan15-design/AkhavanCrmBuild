@@ -73,6 +73,10 @@
     "marketing": {
       "read": "authenticated",
       "write": "marketing.manage"
+    },
+    "erpVisitMirror": {
+      "read": "settings.manage",
+      "write": "erp.mirror.import"
     }
   },
   "defaultProfile": "internal",
@@ -339,7 +343,12 @@
         "zoneId": "geoZones"
       }
     },
-    "collectionPromises": { "profile": "finance", "refs": { "accountId": "accounts" } },
+    "collectionPromises": {
+      "profile": "finance",
+      "refs": {
+        "accountId": "accounts"
+      }
+    },
     "onboardingApplications": {
       "profile": "recruitment"
     },
@@ -451,6 +460,12 @@
     },
     "leaveEntitlements": {
       "profile": "internal"
+    },
+    "erpVisitRoutes": {
+      "profile": "erpVisitMirror"
+    },
+    "erpVisitTours": {
+      "profile": "erpVisitMirror"
     }
   }
 }
