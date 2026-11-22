@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import fs from 'node:fs';
 import {
-  classify, splitState, buildHashIndex, diffAgainstIndex, applyToIndex, mergeSnapshot, checkIntegrity, profileCollections,
+  classify, recordId, splitState, buildHashIndex, diffAgainstIndex, applyToIndex, mergeSnapshot, checkIntegrity, profileCollections,
 } from '../src/lib/stateModel.mjs';
 import { StateSyncEngine } from '../src/services/stateSync.ts';
 import { createEntityService, MemoryEntityDriver, FileEntityDriver, MssqlEntityDriver } from '../server/entityStore.mjs';
@@ -257,6 +257,63 @@ test('sales visibility requires the linked customer and resolves a quote salespe
   assert.match(migration, /quoteOwner.TenantId=account.TenantId/);
   assert.match(migration, /TRY_CONVERT\(uniqueidentifier,ref.AccountId\)=TRY_CONVERT\(uniqueidentifier,ref.CustomerId\)/);
   assert.doesNotMatch(migration, /JSON_VALUE\(@JsonDoc,'\$\.(branchId|teamId|territoryId)'\)/);
+});
+
+test('SQL personnel snapshots check document and payroll scope and project legacy files individually', async () => {
+  class Request {
+    input() { return this; }
+    async query(text) {
+      if (text.includes('MAX(Version)')) return { recordset: [{ V: 2 }] };
+      assert.match(text, /fn_EntityPersonnelReadScope\(\s*record.TenantId,LOWER\(record.CollectionName\),JSON_VALUE\(record.JsonDoc,'\$.userId'\)/);
+      assert.match(text, /N'APPLICATION',N'PERSONNEL_FILE',N'PERSONNEL'/);
+      assert.match(text, /record.CollectionName<>N'__singleton__' OR LOWER\(record.EntityId\) NOT IN/);
+      assert.match(text, /OPENJSON\(legacy.JsonDoc\)/);
+      assert.match(text, /fn_EntityPersonnelReadScope\(legacy.TenantId,N'personnelfiles',subject.UserId\)/);
+      assert.match(text, /NOT EXISTS\(SELECT 1 FROM sync.EntityStore currentFile/);
+      const legacyFile = { CollectionName: 'personnelFiles', EntityId: auth.userId, JsonDoc: JSON.stringify({ userId: auth.userId, status: 'INCOMPLETE' }) };
+      return { recordset: [], recordsets: [[], [legacyFile]] };
+    }
+  }
+  const driver = new MssqlEntityDriver({
+    sql: { Request, UniqueIdentifier: 'uuid' }, run: (_, work) => work('tenant-transaction'),
+  });
+  const snapshot = await createEntityService({ driver, registry, hasPermission: allow }).snapshot(auth);
+  assert.deepEqual(snapshot.singletons, {});
+  assert.equal(snapshot.collections.personnelFiles[0].userId, auth.userId);
+  assert.equal(recordId({ userId: auth.userId }, 'personnelFiles', registry), auth.userId);
+});
+
+test('SQL personnel writes use the stored status, separate self review and protect attachment ownership', async () => {
+  const saved = [];
+  class Request {
+    params = {};
+    input(name, _type, value) { this.params[name] = value; return this; }
+    async query(text) {
+      if (this.params.rows) return { recordset: [{ CollectionName: 'attachments', EntityId: 'other-file',
+        JsonDoc: JSON.stringify({ entityId: 'other-user', entityType: 'PERSONNEL_FILE' }), IsDeleted: false }] };
+      if (this.params.personnelWrites) {
+        assert.match(text, /previous WITH\(UPDLOCK,HOLDLOCK\)/);
+        assert.match(text, /TRY_CONVERT\(uniqueidentifier,i.EntityId\)<>@userId AND stage.BeforeStatus=N'SUBMITTED_FOR_REVIEW'/);
+        assert.match(text, /N'payroll.manage',NULL,NULL,NULL,NULL/);
+        assert.match(text, /JSON_QUERY\(prior.JsonDoc,'\$.documents'\)/);
+        return { recordset: [] };
+      }
+      return { recordset: [{ V: 2 }] };
+    }
+    async execute() { saved.push(...JSON.parse(this.params.rows)); }
+  }
+  const driver = new MssqlEntityDriver({
+    sql: { Request, UniqueIdentifier: 'uuid', NVarChar: () => 'string' }, run: (_, work) => work('tenant-transaction'),
+  });
+  const service = createEntityService({ driver, registry, hasPermission: allow });
+  const result = await service.sync(auth, {
+    upserts: { personnelFiles: [{ userId: auth.userId, status: 'APPROVED' }],
+      attachments: [{ id: 'other-file', entityType: 'ACCOUNT', entityId: auth.userId }],
+      salaryProfiles: [{ id: 'salary' }] },
+    singletons: { personnelFiles: [{ userId: auth.userId }] },
+  });
+  assert.deepEqual(saved, []);
+  assert.deepEqual(result.rejected.map(row => row.reason), ['INVALID_SINGLETON', 'FORBIDDEN_SCOPE', 'FORBIDDEN_SCOPE', 'FORBIDDEN_SCOPE']);
 });
 
 test('file driver persists across restarts', async () => {

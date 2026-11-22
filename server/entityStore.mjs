@@ -16,6 +16,10 @@ const PARTY_COLLECTIONS = ['accounts', 'customers'];
 const FINANCIAL_PARTY_COLLECTIONS = ['invoices', 'payments', 'cheques', 'paymentallocations', 'creditnotes', 'collectionpromises'];
 const COMMERCIAL_COLLECTIONS = ['quotes', 'salesOrders'];
 const commercialPartitions = COMMERCIAL_COLLECTIONS.map(name => name.toLowerCase());
+const PAYROLL_COLLECTIONS = ['salaryProfiles', 'advanceRequests', 'payrollRuns', 'payslips', 'commissionTransactions'];
+const personnelCollections = ['personnelFiles', 'onboardingApplications', ...PAYROLL_COLLECTIONS];
+const personnelPartitions = personnelCollections.map(name => name.toLowerCase());
+const payrollPartitions = PAYROLL_COLLECTIONS.map(name => name.toLowerCase());
 const sqlCollectionList = names => names.map(name => `N'${name}'`).join(',');
 const scopedCollections = new Set([...PARTY_COLLECTIONS, ...FINANCIAL_PARTY_COLLECTIONS, ...commercialPartitions]);
 const taskWorkflowFields = sqlCollectionList([
@@ -98,7 +102,7 @@ export class MssqlEntityDriver {
   async load(tenantId, userId) {
     const { sql } = this;
     return this.run({ tenantId, userId }, async (tx) => {
-      const rows = (await new sql.Request(tx).input('tenantId', sql.UniqueIdentifier, tenantId)
+      const result = await new sql.Request(tx).input('tenantId', sql.UniqueIdentifier, tenantId)
         .query(`SELECT record.CollectionName, record.EntityId,
           CASE WHEN record.CollectionName=N'collectionPromises'
             AND JSON_VALUE(record.JsonDoc,'$.receiptEvidence.id') IS NOT NULL
@@ -124,6 +128,12 @@ export class MssqlEntityDriver {
                 record.TenantId,LOWER(record.CollectionName),N'quotes.view',record.JsonDoc
               )
             ))
+            AND (LOWER(record.CollectionName) NOT IN (${sqlCollectionList(personnelPartitions)}) OR EXISTS (
+              SELECT 1 FROM security.fn_EntityPersonnelReadScope(
+                record.TenantId,LOWER(record.CollectionName),JSON_VALUE(record.JsonDoc,'$.userId')
+              )
+            ))
+            AND (record.CollectionName<>N'__singleton__' OR LOWER(record.EntityId) NOT IN (${sqlCollectionList(personnelPartitions)}))
             AND (LOWER(record.CollectionName)<>N'tasks' OR (record.EntityId NOT LIKE N'taskreq-%' AND EXISTS (
               SELECT 1 FROM security.fn_TaskEntityScope(record.TenantId,record.JsonDoc,'VIEW')
             )))
@@ -137,8 +147,10 @@ export class MssqlEntityDriver {
             ))
             AND (LOWER(record.CollectionName)<>N'attachments' OR record.EntityId NOT LIKE N'request-file-%')
             AND (LOWER(record.CollectionName)<>N'attachments' OR
-              ISNULL(JSON_VALUE(record.JsonDoc,'$.entityType'),N'')<>N'APPLICATION' OR EXISTS (
-                SELECT 1 FROM security.fn_RecordReadScope(record.TenantId,N'users.manage',NULL,NULL,NULL,NULL)
+              UPPER(ISNULL(JSON_VALUE(record.JsonDoc,'$.entityType'),N'')) NOT IN(N'APPLICATION',N'PERSONNEL_FILE',N'PERSONNEL') OR EXISTS (
+                SELECT 1 FROM security.fn_EntityPersonnelReadScope(record.TenantId,
+                  CASE WHEN UPPER(JSON_VALUE(record.JsonDoc,'$.entityType'))=N'APPLICATION' THEN N'onboardingapplications' ELSE N'personnelfiles' END,
+                  JSON_VALUE(record.JsonDoc,'$.entityId'))
               ))
             AND (LOWER(record.CollectionName)<>N'notifications' OR (
               (LEN(JSON_VALUE(record.JsonDoc,'$.recipientId'))=36
@@ -148,7 +160,18 @@ export class MssqlEntityDriver {
                 AND NOT (ISNULL(JSON_VALUE(record.JsonDoc,'$.linkTab'),N'')=N'tasks'
                   AND ISNULL(JSON_VALUE(record.JsonDoc,'$.dedupeKey'),N'') LIKE N'%|%|[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]%'))
             ))
-          ORDER BY CreatedAtUtc, EntityId`)).recordset;
+          ORDER BY CreatedAtUtc, EntityId;
+          SELECT N'personnelFiles' AS CollectionName,subject.UserId AS EntityId,entry.value AS JsonDoc
+          FROM sync.EntityStore legacy CROSS APPLY OPENJSON(legacy.JsonDoc) entry
+          CROSS APPLY (VALUES(JSON_VALUE(CASE WHEN entry.type=5 THEN entry.value ELSE N'{}' END,'$.userId'))) subject(UserId)
+          CROSS APPLY security.fn_EntityPersonnelReadScope(legacy.TenantId,N'personnelfiles',subject.UserId) AS scope
+          WHERE legacy.TenantId=@tenantId AND legacy.CollectionName=N'__singleton__'
+            AND legacy.EntityId=N'personnelFiles' AND legacy.IsDeleted=0 AND entry.type=5
+            AND LEN(subject.UserId)=36 AND TRY_CONVERT(uniqueidentifier,subject.UserId) IS NOT NULL
+            AND NOT EXISTS(SELECT 1 FROM sync.EntityStore currentFile
+              WHERE currentFile.TenantId=legacy.TenantId AND currentFile.CollectionName=N'personnelFiles'
+                AND currentFile.EntityId=subject.UserId);`);
+      const rows = [...result.recordset, ...(result.recordsets?.[1] ?? [])];
       const version = (await new sql.Request(tx).input('tenantId', sql.UniqueIdentifier, tenantId)
         .query('SELECT ISNULL(MAX(Version),0) AS V FROM sync.EntityStore WHERE TenantId=@tenantId')).recordset[0]?.V || 0;
       const collections = {}, singletons = {};
@@ -325,7 +348,14 @@ export class MssqlEntityDriver {
                   && canChangeConversationMessage(group?.json, previous?.json, next, userId, row.d);
               } else {
                 // Applicant documents are written atomically by the recruitment endpoint.
-                allowed = previous?.json?.entityType !== 'APPLICATION' && next?.entityType !== 'APPLICATION';
+                const oldType = String(previous?.json?.entityType ?? '').toUpperCase();
+                const newType = String(next?.entityType ?? '').toUpperCase();
+                const storedPersonnel = oldType==='PERSONNEL_FILE' || oldType==='PERSONNEL';
+                const nextPersonnel = newType==='PERSONNEL_FILE' || newType==='PERSONNEL';
+                allowed = oldType!=='APPLICATION' && newType!=='APPLICATION'
+                  && (!storedPersonnel || (typeof previous.json.entityId==='string' && previous.json.entityId.toLowerCase()===userId.toLowerCase()))
+                  && (!nextPersonnel || (typeof next.entityId==='string' && next.entityId.toLowerCase()===userId.toLowerCase()))
+                  && (!previous || !next || storedPersonnel===nextPersonnel);
               }
               if (!allowed) rejected.push({ collection: row.c, id: row.i, reason: 'FORBIDDEN_SCOPE' });
               return allowed;
@@ -385,6 +415,58 @@ export class MssqlEntityDriver {
                 )`);
             const allowed = new Set(permissions.recordset.map(row => row.RowIndex));
             const blocked = new Set(scoped.filter(row => !allowed.has(row.index)).map(row => row.index));
+            for (const index of blocked) rejected.push({ collection: chunk[index].c, id: chunk[index].i, reason: 'FORBIDDEN_SCOPE' });
+            chunk = chunk.filter((_, index) => !blocked.has(index));
+          }
+          const personnelWrites = chunk.flatMap((row, index) => row.c==='personnelFiles' || payrollPartitions.includes(row.c.toLowerCase())
+            ? [{ ...row, index }] : []);
+          if (personnelWrites.length) {
+            const permissions = await new sql.Request(tx).input('tenantId', sql.UniqueIdentifier, tenantId)
+              .input('userId', sql.UniqueIdentifier, userId)
+              .input('personnelWrites', sql.NVarChar(sql.MAX), JSON.stringify(personnelWrites))
+              .query(`SELECT i.RowIndex FROM OPENJSON(@personnelWrites) WITH (
+                RowIndex int '$.index', CollectionName nvarchar(80) '$.c', EntityId nvarchar(200) '$.i',
+                JsonDoc nvarchar(max) '$.j', IsDelete bit '$.d'
+              ) i
+              LEFT JOIN sync.EntityStore previous WITH(UPDLOCK,HOLDLOCK) ON previous.TenantId=@tenantId
+                AND previous.CollectionName=i.CollectionName AND previous.EntityId=i.EntityId
+              OUTER APPLY (
+                SELECT TOP(1) entry.value AS JsonDoc FROM sync.EntityStore legacy WITH(HOLDLOCK)
+                CROSS APPLY OPENJSON(legacy.JsonDoc) entry
+                WHERE previous.EntityId IS NULL AND i.CollectionName=N'personnelFiles'
+                  AND legacy.TenantId=@tenantId AND legacy.CollectionName=N'__singleton__'
+                  AND legacy.EntityId=N'personnelFiles' AND legacy.IsDeleted=0
+                  AND JSON_VALUE(CASE WHEN entry.type=5 THEN entry.value ELSE N'{}' END,'$.userId')=i.EntityId
+                ORDER BY TRY_CONVERT(int,entry.[key]) DESC
+              ) legacyFile
+              CROSS APPLY (VALUES(COALESCE(previous.JsonDoc,legacyFile.JsonDoc))) prior(JsonDoc)
+              CROSS APPLY (VALUES(JSON_VALUE(prior.JsonDoc,'$.status'),JSON_VALUE(i.JsonDoc,'$.status'))) stage(BeforeStatus,AfterStatus)
+              WHERE (LOWER(i.CollectionName) IN(${sqlCollectionList(payrollPartitions)}) AND EXISTS(
+                SELECT 1 FROM security.fn_RecordReadScope(@tenantId,N'payroll.manage',NULL,NULL,NULL,NULL)
+              )) OR (i.CollectionName=N'personnelFiles' AND i.IsDelete=0 AND ISNULL(previous.IsDeleted,0)=0
+                AND LEN(i.EntityId)=36 AND JSON_VALUE(i.JsonDoc,'$.userId')=i.EntityId
+                AND EXISTS(SELECT 1 FROM core.AppUser u WHERE u.TenantId=@tenantId AND u.IsActive=1
+                  AND u.UserId=TRY_CONVERT(uniqueidentifier,i.EntityId))
+                AND (
+                  (TRY_CONVERT(uniqueidentifier,i.EntityId)=@userId AND (
+                    (ISNULL(stage.BeforeStatus,N'INCOMPLETE') IN(N'INCOMPLETE',N'NEEDS_CORRECTION')
+                      AND (stage.AfterStatus IN(N'INCOMPLETE',N'SUBMITTED_FOR_REVIEW') OR stage.AfterStatus=stage.BeforeStatus))
+                    OR (stage.BeforeStatus=N'APPROVED' AND stage.AfterStatus=N'INCOMPLETE')
+                    OR CONVERT(varbinary(max),i.JsonDoc)=CONVERT(varbinary(max),prior.JsonDoc)
+                  ) AND ISNULL(JSON_VALUE(i.JsonDoc,'$.reviewedBy'),N'')=ISNULL(JSON_VALUE(prior.JsonDoc,'$.reviewedBy'),N'')
+                    AND ISNULL(JSON_VALUE(i.JsonDoc,'$.reviewedAt'),N'')=ISNULL(JSON_VALUE(prior.JsonDoc,'$.reviewedAt'),N''))
+                  OR (TRY_CONVERT(uniqueidentifier,i.EntityId)<>@userId AND stage.BeforeStatus=N'SUBMITTED_FOR_REVIEW'
+                    AND stage.AfterStatus IN(N'APPROVED',N'NEEDS_CORRECTION')
+                    AND TRY_CONVERT(uniqueidentifier,JSON_VALUE(i.JsonDoc,'$.reviewedBy'))=@userId
+                    AND (stage.AfterStatus<>N'NEEDS_CORRECTION' OR LEN(LTRIM(RTRIM(JSON_VALUE(i.JsonDoc,'$.reviewNote'))))>0)
+                    AND ISNULL(CONVERT(varbinary(max),JSON_QUERY(i.JsonDoc,'$.identity')),0x)=ISNULL(CONVERT(varbinary(max),JSON_QUERY(prior.JsonDoc,'$.identity')),0x)
+                    AND ISNULL(CONVERT(varbinary(max),JSON_QUERY(i.JsonDoc,'$.bank')),0x)=ISNULL(CONVERT(varbinary(max),JSON_QUERY(prior.JsonDoc,'$.bank')),0x)
+                    AND ISNULL(CONVERT(varbinary(max),JSON_QUERY(i.JsonDoc,'$.address')),0x)=ISNULL(CONVERT(varbinary(max),JSON_QUERY(prior.JsonDoc,'$.address')),0x)
+                    AND ISNULL(CONVERT(varbinary(max),JSON_QUERY(i.JsonDoc,'$.documents')),0x)=ISNULL(CONVERT(varbinary(max),JSON_QUERY(prior.JsonDoc,'$.documents')),0x)
+                    AND EXISTS(SELECT 1 FROM security.fn_RecordReadScope(@tenantId,N'users.manage',NULL,NULL,NULL,NULL)))
+                ));`);
+            const allowed = new Set(permissions.recordset.map(row => row.RowIndex));
+            const blocked = new Set(personnelWrites.filter(row => !allowed.has(row.index)).map(row => row.index));
             for (const index of blocked) rejected.push({ collection: chunk[index].c, id: chunk[index].i, reason: 'FORBIDDEN_SCOPE' });
             chunk = chunk.filter((_, index) => !blocked.has(index));
           }
@@ -454,7 +536,7 @@ export function createEntityService({ driver, registry, hasPermission, excludeFi
         ))
       : full.singletons;
     for (const name of Object.keys(singletons)) if (CHAT_COLLECTIONS.has(name.toLowerCase()) || name.toLowerCase() === 'attachments'
-      || name.toLowerCase() === 'onboardingapplications' || commercialPartitions.includes(name.toLowerCase())) delete singletons[name];
+      || personnelPartitions.includes(name.toLowerCase()) || commercialPartitions.includes(name.toLowerCase())) delete singletons[name];
     return { collections, singletons, serverVersion: full.version, hiddenCollections: hidden, generatedAt: now() };
   }
 
@@ -464,7 +546,7 @@ export function createEntityService({ driver, registry, hasPermission, excludeFi
     const rejected = [];
     let total = 0;
     const writable = new Map();
-    const privateNames = new Map(['groups', 'messages', 'attachments', 'onboardingApplications', 'collectionPromises', ...COMMERCIAL_COLLECTIONS]
+    const privateNames = new Map(['groups', 'messages', 'attachments', 'collectionPromises', ...personnelCollections, ...COMMERCIAL_COLLECTIONS]
       .map(name => [name.toLowerCase(), name]));
     const canonical = name => !privateNames.has(name.toLowerCase()) || privateNames.get(name.toLowerCase()) === name;
     const canWrite = async (name) => {

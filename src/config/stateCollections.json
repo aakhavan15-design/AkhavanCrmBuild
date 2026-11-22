@@ -42,6 +42,14 @@
       "read": "geo.view",
       "write": "geo.manage"
     },
+    "personnel": {
+      "read": "authenticated",
+      "write": "authenticated"
+    },
+    "payroll": {
+      "read": "authenticated",
+      "write": "payroll.manage"
+    },
     "recruitment": {
       "read": "users.manage",
       "write": "users.manage"
@@ -336,25 +344,26 @@
       "profile": "recruitment"
     },
     "personnelFiles": {
-      "profile": "internal"
+      "profile": "personnel",
+      "idField": "userId"
     },
     "salaryProfiles": {
-      "profile": "internal",
+      "profile": "payroll",
       "refs": {
         "userId": "users"
       }
     },
     "advanceRequests": {
-      "profile": "internal",
+      "profile": "payroll",
       "refs": {
         "userId": "users"
       }
     },
     "payrollRuns": {
-      "profile": "internal"
+      "profile": "payroll"
     },
     "payslips": {
-      "profile": "internal",
+      "profile": "payroll",
       "refs": {
         "userId": "users"
       }
@@ -366,7 +375,7 @@
       "profile": "internal"
     },
     "commissionTransactions": {
-      "profile": "internal"
+      "profile": "payroll"
     },
     "performanceAssessments": {
       "profile": "internal"

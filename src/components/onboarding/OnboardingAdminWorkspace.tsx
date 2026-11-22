@@ -81,7 +81,7 @@ export function OnboardingAdminWorkspace({ state, updateState }: { state: AppSta
     let r: any = { ok: false }; 
     updateState(d => { r = fn(d); }); 
     if (!r.ok) flash(r.reason || (r.errors || []).join(' ') || 'انجام نشد.'); 
-    else { setNote(''); flash('عملیات با موفقیت انجام شد.'); } 
+    else { setNote(''); flash(remote ? 'تغییر در صف همگام‌سازی قرار گرفت.' : 'عملیات با موفقیت انجام شد.'); }
     return r;
   };
 

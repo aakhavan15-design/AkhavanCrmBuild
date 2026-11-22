@@ -72,7 +72,7 @@ export function PersonnelFilePage({ state, updateState }: { state: AppState; upd
   const saveStep = (s: 'identity' | 'bank' | 'address') => (v: Record<string, unknown>) => {
     let r: { ok: boolean; reason?: string } = { ok: false }; 
     updateState(d => { r = savePersonnelStep(d, me, s, v, new Date()); }); 
-    flash(r.ok ? 'ذخیره موقت انجام شد.' : r.reason || 'ذخیره نشد.');
+    flash(r.ok ? (remote ? 'ویرایش در صف همگام‌سازی قرار گرفت.' : 'ذخیره موقت انجام شد.') : r.reason || 'ذخیره نشد.');
   };
 
   const putDoc = (kind: string, document: DocFile | null) => {
