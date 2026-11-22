@@ -540,6 +540,16 @@ const wrap = (handler) => async (req, res, next) => { try { await handler(req, r
 const visitRouteReader = createErpVisitRouteReader({ sql,run:withTenantContext });
 const routeMapAnalytics = createRouteMapAnalytics({sql,run:withTenantContext});
 const routeCustomerDetail = createRouteCustomerDetailReader({sql,run:withTenantContext});
+app.get('/api/v1/erp/route-map/filter-options',authenticate,requirePermission('geo.view'),wrap(async(req,res)=>{
+ if(!isUuid(req.auth.tenantId)||!isUuid(req.auth.userId))
+  return res.status(503).json({error:{code:'AUTH_CONTEXT_INVALID',message:'نشست معتبر نیست.'}});
+ const organizationWide=await hasSqlPermission(req.auth,'geo.view',{organizationWide:true});
+ const financeAllowed=await hasSqlPermission(req.auth,'finance.view');
+ const date=String(req.query.date||new Date().toISOString().slice(0,10));
+ if(!/^\d{4}-\d{2}-\d{2}$/.test(date))
+  return res.status(400).json({error:{code:'INVALID_DATE',message:'تاریخ معتبر نیست.'}});
+ res.json(await routeMapAnalytics.filterOptions(req.auth,{organizationWide,financeAllowed,date}));
+}));
 app.get('/api/v1/erp/route-map/summary',authenticate,requirePermission('geo.view'),wrap(async(req,res)=>{
  if(!isUuid(req.auth.tenantId)||!isUuid(req.auth.userId))
    return res.status(503).json({error:{code:'AUTH_CONTEXT_INVALID',message:'نشست معتبر نیست.'}});
