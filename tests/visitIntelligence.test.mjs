@@ -41,3 +41,23 @@ test('void invoices are excluded and valid sales returns remain a separate findi
  const row=r.customerRows.find(x=>x.customerId==='C1');
  assert.equal(row.invoiceCount,1);assert.equal(row.salesTotal,4000000);assert.equal(row.returnCount,1);
 });
+
+test('purchase cycle is unknown under three separate purchase dates',()=>{
+ const r=buildVisitIntelligence({...base,invoices:[invoice('I1','C1','2026-11-01'),invoice('I2','C1','2026-11-08')]});
+ assert.equal(r.customerRows.find(row=>row.customerId==='C1').purchaseCycleDays,null);
+ assert.ok(!r.customerRows.find(row=>row.customerId==='C1').purchaseDue);
+});
+test('repeated weekly purchases give a median cycle and a due customer after a gap',()=>{
+ const r=buildVisitIntelligence({...base,invoices:[invoice('I1','C1','2026-10-01'),invoice('I2','C1','2026-10-08'),invoice('I3','C1','2026-10-15')]});
+ const row=r.customerRows.find(row=>row.customerId==='C1');
+ assert.equal(row.purchaseCycleDays,7);
+ assert.ok(row.purchaseDue);
+ assert.ok(row.reasons.includes('PURCHASE_CYCLE_DUE'));
+});
+test('cross-tenant tour stop and missing explicit external mapping do not leak into route results',()=>{
+ const r=buildVisitIntelligence({...base,tours:[{...tour('2026-11-21',['C1']),tenantId:'OTHER'}]});
+ assert.equal(r.inErpTour,0);
+ const unmapped=buildVisitIntelligence({...base,customers:[{id:'C1',name:'No ERP map'}],tours:[tour('2026-11-21',['C1'])]});
+ assert.equal(unmapped.inErpTour,0);
+ assert.ok(unmapped.incompleteSources.some(reason=>reason.includes('نگاشت شناسه خارجی')));
+});
