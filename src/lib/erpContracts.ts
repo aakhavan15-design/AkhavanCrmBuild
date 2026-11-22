@@ -146,7 +146,7 @@ export interface ERPVisitTourReadContract extends ERPRecordIdentity {
 export interface ERPSyncReceipt {
   tenantId: string;
   sourceSystemCode: ERPSourceSystemCode;
-  entityType: 'SALES_ORDER' | 'INVOICE' | 'PAYMENT' | 'DISPATCH' | 'RETURN';
+  entityType: 'SALES_ORDER' | 'INVOICE' | 'PAYMENT' | 'DISPATCH' | 'RETURN' | 'VISIT_ROUTE' | 'VISIT_TOUR';
   externalId: string;
   syncedAtUtc: string;
   outcome: 'INSERTED' | 'UPDATED' | 'SKIPPED_STALE' | 'CONFLICT';
