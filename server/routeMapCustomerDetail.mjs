@@ -37,6 +37,15 @@ export function createRouteCustomerDetailReader({sql,run}){
      AND (NOT EXISTS(SELECT 1 FROM OPENJSON(@categoryJson)) OR a.BusinessCategoryCode IN(SELECT value FROM OPENJSON(@categoryJson)))
      AND EXISTS(SELECT 1 FROM security.fn_RecordReadScope(a.TenantId,N'accounts.view',a.OwnerUserId,a.BranchId,a.TerritoryId,a.TeamId))
    ORDER BY a.Name,a.AccountId`)).recordset;
+  const memberById=new Map();
+  for(const member of members){
+    const id=String(member.AccountId).toLowerCase();
+    const existing=memberById.get(id);
+    if(!existing){memberById.set(id,{...member});continue;}
+    const codes=[...new Set([...(String(existing.SubRouteCode||'').split('،').filter(Boolean)),member.SubRouteCode].filter(Boolean))];
+    existing.SubRouteCode=codes.join('، ');
+  }
+  const uniqueMembers=[...memberById.values()];
   const visits=(await request().query(`
    SELECT v.AccountId,v.ExternalVisitId,v.ExternalSalesRepId,v.VisitedAtUtc,
       v.OutcomeCode,v.NoOrderReasonCode,reason.ReasonTitleFa
@@ -111,7 +120,7 @@ export function createRouteCustomerDetailReader({sql,run}){
   for(const i of invoices){const k=String(i.AccountId).toLowerCase();const a=invoiceByAccount.get(k)||[];a.push(i);invoiceByAccount.set(k,a);}
   const linesByInvoice=new Map();
   for(const l of products){const k=String(l.InvoiceMirrorId).toLowerCase();const a=linesByInvoice.get(k)||[];a.push(l);linesByInvoice.set(k,a);}
-  const customers=members.map(m=>{
+  const customers=uniqueMembers.map(m=>{
     const id=String(m.AccountId).toLowerCase(),cv=visitByAccount.get(id)||[],ci=invoiceByAccount.get(id)||[];
     const sales=ci.reduce((sum,i)=>sum+(linesByInvoice.get(String(i.InvoiceMirrorId).toLowerCase())||[])
        .reduce((sub,l)=>sub+Number(l.NetLineAmount||0),0),0);
