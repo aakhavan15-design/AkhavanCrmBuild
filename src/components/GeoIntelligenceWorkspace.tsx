@@ -253,6 +253,7 @@ export function GeoIntelligenceWorkspace({ state, updateState }: Props) {
         isDeleted: tour.isDeleted as boolean | undefined,
       })).map(tour => ({
         externalId: String(tour.externalId || ''),tourDate:String(tour.tourDate||''),
+        sourceSystemCode:String(tour.sourceSystemCode||''),tenantId:String(tour.tenantId||''),
         routeExternalId:String(tour.routeExternalId||''),salesRepExternalId:String(tour.salesRepExternalId||''),
         statusCode:String(tour.statusCode||''),isDeleted:Boolean(tour.isDeleted),
         stops:Array.isArray(tour.stops)?tour.stops.map(stop=>({
