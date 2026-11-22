@@ -1,18 +1,29 @@
 # چک‌لیست اجرایی AKHAVAN CRM
 
-## وضعیت جاری — آغاز مصوبهٔ ۲۰۲۶-۱۱-۲۰
+## وضعیت جاری — ممیزی سورس ۲۰۲۶-۱۱-۲۲
 
-| مورد | وضعیت تأییدشده |
-|---|---|
-| مبنای سورس | `aakhavan15-design/AkhavanCrmBuild`، شاخهٔ `codex/resume-crm-development`، خط مبنای GitHub `0dea7cc`، `package.json` نسخهٔ `0.12.63` |
-| ردیف‌های شناسه‌دار | 239 ردیف. انجام‌شده 16، در جریان 53، باز 163، مسدود 1، فریز 6 |
-| خط مبنای آزمون | Build PASS. `npm test` تعداد ۱۳۶ فایل PASS و ۱۳ FAIL. بررسی TypeScript با ۵۱۳ خطا. شواهد تفصیلی در ثبت‌های قبلی و کامیت‌ها |
-| وابستگی خارجی | SQL Server زنده، قرارداد ERP شامل Schema، خواندن رسمی، API عملیات و نمونهٔ sandbox، و تطبیق بانک راستی‌آزمایی نشده‌اند |
-| اولین اقدام کدنویسی | اعتبارسنجی نگاشت ردیف FIFO با ERP و تطبیق بانک در QA مستقل؛ کار توسعهٔ مستقل بعدی تقویم و زمان‌بند F4-05 است |
+مبنای ممیزی، شاخهٔ `codex/unified-ux-quality-gate` روی GitHub و SHA `9ba3590b4b3ca19b24a6d912669477dda1b82bf7` است. نسخهٔ سورس از `package.json` برابر `0.12.63` است. برای هر 239 ردیف شناسه‌دار F، وضعیت جاری و شاهد زیر همان ردیف ثبت شده‌اند. ماتریس‌های C/ER/HR، معیارهای مشترک کیفیت و ثبت‌های قدیمی شواهد و پیشینه‌اند. موارد ارجاعیِ هم‌پوشان بر اساس شناسهٔ ردیف شمارش شده‌اند.
 
-وضعیت ماتریس‌های زیر نمای پوشش قرارداد است. وضعیت هر کار و شاهد اجرا در ردیف اصلی F ثبت می‌شود. **TODO** برای پذیرش باقی‌مانده، **PARTIAL** برای بخش موجود، **BLOCKED** برای مانع مشخص و **NOT VERIFIED** برای محیط یا مسیر آزمایش‌نشده است. فازهای اصلی و شناسه‌های قبلی حفظ می‌شوند.
+| اولویت موارد باقی‌مانده | IMPLEMENTED — NOT TESTED | PARTIAL | NOT IMPLEMENTED | BLOCKED | مجموع |
+|---|---:|---:|---:|---:|---:|
+| P0 | 2 | 52 | 1 | 15 | 70 |
+| P1 | 2 | 92 | 8 | 0 | 102 |
+| P2 | 5 | 38 | 1 | 1 | 45 |
+| P3 | 1 | 1 | 0 | 7 | 9 |
+| **مجموع** | 10 | 183 | 10 | 23 | **226** |
 
-## اولویت فعال — نوسازی تجربه و گیت کیفیت ۱۴۰۵/۰۸/۲۹
+**VERIFIED: 13 ردیف.** `[x]` شاهد معتبر برای دامنهٔ دقیق همان ردیف دارد. `[~]` پوشش بخشی یا پیاده‌سازی بدون آزمون تعیین‌کنندهٔ پذیرش است. `[ ]` مسیر مرتبطِ موردنیاز در بررسی هدفمند پیدا نشد. `[B]` مانع مشخص دارد و `[F]` شش ردیف حقوقیِ مسدود طبق فریز مالک است. تأیید یک قرارداد ایستا یا واحد فقط به همان قرارداد تعلق دارد.
+
+- **P0** صحت مالی و داده، مجوز/محرمانگی، وابستگی لازم استقرار و گیت‌های حیاتی.
+- **P1** گردش‌ها و قابلیت‌های اصلی کسب‌وکار و پیش‌نیاز مستقیمشان.
+- **P2** تکمیل پوشش، گزارش‌ها، ناوبری و پذیرش تجربهٔ کاربری.
+- **P3** نگه‌داری یا تحویل نهایی و حوزه‌های فریز.
+
+**شواهد این ممیزی.** همگامی شاخهٔ محلی و Remote در SHA مبنا کنترل شد. ۱۰ بررسی سبکِ قراردادی موفق و ۵ بررسی ناموفق بودند. شکست‌ها به `documentationSetContracts` (عبارت طراحی مورد انتظار)، `customerListBalancePermission` (فرم مورد انتظار فراخوانی Provider)، `tourCoverageContracts` (پوشش مسیر طراحی)، `persianLocalizationContracts` (رشته‌های UI) و `ledgerJournalQuery` (الگوی SQL مورد انتظار) مربوط بودند. هیچ Build، TypeScript سراسری، اجرای مرورگر یا تست جامع تازه‌ای انجام نشد. SQL Server، ERP و تأیید بانکی در این محیط در دسترس نبودند.
+
+**اولین کارهای P0 قابل اقدام.** F2-14 و F9-14 برای شکاف دامنهٔ دید گزارش‌ها، F0-13/F0-16 برای تطبیق ماندهٔ دفتری، و F7-04/F17-04 برای پوشش شواهد FIFO. اعتبارسنجی SQL و قرارداد ERP در F10-01/F10-03 و F14-39/F14-40 پیش‌نیاز پذیرش زنده هستند.
+
+## سابقهٔ اولویت — نوسازی تجربه و گیت کیفیت ۱۴۰۵/۰۸/۲۹
 
 مبنا `origin/main@6da208a` و شاخهٔ کاری `codex/unified-ux-quality-gate` است. خط مبنای همین نسخه ۱۳۶ فایل آزمون موفق، ۱۳ فایل ناموفق و ۵۰۶ پیام TypeScript است. مسیر توسعهٔ کسب‌وکار تا تحویل این دستور متوقف است. قفل §۳-پ سیستم طراحی و مرز ERP/CRM معتبرند. پایگاه دادهٔ زنده، دستگاه واقعی و پوشش سراسری مرورگر جداگانه ثبت می‌شوند.
 
@@ -484,220 +495,396 @@
 
 ## فاز ۰ — حقیقت پایه و پاک‌سازی
 - [x] F0-01 اسناد یکپارچه به پنج سند دستی (`INSTRUCTIONS.md`، سند جامع، چک‌لیست، قانون اساسی، سیستم طراحی) + سند تولیدی KPI؛ همهٔ فایل‌های MD قبلی (AGENTS، BOOTSTRAP، VERSION، docs/AI_EXECUTION/*، معماری، موجودی/ناوبری، فرمول‌ها، ETL، ممیزی فارسی‌سازی، مهارت `.agents`، `formulaSources.md`) ادغام و حذف شدند. شاهد: `documentationSetContracts`، `paletteLockContracts`، `analyticsConstitutionContracts`، `designLockContracts`، `persianLocalizationContracts`، `reportAnalyticsContracts` PASS؛ کل مجموعه ۱۰۳ PASS / ۷ FAIL (همان ۷ شکست وابستگی). یادداشت: کامنت Migration 017 هنوز به مسیر قدیمی ETL اشاره می‌کند و عمداً دست نخورد (Migration تغییر نمی‌کند)؛ مرجع جدید = سند جامع پیوست ب
+  - **VERIFIED** · git ls-files *.md؛ پنج سند مرجع و سند تولیدی برقرار است. آزمون documentationSetContracts در عبارت قدیمی طراحی شکست خورد؛ به‌عنوان شاهد ادغام استفاده نشد.
 - [~] F0-02 نصب وابستگی و Build موفق؛ تست جامع و TypeScript هنوز خطا دارند. نتیجه و شمارش فعلی در ثبت اجرای ۲۰۲۶-۱۱-۱۹ آمده است.
+  - **P0 · PARTIAL** · package.json و workflow گیت موجودند؛ مبنای ثبت‌شده دارای شکست TypeScript و تست است. Build/تست جامع روی این SHA اجرا نشد.
 - [~] F0-17 [C06] گیت امنیت ارسال Push. جلسهٔ امضاشده برای هر سه مسیر لازم است. ارسال فقط برای دارندهٔ مجوز مدیریت تنظیمات و اشتراک‌های همان مستأجر/کاربر است. سقف نرخ در هر فرایند، متن عمومی اعلان و رویداد مجوز در AuditEvent اعمال شد. HTTP روی درایور موقت 401، 403، 429 و جداسازی سهمیهٔ مستأجر را تأیید کرد. ثبت SQL زنده، VAPID، محدودیت نرخ مشترک در استقرار چندنمونه و فرستندهٔ گردش سمت سرور باز هستند.
+  - **P0 · PARTIAL** · server/index.mjs:1216–1232 و pushStore.mjs؛ نشست امضاشده، مصرف‌کننده و سهمیه‌سنج محلی؛ VAPID و محدودکنندهٔ چندنمونه‌ای باز.
 - [B] F0-03 تطبیق همه یافته‌های ممیزی (نسخه customer_sync) روی همین سورس؛ گزارش یا ZIP مبنای یافته‌ها در Git موجود نیست. هر مورد پس از دریافت مرجع با شاهد تأیید یا رد شود.
+  - **P2 · BLOCKED** · git ls-files و بخش سوابق همین سند؛ مرجع اصلی customer_sync در Git دردسترس نیست.
 - [x] F0-04 دو `StateSyncEngine` هم‌زمان (`App.tsx`, `stateSyncRuntime.ts`, `dataSyncController.ts`) به یکی. — شاهد: tests/singleSyncEngine PASS؛ tests/sqlFirstStateLayer PASS (۱۰/۱۰)؛ tests/customerSyncExperienceContracts PASS؛ مالک یگانه = `dataSyncController` (`getEngine()` + رویداد focus)، `stateSyncRuntime` نمای نازک، `App.tsx` یک راه‌اندازی؛ ۱۴۰۵/۰۸/۲۵
-- [x] F0-05 مانده بدهی فهرست مشتری با کنترل مجوز مالی (`CustomersWorkspace`). — شاهد: tests/customerListBalancePermission PASS؛ rbac، rbacScopeContracts، customerSyncExperienceContracts PASS؛ `canSeeBalance = can('finance','VIEW')` هم محاسبه و هم نمایش را گارد می‌کند؛ **اصلاح به دستور مالک:** مانده = Σ بدهکار − Σ بستانکار سطرهای سند هر مشتری (`computeCustomerLedgerBalances` در `receivableReconciliation.ts`؛ مثبت=بدهکار، منفی=بستانکار، بدون سطر=«مانده نامشخص»؛ سند باطل/پیش‌نویس حذف)؛ assertion قدیمی `invoice.balance` در customerSyncExperienceContracts به قرارداد جدید تبدیل شد؛ شاهد افزوده: receivableReconciliation، receivableCredits، receivableSingleSourceContracts PASS؛ **نیاز بعدی (F2):** اتصال سطر سند به مشتری فعلاً با `accountId`؛ با کد تفصیلی در فاز ۲ تکمیل شود؛ ۱۴۰۵/۰۸/۲۵؛ نکته: این فقط گارد UI است و جایگزین مجوز API/RLS نیست (قانون اساسی G)؛
+  - **VERIFIED** · dataSyncController.ts، stateSyncRuntime.ts و App.tsx؛ قرارداد singleSyncEngine روی مبنا PASS.
+- [~] F0-05 مانده بدهی فهرست مشتری با کنترل مجوز مالی (`CustomersWorkspace`). — شاهد: tests/customerListBalancePermission PASS؛ rbac، rbacScopeContracts، customerSyncExperienceContracts PASS؛ `canSeeBalance = can('finance','VIEW')` هم محاسبه و هم نمایش را گارد می‌کند؛ **اصلاح به دستور مالک:** مانده = Σ بدهکار − Σ بستانکار سطرهای سند هر مشتری (`computeCustomerLedgerBalances` در `receivableReconciliation.ts`؛ مثبت=بدهکار، منفی=بستانکار، بدون سطر=«مانده نامشخص»؛ سند باطل/پیش‌نویس حذف)؛ assertion قدیمی `invoice.balance` در customerSyncExperienceContracts به قرارداد جدید تبدیل شد؛ شاهد افزوده: receivableReconciliation، receivableCredits، receivableSingleSourceContracts PASS؛ **نیاز بعدی (F2):** اتصال سطر سند به مشتری فعلاً با `accountId`؛ با کد تفصیلی در فاز ۲ تکمیل شود؛ ۱۴۰۵/۰۸/۲۵؛ نکته: این فقط گارد UI است و جایگزین مجوز API/RLS نیست (قانون اساسی G)؛
+  - **P0 · IMPLEMENTED — NOT TESTED** · CustomersWorkspace.tsx:56,411,443؛ خواندن و نمایش پشت finance.VIEW است. آزمون customerListBalancePermission الگوی قدیمی فراخوانی بدون `role` را رد کرد؛ پذیرش نقش/SQL باز.
 - [x] F0-06 OCR فقط فرم را پر کند؛ ثبت از فرم؛ `targetAction` استفاده شود؛ جهت چک از فرم (نه ثابت RECEIVABLE) (`GlobalFloatingIntakeDrawer`). — انجام‌شده: `resolveIntakeCommit` (`documentCapture.ts`) تضمین می‌کند ثبت مستقیم و ارسال به فرم هرگز هم‌زمان نباشند (پایان ثبت مضاعف)؛ `targetAction` با انتخابگر واقعی فعال شد؛ جهت چک از انتخاب کاربر (بدون پیش‌فرض، تا انتخاب مسدود)؛ شاهد: tests/intakeCommitRouting PASS، documentCaptureContracts PASS (۱۱/۱۱)؛ useDocumentAutoFillAndSync = BLOCKED (نبود پکیج react)؛ تکمیل ۱۴۰۵/۰۸/۲۵: `Layout` اکنون مقادیر استخراج‌شده را با state ناوبری (`intakePrefill`) به `/finance?tab=payments|invoices` می‌برد؛ `FinanceWorkspace` آن را یک‌بار مصرف و فرم دریافت/چک را از طریق `buildPaymentFormPrefill` (`documentCapture.ts`، منبع یگانهٔ پیش‌پر؛ مقدار نامعلوم = رشتهٔ خالی، جهت چک فقط از انتخاب کاربر) پیش‌پر می‌کند؛ ایمپورت گمشدهٔ `DOCUMENT_TYPE_LABELS`/`CapturedDocumentType` در `FinanceWorkspace` اصلاح شد. شاهد: tests/intakePrefillBridge PASS، intakeCommitRouting PASS، documentCaptureContracts PASS (۱۱/۱۱)؛ NOT VERIFIED: رفتار بصری/مرورگر و tsc (طبق دستور اجرا نشد)؛ انواع هزینه/شناسنامه‌ی پرسنل هنوز فقط ناوبری‌اند (فرم مصرف‌کننده ندارند—با ردیف‌های فاز ۶/۸).
+  - **VERIFIED** · documentCapture.ts و FinanceWorkspace.tsx؛ قراردادهای intakeCommitRouting و intakePrefillBridge روی مبنا PASS. پوشش محدود به انتقال مقصود و پیش‌پرکردن است.
 - [~] F0-14 ممیزی «State به‌عنوان منبع داده» و عبور همهٔ دسترسی‌ها از `DataProvider` (قانون اساسی §D): فهرست کامپوننت/موتورهایی که مستقیم از `state`/Store/آرایهٔ ثابت داده اصلی می‌خوانند (نمونهٔ شناخته‌شده: `executePayrollRun(state…)` و `OnboardingAdminWorkspace`)؛ تعریف قرارداد Provider برای گردش مالی و مانده (`getLedgerMovements`، `getBalances(تفصیلی، معین، دوره)`) و وضعیت اتصال؛ تست Refresh/ثبت-ویرایش-حذف از مسیر Provider. شاهد ممیزی اولیه: `dataProvider.ts` دو پیاده‌سازی `ClientStorageDataProvider` و `HttpBackendDataProvider` دارد و انتخاب با `VITE_DATA_PROVIDER`؛ رابط `DataProvider` هنوز API گردش/مانده ندارد. — **انجام‌شده (۱۴۰۵/۰۸/۲۵):** قرارداد `DataProvider.getJournalLines(filter, pagination)` و `getDetailSubsidiaryBalances({detailKey, byPeriod})` در هر دو Provider؛ منطق مشترک و تست‌پذیر `queryJournalLines`/`buildDetailBalancesResult` در `receivableReconciliation.ts`؛ وضعیت نتیجه `LIVE/EMPTY/UNAVAILABLE` با `source`؛ در `HttpBackendDataProvider` برای این دو متد **fallback به داده محلی وجود ندارد** (خطا ⇒ UNAVAILABLE). شاهد: tests/detailSubsidiaryBalance PASS (۹/۹)؛ customerListBalancePermission، receivableSingleSourceContracts PASS. **یافته‌های ممیزی (مانده):** (۱) `HttpBackendDataProvider` در `getAccounts/getAccountById/...` هنوز هنگام خالی‌بودن/خطا به `ClientStorageDataProvider` برمی‌گردد ⇒ منبع داده پنهان عوض می‌شود؛ باید با وضعیت منبع شفاف شود؛ (۲) `ClientStorageDataProvider.executePayrollRun` فقط رکورد با جمع‌های ۰ و وضعیت COMPLETED می‌سازد (نه محاسبهٔ واقعی)؛ (۳) `CustomersWorkspace` هنوز `state.journalLines` را مستقیم می‌خواند و باید به `getDetailSubsidiaryBalances` وصل شود؛ (۴) `AppState.journalLines` در `types.ts` تایپ ندارد؛ (۵) Endpointهای سرور `/ledger/journal-lines` و `/ledger/balances` هنوز نیستند (F10-02b). — **به‌روز ۱۴۰۵/۰۸/۲۵:** مورد (۳) رفع شد: `CustomersWorkspace` مانده را از `getDetailSubsidiaryBalances` (useDataQuery) می‌گیرد؛ مورد (۱) و (۲) رفع شد (۱۴۰۵/۰۸/۲۵، نوبت بعد): `HttpBackendDataProvider.getAccounts/getAccountById` بدون fallback محلی (خالی = خالیِ واقعی؛ خطا پرتاب می‌شود)؛ `ClientStorageDataProvider.executePayrollRun` با موتور واقعی (`payrollEngine`) محاسبه و فیش/مساعده را ثبت می‌کند، idempotent است و بدون حقوق ثبت‌شده خطای `PAYROLL_NO_ELIGIBLE_EMPLOYEES` می‌دهد (نه جمع صفر COMPLETED). شاهد: tests/providerHonestyAndPayroll PASS (۳/۳؛ بخش زنده با stub موقت `zustand`/`jalaali-js` خارج از ZIP)، dataProviderParityContracts، payrollNoHardcodes، detailSubsidiaryBalance PASS. **به‌روز (نوبت بعد):** (۳) رفع شد: `OnboardingAdminWorkspace.handleExecutePayroll` اکنون فقط از `PayrollRepository.runPayroll` استفاده می‌کند (شمار ردشده‌ها = کاربران فعال − `run.totalEmployees`)؛ (۴) رفع شد: `AppState.journalLines` تایپ شد. **مانده:** (۵) Endpointهای سرور `/ledger/*` (F10-02b)؛ بررسی بقیهٔ مصرف‌کنندگان مستقیم `state`؛ تایید tsc (NOT VERIFIED، اجرا نشد).
+  - **P0 · PARTIAL** · dataProvider.ts و API /ledger/* حاضرند. ReportsHub.tsx و payrollEngine.ts هنوز در برخی مسیرها از snapshot/State می‌خوانند؛ قرارداد کامل مسیرهای مرکزی باز.
 - [~] F0-15 مدل داده مانده تفکیکی (Migration افزایشی ۰۲۶ پس از ممیزی ۰۱۷/۰۲۲): موجود = `crm.LedgerAccount`، `crm.JournalEntryMirror`، `crm.JournalLineMirror` (ExternalAccountCode، ExternalDetailCode، بدهکار/بستانکار)، `integration.CodeMapping`، `LedgerAccountSourceMap`. **کمبود شناسایی‌شده:** ستون/جدول دوره مالی و وضعیت سند، ابعاد تکمیلی، ارتباط تفصیلی↔معین صریح، View/Procedure مانده به‌ازای (تفصیلی، معین، دوره) و جمع تفصیلی از همان؛ فقط کمبود واقعی اضافه شود. تست: مانده مستقل دو معین یک تفصیلی (با Seed فقط در تست). — **انجام‌شده (۱۴۰۵/۰۸/۲۵):** Migration `026_chart_of_accounts_detail_groups.sql`: آینهٔ کدینگ گروه حساب/کل/معین با گسترش همان `crm.LedgerAccountSourceMap` (ستون‌های `ExternalLevelCode`، `ExternalParentCode`، `ExternalNatureCode`، `IsActive`، `SyncedAtUtc`)؛ جدول‌های جدید `crm.DetailGroup` (گروه تفصیلی: مشتریان/تأمین‌کنندگان/پرسنل/مراکز هزینه/جاری شرکا/بانک‌ها/سایر؛ فقط دسته‌بندی و بدون ارتباط با اسناد)، `crm.DetailAccount` (کد تفصیلی ERP + گروه + نگاشت به `crm.Account`)، `crm.DetailSubsidiaryLink` (چندبه‌چند تفصیلی↔معین)؛ ستون `JournalLineMirror.DetailAccountId`؛ RLS؛ بدون Seed. شاهد: tests/chartOfAccountsDetailGroupsSql PASS (۶/۶، ایستا)؛ tests/sqlSchemaContracts PASS (۲۶ Migration، ۸۷ جدول، ۲۰۲ FK). **اجرای واقعی روی SQL Server: NOT VERIFIED.** **مانده:** دوره مالی و وضعیت سند، ابعاد تکمیلی، View/Procedure مانده به‌ازای (تفصیلی، معین، دوره) و جمع تفصیلی؛ ETL پرکردن این جدول‌ها از ERP (F10-03)؛ قرارداد DataProvider (F0-14)؛ ماژول/صفحهٔ مدیریت (F2-07). — **انجام‌شده (۱۴۰۵/۰۸/۲۶):** Migration `027_fiscal_period_doc_status_balance_view.sql` (افزایشی/idempotent): `crm.FiscalPeriod` (دوره مالی ERP با وضعیت OPEN/CLOSED/LOCKED/UNKNOWN)، `crm.JournalStatusMap` (نگاشت صریح وضعیت سند ERP ← وضعیت نرمال + `IncludeInBalance`؛ وضعیت بدون نگاشت وارد مانده نمی‌شود و در `UnmappedStatusLineCount` شمرده می‌شود)، `crm.JournalLineDimension` (ابعاد تکمیلی ردیف: مرکز هزینه/پروژه/شعبه…)، ستون‌های `JournalEntryMirror.FiscalPeriodId/ExternalPeriodCode`، RLS؛ View `analytics.vw_DetailSubsidiaryBalance` (مانده مستقل هر تفصیلی×معین×دوره = Σبدهکار−Σبستانکار؛ سند باطل کنار؛ دورهٔ نامشخص = NULL) و `analytics.vw_DetailBalanceTotal` (فقط تجمیع همان View تفکیکی + `SubsidiaryCount`). شاهد: tests/fiscalPeriodBalanceViewSql PASS (۷/۷، ایستا؛ جدید، در Manifest)؛ chartOfAccountsDetailGroupsSql PASS (۶/۶)؛ sqlSchemaContracts PASS (۲۷ Migration، ۹۰ جدول، ۲۰۷ FK). **اجرای واقعی روی SQL Server: NOT VERIFIED.** **مانده (به‌روز):** ETL پرکردن این جدول‌ها از ERP (F10-03؛ نگاشت ستون‌های منبع نیازمند Data Dictionary)، اتصال `getDetailSubsidiaryBalances({byPeriod})` در DataProvider سرور به View (F0-14)، صفحهٔ مدیریت نگاشت وضعیت/دوره (F2-07)؛ جدول «بالانس آزمایشی» ندارد. — **تصمیم مالک (۱۴۰۵/۰۸/۲۶، اصلاح‌شده):** هدف انتقال داده فقط گزارش‌گیری است: سود و زیان، ترازنامه، تحلیل هزینه‌ها و خطایابی اسناد حسابداری. فقط اسناد حسابداری قطعی (دارای شماره سند) منتقل می‌شود؛ همان `JournalEntryMirror/JournalLineMirror` و View دفتری ۰۲۷ کافی است. «مانده کلی» و آینهٔ اسناد غیرقطعی بازرگانی/خزانه‌داری **ساخته نمی‌شود** (Migration ۰۲۸ لغو). از خزانه‌داری فقط چک‌های دریافتی و پرداختی ارزش دارند؛ حواله‌های بانکی و بقیه منتقل نمی‌شوند. **مانده:** فقط فهرست مقادیر وضعیت/شماره سند ERP برای `JournalStatusMap`؛ و (در صورت تأیید مالک) آینهٔ چک‌ها در ردیف جداگانه.
+  - **P0 · PARTIAL** · 026/027 و 040–044؛ کدینگ، دوره، ابعاد و انتشار؛ نگاشت/قبض واقعی ERP و مدیریت کامل کدینگ در UI باز.
 - [~] F0-07 ثبت مشتری محلی یکپارچه با مسیر پیشنهاد مشتری ERP (`CustomersWorkspace`, `server/index.mjs`). — انجام‌شده (۱۴۰۵/۰۸/۲۵): ثبت محلی اکنون صریحاً «پیش‌نویس» است (`erpProposalStatus=LOCAL_DRAFT`، نشان «پیش‌نویس» در فهرست، متن اعلان/ممیزی بدون ادعای ساخت مشتری رسمی)؛ تطبیق تکراری پیش از ثبت (`matchExistingCustomers` در `enterprise.ts`: کد ملی/اقتصادی = مسدود، تلفن/نام = هشدار)؛ قرارداد پیشنهاد کلاینت مطابق سرور (`src/lib/customerProposal.ts`: بدنه، کلید تکرارناپذیر، وضعیت). شاهد: tests/customerProposalContract PASS، backendSecurityContracts، customerListBalancePermission، customerSyncExperienceContracts، b15_b18_truth_contracts، compactUiContracts PASS. **چه مانده:** ارسال واقعی پیشنهاد از `CustomersWorkspace` از مسیر `DataProvider.createAccount` (+ نگهداری پاسخ `WAITING_FOR_ERP_REVIEW` و به‌روزرسانی وضعیت به `PENDING_ERP_REVIEW`) — نیازمند سرور با `ACCOUNTS_SOURCE=typed` و SQL؛ **BLOCKED/NOT VERIFIED** (محیط بدون سرور/SQL)؛ مسیر پیش‌فرض `entity` هنوز رکورد را در صف همگام‌سازی عمومی می‌برد (ممیزی A1).
+  - **P1 · PARTIAL** · CustomersWorkspace.tsx، customerProposal.ts و server/index.mjs:409؛ پیشنهاد و صف وجود دارد، ثبت مشتری رسمی به پاسخ ERP وابسته است.
 - [x] F0-08 وضعیت گزارش API: اجرای Query واقعی یا UNAVAILABLE؛ نه READY/isAuthoritative ثابت (`server/index.mjs`). — شاهد: tests/reportStatusHonesty PASS (UNAVAILABLE بدون SQL/با خطا بدون نشت پیام، EMPTY/PARTIAL/READY از شمارش واقعی جدول‌های آینه)؛ `node --check server/index.mjs` سالم؛ فایل‌ها: `server/reportStatus.mjs` (جدید)، `server/index.mjs`؛ ۱۴۰۵/۰۸/۲۵؛ **توجه (NOT VERIFIED):** Query روی SQL Server واقعی اجرا نشد (SQL در دسترس نیست)؛ endpoint هنوز ردیف داده‌ی گزارش برنمی‌گرداند (`reportDataAvailable:false`) تا ویوهای گزارش در فاز ۱۰ وصل شوند؛
+  - **VERIFIED** · server/reportStatus.mjs و /analytics/reports/:reportId؛ reportStatusHonesty روی مبنا PASS.
 - [x] F0-09 حذف اعداد نمونه `ProfitLossWidget`؛ اتصال `ledgerPnl` یا Empty State. — شاهد: tests/profitLossWidgetLedger PASS؛ reportEngineUiContracts/analyticsReportIntegration/reportsDashboardStyleContracts PASS؛ فایل‌ها: `src/lib/ledgerPnl.ts` (`buildLedgerPnlInputs`، `pnlSeriesByJalali`)، `ProfitLossWidget.tsx`، `ReportEnginePanels.tsx` (استفادهٔ مجدد از سازندهٔ ورودی)؛ نکته: فروش خالص تا ثبت «برگشت از فروش» NULL است (سیاست موجود موتور)؛ ۱۴۰۵/۰۸/۲۵
+  - **VERIFIED** · ProfitLossWidget.tsx و /ledger/pnl؛ profitLossWidgetLedger روی مبنا PASS.
 - [x] F0-10 حذف هاردکدهای حقوق/شبیه‌ساز: هدف ۵۰۰M، حقوق ۲۰۰M، انطباق ۸۲٪، جریمه ۳٪ ← تنظیم سازمان یا NULL. — شاهد: tests/payrollNoHardcodes PASS (۳/۳)، payrollEngineContracts PASS (۵/۵)، hrIntegrationContracts PASS (۳/۳) — با stub موقت `jalaali-js` در کپی خارج از ZIP (وابستگی نامرتبط نصب نیست)؛ فایل‌ها: `src/services/payrollEngine.ts` (حقوق/هدف/اضافه‌کاری/مأموریت/مزایا ۰ یا رد کاربر در نبود داده؛ `skippedUserIds`؛ شبیه‌ساز با `basePenaltyRatePercent` و `complianceByUserId` و `unavailableReason`)، `OnboardingAdminWorkspace.tsx` (Empty State؛ انطباق از آخرین ارزیابی واقعی)، `tests/payrollNoHardcodes.test.mjs`، manifest؛ ۱۴۰۵/۰۸/۲۵. **مانده:** نرخ پایهٔ جریمه هنوز منبع تنظیم ندارد (NULL ⇒ شبیه‌ساز UNAVAILABLE)؛ منبع در F2-08 (اصول پایهٔ حقوق). پلکان پیش‌فرض پورسانت در `calculateCommissionForSeller` هنوز هاردکد است ⇒ F2-08/F8.
+  - **VERIFIED** · payrollEngine.ts و metricConfig.ts؛ payrollNoHardcodes برای مقادیر نمونهٔ این ردیف PASS؛ نسخه‌گذاری مالیات جداگانه در F8-02 باز است.
 - [~] F0-13 اصل «مانده = تفصیلی × معین» (قانون اساسی §C): ممیزی همهٔ محاسبه/نمایش مانده (`CustomersWorkspace`، `financialIntelligence`، `etlPipeline`، فهرست مشتری/تأمین‌کننده/پرسنل/بانک) و جایگزینی مانده صرفاً‌تفصیلی با مانده تفکیکی به‌ازای هر (تفصیلی، معین)؛ ماهیت بدهکار/بستانکار/تسویه‌شده؛ جمع شخص کنار تفکیکی؛ Drill-down گردش/اسناد هر معین؛ بدون نگاشت ⇒ «فاقد نگاشت». شاهد ممیزی اولیه: ارجاعات معین فقط در ۴ فایل (CustomersWorkspace≈۵، financialIntelligence، etlPipeline، seedExtended) ⇒ مدل داده مانده تفکیکی وجود ندارد. — **انجام‌شده (۱۴۰۵/۰۸/۲۵):** موتور `computeDetailSubsidiaryBalances` در `src/lib/receivableReconciliation.ts` (کنار موتور قبلی؛ موازی نساخته شد): مانده مستقل هر (تفصیلی، معین، [دوره]) = Σبدهکار−Σبستانکار، ماهیت `DEBIT/CREDIT/SETTLED`، جمع تفصیلی فقط تجمیع تفکیکی‌ها، سطر بدون معین ⇒ سطل `null` و وضعیت `HAS_UNMAPPED` (بدون ادغام/مانده ساختگی). شاهد: tests/detailSubsidiaryBalance PASS (۶/۶)؛ customerListBalancePermission، receivableSingleSourceContracts، customerSyncExperienceContracts PASS. **مانده (به‌روز ۱۴۰۵/۰۸/۲۵):** Drill-down گردش/اسناد هر معین و جدول مانده‌های تفکیکی در پرونده ۳۶۰ مشتری (`Customer360`)؛ همین نمایش برای تأمین‌کننده/پرسنل/بانک؛ ممیزی `financialIntelligence`/`etlPipeline`. **انجام‌شده این نوبت:** فهرست مشتری اکنون مانده را از `DataProvider.getDetailSubsidiaryBalances` می‌گیرد (پشت مجوز مالی؛ بدون مجوز اصلاً درخواست نمی‌شود)، کنار جمع تعداد معین و «فاقد نگاشت» را نشان می‌دهد (`resolveCustomerBalanceView`، `receivableReconciliation.ts`)؛ وضعیت‌های «در حال دریافت / منبع در دسترس نیست / مانده نامشخص» جدا از «تسویه». شاهد: tests/customerBalanceView PASS، customerListBalancePermission/customerSyncExperienceContracts (به قرارداد جدید به‌روز شدند)، receivableSingleSourceContracts، detailSubsidiaryBalance، rbac PASS. — **افزوده (۱۴۰۵/۰۸/۲۵):** پانل `SubsidiaryBalancesPanel` در تب «مالی و خدمات» `Customer360` (پشت `canViewFinance`): جدول مانده به‌ازای معین، «فاقد نگاشت»، جمع تفصیلی، Drill-down گردش هر معین از `DataProvider.getJournalLines` (فیلتر `unmapped` جدید)؛ `resolveCustomerBalanceView` اکنون `detailKey` برمی‌گرداند. شاهد: tests/subsidiaryBalancesPanel PASS (مجموع Drill-down = مانده معین). **چه مانده:** همین نمایش برای تأمین‌کننده/پرسنل/بانک؛ ممیزی financialIntelligence/etlPipeline. — **به‌روز (۱۴۰۵/۰۸/۲۵، نوبت بعد) — قاعدهٔ قطعی مالک: هیچ مانده‌ای از فاکتور/صورتحساب باز نیست؛ همهٔ مانده‌ها فقط Σبدهکار − Σبستانکار کدینگ مالی هر موجودیت:** در `financialIntelligence` تابع `ledgerBalanceFact` (بر پایهٔ `computeDetailSubsidiaryBalances`) جایگزین مانده فاکتوری شد: `credit.balance` و `supplier.balance` فقط از `journalLines` (بدون گردش = نامشخص، نه صفر؛ مثبت=بدهکار، منفی=بستانکار؛ سطر بدون معین ⇒ PARTIAL)؛ `credit.overdue`/`credit.notDue` که از فاکتور ساخته می‌شدند اکنون «نامشخص» با علت (تفکیک سررسید نیازمند تخصیص اسناد ERP) — کلیدها حفظ شد. `etlPipeline` مانده نمی‌سازد. یافته: صفحهٔ مانده برای تأمین‌کننده/پرسنل/بانک هنوز وجود ندارد (پنل عمومی `SubsidiaryBalancesPanel` هنگام ساخت آن‌ها در فاز ۲ سوار شود). شاهد: tests/ledgerOnlyBalances PASS؛ tests/financialIntelligence PASS (۱۰۷؛ شامل مانده دو معین، تأمین‌کننده بستانکار=−۸۰M، نبود گردش=null)؛ customerBalanceView، subsidiaryBalancesPanel PASS. **چه مانده:** F0-16 (مصرف‌کنندگان فاکتوری مانده) و نصب پنل برای تأمین‌کننده/پرسنل/بانک.
+  - **P0 · PARTIAL** · ledgerBalances.mjs، 027/029 و ReceivablesLifoPanel؛ ماندهٔ تفصیلی×معین×دوره عملیاتی در سورس؛ تطبیق همهٔ مصرف‌کنندگان و ERP/ارز واقعی باز.
 - [x] F0-11 تعیین تکلیف ۱۶ فایل بدون ارجاع (وصل/نگه‌داشتن با دلیل؛ حذف فقط با ممیزی+تست): ReportEnginePanels, LightHighwayCanvas, ProfitWaterfallChart, MotionListItem, NotificationCenter, useDocumentAutoFill, confetti, erpContracts, erpImportService, etlPipeline, ledgerPnl, metricRegistry, negotiationErpLifecycle, notifyAndPush, reportAnalytics, repository. — **انجام‌شده (۱۴۰۵/۰۸/۲۵) — تعیین تکلیف هر ۱۶ فایل با ممیزی grep:** (الف) **وصل‌شده:** `NotificationCenter` جایگزین لیست درون‌خطی کشوی «مرکز اعلان‌ها» در `App.tsx` (فیلتر خوانده‌نشده/وظایف/مالی/سیستم + «همه خوانده شد» فقط برای اعلان‌های کاربر جاری؛ هدر و منوی قفل‌شده دست‌نخورده)؛ `notifyAndPush.pushNotification` در `InternalAutomationWorkspace` برای سه اعلان به‌سوی کاربر دیگر (رد درخواست، ثبت درخواست جدید، ارجاع) جایگزین `draft.notifications.push` دستی شد (فقط یک ثبت دستی «پیشرفت گردش» برای سازنده باقی ماند). (ب) **بازتعیین‌شده — در واقع مصرف‌کننده دارند (فهرست قبلی کهنه بود):** `ProfitWaterfallChart`، `ledgerPnl`، `negotiationErpLifecycle`، `reportAnalytics` ← `ReportEnginePanels`؛ `ledgerPnl` ← `ProfitLossWidget`؛ `erpContracts` ← `erpImportService` ← `etlPipeline` ← نوع در `ledgerPnl`؛ `repository` ← `OnboardingAdminWorkspace`؛ `metricRegistry` ← سند KPI/تست‌ها. (ج) **نگه‌داشته‌شده با دلیل (بدون حذف):** `ReportEnginePanels` (ریشهٔ زنجیرهٔ بالا؛ ۱۴۸۵ خط؛ نصب در فاز ۹ با طراحی §۹ — اکنون در هیچ مسیر UI سوار نیست)؛ `useDocumentAutoFill` (هوک موازیِ مسیر `GlobalFloatingIntakeDrawer`/`documentCapture`؛ وصل‌کردن در این نوبت ریسک رگرسیون F0-06 داشت ← یکپارچه‌سازی در پیگیری F0-06/F13)؛ `LightHighwayCanvas` (پس‌زمینهٔ جایگزین ورود؛ `accessibilityContracts` به آن ارجاع می‌دهد)؛ `MotionListItem`، `confetti` (تزئینی، بدون ریسک؛ بازبینی در F13 با خروجی bundle). شاهد: tests/notificationCenterWiring PASS (ایستا + اجرایی؛ بخش اجرایی با stub موقت `jalaali-js` خارج از ZIP؛ بدون آن، بخش اجرایی BLOCKED و بخش ایستا PASS)؛ seamlessHeaderContracts، designLockContracts، internalWorkflowWorkspaceContracts، navigationHierarchyContracts، auditLandingContracts PASS. Build/tsc: NOT VERIFIED.
+  - **VERIFIED** · تصمیم هر ۱۶ فایل در یادداشت همین ردیف ثبت است. جست‌وجوی مصرف در src/server/scripts پیوندهای تأییدشده و پنج مورد عمداً نگه‌داشته‌شده را نشان داد. اتصال گزارش قدیمی جزو F9-01 است.
 - [~] F0-12 منبع ریزش از فاکتور ERP (نه Quote) و انتقال آستانه‌های ریسک/ریزش به تنظیم (با F4-01). **۱۴۰۵/۰۸/۲۷:** کدهای Ki برای `metricConfig.ts`، `churnPredictionService.ts` و `collectionEngine.ts` به‌صورت هدفمند اعمال شدند؛ `churnErpInvoiceSource` PASS. تست قدیمی `churnPredictionService.test.mjs` به‌علت انتظار استفاده از Quote و دادهٔ بدون تاریخ فاکتور ۲/۴ FAIL (قرارداد قدیمی نیازمند بازنگری)؛ build/tsc و ERP واقعی NOT VERIFIED؛ F4-01 و منبع تنظیمات SQL هنوز کامل نیستند. بنابراین این ردیف تکمیل‌شده نیست.
+  - **P1 · PARTIAL** · purchaseCycle.mjs و SettingsWorkspace.tsx؛ آستانه از تنظیم سازمان و فاکتور قطعی می‌آید. یکسان‌سازی مصرف‌کنندگان قدیمی و نسخه‌بندی مرکزی قاعده باز.
 - [~] F0-16 حذف هر مانده مبتنی بر فاکتور/صورتحساب باز و اتصال به مانده دفتری (Σبدهکار−Σبستانکار تفصیلی×معین) در مصرف‌کنندگان شناخته‌شدهٔ ممیزی: `FinanceWorkspace` (`receivableReconciliation.invoices`، `outstandingAmount`، خط ≈۱۴۰/۱۴۷/۳۷۶)، `ReportEnginePanels` (aging/مطالبات، خط ≈۵۳۷/۵۴۹/۱۲۷۲/۱۳۰۴)، `OrderDetailsDrawer` (`remainingBalance`)، `DrilldownSheet`/`DocumentDetailModal` (`outstanding`)، و موتور `buildAgingBuckets`. سررسید/Aging فقط با تخصیص اسناد واقعی ERP؛ بدون آن «نامشخص». هیچ قابلیت حذف نشود؛ جایگزینی منبع. — **انجام‌شده (۱۴۰۵/۰۸/۲۵):** `FinanceWorkspace`: KPI «کل مطالبات» اکنون از `summarizeCustomerLedgerReceivables` (جدید، در همان `receivableReconciliation.ts`؛ بر پایهٔ `DataProvider.getDetailSubsidiaryBalances`؛ پشت `finance.view`) می‌آید: مجموع مانده‌های بدهکار؛ بستانکارها جدا؛ مشتری بدون گردش ⇒ «نامشخص» نه صفر؛ سطر بدون معین ⇒ «ناقص». «معوقات سررسیدشده»، نوار حکم و کارت Aging فقط وقتی `reconcileReceivables.authoritative` و منبع اعتبار CONNECTED باشد مقدار دارند، وگرنه «نامشخص» با علت؛ موتورهای `reconcileReceivables`/`buildAgingBuckets` حذف نشدند. شاهد: tests/ledgerReceivablesSummary PASS؛ customerBalanceView، receivableSingleSourceContracts، crossModuleConsistencyContracts، geoWorkspaceContracts، primaryWorkspaceRedesignContracts، designSystem2026Contracts PASS. (FAIL از پیش موجود روی ZIP اصلی: audit2026Contracts [`invoice.balance` در CustomersWorkspace]، persianLocalizationContracts [واژه‌های لاتین].) **به‌روز (قاعدهٔ مالک):** تخصیص CRM مبنا نیست؛ سیاست مصوب: Aging «تخمینی» از مانده دفتری، از آخرین فاکتور به عقب (`estimateLedgerAging` در `agingBuckets.ts`؛ قانون اساسی §D)؛ `FinanceWorkspace` با برچسب «تخمینی» و جزئیات هر مشتری (مانده بدهکار؛ آخرین فاکتور با شماره/تاریخ/مبلغ پوشش‌یافته، سپس فاکتور قبل)؛ مازاد = «بدون انتساب»؛ شاهد: tests/ledgerReceivablesSummary PASS. **چه مانده:** `ReportEnginePanels` (خطوط ≈۵۳۷/۵۴۹/۱۲۷۲/۱۳۰۴؛ تست crossModule آن را به `reconcileReceivables`/`buildAgingBuckets` گره زده؛ باید هم‌زمان به‌روز شود)، `OrderDetailsDrawer` (`remainingBalance`)، `DrilldownSheet`/`DocumentDetailModal` (`outstanding`)، `collectionEngine`؛ همچنین `collectionScopeState` در FinanceWorkspace هنوز مبتنی بر فاکتور است. — **انجام‌شده (۱۴۰۵/۰۸/۲۶):** `ReportEnginePanels` گزارش ۷: کل مطالبات = `summarizeCustomerLedgerReceivables` (مانده دفتری از `DataProvider.getDetailSubsidiaryBalances`، پشت `finance.view`)، سررسیدگذشته/Aging/فهرست اولویت‌ها «تخمینی» از `estimateLedgerAging`؛ بدون گردش ⇒ «نامشخص»؛ `reconcileReceivables` فقط برای نشان انطباق می‌ماند؛ Drill-down دیگر `outstanding` هر فاکتور را از `inv.balance` نمی‌سازد (⇒ `DrilldownSheet`/`DocumentDetailModal` فقط نمایشی و بدون تأمین‌کنندهٔ مانده‌اند)؛ `OrderDetailsDrawer`: «مانده قابل پرداخت» حذف و «نامشخص» شد؛ تابع مشترک `buildLedgerAgingInputs` (`agingBuckets.ts`) که `FinanceWorkspace` هم از آن استفاده می‌کند. شاهد: tests/reportReceivablesLedgerOnly PASS؛ ledgerReceivablesSummary، crossModuleConsistencyContracts، reportEngineUiContracts PASS؛ NOT VERIFIED: tsc/بصری. **چه مانده (به‌روز):** `collectionEngine` (`reconcileReceivables` خط ≈۱۷۴/`remaining` ≈۱۹۵) و `collectionScopeState` در FinanceWorkspace؛ `GeoIntelligenceWorkspace` (≈۱۶۹) و `geoIntelligence` (OUTSTANDING_RECEIVABLES فاکتوری)؛ `paidAmount` در OrderDetailsDrawer و نرخ مالیات ۹٪ هاردکد (خط ≈۷۴)؛ ReportEnginePanels هنوز در هیچ مسیری رندر نمی‌شود (فقط تست‌ها/dataPorts ارجاع دارند). — **انجام‌شده (۱۴۰۵/۰۸/۲۶، ادامه، قاعدهٔ LIFO مالک):** مانده دفتری هر مشتری از آخرین فاکتور به عقب بین فاکتورها پخش می‌شود (مثال: مانده ۲۵ و فاکتورها ۳/۷/۸/۱۲ ⇒ ۰/۵/۸/۱۲)؛ `allocateLifo`/`estimateInvoiceRemaining` در `agingBuckets.ts`؛ گزارش‌ها در `src/services/receivableReports.ts` و پنل `src/components/reports/ReceivablesLifoPanel.tsx` (در `FinanceWorkspace` و گزارش ۷)؛ مهلت مجاز در تنظیمات (`orgConfig.allowedCreditDays`)؛ `OrderDetailsDrawer` مانده/پرداخت‌شده تخمینی؛ نرخ ۹٪ هاردکد حذف، مالیات هر کالا از `taxRatePercent` ERP (`src/lib/taxRate.ts`)، ویزارد پیش‌فاکتور هم‌راستا، ستون «مالیات (ERP)» در فهرست کالا؛ `collectionEngine` (پارامتر `ledgerBalances`)، `TasksWorkspace`، `GeoIntelligenceWorkspace`/`geoIntelligence` به LIFO. شاهد: tests/invoiceLifoRemaining PASS؛ receivableSingleSourceContracts، geoWorkspaceContracts به قرارداد جدید به‌روز و PASS. NOT VERIFIED: tsc/build/بصری. — **انجام‌شده (۱۴۰۵/۰۸/۲۶، ادامه، ETL مالیات کالا):** موجودیت `PRODUCT` به همان موتور واردسازی موجود (`erpImportService`) و روی مجموعهٔ موجود `externalProducts` اضافه شد (بدون مجموعهٔ موازی)؛ `taxRatePercent` نبود/خالی ⇒ `null` (نامشخص، نه ۰)؛ قاعدهٔ ETL «`PRODUCT_TAX_RATE_INVALID`» برای مقدار خارج از ۰..۱۰۰ یا غیرعددی (`etlPipeline.ts`). شاهد: tests/productTaxEtl PASS (جدید؛ ثبت در Manifest)؛ erpImportService، etlPipelineContracts، invoiceLifoRemaining PASS (`node --experimental-strip-types`). NOT VERIFIED: tsc/build؛ نگاشت ستون واقعی مالیات در Query/سرور ERP (نیازمند Schema/Data Dictionary — بدون حدس نام ستون). **چه مانده:** صفحهٔ تعاریف پایه (F2-02) با ستون مالیات؛ شکستن بخش‌های ۱ تا ۱۱ `ReportEnginePanels` به فایل‌های ریز.
+  - **P0 · PARTIAL** · FinanceWorkspace.tsx و reportReceivablesLedgerOnly.test.mjs؛ ماندهٔ دفتر از سنی تخمینی تفکیک شده، پوشش همهٔ صفحات و تطبیق جمع‌ها باز.
 
 ## فاز ۱ — ناوبری: کاتالوگ یگانه و هشت فضای کاری
 - [~] F1-00 صفحهٔ فرود مشترک، هشت فضای کاری، مسیر `/workspace/:moduleId`، مجوز کاشی‌ها و تور. کاتالوگ فعلی ۹۱ کاشی دارد و ۲۶ مقصد به صفحهٔ «در دست تکمیل» می‌رسند.
+  - **P2 · PARTIAL** · moduleLanding.ts، ModuleLandingWorkspace.tsx و App.tsx:265؛ هشت ورودی و فیلتر مجوز موجودند، کاشی‌های /planned و پذیرش بصری باز.
 - [x] F1-01 کاتالوگ یگانه ناوبری+Landing (ادغام `NAV_SECTIONS` و `MODULE_LANDINGS`).
+  - **VERIFIED** · navigation.ts و moduleLanding.ts؛ moduleLandingContracts و headerQuickActionsAndNav روی مبنا PASS برای یکپارچگی کاتالوگ.
 - [x] F1-02 هشت فضای کاری نهایی طبق سند جامع §۳: خانه و کارهای من، تعاریف پایه و داده، مشتریان و فروش، بازرگانی و توزیع، خرید و تأمین، مالی و خزانه‌داری، منابع انسانی و حقوقی، سازمان و تنظیمات. Deep Linkهای قدیمی حفظ شوند؛ `moduleOwnerOfRoute` و `DesktopSidebar`/`NavigationDrawer` هم‌راستا شوند.
+  - **VERIFIED** · moduleLanding.ts هشت تعریف؛ moduleLandingContracts روی مبنا PASS برای فهرست و مسیر.
 - [x] F1-03 حذف «مرکز گزارشات» از منو؛ گزارش‌ها زیر فضای مالک؛ Deep Linkهای قدیمی حفظ.
+  - **VERIFIED** · navigation.ts، App.tsx و moduleLanding.ts؛ moduleLandingContracts روی مبنا PASS شامل Deep Link قدیمی و مالکیت مسیر.
 - [~] F1-04 «+» هدرِ زمینه‌مند: Action Registry یگانه بر اساس Route+RBAC؛ مشتری→مشتری جدید، اتوماسیون→تسک/گردش، جلسات→جلسه، کمپین→کمپین، مالی→دستور پرداخت و عملیات مجاز همان صفحه؛ حذف دکمه‌های Create تکراری بدنه پس از ممیزی مصرف‌کنندگان؛ تست نقش/Route/عدم مجوز و جلوگیری از عملیات تکراری.
-- [x] F1-05 هم‌راستاسازی `DesktopSidebar` و تور با کاتالوگ و مجوزهای ناوبری؛ آزمون قراردادهای تور و انتخاب با صفحه‌کلید در مرورگر تأیید شد.
-- [x] F1-06 تب‌ها و مسیرهای یتیم صاحب و کاشی بگیرند: `operations` (overview، purchasing، profitability)، `finance?tab=overview`، دو دامنهٔ `ReportsHub` (finance، receivables). تست قرارداد: هر تب/دامنه یک کاشی دارد.
-- [x] F1-07 «جلسات و مصوبات» و «تقویم کاری» در دستهٔ «زمان‌بندی» فضای خانه. فهرست و تقویم در `CalendarWorkspace` هستند و لینک قبلی اتوماسیون به فهرست هدایت می‌شود.
+  - **P1 · PARTIAL** · headerQuickActions.ts و Layout.tsx؛ + زمینه‌ای و گارد موجود؛ مشتری/پرداخت/تسک و مسیرهای توسعه‌ای یکسان‌سازی نشده‌اند.
+- [~] F1-05 هم‌راستاسازی `DesktopSidebar` و تور با کاتالوگ و مجوزهای ناوبری؛ آزمون قراردادهای تور و انتخاب با صفحه‌کلید در مرورگر تأیید شد.
+  - **P2 · PARTIAL** · DesktopSidebar و tourEngine.ts؛ پیوند کاتالوگ برقرار؛ tourCoverageContracts در مسیر /design-system بدون تور شکست خورد. مرور کیبورد مستقل باز.
+- [~] F1-06 تب‌ها و مسیرهای یتیم صاحب و کاشی بگیرند: `operations` (overview، purchasing، profitability)، `finance?tab=overview`، دو دامنهٔ `ReportsHub` (finance، receivables). تست قرارداد: هر تب/دامنه یک کاشی دارد.
+  - **P2 · IMPLEMENTED — NOT TESTED** · workspaceHierarchy.ts، moduleLanding.ts و useTabParam؛ تب‌های نام‌برده دارای مالک/Route و لینک‌اند؛ آزمون مستقیم همهٔ نقش‌ها روی این SHA اجرا نشد.
+- [~] F1-07 «جلسات و مصوبات» و «تقویم کاری» در دستهٔ «زمان‌بندی» فضای خانه. فهرست و تقویم در `CalendarWorkspace` هستند و لینک قبلی اتوماسیون به فهرست هدایت می‌شود.
+  - **P2 · IMPLEMENTED — NOT TESTED** · CalendarWorkspace.tsx:32 و moduleLanding.ts:71؛ تقویم و جلسات با tab مشترک و پیوند قدیمی؛ پذیرش مسیر/نقش باز.
 
 ## فاز ۲ — تعاریف پایه، هویت و همگام‌سازی
-- [x] F2-01 ممیزی دقیق ~۳۰ موجودیت سند جامع §۵-۲ (جدول/مجموعهٔ EntityStore/صفحه ویرایش/اتصال ERP هر کدام) ← جدول شکاف در همان بخش به‌روز شود.
+- [~] F2-01 ممیزی دقیق ~۳۰ موجودیت سند جامع §۵-۲ (جدول/مجموعهٔ EntityStore/صفحه ویرایش/اتصال ERP هر کدام) ← جدول شکاف در همان بخش به‌روز شود.
+  - **P3 · PARTIAL** · MASTER_SPEC_FA.md §۵-۲ و Migrationهای 026–048؛ جدول تاریخی هست؛ تطبیق موجودیت/ویرایش/ERP برای تغییرات جدید هنوز کامل نیست.
 - [~] F2-02 فضای «تعاریف پایه و داده» + «مرکز داده و همگام‌سازی»: جدول هر موجودیت با منبع (ERP/محلی/خالی)، تعداد، تازگی، درصد نگاشت‌شدگی؛ ادغام `/sync-center` و مغایرت فنی ETL.
+  - **P1 · PARTIAL** · SyncCenterWorkspace.tsx و /integrations/erp/sync-overview؛ شمارش، خطا و دسته‌ها؛ وضعیت کامل همهٔ حوزه‌ها و عملیات نگاشت باز.
 - [~] F2-03 کالا و قیمت: کالا (فقط‌خواندنی)، گروه کالا، برند، واحد، کلاس/لیست قیمت؛ ساخت محلی در نبود ERP.
-- [ ] F2-04 طرح پروموشن و بودجه پروموشن: خروج از «تنظیمات»، انتقال به تعاریف پایه (مصرف‌کنندگان ممیزی شوند؛ Deep Link قدیمی حفظ).
-- [ ] F2-05 تأمین‌کنندگان، گروه و کلاس مشتری.
-- [ ] F2-06 جغرافیا و توزیع: استان/شهر، زون، مسیر، **تور ویزیت** (فروشنده × روز × مسیر)، انبار، خودرو، راننده.
-- [ ] F2-07 (شامل صفحهٔ مدیریت «گروه تفصیلی» (مشتریان/پرسنل/مراکز هزینه/جاری شرکا/بانک‌ها؛ فقط دسته‌بندی)، مشاهدهٔ کدینگ گروه حساب/کل/معین/تفصیلی همگام‌شده از ERP (منبع: ERP/محلی/خالی) و اصل مانده تفصیلی×معین و نگاشت چندمعینی هر تفصیلی؛ F0-13) مالی و حسابداری: نمایش کدینگ چندسطحی، گروه تفصیلی، بانک و حساب بانکی، دستهٔ هزینه.
-- [ ] F2-08 هدف‌گذاری فروش، پلکان پورسانت و اصول پایهٔ حقوق: تعریف محلی نسخه‌دار هنگام نبود ERP؛ در صورت وجود ERP منتقل‌شده و فقط‌خواندنی.
-- [ ] F2-09 انتقال تعریف کاربر، نقش و سلسله‌مراتب نقش، پرسنل، تیم/شعبه/قلمرو از «تنظیمات» به «تعاریف پایه»؛ «تنظیمات» فقط دسترسی و سیاست (مجموعه دسترسی، اختصاص دسترسی، مجوز دستگاه، سیاست حوزهٔ دید) را نگه دارد.
-- [ ] F2-10 مدل هویت: ستون «کد تفصیلی» روی کاربر/پرسنل/مشتری/تأمین‌کننده/بانک/شریک و/یا دامنه‌های `integration.CodeMapping` (`USER_SALES_CODE`، `USER_DETAIL_ACCOUNT`، `PARTY_DETAIL_ACCOUNT`)؛ Migration افزایشی؛ بدون جدول موازی (سند جامع §۵-۳).
-- [ ] F2-11 فرم تعریف کاربر/پرسنل با «تشخیص هویت»: نقش ← کدهای الزامی ← جست‌وجو در داده ERP ← تأیید ← لینک تفصیلی؛ وضعیت تطبیق‌شده / محلی / ناقص.
+  - **P1 · PARTIAL** · OperationsControlWorkspace.tsx (inventory)، erpContracts.ts و کتاب قیمت در QuotesWorkspace؛ تعریف کامل گروه/برند/واحد/قیمت نسخه‌دار مرکزی باز.
+- [~] F2-04 طرح پروموشن و بودجه پروموشن: خروج از «تنظیمات»، انتقال به تعاریف پایه (مصرف‌کنندگان ممیزی شوند؛ Deep Link قدیمی حفظ).
+  - **P2 · PARTIAL** · moduleLanding.ts:111 کاشی پروموشن را به /marketing می‌برد؛ CampaignsWorkspace جای مدیریت واقعی طرح و بودجهٔ پروموشن را کامل نمی‌کند.
+- [~] F2-05 تأمین‌کنندگان، گروه و کلاس مشتری.
+  - **P1 · PARTIAL** · financialIntelligence.ts:307 و segments.ts؛ نما/طبقه‌بندی بخشی؛ CRUD مرکزی تأمین‌کننده و کلاس مشتری باز.
+- [~] F2-06 جغرافیا و توزیع: استان/شهر، زون، مسیر، **تور ویزیت** (فروشنده × روز × مسیر)، انبار، خودرو، راننده.
+  - **P1 · PARTIAL** · GeoIntelligenceWorkspace.tsx، 017 و کاشی /planned dist-route-planning؛ زون موجود، تور روزانه، مسیر و داده عملیاتی ناوگان کامل نیست.
+- [~] F2-07 (شامل صفحهٔ مدیریت «گروه تفصیلی» (مشتریان/پرسنل/مراکز هزینه/جاری شرکا/بانک‌ها؛ فقط دسته‌بندی)، مشاهدهٔ کدینگ گروه حساب/کل/معین/تفصیلی همگام‌شده از ERP (منبع: ERP/محلی/خالی) و اصل مانده تفصیلی×معین و نگاشت چندمعینی هر تفصیلی؛ F0-13) مالی و حسابداری: نمایش کدینگ چندسطحی، گروه تفصیلی، بانک و حساب بانکی، دستهٔ هزینه.
+  - **P1 · PARTIAL** · 026/027، LedgerBooksPanel و LedgerBookSourceSelect؛ منابع و گروه موجود؛ CRUD گروه، روابط و نگاشت مرکزی با اعتبار زمانی کامل نیست.
+- [~] F2-08 هدف‌گذاری فروش، پلکان پورسانت و اصول پایهٔ حقوق: تعریف محلی نسخه‌دار هنگام نبود ERP؛ در صورت وجود ERP منتقل‌شده و فقط‌خواندنی.
+  - **P1 · PARTIAL** · 021/028 و payrollEngine.ts؛ پروفایل/پورسانت ساده وجود دارد، نسخه‌بندی تعاریف/پذیرش رسمی و اهداف چندبعدی باز.
+- [~] F2-09 انتقال تعریف کاربر، نقش و سلسله‌مراتب نقش، پرسنل، تیم/شعبه/قلمرو از «تنظیمات» به «تعاریف پایه»؛ «تنظیمات» فقط دسترسی و سیاست (مجموعه دسترسی، اختصاص دسترسی، مجوز دستگاه، سیاست حوزهٔ دید) را نگه دارد.
+  - **P2 · PARTIAL** · moduleLanding.ts:100، SettingsWorkspace.tsx و ReportingLineSettings.tsx؛ تعاریف پایه فقط به تنظیمات پیوند می‌دهد و انتقال کامل نشده است.
+- [~] F2-10 مدل هویت: ستون «کد تفصیلی» روی کاربر/پرسنل/مشتری/تأمین‌کننده/بانک/شریک و/یا دامنه‌های `integration.CodeMapping` (`USER_SALES_CODE`، `USER_DETAIL_ACCOUNT`، `PARTY_DETAIL_ACCOUNT`)؛ Migration افزایشی؛ بدون جدول موازی (سند جامع §۵-۳).
+  - **P0 · PARTIAL** · 026/028 و personnelProfile.mjs؛ تفصیلی مشتری/پرسنل و کد پرسنلی؛ نگاشت چندمنبعی همهٔ انواع طرف‌حساب باز.
+- [~] F2-11 فرم تعریف کاربر/پرسنل با «تشخیص هویت»: نقش ← کدهای الزامی ← جست‌وجو در داده ERP ← تأیید ← لینک تفصیلی؛ وضعیت تطبیق‌شده / محلی / ناقص.
+  - **P1 · PARTIAL** · recruitmentReview.mjs اتصال حساب با کد ملی/همراه دارد؛ جست‌وجو و تأیید شناسهٔ رسمی ERP برای تعریف کاربر پیاده نشده.
 - [ ] F2-12 فهرست کدهای الزامی هر نقش (فروشنده: کد بازرگانی+تفصیلی؛ حسابدار: کد سیستمی+تفصیلی؛ مدیر: کد سیستم حسابداری+تفصیلی) قابل تنظیم.
-- [ ] F2-13 اعتبارسنجی لینک: وجود در فهرست تفصیلی ERP، یکتایی، کامل‌بودن برای نقش؛ گزارش «کاربران/طرف‌حساب‌های ناقص» در مرکز داده.
+  - **P1 · NOT IMPLEMENTED** · SettingsWorkspace.tsx و personnelProfile.mjs فیلدها را نمایش می‌دهند؛ قرارداد قابل‌تنظیم کدهای اجباری به‌ازای نقش در مسیر تعریف کاربر دیده نشد.
+- [~] F2-13 اعتبارسنجی لینک: وجود در فهرست تفصیلی ERP، یکتایی، کامل‌بودن برای نقش؛ گزارش «کاربران/طرف‌حساب‌های ناقص» در مرکز داده.
+  - **P0 · PARTIAL** · 028، recruitmentReview.mjs و SyncCenterWorkspace؛ کنترل تکرار داخلی؛ اعتبارسنجی تفصیلی رسمی و گزارش پوشش شناسه ناقص باز.
 - [~] F2-14 حوزهٔ دید گزارش‌ها از روی کدهای لینک‌شده + سلسله‌مراتب (سرپرست = تیم خود)؛ fail-closed؛ گسترش RLS موجود (`006`، `010`، `013`، `020`)؛ تست: سرپرست فقط داده تیم خود را می‌بیند و کاربر بدون لینک هیچ نمی‌بیند.
-- [ ] F2-15 صفحهٔ «نگاشت حساب» (`LedgerAccountSourceMap`) و «نگاشت طرف‌حساب» (تفصیلی) با وضعیت `UNMAPPED/MAPPED/APPROVED/REJECTED` و اعتبار زمانی.
-- [ ] F2-16 پالس هر صفحه + Push مرکزی/مجموعه‌ای با نتیجه و تست idempotency.
+  - **P0 · PARTIAL** · 029–031/034/045، entityStore.mjs و ReportsWorkspace؛ کنترل API/RLS برای حوزه‌های اصلی؛ تمام گزارش‌ها از نگاشت هویتی یکدست استفاده نمی‌کنند.
+- [~] F2-15 صفحهٔ «نگاشت حساب» (`LedgerAccountSourceMap`) و «نگاشت طرف‌حساب» (تفصیلی) با وضعیت `UNMAPPED/MAPPED/APPROVED/REJECTED` و اعتبار زمانی.
+  - **P1 · PARTIAL** · 026/027 و SettingsWorkspace.tsx؛ جداول نگاشت و بعضی تنظیمات/نمای دفتر موجودند، کارتابل وضعیت نگاشت حساب و طرف‌حساب دیده نشد.
+- [~] F2-16 پالس هر صفحه + Push مرکزی/مجموعه‌ای با نتیجه و تست idempotency.
+  - **P1 · PARTIAL** · dataSyncController.ts، entityStore و /state/sync؛ همگام‌سازی مرکزی داخلی؛ پوشش پالس و ارسال مرحله‌ای ERP برای همهٔ ماژول‌ها باز.
 - [~] F2-17 مرکز همگام‌سازی `/sync-center` و نشانگر هدر موجود؛ دوگانگی موتور (P0-04) رفع شود.
+  - **P1 · IMPLEMENTED — NOT TESTED** · SyncCenterWorkspace، Layout و dataSyncController؛ مرکز و موتور یگانه دیده شدند، پذیرش مرکز روی SQL زنده باز.
 - [~] F2-18 اتصال `erpImportService`/`etlPipeline`/`erpContracts` به رابط عملیاتی.
+  - **P0 · PARTIAL** · etlPipeline.ts و financialFeedWorker.mjs؛ مسیر CLI مالی و overview وجود دارد؛ ارکستراسیون فراگیر و منابع عملیاتی ERP باز.
 - [~] F2-19 **کنترل کیفیت داده ERP (درخواست مالک):** موتور یگانهٔ `src/lib/erpDataQuality.ts` (`auditErpDataQuality`) برای تشخیص اشتباهات ERP: مشتری (کد ملی/شناسهٔ ملی با چک‌سام، موبایل نامعتبر، تکراری بر پایهٔ کد ملی/کد اقتصادی/موبایل/نام)، مسیر (مشتری بدون مسیر، بدون مختصات، مختصات مشکوک، خارج از چندضلعی مسیر، دورافتاده از هم‌مسیری‌ها)، کالا (گروه‌بندی مشکوک، بدون گروه، کد تکراری، قیمت/بها)، کدینگ (ماهیت نادرست مثل «جاری شرکا» بدهکار، والد/سطح، کد تکراری، مانده خلاف ماهیت)، اسناد (سند نامتوازن، سطر دوطرفه/منفی، حساب ناشناخته/غیرفعال/کل، ناهم‌خوانی شرح و حساب). هر یافته ruleCode، شاهد و درجهٔ اطمینان (قطعی/نیازمند بازبینی) دارد؛ منبع ناموجود ⇒ «ارزیابی‌نشده» نه صفر. — **انجام‌شده:** موتور + `DataQualityPanel` در `/sync-center` با حوزهٔ دید مالی/مشتری؛ شاهد: tests/erpDataQuality PASS (۷/۷)، customerSyncExperienceContracts، tourCoverageContracts PASS. **مانده:** (الف) قواعد ماهیت/شرح اکنون ثابت‌های قابل‌override در کدند ⇒ صفحهٔ تعریف قواعد در «تعاریف پایه» (F2-02/F2-07)؛ (ب) مسیر مشتری = زون/تخصیص زون؛ پس از F2-06 (تور ویزیت/مسیر) نگاشت مسیر واقعی؛ (ج) صفحهٔ مالی «اسناد مشکوک» با ریز سند و Drill-down (F9/فاز ۶)؛ (د) دکمهٔ «ایجاد تسک اصلاح» و ثبت وضعیت رسیدگی (تأیید/رد/رفع) در DB با Migration؛ (هـ) اجرای زمان‌بندی‌شده پس از هر همگام‌سازی و اعلان؛ (و) گروه‌بندی کالا اکنون توکن‌محور است، نه مدل معنایی؛ (ز) ممیزی روی دادهٔ واقعی ERP (NOT VERIFIED). **توسعه این نوبت:** صفحهٔ مستقل `/audit?module=...` به‌عنوان نمای حوزه‌ای، با نمودار توزیع یافته‌ها، ترکیب شدت، فیلتر و شواهد، از همان موتور `auditErpDataQuality` استفاده می‌کند؛ ورودی پایش به هشت Landing موجود اضافه شد. دامنه‌های بدون قانون متصل به‌صراحت ارزیابی‌نشده نمایش داده می‌شوند. شاهد: `tests/auditLandingContracts.test.mjs` (۳/۳ PASS)، `tests/moduleLandingContracts.test.mjs` (۵/۵ PASS)، `tests/designLockContracts.test.mjs` PASS، `tests/seamlessHeaderContracts.test.mjs` PASS. `tsc/build` و بازبینی بصری مرورگر NOT VERIFIED؛ اجرای موتور روی داده واقعی ERP NOT VERIFIED.
+  - **P1 · PARTIAL** · erpDataQuality.ts، /audit و journalCoverage.mjs؛ طبقه‌بندی/شواهد بعضی حوزه‌ها و تسک؛ قاعدهٔ پارامتری/زمان‌بندی و تمام دامنه‌ها باز.
 
-- [ ] F2-20 کاتالوگ پارامتری قوانین پایش: ruleCode/version/severity/source mapping/threshold/evidence/confidence/coverage؛ قوانین شرح↔کدینگ، طبقه‌بندی هزینه، مساعده در برابر سرفصل هزینه، تخفیف نقد به‌ازای فاکتور، حداقل سود فاکتور با بهای تمام‌شده معتبر، قیمت صنف، لیست سیاه، برنامه حمل باز/فاقد سند، فاکتور قدیمی بدون برنامه حمل و فاکتور تکراری در یک پخش. هیچ آستانهٔ تجاری هاردکد نشود.
+- [~] F2-20 کاتالوگ پارامتری قوانین پایش: ruleCode/version/severity/source mapping/threshold/evidence/confidence/coverage؛ قوانین شرح↔کدینگ، طبقه‌بندی هزینه، مساعده در برابر سرفصل هزینه، تخفیف نقد به‌ازای فاکتور، حداقل سود فاکتور با بهای تمام‌شده معتبر، قیمت صنف، لیست سیاه، برنامه حمل باز/فاقد سند، فاکتور قدیمی بدون برنامه حمل و فاکتور تکراری در یک پخش. هیچ آستانهٔ تجاری هاردکد نشود.
+  - **P1 · PARTIAL** · erpDataQuality.ts و metricConfig.ts؛ ruleCode و آستانهٔ برخی قواعد موجود؛ کاتالوگ نسخه‌دار قابل تنظیم برای همهٔ کنترل‌ها ندارد.
 - [~] F2-21 اولویت «مانده بستانکار مشتری»: محاسبهٔ تفصیلی×معین×دوره؛ Drill-down گردش و اسناد؛ تطبیق دریافت و فاکتور؛ تشخیص دریافت مازاد/پیش‌دریافت، دریافت تخصیص‌نیافته، برگشت/اعتبار، اصلاحیه، انتقال/تفصیلی اشتباه، سند تکراری/معکوس؛ علت محتمل با Confidence و بدون ادعای علت قطعی بی‌شاهد؛ نمایش سن مانده و فاکتورهای باز.
+  - **P1 · PARTIAL** · CreditorBalanceReview، ledgerBalances.mjs و collectionReceiptEvidence؛ نما و شواهد ERP بخشی؛ زنجیرهٔ جامع علت‌یابی و نتیجه‌گیری باز.
   - **IMPLEMENTED — NOT TESTED:** نمای مانده‌های بستانکار مشتری به‌ازای تفصیلی×معین×دوره در گزارش مطالبات، همراه گردش صفحه‌بندی‌شدهٔ اسناد همان ترکیب. ردیف‌های بدون معین و تفصیلی با نگاشت چندمشتری از اولویت‌بندی خارج‌اند؛ برای دورهٔ نامشخص گردشِ بدون فیلتر نمایش داده نمی‌شود. تشخیص علت، عمر مانده و تطبیق بانک/ERP باز است.
-- [ ] F2-22 صفحهٔ پایش یکپارچه و مینیمال: یک صفحه برای هر حوزه، حداکثر ۴ KPI، نمودار روند/شدت، فیلتر مشترک، گروه‌های کنترل جمع‌شونده، فهرست یافته و پنل شواهد؛ ادغام قوانین هم‌معنا در گروه‌ها؛ بدون آیکون برای هر قانون و بدون تب‌های متعدد؛ وضعیت پوشش/منبع همیشه روشن.
-- [ ] F2-23 اتصال قوانین و شواهد به جداول واقعی دیتابیس تجمیعی ERP؛ تعیین دقیق شناسه سند/ردیف/مشتری/کالا و lineage؛ قواعد بدون منبع معتبر `UNAVAILABLE/NOT_EVALUATED` بمانند.
+- [~] F2-22 صفحهٔ پایش یکپارچه و مینیمال: یک صفحه برای هر حوزه، حداکثر ۴ KPI، نمودار روند/شدت، فیلتر مشترک، گروه‌های کنترل جمع‌شونده، فهرست یافته و پنل شواهد؛ ادغام قوانین هم‌معنا در گروه‌ها؛ بدون آیکون برای هر قانون و بدون تب‌های متعدد؛ وضعیت پوشش/منبع همیشه روشن.
+  - **P2 · PARTIAL** · AuditWorkspace.tsx؛ KPI/فیلتر/شواهد حوزه موجودند، DB پرونده و روند lifecycle و پوشش همهٔ حوزه‌ها باز.
+- [B] F2-23 اتصال قوانین و شواهد به جداول واقعی دیتابیس تجمیعی ERP؛ تعیین دقیق شناسه سند/ردیف/مشتری/کالا و lineage؛ قواعد بدون منبع معتبر `UNAVAILABLE/NOT_EVALUATED` بمانند.
+  - **P0 · BLOCKED** · 040–044 و journalCoverage.mjs قرارداد داخلی دارند؛ جدول/ویو واقعی تجمیع ERP و نمونهٔ ردیابی لازم است.
 
 ## فاز ۳ — Landing و پوسته مینیمال
 - [~] F3-01 کامپوننت Landing جدید طبق سند جامع §۴ (کارت دسته + «مشاهده بیشتر/کمتر» + کاشی آیکونی ۴ستونه؛ سبک تصویر مرجع `docs/design-reference/landing-reference-bank.webp`) برای هر ۸ فضا؛ هدر/منو دست‌نخورده. — **انجام اولیه:** گروه‌های Landing به کارت‌های جمع‌شونده با کاشی آیکونی گرد و چهارستونه در موبایل تبدیل شدند؛ ورودی پایش مغایرت به هر هشت فضای کاری افزوده شد. **مانده:** بازبینی بصری در اندازه‌های هدف، کنترل دقیق RBAC هر نقش و تکمیل پوشش همهٔ قوانین اختصاصی هر حوزه.
-- [ ] F3-02 مجموعهٔ آیکون یکدست (Lucide، stroke ≈۱٫۵) با جدول یگانهٔ آیکون هر کاشی؛ هر کاشی آیکون یکتا در فضای خود.
-- [ ] F3-03 کاشی «در دست تکمیل» و `PlannedModulePage` هم‌سبک (کم‌رنگ، آخرین ردیف کارت).
-- [ ] F3-04 تست بصری Landing همهٔ فضاها 320–1440، Light/Dark، RTL، Safe Area (`NOT VERIFIED` تا اجرا در مرورگر).
+  - **P2 · IMPLEMENTED — NOT TESTED** · ModuleLandingWorkspace.tsx:157 و moduleLanding.ts؛ گروه جمع‌شونده، آیکون گرد و ۴ ستون برای هشت فضا؛ پذیرش دستگاه/نقش باز.
+- [~] F3-02 مجموعهٔ آیکون یکدست (Lucide، stroke ≈۱٫۵) با جدول یگانهٔ آیکون هر کاشی؛ هر کاشی آیکون یکتا در فضای خود.
+  - **P2 · PARTIAL** · moduleLanding آیکون Lucide را یکجا می‌دهد و Landing stroke ۱٫۵ دارد؛ آیکون‌های تکراری مثل Users و Receipt در همان فضا دیده شدند.
+- [~] F3-03 کاشی «در دست تکمیل» و `PlannedModulePage` هم‌سبک (کم‌رنگ، آخرین ردیف کارت).
+  - **P3 · IMPLEMENTED — NOT TESTED** · ModuleLandingWorkspace.tsx:19–20 و PlannedModulePage.tsx؛ کاشی‌های برنامه‌ریزی‌شده مرتب و متمایز هستند؛ پذیرش بصری باز.
+- [~] F3-04 تست بصری Landing همهٔ فضاها 320–1440، Light/Dark، RTL، Safe Area (`NOT VERIFIED` تا اجرا در مرورگر).
+  - **P2 · PARTIAL** · scripts/test-ux-browser.py و ux-quality.yml؛ پوشش اجرایی بصری کامل برای همهٔ Landingها در ماتریس و شاهد فعلی Git در دسترس نیست.
 - [~] F3-09 کیت ویجت گزارش طبق `docs/DESIGN_SYSTEM_FA.md` §۹-۲ (`KpiStat`، `ChartCard` با فیلتر محلی، `RankList`، `ScoreRing`، `InsightRow`/`StatusChip`، `SegmentedTabs`، `PeriodChip` جلالی، `FilterChips`، `SectionHeader`، `Timeline`، `StageSummary`، `EmptyState`/`Skeleton`)؛ ابتدا `src/components/charts/` را گسترش بده، نسخهٔ موازی نساز؛ موضوع‌بندی ECharts با توکن‌ها (`echartsTheme.ts`).
-- [ ] F3-10 نوار فیلتر گزارش مشترک: تب قرصی نما، چیپ بازهٔ جلالی، Export، چیپ فیلتر فعال + بازنشانی، فیلتر در URL؛ فیلتر محلی هر کارت. تست قرارداد: فیلتر دوره واقعاً محاسبه را عوض می‌کند (اکنون در `ReportsHub` نمی‌کند).
-- [ ] F3-05 کامپوننت مشترک ردیف مینیمال (از ردیف مشتری موجود تعمیم بده) برای سفارش، فاکتور، مشتری و…
-- [ ] F3-06 صفحه جزئیات استاندارد (الگوی پرونده ۳۶۰) برای سفارش/فاکتور/پخش/…؛ پروفایل مشتری و کاربر/پرسنل با هویت، وضعیت، اطلاعات پایه، KPI واقعی، تایم‌لاین مستند، نمودار ماهانه و اقدام مجاز مطابق `report-reference-entity360.jpeg`.
+  - **P2 · PARTIAL** · charts/KpiCard، EChartCard، ReportPrimitives و echartsTheme؛ اجزا حاضرند، مصرف یکسان همهٔ گزارش‌ها و فیلتر جلالی باز.
+- [~] F3-10 نوار فیلتر گزارش مشترک: تب قرصی نما، چیپ بازهٔ جلالی، Export، چیپ فیلتر فعال + بازنشانی، فیلتر در URL؛ فیلتر محلی هر کارت. تست قرارداد: فیلتر دوره واقعاً محاسبه را عوض می‌کند (اکنون در `ReportsHub` نمی‌کند).
+  - **P2 · PARTIAL** · ReportsHub.tsx:111–165 و useTabParam؛ انتخاب دوره روی داده اثر دارد؛ ترکیب چیپ‌های URL/بازنشانی و ماه شمسی واقعی باز.
+- [~] F3-05 کامپوننت مشترک ردیف مینیمال (از ردیف مشتری موجود تعمیم بده) برای سفارش، فاکتور، مشتری و…
+  - **P2 · PARTIAL** · DataTable و ردیف‌های CustomersWorkspace/FinanceWorkspace موجودند؛ قرارداد یگانهٔ ردیف مستقل برای تمام موجودیت‌ها متصل نیست.
+- [~] F3-06 صفحه جزئیات استاندارد (الگوی پرونده ۳۶۰) برای سفارش/فاکتور/پخش/…؛ پروفایل مشتری و کاربر/پرسنل با هویت، وضعیت، اطلاعات پایه، KPI واقعی، تایم‌لاین مستند، نمودار ماهانه و اقدام مجاز مطابق `report-reference-entity360.jpeg`.
+  - **P2 · PARTIAL** · Customer360، DocumentDetailModal و PersonnelFilePage؛ جزئیات بخشی؛ پروفایل ۳۶۰ واحد و شواهد ماهانه برای سفارش/پخش/همهٔ موجودیت‌ها باز.
 - [~] F3-07 اکشن مشترک ایجاد تسک: مشتری/Customer360 انجام (۳/۳ PASS قرارداد فاز اول). باقی: سفارش، مذاکره/CPQ، فاکتور، برنامه پخش، برگشتی، رسید، چک، تسویه، دستور پرداخت، درخواست سازمانی.
-- [ ] F3-08 تست بصری/تعاملی Drawer چت و اعلان (Escape، بیرون‌کلیک، RTL، Safe Area، Dark).
+  - **P1 · PARTIAL** · QuickTaskRequest، Customer360، InvoiceFifoSheet و CollectionWorkbench؛ اتصال چندمبدأ انجام شده؛ همهٔ پرداخت/پخش/موارد سازمانی وصل نیستند.
+- [~] F3-08 تست بصری/تعاملی Drawer چت و اعلان (Escape، بیرون‌کلیک، RTL، Safe Area، Dark).
+  - **P2 · PARTIAL** · Layout، FloatingHeader و test-ux-browser.py؛ کنترل‌های Drawer وجود دارد؛ آزمون واقعی مشترک Safari/کیبورد و تمام Breakpointها باز.
   - **IMPLEMENTED — NOT TESTED:** نمای مستقل گفتگو از ارتفاع پوسته و Viewport موجود استفاده می‌کند. در موبایل مکالمه تمام‌صفحه است و اسکرول در محدودهٔ پیام‌ها می‌ماند. شروع گفتگو از اولین پیام نخوانده، ثبت خواندن فقط برای پیام قابل مشاهده، حفظ انتهای فهرست هنگام تغییر ارتفاع، پیش‌نمایش پیوست و جلوگیری از ارسال پیش از تکمیل خواندن فایل اضافه شدند. گزینه‌های فرعی در پنل گفتگو جمع شدند. پذیرش روی دستگاه واقعی، آفلاین، اندازه‌های مختلف و SQL باز است.
 
 ## فاز ۴ — موتورهای مشترک
-- [ ] F4-01 (۲.۱) Rule Registry: شرط/عمل/محدوده/اولویت/تقدم/نسخه/فعال‌سازی/تعارض/تاریخچه/آزمون پیش از فعال‌سازی؛ پذیرش: یک قاعده در >۱ ماژول.
-- [ ] F4-02 (۲.۲) فرم پویا: Schema، شرط نمایش، چندمرحله‌ای، Field Permission، اعتبارسنجی بک‌اند، نسخه؛ نمونه مساعده/مرخصی/چک.
+- [~] F4-01 (۲.۱) Rule Registry: شرط/عمل/محدوده/اولویت/تقدم/نسخه/فعال‌سازی/تعارض/تاریخچه/آزمون پیش از فعال‌سازی؛ پذیرش: یک قاعده در >۱ ماژول.
+  - **P1 · PARTIAL** · orgPolicy.ts، metricConfig.ts و TaskRequestPolicyEditor؛ تنظیم محدود سیاست/آستانه، Registry عمومی نسخه‌دار و آزمون پیش از فعال‌سازی باز.
+- [~] F4-02 (۲.۲) فرم پویا: Schema، شرط نمایش، چندمرحله‌ای، Field Permission، اعتبارسنجی بک‌اند، نسخه؛ نمونه مساعده/مرخصی/چک.
+  - **P1 · PARTIAL** · dynamicFormEngine.ts و DynamicFormRenderer؛ Schema، شرط و اعتبارسنجی موجود؛ نسخه/Field Permission و مصرف سروری مشترک کامل نیست.
 - [~] F4-03 (۲.۳) Workflow و تأیید: Trigger، Transition، SLA، Retry، نسخه، ضد‌حلقه؛ پذیرش: یک گردش واقعی کامل.
+  - **P0 · PARTIAL** · taskRequestContract.mjs و taskRequests.mjs؛ تأیید، شرط و نسخه موجود؛ Trigger/Retry عمومی، اجرای SQL چندکاربره و اتصال همهٔ حوزه‌ها باز.
   - **IMPLEMENTED — NOT TESTED:** ثبت درخواست در همان Task، کارتابل مشترک، ناظر با مجوز مستقل، مشاهدهٔ مدیریتی از زنجیرهٔ سرور، ارجاع، پاسخ، رد، شرط و تایید مستقل، سیاست چندمرحله‌ای در WorkflowDefinition، کنترل نسخهٔ قیمت و سفارش و Audit اتمی. تأیید CRM سند ERP ایجاد نمی‌کند. اجرای SQL و پذیرش نقش‌ها و دستگاه واقعی باز است.
   - **IMPLEMENTED — NOT TESTED:** مدیریت سرپرست مستقیم از همان تنظیمات کاربران، با ذخیرهٔ `core.AppUser.ManagerUserId` که مبنای نظارت کارتابل است. تغییر با مجوز سازمانی، کنترل چرخه و تعارض، دلیل و سابقهٔ اتمی انجام می‌شود. اجرای SQL و تطبیق نقش‌ها در محیط واقعی باز است.
   - **IMPLEMENTED — NOT TESTED:** بعد از آخرین تأیید سفارش، مسئول حسابداری تعریف‌شده با بازبینی مجوز و اثر سفارش در همان درخواست اقدام می‌کند. تکمیل فقط با مرجع یکتا و وضعیت مصوب فاکتور ERP است (۰۴۶). خلاصهٔ مجاز اعتبار، ماندهٔ مالی، چک و سفارش در پرونده دیده می‌شود. اتصال تولیدی فاکتور، اعمال مجوز قیمت بیرون از این کارتابل، استعلام بانک و تفویض باز هستند. مصرف مجوز قیمت مرتبط در تأیید نهایی، اتمی و یک‌بار به‌ازای سفارش است؛ مجوز مشروطِ فاقد دادهٔ معتبر تسویه رد می‌شود. قرارداد خالص گردش ۶ آزمون سبک موفق دارد؛ SQL و پذیرش عملیاتی آزموده نشده‌اند.
 - [~] F4-04 (۲.۴) وظیفه/Smart Task: موتور موجود و کنترل نسخه و ثبت اتمی گردش از کارتابل با آزمون کنترل‌شده. باقی: مهاجرت مسیرهای جانبی وضعیت، Escalation، ساخت از پیام/رویداد و آزمون پذیرش SQL زنده.
+  - **P1 · PARTIAL** · TasksWorkspace و /tasks/requests/actions؛ کارتابل اتمی، Watcher و ضمائم موجود؛ پوشش همهٔ ورودگاه‌ها، Escalation کامل و SQL واقعی باز.
   - **IMPLEMENTED — NOT TESTED:** فرم سریع از هدر همان کارتابل و از Customer360/عملیات رکوردهای پشتیبانی‌شده، پیوست JPEG/PNG/WebP/PDF با پیش‌نمایش پیش از ارسال، بازیابی و ثبت مجاز سمت سرور، و لینک اعلان به پرونده. پیوست و درخواست در مجموعه‌های فعلی ذخیره می‌شوند و از همگام‌سازی عمومی جدا هستند. آزمون SQL، مرورگر، مهاجرت ورودی‌های باقیمانده و سیاست نگهداری فایل باز است.
   - **IMPLEMENTED — NOT TESTED:** در درخواست سفارش، مالی و وصول، انتخاب و پیوند هم‌زمان چند فاکتور و چکِ همان مشتری از جداول مرجع ERP. کارتابل با کنترل مجوز تازه، شماره، تاریخ یا سررسید و ابطال ثبت‌شده در منبع را نمایش می‌دهد. حذف منطقی رکورد مرجع، نمایش سند و تأیید سفارش یا فاکتور حذف‌شده را متوقف می‌کند. ورودی‌های زمینه‌ای ماژول‌های باقیمانده و پذیرش SQL و مرورگر باز هستند.
 - [~] F4-05 (۲.۵) یادآوری: `IMPLEMENTED — NOT TESTED` برای کلید پایدار وظیفه/مرحله/مهلت/گیرنده، کنترل گیرندهٔ فعال و رفع اعلان عمومی یادآوری. SQL فقط اعلان مربوط به گیرندهٔ احرازشده را می‌خواند و بازپخش یادآور وضعیت «خوانده‌شده» را عقب نمی‌برد. تقویم تعطیلات، زمان‌بند مستقل سمت سرور و پذیرش SQL/مرورگر باز هستند.
+  - **P1 · PARTIAL** · server/index.mjs (startTaskRequestReminders)، taskRequests.runReminders؛ زمان‌بند سروری موجود است. تقویم تعطیلات و استقرار عامل/پذیرش باز.
   - **IMPLEMENTED — NOT TESTED:** اسکن مستقل سرور برای مهلت گذشتهٔ درخواست با مدیر مستقیم، ناظران و دسترسی زنده، قفل دسته و ضدتکرار per مهلت/ارجاع. شاخص کارتابل باز، انتظار، تأخیر مهم و میانگین رسیدگی از SQL می‌آید. راه‌اندازی سرویس، Push دستگاه و سایر سیاست‌های SLA باز است.
   - **IMPLEMENTED — NOT TESTED:** نماهای نیازمند تصمیم من، مشاهده‌نشده و دارای مانع؛ تفکیک انتظار پاسخ درخواست‌کننده از صف اقدام مسئول. تغییر یا برداشتن مهلت از پرونده با توضیح و ثبت مقدار قبل و بعد انجام می‌شود. ثبت پاسخ و رد استعلام قیمت سوابق جداگانه دارد. پذیرش SQL و دستگاه واقعی باز است.
-- [ ] F4-06 (۲.۶) ارجاع هوشمند: قلمرو/تخصص/ظرفیت/Override/ثبت علت.
+- [~] F4-06 (۲.۶) ارجاع هوشمند: قلمرو/تخصص/ظرفیت/Override/ثبت علت.
+  - **P1 · PARTIAL** · taskIntelligence.ts و directory/assign در taskRequests؛ ظرفیت و ارجاع بخشی، انتخاب عملیاتی تخصص×قلمرو×ظرفیت همراه ممیزی Override باز.
 - [~] F4-07 (۲.۷) اعلان: `notifyAndPush` و `NotificationCenter`، خوانده‌شدن و ثبت اشتراک برای گیرندهٔ مجاز وصل و آزموده شدند؛ ضد‌تکرار، صف/Retry، کنترل مجوز اعلان‌های گردش سمت سرور و ارسال Push واقعی بازند.
-- [ ] F4-08 (۲.۸) Audit و تاریخچه مشترک سراسری (کامپوننت یگانه؛ ثبت سمت سرور؛ نمایش `accountAuditLogs` در Customer360؛ `ActivitiesWorkspace` همه `auditLogs`).
+  - **P0 · PARTIAL** · NotificationCenter، taskRequests.notify، purchaseCycle و pushStore؛ dedupe قلمرویی و Push مستقیم؛ Outbox قابل Retry و آزمون واقعی ارسال باز.
+- [~] F4-08 (۲.۸) Audit و تاریخچه مشترک سراسری (کامپوننت یگانه؛ ثبت سمت سرور؛ نمایش `accountAuditLogs` در Customer360؛ `ActivitiesWorkspace` همه `auditLogs`).
+  - **P0 · PARTIAL** · 013، taskRequests، personnelLearning و WorkflowTimeline؛ تاریخچه و Audit بخشی؛ نمایش/سیاست سراسری Customer360 و Activities یکپارچه نیست.
 - [ ] F4-09 (۲.۹) موتور جریمه مشترک (سیاست‌محور، بازتولیدپذیر، ضد اعمال مجدد).
-- [ ] F4-10 (۲.۱۰) Job Registry + Outbox + Retry/Backoff + Idempotency + پایش صف.
+  - **P1 · NOT IMPLEMENTED** · payrollEngine.ts فقط شبیه‌سازی کسور و collectionEngine.ts فقط نشانه‌های ریسک دارد؛ موتور مشترک جریمهٔ نسخه‌دار و ضد تکرار یافت نشد.
+- [~] F4-10 (۲.۱۰) Job Registry + Outbox + Retry/Backoff + Idempotency + پایش صف.
+  - **P0 · PARTIAL** · 002/014 جدول Outbox و مالی CLI؛ Worker عمومی Retry/Backoff و UI پایش صف در مسیرهای server/index حاضر نیست.
 
 ## فاز ۵ — بازرگانی
-- [ ] F5-01 فهرست سفارش ERP مینیمال (بدون ثبت «سفارش آزمایشی» در مسیر عملیاتی؛ داده LOCAL_TEST برچسب‌دار).
-- [ ] F5-02 جزئیات سفارش + مذاکره CPQ/افزایش فروش درون آن (`phase2Flow`: isNegotiableErpOrder, evaluateOrderCpq, validateOrderForCpq, makeErpChangeRequest, applyErpChangeResponse؛ `negotiationErpLifecycle`).
-- [ ] F5-03 اعمال سفارش: ارسال(Push)، ابطال، بررسی اعتبار مشتری؛ پاسخ واقعی ERP.
-- [ ] F5-04 فاکتور ERP-only زیر بازرگانی (فیلتر مبدأ، فقط‌خواندنی، پیوند به برنامه پخش در صورت وجود).
-- [ ] F5-05 برنامه پخش + تسک «چرا با N فاکتور؟».
-- [ ] F5-06 برگشتی فروش (بازرگانی) + `deliveryEvents` در Registry.
-- [ ] F5-07 ویزیت (اجرا) زیر «مشتریان و فروش»؛ سرنخ/فرصت همان‌جا.
+- [~] F5-01 فهرست سفارش ERP مینیمال (بدون ثبت «سفارش آزمایشی» در مسیر عملیاتی؛ داده LOCAL_TEST برچسب‌دار).
+  - **P1 · PARTIAL** · OperationsControlWorkspace tab orders و entityStore؛ فهرست موجود، تضمین ERP-only در تمام ورودی‌ها و کنترل وضعیت ارسال باز.
+- [~] F5-02 جزئیات سفارش + مذاکره CPQ/افزایش فروش درون آن (`phase2Flow`: isNegotiableErpOrder, evaluateOrderCpq, validateOrderForCpq, makeErpChangeRequest, applyErpChangeResponse؛ `negotiationErpLifecycle`).
+  - **P1 · PARTIAL** · phase2Flow.ts، QuotesWorkspace و taskRequestContract؛ CPQ/تأیید سفارش بخشی، اتصال چرخهٔ تغییر سفارش به پاسخ ERP در UI باز.
+- [B] F5-03 اعمال سفارش: ارسال(Push)، ابطال، بررسی اعتبار مشتری؛ پاسخ واقعی ERP.
+  - **P0 · BLOCKED** · 046 و taskRequests؛ آمادگی صدور/مرجع ERP جداست؛ API مجاز Push/ابطال و پاسخ سامانه واقعی دردسترس نیست.
+- [~] F5-04 فاکتور ERP-only زیر بازرگانی (فیلتر مبدأ، فقط‌خواندنی، پیوند به برنامه پخش در صورت وجود).
+  - **P1 · PARTIAL** · moduleLanding کاشی invoices به /finance?tab=invoices، FinanceWorkspace و 046؛ لینک برنامهٔ پخش و محدودیت ERP-only تمام مسیرها باز.
+- [~] F5-05 برنامه پخش + تسک «چرا با N فاکتور؟».
+  - **P1 · PARTIAL** · OperationsControlWorkspace dispatch و 008؛ برنامه/نمای موجود؛ گردش اختصاصی سؤال و پیوند ردگیری هر تعداد فاکتور باز.
+- [~] F5-06 برگشتی فروش (بازرگانی) + `deliveryEvents` در Registry.
+  - **P1 · PARTIAL** · OperationsControlWorkspace returns، stateCollections و journalCoverage؛ برگشتی و شواهد خواندنی؛ کیفیت و پیوند تحویل واقعی همهٔ موارد باز.
+- [~] F5-07 ویزیت (اجرا) زیر «مشتریان و فروش»؛ سرنخ/فرصت همان‌جا.
+  - **P1 · PARTIAL** · /leads و /opportunities فعال‌اند، 017 مدل crm.Visit؛ اجرای ثبت ویزیت/چک‌این و مسیر روزانهٔ فروش پوشش کامل ندارد.
 - [~] F5-08 کاتالوگ کالا فقط‌خواندنی + موجودی (وابسته فاز ۷).
-- [ ] F5-09 حذف صفحه مغایرت‌های توزیع از مقصد عملیاتی (مغایرت فنی ETL جدا می‌ماند).
-- [ ] F5-10 قواعد پایش بازرگانی/پخش: سفارش تکراری؛ فروش زیر کف؛ تخفیف/قیمت غیرمجاز؛ حداقل سود فاکتور؛ مشتری لیست سیاه؛ برگشت غیرعادی؛ برنامه حمل باز/بدون سند؛ فاکتور قدیمی بدون برنامه حمل؛ فاکتور تکراری در یک پخش؛ مغایرت سفارش↔فاکتور↔بارگیری↔تحویل↔تسویه؛ سودآوری مشتری/کالا/مسیر/ویزیتور. UI در صفحهٔ حوزه‌ای تجمیع شود، نه تب/آیکون مستقل.
+  - **P1 · PARTIAL** · OperationsControlWorkspace inventory و FifoInventoryPanel؛ کاتالوگ و ارزش تحلیلی؛ تطبیق کامل موجودی رسمی ERP باز.
+- [~] F5-09 حذف صفحه مغایرت‌های توزیع از مقصد عملیاتی (مغایرت فنی ETL جدا می‌ماند).
+  - **P2 · PARTIAL** · /audit جداست اما ReportsHub هنوز گزارش discrepancy و OperationsControlWorkspace نمای reconciliation دارد؛ تفکیک کامل مقصد عملیاتی/فنی باز.
+- [~] F5-10 قواعد پایش بازرگانی/پخش: سفارش تکراری؛ فروش زیر کف؛ تخفیف/قیمت غیرمجاز؛ حداقل سود فاکتور؛ مشتری لیست سیاه؛ برگشت غیرعادی؛ برنامه حمل باز/بدون سند؛ فاکتور قدیمی بدون برنامه حمل؛ فاکتور تکراری در یک پخش؛ مغایرت سفارش↔فاکتور↔بارگیری↔تحویل↔تسویه؛ سودآوری مشتری/کالا/مسیر/ویزیتور. UI در صفحهٔ حوزه‌ای تجمیع شود، نه تب/آیکون مستقل.
+  - **P1 · PARTIAL** · erpDataQuality، journalCoverage و invoiceFifoEvidence؛ نمونه کنترل‌های فروش/برگشت موجود؛ کاتالوگ کامل و چرخهٔ پخش باز.
 
 ## فاز ۶ — مالی و خزانه‌داری
-- [ ] F6-01 درخواست پرداخت قطعی/غیرقطعی: OCR→فرم→ثبت→تسک تأیید حسابداری→Push.
-- [ ] F6-02 نگاشت حساب هنگام ثبت (هزینه/بهای تمام‌شده) با نمایش کدینگ به حسابدار.
-- [ ] F6-03 چک دریافتی/پرداختی: واگذاری، وصول، برگشت؛ جهت صحیح؛ ضمانتی/باطل خارج از محاسبه.
+- [~] F6-01 درخواست پرداخت قطعی/غیرقطعی: OCR→فرم→ثبت→تسک تأیید حسابداری→Push.
+  - **P0 · PARTIAL** · FinanceWorkspace و financeRequests.ts؛ OCR/درخواست و کنترل کدینگ بخشی، کارتابل تأیید و مقصد Push معتبر باز.
+- [~] F6-02 نگاشت حساب هنگام ثبت (هزینه/بهای تمام‌شده) با نمایش کدینگ به حسابدار.
+  - **P1 · PARTIAL** · financialIntelligence.resolveAccountingMapping، FinanceWorkspace و FinancialContextPanel؛ طبقه‌بندی و هشدار موجود؛ طبقه‌بندی نسخه‌دار و انتخاب قطعی کدینگ هنگام ثبت همهٔ انواع باز.
+- [~] F6-03 چک دریافتی/پرداختی: واگذاری، وصول، برگشت؛ جهت صحیح؛ ضمانتی/باطل خارج از محاسبه.
+  - **P0 · PARTIAL** · FinanceWorkspace، receiptFlow.ts و treasuryFlow؛ جهت و وضعیت چک خوانده می‌شود؛ چرخهٔ واگذاری/برگشت/وصول و منبع صیاد کامل نیست.
 - [~] F6-04 بانک/صندوق/انتقال/مانده (رابط واقعی روی `treasuryAccounts/Transactions`). — موتور پیش‌بینی و پنل به Provider متصل شد؛ اتصال SQL/ERP، تست مرورگر و TypeScript و تطبیق نسخه دوم موتور هنوز NOT VERIFIED؛ بانک/صندوق/انتقال کامل نیست.
-- [ ] F6-05 مطالبات و وصول؛ اسناد خرید.
-- [ ] F6-06 سود و زیان دفتری واقعی (`ledgerPnl` + View SQL) و ترازنامه.
-- [ ] F6-07 گزارش‌های مالی R1, R7, R8 (فاز ۹).
-- [ ] F6-08 قواعد پایش مالی بحرانی: سند نامتوازن/تکراری/دستی غیرعادی/بدون شرح/دوره اشتباه/تغییر سند قطعی؛ شرح↔کدینگ و هزینه↔مرکز هزینه؛ حساب/مانده/واسطه غیرمنطقی؛ دفتر کل↔معین؛ هزینه غیرعادی؛ فروش/خرید/برگشت↔سند مالی؛ تخفیف نقد به‌ازای فاکتور.
+  - **P0 · PARTIAL** · 039، treasuryFlow و CashFlowPanel؛ مانده، پیش‌بینی و تفکیک بانک؛ تطبیق واقعی، قرارداد عملیات صندوق و انتقالات کامل نیست.
+- [~] F6-05 مطالبات و وصول؛ اسناد خرید.
+  - **P0 · PARTIAL** · CollectionWorkbench، collectionActions و collectionReceiptEvidence؛ پیگیری و سند وصول بخشی؛ اتصال همهٔ اسناد خرید و تسویه ERP باز.
+- [~] F6-06 سود و زیان دفتری واقعی (`ledgerPnl` + View SQL) و ترازنامه.
+  - **P0 · PARTIAL** · ledgerPnlQuery.mjs و /ledger/books؛ صورت سود و تراز دفتر موجود؛ ترازنامهٔ کامل طبقه‌بندی‌شده و تأیید ERP باز.
+- [~] F6-07 گزارش‌های مالی R1, R7, R8 (فاز ۹).
+  - **P1 · PARTIAL** · ProfitLossWidget، ReportsHub و CashFlowPanel؛ سه مسیر مالی موجود، تصدیق جمع‌ها و اتصال معتبر همهٔ سنجه‌ها باقی است.
+- [~] F6-08 قواعد پایش مالی بحرانی: سند نامتوازن/تکراری/دستی غیرعادی/بدون شرح/دوره اشتباه/تغییر سند قطعی؛ شرح↔کدینگ و هزینه↔مرکز هزینه؛ حساب/مانده/واسطه غیرمنطقی؛ دفتر کل↔معین؛ هزینه غیرعادی؛ فروش/خرید/برگشت↔سند مالی؛ تخفیف نقد به‌ازای فاکتور.
+  - **P0 · PARTIAL** · erpDataQuality.ts، 040–044 و journalCoverage؛ توازن و بخشی از صحت/ردیابی؛ کل فهرست قواعد و انحراف/تخفیف باز.
 - [~] F6-09 کنترل شناسهٔ بستانکاری ERP در موتور تطبیق و نمایش شواهد اعلامیهٔ آینه‌شده و ارتباط فاکتور در گزارش انجام شد. پایش ماندهٔ بستانکار و علت‌یابی، پرداخت تکراری/بدون مجوز، مغایرت بانک و صندوق، چک سررسیدگذشته، انتقال تکراری و پرداخت به حساب بانکی تغییر‌یافته باز هستند.
+  - **P0 · PARTIAL** · creditNoteEvidence، CreditorBalanceReview و moneyIntelligence؛ نتیجهٔ بستانکاری و شواهد گزارش، کنترل‌های جامع بانک/پرداخت و تغییر حساب باز.
 
 ## فاز ۷ — خرید و تأمین و FIFO
-- [ ] F7-01 درخواست تأمین داخلی CRM و نمایش فقط‌خواندنی سفارش خرید و رسید رسمی ERP. شواهد دریافت و ارتباط با گردش کار از مرجع معتبر خوانده شوند.
-- [ ] F7-02 خواندن برگشت رسمی خرید ERP برای تطبیق و FIFO، با نگاشت منبع و تست مرجع. مدل CRM پس از بررسی Migrationهای موجود اضافه یا تکمیل شود.
-- [ ] F7-03 مدیریت تأمین‌کنندگان + عملکرد تأمین.
+- [~] F7-01 درخواست تأمین داخلی CRM و نمایش فقط‌خواندنی سفارش خرید و رسید رسمی ERP. شواهد دریافت و ارتباط با گردش کار از مرجع معتبر خوانده شوند.
+  - **P1 · PARTIAL** · OperationsControlWorkspace purchasing و 022؛ نمای خرید و آینه موجود؛ ثبت درخواست داخلی و پیوند گردش با رسید ERP قطعی باز.
+- [~] F7-02 خواندن برگشت رسمی خرید ERP برای تطبیق و FIFO، با نگاشت منبع و تست مرجع. مدل CRM پس از بررسی Migrationهای موجود اضافه یا تکمیل شود.
+  - **P1 · PARTIAL** · fifoFeedWorker، fifoInventory و 042؛ قرارداد برگشت با مرجع، نمونهٔ برگشت ERP تأیید نشده و پوشش منبع باز.
+- [~] F7-03 مدیریت تأمین‌کنندگان + عملکرد تأمین.
+  - **P2 · PARTIAL** · financialIntelligence.buildSupplierSection؛ خلاصهٔ زمینه موجود؛ مدیریت و سنجهٔ تأمین‌کننده به مسیر رسمی وصل نیست.
 - [~] F7-04 [C12] موتور FIFO تحلیلی و Migration ۰۳۶ برای لایه، مصرف و ارزش محاسباتی با اعشار دقیق، برگشت بر اساس مصرف اصلی، انتقال با حفظ بها و انتشار اتمی نسخه‌ها. ارزش‌گذاری و ریز لایهٔ صفحه‌بندی‌شده از API سازمانی و DataProvider خوانده می‌شوند. API شواهد برداشت فروش با `coverage=UNVERIFIED` منتشرکنندهٔ ریز ثبت‌شده است. **IMPLEMENTED — NOT TESTED**. نگاشت افتتاحیه و گردش مصوب ERP، اتصال Worker، تطبیق پوشش خطوط و بهای فاکتور، سیاست افتتاحیهٔ تجمیعی، ثبت استثنا و تطبیق رسمی باز هستند. اجرای SQL/ERP واقعی NOT VERIFIED - EXTERNAL DEPENDENCY.
+  - **P0 · PARTIAL** · 036/042، FIFO Worker و invoiceFifoEvidence؛ لایه و محاسبه/انتشار موجود؛ افتتاحیه، نگاشت و تطبیق خط‌به‌خط ERP باز.
 
 ## فاز ۸ — منابع انسانی، حقوق، پورسانت، عملکرد
 - [~] F8-00 موجود: `payrollEngine` (فرمول پایه/مالیات/مساعده/پورسانت ساده/فیش)، Migration 021، UI در OnboardingAdmin، `/personnel-file`. شاهد تست: BLOCKED (`jalaali-js`).
-- [ ] F8-01 فضای کاری HR مستقل (Landing، پرونده، حضور و غیاب، مرخصی، اضافه‌کاری، مأموریت، تاریخچه فیش). — **تصمیم مالک ۱۴۰۵/۰۸/۲۶: ضروری؛ درخواست مرخصی/ماموریت/اضافه‌کاری با تسک و تأیید مدیر؛ مساعده: ثبت درخواست ← تأیید مدیر ← ارجاع به حسابداری (با F8-04).**
-- [ ] F8-02 مبنای روزانه/ضرایب/سقف مساعده قابل تنظیم (حذف هاردکد)؛ مالیات نسخه‌دار.
+  - **P1 · PARTIAL** · 021، payrollEngine و OnboardingAdminWorkspace؛ مسیر محاسبه موجود؛ صدور/پرداخت رسمی SQL روی داده واقعی تأیید نشده.
+- [~] F8-01 فضای کاری HR مستقل (Landing، پرونده، حضور و غیاب، مرخصی، اضافه‌کاری، مأموریت، تاریخچه فیش). — **تصمیم مالک ۱۴۰۵/۰۸/۲۶: ضروری؛ درخواست مرخصی/ماموریت/اضافه‌کاری با تسک و تأیید مدیر؛ مساعده: ثبت درخواست ← تأیید مدیر ← ارجاع به حسابداری (با F8-04).**
+  - **P1 · PARTIAL** · PersonnelFilePage و 028؛ پرونده و فیش/مساعده موجود؛ کارتابل رسمی حضور/مرخصی/مأموریت/اضافه‌کاری SQL کامل نیست.
+- [~] F8-02 مبنای روزانه/ضرایب/سقف مساعده قابل تنظیم (حذف هاردکد)؛ مالیات نسخه‌دار.
+  - **P1 · PARTIAL** · payrollEngine.ts:26 و 158؛ تنظیم بخشی و جدول مالیات/ضریب مأموریت ثابت است؛ نسخه/زمان اعتبار و سیاست مبنا باز.
 - [~] F8-03 Migration افزایشی ۰۲۸ اضافه شد: `hr.Employee`, `hr.Attendance`, `hr.LeaveRequest`, `hr.OvertimeRequest`, `hr.MissionRequest`, `hr.ApprovalHistory`, `hr.TargetAssignment`. جداول حقوق/مساعده/پورسانت از قبل در ۰۲۱ موجود بودند. مانده: AdvanceSettlement کامل، CommissionRule/Tier نسخه‌دار، اتصال DataProvider کامل و تست یکپارچگی روی SQL زنده (NOT VERIFIED بدون محیط). فایل: `database/sqlserver/v1/028_hr_employee_attendance_leave_mission.sql`.
+  - **P1 · PARTIAL** · 021، 028، 047 و 048 جداول HR را پوشش می‌دهند؛ تسویه اقساط و CommissionRule نسخه‌دار/Provider کامل باز.
 - [~] F8-04 اتوماسیون مساعده: **IMPLEMENTED — NOT TESTED** برای ثبت و تصمیم مدیر در `hr.AdvanceRequest`، رسید و ممیزی اتمی، اعلان و پیشخوان بررسی حسابداری برای مساعدهٔ مصوب (`047_advance_accounting_review.sql`). متقاضی و تصویب‌کننده نمی‌توانند بررسی حسابداری همان درخواست را ثبت کنند. آمادگی برای ERP مستقل از پرداخت است. انتقال کنترل‌شده به ERP، اتصال این کارتابل به تسک مشترک، تطبیق پرداخت و ماندهٔ اقساط باز هستند. اجرای Migration و آزمون با SQL/ERP واقعی **NOT VERIFIED**.
-- [ ] F8-05 هدف‌گذاری ۸ مدل + موتور پورسانت ۶ نوع + ضرایب + سه وضعیت + تعدیل مرجوعی/ابطال. (تعریف هدف و پلکان: F2-08؛ این ردیف تحقق/محاسبه است.)
-- [ ] F8-06 داشبورد فروشنده (تحقق، فروش، کارتن، پورسانت، پیش‌بینی، روند، ریز فاکتور، سهم برند).
-- [ ] F8-07 موتور ارزیابی عملکرد (Score=Σ FactorScore×Weight)؛ اعتراض و تأیید مدیر.
+  - **P0 · PARTIAL** · 047 و personnelProfile؛ مرحلهٔ مدیر/حسابداری و SoD موجود؛ اتصال تسک مشترک، ERP/پرداخت و اقساط باز.
+- [~] F8-05 هدف‌گذاری ۸ مدل + موتور پورسانت ۶ نوع + ضرایب + سه وضعیت + تعدیل مرجوعی/ابطال. (تعریف هدف و پلکان: F2-08؛ این ردیف تحقق/محاسبه است.)
+  - **P1 · PARTIAL** · 028 و calculateCommissionForSeller؛ هدف ریالی/پورسانت پایه، ۸ مدل و تعدیل مرجوعی/ابطال/پرداخت جدا کامل نیست.
+- [~] F8-06 داشبورد فروشنده (تحقق، فروش، کارتن، پورسانت، پیش‌بینی، روند، ریز فاکتور، سهم برند).
+  - **P1 · PARTIAL** · ReportsHub rep-perf و payrollEngine؛ بخشی از عملکرد فروش موجود؛ پیش‌بینی، کارتن، سهم برند و تبار ریز فاکتور در پنل فروشنده ناقص.
+- [~] F8-07 موتور ارزیابی عملکرد (Score=Σ FactorScore×Weight)؛ اعتراض و تأیید مدیر.
+  - **P1 · PARTIAL** · financialIntelligence.buildEmployeePerformanceSection؛ سنجه زمینه‌ای وجود دارد؛ فرمول وزنی، اعتراض و ثبت تصمیم نهایی مشترک باز.
 - [ ] F8-08 اتصال خروجی موتور جریمه دیرکرد مشتری به پرونده مطالبات/گزارش و گردش تأیید؛ خود موتور مشترک فقط در F4-09 تعریف و توسعه می‌شود و این ردیف موتور موازی نمی‌سازد.
-- [ ] F8-09 شبیه‌ساز حقوق/عملکرد با داده واقعی و بدون ثبت تراکنش.
-- [ ] F8-10 Snapshot محاسباتی و اصلاحات هر فیش در SQL.
+  - **P1 · NOT IMPLEMENTED** · CollectionWorkbench و collectionActions گردش پیگیری دارند؛ ورودی جریمهٔ F4-09 به مانده و تأیید مدرک وصل نیست.
+- [~] F8-09 شبیه‌ساز حقوق/عملکرد با داده واقعی و بدون ثبت تراکنش.
+  - **P2 · PARTIAL** · payrollEngine شبیه‌ساز بدون ثبت دارد؛ دادهٔ حقوق/عملکرد قابل اتکا از SQL و پذیرش بدون اثر نوشتن باز.
+- [~] F8-10 Snapshot محاسباتی و اصلاحات هر فیش در SQL.
+  - **P1 · PARTIAL** · 021 جدول Payslip دارد؛ Snapshot فرمول/نسخه و اصلاحات ممیزی‌شده در API حقوق دیده نشد.
 - [~] F8-11 چرخهٔ جذب: **IMPLEMENTED — NOT TESTED** برای بررسی درخواست SQL، اطلاعات تکمیلی، تعیین مصاحبه و ارجاع اتمی با سه سطح اهمیت به تسک مشترک و مسئول دارای دسترسی پرونده، نتیجه و پذیرش مستقل، تشکیل پرونده و اتصال به حساب فعال موجود با تطبیق سیاست نام کاربری و شماره همراه. اتصال ممیزی می‌شود و نقش و مجوزها را تغییر نمی‌دهد. ارسال دعوت، فعال‌سازی مستقل و پذیرش SQL باز هستند.
+  - **P1 · PARTIAL** · publicRecruitment و recruitmentReview؛ ثبت، مصاحبه، استخدام و پیوند حساب موجود حاضر؛ دعوت و فعال‌سازی مستقل باز.
 - [~] F8-12 مدل یگانهٔ هویت: **IMPLEMENTED — NOT TESTED** برای نمایش پیوند `core.AppUser` و `hr.Employee`، اتصال حساب موجود در چرخه جذب و نمایش کدها، سمت، منشأ و سرپرست مشترک کارتابل. پیوند مبهم انتخاب خودکار ندارد. فیش و مساعده فقط در مسیر خود کاربر خوانده می‌شوند. تکمیل واحد سازمانی، اتصال ETL و پذیرش SQL باز هستند.
+  - **P0 · PARTIAL** · personnelProfile و recruitmentReview؛ هویت CRM و پرونده متصل‌اند؛ نگاشت واحد/ERP و تاریخ اعتبار کامل نیست.
 - [~] F8-13 وضعیت شغلی و تاریخچه: **IMPLEMENTED — NOT TESTED** برای تغییر فوری وضعیت پروندهٔ محلی در تنظیمات، کنترل گذار/نسخه و ثبت تاریخ اثر، عامل و دلیل در ممیزی مشترک. مرز وضعیت استخدام، حساب کاربری و حقوق حفظ شده است. نوع همکاری، تغییر زمان‌بندی‌شده، چند نقش عملیاتی، تاریخچهٔ سمت/واحد و تأیید SQL باز هستند. هدف‌گذاری یا پلکان برای نقش فاقد سیاست اجباری نشود.
+  - **P1 · PARTIAL** · personnelProfile.changeEmploymentStatus و EmploymentStatusPanel؛ تغییر/تاریخچه حاضر؛ نوع همکاری، سمت و نقش‌های زمان‌دار باز.
 - [~] F8-14 پنل آموزش اختصاصی و مسیر نقش‌محور: **IMPLEMENTED — NOT TESTED** در SQL زنده. Migration `048_personnel_learning.sql`، API، DataProvider و رابط جذب/پروندهٔ پرسنلی، انتشار و تخصیص مسیر نقش‌محور، سطح فعلی/بعدی، درس و پیوند فایل، سؤال نسخه‌دار و تنظیم حدنصاب، زمان و سقف تلاش را پوشش می‌دهند. پاسخ‌های صحیح فقط در سرورند و تخصیص به نسخهٔ دوره و پیش‌نیاز سطح متصل است. دسترسی منابع پیوندی تابع مجوز سامانهٔ میزبان است. بارگذاری فایل داخلی و پذیرش SQL و UX باز هستند.
+  - **P1 · PARTIAL** · 048، personnelLearning و LearningCatalogPanel؛ دورهٔ نسخه‌دار/پیوند HTTPS و آزمون موجود؛ فایل داخلی و پذیرش عملیاتی باز.
 - [~] F8-15 گردش آموزش و ارزیابی: **IMPLEMENTED — NOT TESTED** در SQL زنده. تکمیل محتوا، آزمون زمان‌دار، نمره و شواهد، ثبت هر تلاش، بررسی سرپرست مستقیم دارای مجوز، تصمیم مشروط و ارسال شواهد تکمیل شرط، تلاش دوباره و توقف/ادامه از طریق همان پرونده ثبت و ممیزی می‌شوند. تأیید سطح مستقل از نمره، دسترسی عملیاتی و حقوق است. اعتبارسنجی ورودی، نمره‌دهی، نشت‌نکردن پاسخ به DTO و قرارداد تک‌تصمیم هدفمند تأیید شدند. اجرای چندکاربره و Migration روی SQL Server و قبولی زیربخش پلکان حقوق (F8-16) هنوز باز هستند.
+  - **P1 · IMPLEMENTED — NOT TESTED** · 048، personnelLearning و PersonnelLearningPanel؛ تلاش زمان‌دار/نتیجه/شرط/سرپرست پیاده؛ آزمون قراردادی PASS، پذیرش نهایی SQL چندکاربره اجرا نشده.
 - [ ] F8-16 پلکان رشد و حقوق: اتصال سطح تأییدشده به سیاست حقوق/مزایا نسخه‌دار؛ پیش‌نمایش اثر، تاریخ اثر، درخواست تغییر، تأیید حقوق/مدیر مجاز، Snapshot و audit؛ بدون تغییر یا پرداخت خودکار. داشبورد رشد شامل سطح فعلی/بعدی، دوره‌ها، آزمون‌های مانده، نمرات، تأیید مدیر، درخواست حقوق و تاریخچه؛ نبود پلکان برای یک نقش «تعریف‌نشده» است نه خطای صفر. تحقق هدف و عملکرد فقط ورودی ارزیابی است و به‌تنهایی تصمیم خودکار مرخصی/مساعده/حقوق نیست.
-- [ ] F8-17 محرمانگی و مجوزهای HR: تفکیک مشاهده/ویرایش پرونده، آموزش، آزمون، ارزیابی و حقوق؛ کنترل API/RLS هم‌سطح UI؛ audit همه تغییرات و تأییدها و تست دسترسی.
+  - **P1 · NOT IMPLEMENTED** · 048 وضعیت تأیید سطح دارد و 021 حقوق دارد؛ مسیر تأیید سطح←سیاست حقوق نسخه‌دار←درخواست و Snapshot دیده نشد.
+- [~] F8-17 محرمانگی و مجوزهای HR: تفکیک مشاهده/ویرایش پرونده، آموزش، آزمون، ارزیابی و حقوق؛ کنترل API/RLS هم‌سطح UI؛ audit همه تغییرات و تأییدها و تست دسترسی.
+  - **P0 · PARTIAL** · 028/048، endpoints personnel و scopes جدا؛ مجوز خود/سرپرست و تفکیک فیش موجود؛ ماتریس کامل داده HR و آزمون زنده باز.
 
 ## فاز ۹ — گزارش‌ها و تحلیل
 - [~] F9-00 موجود: `ReportsHub` (۱۱ کارت)، نمای permission-scoped، نمایش وضعیت منبع، `NeoHeatmapChart` (روز×مالک). شاهد: `reportsDashboardStyleContracts`, `reportUi/Analytics` PASS.
-- [ ] F9-01 یک فهرست یگانه ۱۱ گزارش + اتصال هر KPI به `metricRegistry`؛ تعیین تکلیف `ReportEnginePanels`.
-- [ ] F9-02 فیلتر دوره واقعاً محاسبه را تغییر دهد؛ گروه‌بندی ماه شمسی.
+  - **P2 · PARTIAL** · ReportsHub فهرست و کارت‌ها و NeoHeatmapChart دارد؛ اعتبار کیفیت/منبع و پوشش پذیرش همهٔ گزارش‌ها باز.
+- [~] F9-01 یک فهرست یگانه ۱۱ گزارش + اتصال هر KPI به `metricRegistry`؛ تعیین تکلیف `ReportEnginePanels`.
+  - **P2 · PARTIAL** · ReportsHub دارای REPORT_DEFS است، ReportEnginePanels مصرف فعال ندارد و metricRegistry به همهٔ KPIها متصل نیست.
+- [~] F9-02 فیلتر دوره واقعاً محاسبه را تغییر دهد؛ گروه‌بندی ماه شمسی.
+  - **P2 · PARTIAL** · ReportsHub.tsx:111–165؛ دوره داده را فیلتر می‌کند، اما bucket برش YYYY-MM میلادی است و فقط برچسب فارسی است.
   - **IMPLEMENTED — NOT TESTED:** کارت‌های مشترک در گزارش‌های فروش، مالی و عملکرد، با عدد قابل‌خواندن، شبکهٔ دو ستونهٔ موبایل و روند کوچک فقط از سری واقعی. نمودارهای تزئینی بدون داده حذف شدند. گزارش نقدینگی همان پنل افق و سناریوی خزانه را استفاده می‌کند. در «پول کجاست؟» اثر کاهندهٔ اصلی با اقدام مستقیم به ریز گردش نمایش داده می‌شود. پذیرش بصری روی دستگاه واقعی و همهٔ فیلترهای گزارش باز است.
-- [ ] F9-03 R1 مالی-سودآوری، R7 مطالبات (کنترل جمع بازه‌ها)، R8 نقدینگی — در مالی.
-- [ ] F9-04 R2, R3, R4, R5, R6, R9 در «مشتریان و فروش»؛ R10, R11 در «بازرگانی و توزیع» (مالک پیشنهادی؛ تأیید مالک).
+- [~] F9-03 R1 مالی-سودآوری، R7 مطالبات (کنترل جمع بازه‌ها)، R8 نقدینگی — در مالی.
+  - **P1 · PARTIAL** · ReportsHub finance/receivables، ProfitLossWidget و CashFlowPanel؛ اتصال مالی هست؛ کنترل جمع و تطبیق رسمی باز.
+- [~] F9-04 R2, R3, R4, R5, R6, R9 در «مشتریان و فروش»؛ R10, R11 در «بازرگانی و توزیع» (مالک پیشنهادی؛ تأیید مالک).
+  - **P2 · PARTIAL** · ReportsHub دارای domain مطابقت نسبی است؛ Rها در فضای reports مشترک‌اند و تمام مسیرهای مالکیت و پوشش داده تکمیل نشده‌اند.
 - [~] F9-05 گزارش‌های تشخیصی D1 و D2: **IMPLEMENTED — NOT TESTED** برای D2. نمودار علل ثبت‌شده از برگشتی متصل به یک سند معتبر ERP می‌آید و کلیک علت، ریز همان گروه را فیلتر می‌کند. پیگیری مغایرت از مسیر موجود پوشش اسناد ثبت می‌شود. نرخ مقایسه‌ای، زیان، تجمیع مسیر/ویزیتور، D1 و پذیرش SQL باز هستند.
-- [ ] F9-06 گزارش‌های ضعف (W) و ۴ ترکیبی طلایی؛ «مقایسه سفارش و فروش» و «تسویه».
-- [ ] F9-07 چیدمان صفحات چارت‌محور S (سودآوری، داشبورد، مالی، فروش، فروشندگان، ویزیت/پخش، خانه، عملیات، مطالبات، کالا، هوش مکانی).
-- [ ] F9-08 آیکون حرارتی کنار هر گزارش؛ فعال فقط با داده مکانی واقعی؛ Heatmap مستقل برای فروش/تیم/توزیع/تحویل/مرجوعی.
-- [ ] F9-09 کامپوننت‌های مشترک: کارت KPI+اسپارک، نوار فیلتر+Chip+بازنشانی، کارت بینش، Tooltip با مقایسه.
-- [ ] F9-10 قوانین فنی: موبایل خوانا، Empty/Skeleton، Export تصویر/Excel، فیلتر در URL، پیام ضعف/فرصت.
-- [ ] F9-11 ۵ گزارش مکانی (نقشه جامع، زون‌ها، پتانسیل، مسیر ویزیت، ناوگان) و آیکون نقشه در گزارش‌ها.
-- [ ] F9-12 حذف گزارش «مغایرت‌ها و استثناها» از مقصد عملیاتی؛ تکمیل `deliveryEvents`.
-- [ ] F9-13 تأیید اعداد با داده واقعی ERP/حسابداری.
-- [ ] F9-14 همهٔ گزارش‌ها از حوزهٔ دید F2-14 استفاده کنند (فیلتر بر پایهٔ کد فروشنده/تفصیلی؛ سرپرست فقط تیم خود).
-- [ ] F9-15 داشبورد فروش (R2+R3+R5+R6) به سبک §۹: KPI ۲×۲ با اسپارک واقعی، روند درآمد با میلهٔ برجسته، دونات منبع/گروه، رتبهٔ فروشندگان؛ تب‌های نمای کلی/فروش/عملکرد/فعالیت.
-- [ ] F9-16 داشبورد خط لوله (سرنخ/فرصت/مذاکره): مجموع ارزش + ناحیه‌ای، کارت مراحل، جست‌وجو و نمای کانبان/فهرست.
-- [ ] F9-17 داشبوردهای توزیع (R10+R11+D2) و مالی (R1+R7+R8) به همان کیت و الگو.
-- [ ] F9-18 کارت‌ها و صفحهٔ «بینش‌ها»: ردیف بینش با برچسب وضعیت و دکمهٔ اقدام (ایجاد تسک)؛ فقط از موتور/قاعدهٔ واقعی؛ بدون AI ساختگی.
-- [ ] F9-19 بازطراحی «پرونده ۳۶۰ مشتری» (`/accounts`) طبق §۹-۱ بند ۱۰: امتیاز سلامت از موتور واقعی، تایم‌لاین، نمودار ماهانه، یادداشت/توصیه، دکمهٔ گزارش.
-- [ ] F9-20 تأیید بصری همهٔ داشبوردها در مرورگر 320–1440، Light/Dark، RTL (تا آن زمان `NOT VERIFIED`).
+  - **P1 · PARTIAL** · journalCoverage و صفحهٔ برگشتی در گزارش/پوشش؛ علت با سند ERP بخشی؛ D1 و معیار مقایسه‌ای D2 باز.
+- [~] F9-06 گزارش‌های ضعف (W) و ۴ ترکیبی طلایی؛ «مقایسه سفارش و فروش» و «تسویه».
+  - **P2 · PARTIAL** · ReportsHub و OperationsControlWorkspace؛ نماهای پایه توزیع و عملیات حاضر؛ مجموعهٔ W و گزارش ترکیبی سفارش/تسویهٔ کامل نیست.
+- [~] F9-07 چیدمان صفحات چارت‌محور S (سودآوری، داشبورد، مالی، فروش، فروشندگان، ویزیت/پخش، خانه، عملیات، مطالبات، کالا، هوش مکانی).
+  - **P2 · PARTIAL** · ReportsHub، Dashboard و OperationsControlWorkspace؛ چارت‌ها واقعاً مصرف می‌شوند؛ همگرایی طراحی/منبع و پذیرش همهٔ صفحات باز.
+- [~] F9-08 آیکون حرارتی کنار هر گزارش؛ فعال فقط با داده مکانی واقعی؛ Heatmap مستقل برای فروش/تیم/توزیع/تحویل/مرجوعی.
+  - **P2 · PARTIAL** · REPORT_DEFS برخی heatmap flag و NeoHeatmapChart دارد؛ فعال‌سازی فقط با داده مکانی و پنج نمای مستقل کامل نیست.
+- [~] F9-09 کامپوننت‌های مشترک: کارت KPI+اسپارک، نوار فیلتر+Chip+بازنشانی، کارت بینش، Tooltip با مقایسه.
+  - **P2 · PARTIAL** · charts/KpiCard و Sparkline؛ اجزای مشترک حاضر؛ FilterBar/Tooltip مقایسه در کل گزارش‌ها یکسان نیست.
+- [~] F9-10 قوانین فنی: موبایل خوانا، Empty/Skeleton، Export تصویر/Excel، فیلتر در URL، پیام ضعف/فرصت.
+  - **P2 · PARTIAL** · ReportsHub، ExportMenuButton و useTabParam؛ CSV/بازه بخشی، تصویر/Excel و ماتریس UX همهٔ گزارش‌ها باز.
+- [~] F9-11 ۵ گزارش مکانی (نقشه جامع، زون‌ها، پتانسیل، مسیر ویزیت، ناوگان) و آیکون نقشه در گزارش‌ها.
+  - **P2 · PARTIAL** · GeoIntelligenceWorkspace و geoIntelligence؛ نقشه/زون/شاخص وجود دارد؛ داده معتبر مسیر، ناوگان و پتانسیل در همهٔ نماها باز.
+- [~] F9-12 حذف گزارش «مغایرت‌ها و استثناها» از مقصد عملیاتی؛ تکمیل `deliveryEvents`.
+  - **P2 · PARTIAL** · ReportsHub هنوز discrepancy در REPORT_DEFS دارد؛ deliveryEvents در snapshot گزارش مصرف می‌شود؛ انتقال همهٔ مغایرت‌ها باز.
+- [B] F9-13 تأیید اعداد با داده واقعی ERP/حسابداری.
+  - **P0 · BLOCKED** · officialLedgerReads و reportStatus؛ کنترل واقعی اعداد به دسترسی ERP و داده نمونه معتبر وابسته است.
+- [~] F9-14 همهٔ گزارش‌ها از حوزهٔ دید F2-14 استفاده کنند (فیلتر بر پایهٔ کد فروشنده/تفصیلی؛ سرپرست فقط تیم خود).
+  - **P0 · PARTIAL** · ReportsWorkspace.canOn و purchaseCycle پارامتر scope؛ کنترل محلی و SQL محدود، نگاشت کد فروشنده/تفصیلی همهٔ گزارش‌ها باز.
+- [~] F9-15 داشبورد فروش (R2+R3+R5+R6) به سبک §۹: KPI ۲×۲ با اسپارک واقعی، روند درآمد با میلهٔ برجسته، دونات منبع/گروه، رتبهٔ فروشندگان؛ تب‌های نمای کلی/فروش/عملکرد/فعالیت.
+  - **P2 · PARTIAL** · ReportsHub sales و KpiCard؛ روند و کارت موجود، فروشنده/هدف و پوشش منبع واقعی برای همهٔ KPIها باز.
+- [~] F9-16 داشبورد خط لوله (سرنخ/فرصت/مذاکره): مجموع ارزش + ناحیه‌ای، کارت مراحل، جست‌وجو و نمای کانبان/فهرست.
+  - **P2 · PARTIAL** · /opportunities و LeadsWorkspace؛ مراحل و تعامل پایه؛ تحلیل ارزش و نمای چندگانه با منبع تاریخی معتبر کامل نیست.
+- [~] F9-17 داشبوردهای توزیع (R10+R11+D2) و مالی (R1+R7+R8) به همان کیت و الگو.
+  - **P2 · PARTIAL** · ReportsHub finance/distribution، CashFlowPanel و ProfitLossWidget؛ پوشش نسبی کیت/گزارش، KPIهای کامل تحویل/توزیع و QA باز.
+- [~] F9-18 کارت‌ها و صفحهٔ «بینش‌ها»: ردیف بینش با برچسب وضعیت و دکمهٔ اقدام (ایجاد تسک)؛ فقط از موتور/قاعدهٔ واقعی؛ بدون AI ساختگی.
+  - **P1 · PARTIAL** · MoneyIntelligencePanel و PurchaseCycleFollowUp مسیر اقدام دارند؛ کارت و جریان یکپارچهٔ بینش همهٔ قاعده‌ها باز.
+- [~] F9-19 بازطراحی «پرونده ۳۶۰ مشتری» (`/accounts`) طبق §۹-۱ بند ۱۰: امتیاز سلامت از موتور واقعی، تایم‌لاین، نمودار ماهانه، یادداشت/توصیه، دکمهٔ گزارش.
+  - **P2 · PARTIAL** · Customer360؛ کارت سلامت، پیشنهاد و تعامل واقعی بخشی؛ تایم‌لاین/نمودار کامل و پذیرش نقش‌ها باز.
+- [~] F9-20 تأیید بصری همهٔ داشبوردها در مرورگر 320–1440، Light/Dark، RTL (تا آن زمان `NOT VERIFIED`).
+  - **P2 · PARTIAL** · ux-quality.yml و test-ux-browser.py؛ گیت تعریف شده، شاهد تازهٔ بصری برای همهٔ داشبوردها و اندازه‌ها موجود نیست.
 - [~] F9-21 ریزش و زمان خرید: **IMPLEMENTED — NOT TESTED** در SQL/ERP زنده. گزارش فروش و اعلان‌های ویزیتور، سرپرست مستقیم و مدیر سازمانی از محاسبهٔ مشترک فاکتور قطعی ERP استفاده می‌کنند. دامنهٔ مجاز هر گیرنده از مجوز مشتری و فروش کنترل می‌شود، مشتری چندمنبعی یک‌بار شمرده می‌شود و اعلان تجمیعی هر سطح در بازهٔ ۷ روز تکرار نمی‌شود. لینک اعلان به گزارش متناسب و فرم پیگیری Workflow می‌رسد. عامل موجود زمان‌بندی با `TASK_REQUEST_REMINDER_TENANT_ID` و `TASK_REQUEST_REMINDER_ACTOR_ID` و آستانه‌های ریزش فعال می‌شود. شاخص مسیر برنامه‌ریزی‌شده، اثبات پوشش داده و پذیرش زنده باز هستند.
+  - **P1 · PARTIAL** · purchaseCycle به گزارش/سرویس اعلان سه‌سطحی وصل است (قرارداد PASS). شاخص مسیر برنامه‌ای واقعی و اثبات پوشش/ERP باز.
   - **IMPLEMENTED — NOT TESTED:** تجمیع پوشش ثبت ورود و مشتریان نیازمند پیگیری به تفکیک منطقه و مسئول از همین گزارش، با حذف تکرار مشتری میان منابع و فیلتر ریز در سرور. دامنه به مشتریان دارای فاکتور مشاهده‌شده محدود است. پوشش مسیر مستقل و اعلان خودکار نقش‌محور باز هستند.
 - [~] F9-22 پیشنهاد فروش به مشتری برای ویزیتور: **IMPLEMENTED — NOT TESTED.** کالاهای فعال کاتالوگ که در دست‌کم دو روزِ بازهٔ قبل در فاکتور قطعی ثبت شده‌اند و در ردیف‌های دریافتی ۹۰ روز اخیر دیده نشده‌اند، همراه با شمارهٔ فاکتور و ثبت پیگیری نمایش داده می‌شوند. موجودی، فروش مکمل، پروموشن، معیار سود و پوشش کامل ETL برای پذیرش باز هستند.
-- [ ] F9-23 ارزش موجودی تحلیلی انبار از FIFO CRM با تطبیق موجودی رسمی ERP و توان پرداخت شرکت: پیش‌بینی نقدینگی آزاد و امکان انجام هزینه/صدور چک در تاریخ آینده با لحاظ موجودی نقد و بانک، وصولی‌های مورد انتظار، بدهی‌ها، چک‌ها، حقوق و تعهدات؛ این شاخص درباره توان مالی شرکت است، نه اعتبار یا سقف اعتبار مشتری. فرض‌ها و پوشش داده باید نمایش داده شود.
+  - **P1 · PARTIAL** · purchaseCycle products و PurchaseCycleFollowUp؛ پیشنهاد کالای مشاهده‌شده و تسک برقرار؛ مکمل، موجودی و اولویت سود باز.
+- [~] F9-23 ارزش موجودی تحلیلی انبار از FIFO CRM با تطبیق موجودی رسمی ERP و توان پرداخت شرکت: پیش‌بینی نقدینگی آزاد و امکان انجام هزینه/صدور چک در تاریخ آینده با لحاظ موجودی نقد و بانک، وصولی‌های مورد انتظار، بدهی‌ها، چک‌ها، حقوق و تعهدات؛ این شاخص درباره توان مالی شرکت است، نه اعتبار یا سقف اعتبار مشتری. فرض‌ها و پوشش داده باید نمایش داده شود.
+  - **P0 · PARTIAL** · FIFO 036/042، moneyIntelligence و treasuryFlow؛ ارزش تحلیلی و افق نقد موجود؛ تطبیق رسمی و تصمیم مالی بر مانده قابل استفاده باز.
 
 ## فاز ۱۰ — داده، سرور و ERP واقعی
 - [~] F10-00 قراردادهای SQL (۲۵ Migration؛ ممیزی ایستا ۸۴ جدول/۸۰ RLS/۵ View PASS در نوبت قبل).
-- [ ] F10-00b (الزام معماری سرور) جابه‌جایی محلی→سرور فقط با تنظیمات اتصال/Provider؛ تست انتقال بدون تغییر منطق.
-- [ ] F10-02b Endpointهای سرور `/ledger/journal-lines` و `/ledger/balances` (مانده تفکیکی تفصیلی×معین×دوره از `JournalLineMirror` + `DetailAccount` + `DetailSubsidiaryLink`) با RLS و مجوز مالی سمت سرور؛ پرکردن جدول‌های کدینگ/تفصیلی/گروه تفصیلی از ERP (با F10-03).
-- [ ] F10-01 اجرای Migrationها روی SQL Server واقعی + آزمون RLS.
+  - **P0 · PARTIAL** · SQL contract auditor و 48 Migration حاضرند؛ شاهد ۲۵ Migration تاریخی است؛ بررسی کامل نسخهٔ جدید و SQL زنده انجام نشده.
+- [~] F10-00b (الزام معماری سرور) جابه‌جایی محلی→سرور فقط با تنظیمات اتصال/Provider؛ تست انتقال بدون تغییر منطق.
+  - **P0 · PARTIAL** · dataProvider و run migration support جداسازی دارند؛ مسیرهای State و نبود شاهد مهاجرت زنده مانع تأیید کامل‌اند.
+- [~] F10-02b Endpointهای سرور `/ledger/journal-lines` و `/ledger/balances` (مانده تفکیکی تفصیلی×معین×دوره از `JournalLineMirror` + `DetailAccount` + `DetailSubsidiaryLink`) با RLS و مجوز مالی سمت سرور؛ پرکردن جدول‌های کدینگ/تفصیلی/گروه تفصیلی از ERP (با F10-03).
+  - **P0 · IMPLEMENTED — NOT TESTED** · server/index.mjs:646,684 و officialLedgerReads.mjs؛ endpointهای گردش و مانده موجودند. ledgerJournalQuery با الگوی SQL قدیمی FAIL؛ پذیرش SQL باز.
+- [B] F10-01 اجرای Migrationها روی SQL Server واقعی + آزمون RLS.
+  - **P0 · BLOCKED** · database/sqlserver/v1 و policy فعلی؛ SQLSERVER_HOST/DATABASE در محیط تنظیم نشده‌اند و اجرای واقعی RLS ممکن نبود.
 - [~] F10-02 Backend عملیاتی + مجوز سمت سرور + تست امنیت. آمادگی API تولید و جداسازی Adapter آزمایشی در ثبت اجرای ۲۰۲۶-۱۱-۱۹ آزموده شد؛ SQL Server، احراز هویت و RLS زنده همچنان بازند.
-- [ ] F10-03 اتصال ERP زنده + reconciliation.
-- [ ] F10-04 ممیزی نهایی FK/Index/Coverage در محیط واقعی.
-- [ ] F10-05 Worker/Snapshot تولیدی KPIها.
+  - **P0 · PARTIAL** · index.mjs، entityStore و 029–031/045؛ API و Secure defaults حاضرند؛ پذیرش امنیت، بار و نقش‌های واقعی باز.
+- [B] F10-03 اتصال ERP زنده + reconciliation.
+  - **P0 · BLOCKED** · financialFeedExtract و import-erp-financial-feed آداپتور دارند؛ قرارداد و دسترسی ERP، روش مقایسه و دادهٔ مبنا لازم است.
+- [B] F10-04 ممیزی نهایی FK/Index/Coverage در محیط واقعی.
+  - **P0 · BLOCKED** · Migrationها و audit-sqlserver-contracts.mjs؛ Query plan و Coverage در محیط واقعی بدون SQL/حجم نماینده قابل حکم نیستند.
+- [~] F10-05 Worker/Snapshot تولیدی KPIها.
+  - **P1 · PARTIAL** · 018/019 و 024 کاتالوگ/View/lineage دارند، Worker/Snapshot عملیاتی همهٔ KPIها و نوسازی زمان‌بندی‌شده پیدا نشد.
 
 ## فاز ۱۱ — حقوقی و قراردادها
 - [F] F11-01 ماژول مستقل حقوقی: جداول قرارداد، پرونده حقوقی، سند/مجوز با تاریخ انقضا، گردش تأیید، هشدار چندمرحله‌ای متصل به وظیفه/اعلان، بایگانی با دسترسی محرمانه (کاشی‌ها در فاز ۱۲). — **فریز (مالک ۱۴۰۵/۰۸/۲۶): خارج از دامنهٔ فعلی؛ حذف نشده، تا اطلاع بعدی ساخته نشود.**
+  - **P3 · BLOCKED** · ماژول حقوقی طبق تصمیم ثبت‌شده فریز است؛ moduleLanding.ts:308–312 صرفاً /planned و تأیید مستقل مالک لازم است.
 
 ## فاز ۱۲ — واحدهای سازمانی سند معماری سازمانی (منو ✔ / ماژول ناتمام)
 هر ردیف ۲۷گانه: ورودی منو، آیکون و صفحهٔ وضعیت «در دست تکمیل» ساخته شده (شاهد: `plannedModulesContracts`، `moduleLandingContracts`، `navigationHierarchyContracts` PASS؛ ظاهر مرورگر NOT VERIFIED). **ماژول تکمیل‌شده نیست.** هر ردیف فقط وقتی `[x]` می‌شود که هر هفت تحویل‌شدنی در کد و تست واقعی ثابت شده باشد: ۱) رابط کاربری ۲) منطق و گردش کار ۳) پایگاه داده ۴) رابط‌های برنامه‌نویسی ۵) گزارش و داشبورد ۶) تست عملکرد/یکپارچگی ۷) نقش/مجوز/تاریخچه. وضعیت ماژول: اجراشده / ناموفق / مسدود / تأییدنشده.
 - [~] F12-01 (`hr-recruitment`) جذب و استخدام — اجرا در فاز 8؛ منو/آیکون ✔؛ هفت تحویل‌شدنی `[ ]`. — **ردیف منو؛ هنگام ساخت با صاحب فاز اصلی ادغام می‌شود.**
+  - **P1 · PARTIAL** · OnboardingAdminWorkspace و recruitmentReview جریان جذب دارند؛ کاشی hr-recruitment هنوز /planned است؛ دعوت و نیازسنجی باز.
 - [~] F12-02 (`hr-applicants`) متقاضیان و پرونده استخدامی — اجرا در فاز 8؛ منو/آیکون ✔؛ هفت تحویل‌شدنی `[ ]`. — **ردیف منو؛ هنگام ساخت با صاحب فاز اصلی ادغام می‌شود.**
+  - **P1 · PARTIAL** · publicRecruitment و RecruitmentReviewPanel فعال‌اند؛ hr-applicants در مقصد ماژول برنامه‌ریزی‌شده است و پذیرش مدارک/SQL باز.
 - [~] F12-03 (`hr-payroll`) حقوق و دستمزد (موتور حقوق موجود؛ تأییدنشده) — اجرا در فاز 8؛ منو/آیکون ✔؛ هفت تحویل‌شدنی `[ ]`. — **ردیف منو؛ هنگام ساخت با صاحب فاز اصلی ادغام می‌شود.**
+  - **P1 · PARTIAL** · payrollEngine و مدیریت جذب مسیر محاسبه دارند؛ hr-payroll برنامه‌ریزی‌شده و صدور/پرداخت مرکزی اثبات نشده‌اند.
 - [~] F12-04 (`hr-payslip`) فیش حقوقی، مزایا و کسورات — اجرا در فاز 8؛ منو/آیکون ✔؛ هفت تحویل‌شدنی `[ ]`. — **ردیف منو؛ هنگام ساخت با صاحب فاز اصلی ادغام می‌شود.**
+  - **P1 · PARTIAL** · personnelProfile و PersonnelFilePage فیش‌های معتبر را می‌خوانند؛ کاشی hr-payslip، چرخه صدور/اصلاح و پذیرش باز.
 - [~] F12-05 (`hr-training`) آموزش کارکنان و مراحل آموزش — اجرا در فاز 8؛ منو/آیکون ✔؛ هفت تحویل‌شدنی `[ ]`. — **ردیف منو؛ هنگام ساخت با صاحب فاز اصلی ادغام می‌شود.**
+  - **P1 · PARTIAL** · 048 و PersonnelLearningPanel دوره و آزمون فعال دارند؛ moduleLanding.ts:300 کاشی hr-training را به /planned می‌برد.
 - [~] F12-06 (`hr-evaluation`) سوابق آموزشی و ارزیابی عملکرد — اجرا در فاز 8؛ منو/آیکون ✔؛ هفت تحویل‌شدنی `[ ]`. — **ردیف منو؛ هنگام ساخت با صاحب فاز اصلی ادغام می‌شود.**
+  - **P1 · PARTIAL** · PersonnelLearningPanel تاریخچهٔ آموزش دارد؛ کاشی hr-evaluation و ارزیابی عملکرد سازمانی/اعتراض کامل نیست.
 - [F] F12-07 (`legal-contracts`) تنظیم و مدیریت قراردادها — اجرا در فاز 11؛ منو/آیکون ✔؛ هفت تحویل‌شدنی `[ ]`. — **فریز (مالک ۱۴۰۵/۰۸/۲۶): خارج از دامنهٔ فعلی؛ حذف نشده، تا اطلاع بعدی ساخته نشود.**
+  - **P3 · BLOCKED** · moduleLanding legal-contracts → /planned؛ سازوکار فعال قرارداد یافت نشد و اقدام مالک به علت فریز لازم است.
 - [F] F12-08 (`legal-archive`) ثبت و بایگانی قراردادها — اجرا در فاز 11؛ منو/آیکون ✔؛ هفت تحویل‌شدنی `[ ]`. — **فریز (مالک ۱۴۰۵/۰۸/۲۶): خارج از دامنهٔ فعلی؛ حذف نشده، تا اطلاع بعدی ساخته نشود.**
+  - **P3 · BLOCKED** · moduleLanding legal-archive → /planned؛ بایگانی حقوقیِ قابل اقدام یافت نشد؛ فریز معتبر.
 - [F] F12-09 (`legal-renewal`) تمدید و کنترل تاریخ اعتبار قراردادها — اجرا در فاز 11؛ منو/آیکون ✔؛ هفت تحویل‌شدنی `[ ]`. — **فریز (مالک ۱۴۰۵/۰۸/۲۶): خارج از دامنهٔ فعلی؛ حذف نشده، تا اطلاع بعدی ساخته نشود.**
+  - **P3 · BLOCKED** · moduleLanding legal-renewal → /planned؛ تمدید و تاریخ اعتبار فاقد مسیر عملیاتی؛ فریز معتبر.
 - [F] F12-10 (`legal-cases`) پیگیری پرونده‌های حقوقی — اجرا در فاز 11؛ منو/آیکون ✔؛ هفت تحویل‌شدنی `[ ]`. — **فریز (مالک ۱۴۰۵/۰۸/۲۶): خارج از دامنهٔ فعلی؛ حذف نشده، تا اطلاع بعدی ساخته نشود.**
+  - **P3 · BLOCKED** · moduleLanding legal-cases → /planned؛ CasesWorkspace پشتیبانی مشتری است؛ فریز حقوقی معتبر.
 - [F] F12-11 (`legal-expiry`) هشدار انقضای اسناد و مجوزها — اجرا در فاز 11؛ منو/آیکون ✔؛ هفت تحویل‌شدنی `[ ]`. — **فریز (مالک ۱۴۰۵/۰۸/۲۶): خارج از دامنهٔ فعلی؛ حذف نشده، تا اطلاع بعدی ساخته نشود.**
+  - **P3 · BLOCKED** · moduleLanding legal-expiry → /planned؛ پیوند اعلان سررسید حقوقی با تسک یافت نشد؛ فریز معتبر.
 - [~] F12-12 (`fin-credit-scoring`) اعتبارسنجی مشتریان — اجرا در فاز 6؛ منو/آیکون ✔؛ هفت تحویل‌شدنی `[ ]`. — **ردیف منو؛ هنگام ساخت با صاحب فاز اصلی ادغام می‌شود.**
+  - **P1 · PARTIAL** · OperationsControlWorkspace credit و financialIntelligence.buildCustomerCreditSection؛ امتیاز زمینه‌ای هست؛ کاشی fin-credit-scoring و اعتبار مستند/مدارک بانکی کامل نیست.
 - [~] F12-13 (`fin-liquidity`) نقدینگی و حساب‌های بانکی — اجرا در فاز 6؛ منو/آیکون ✔؛ هفت تحویل‌شدنی `[ ]`. — **ردیف منو؛ هنگام ساخت با صاحب فاز اصلی ادغام می‌شود.**
+  - **P0 · PARTIAL** · کاشی fin-liquidity به خزانه واقعی وصل و CashFlowPanel متصل به API است؛ تطبیق بانک و کیفیت پیش‌بینی واقعی باز.
 - [~] F12-14 (`fin-payments`) مدیریت پرداخت‌ها — اجرا در فاز 6؛ منو/آیکون ✔؛ هفت تحویل‌شدنی `[ ]`. — **ردیف منو؛ هنگام ساخت با صاحب فاز اصلی ادغام می‌شود.**
+  - **P0 · PARTIAL** · FinanceWorkspace requests و AdvanceAccountingPanel؛ بخشی از فرایند موجود؛ fin-payments برنامه‌ریزی‌شده و Push/رسید رسمی باز.
 - [~] F12-15 (`fin-cashbox`) مدیریت صندوق — اجرا در فاز 6؛ منو/آیکون ✔؛ هفت تحویل‌شدنی `[ ]`. — **ردیف منو؛ هنگام ساخت با صاحب فاز اصلی ادغام می‌شود.**
+  - **P1 · PARTIAL** · treasuryFlow جریان/مانده گزارش می‌کند؛ fin-cashbox → /planned و چرخهٔ عملیات صندوق کامل نیست.
 - [~] F12-16 (`fin-budget`) بودجه‌ریزی — اجرا در فاز 6؛ منو/آیکون ✔؛ هفت تحویل‌شدنی `[ ]`. — **ردیف منو؛ هنگام ساخت با صاحب فاز اصلی ادغام می‌شود.**
+  - **P1 · PARTIAL** · financialIntelligence.buildExpenseBudgetSection مقایسهٔ زمینه‌ای دارد؛ fin-budget نمای برنامه‌ریزی‌شده است و ثبت نسخه‌دار بودجه موجود نیست.
 - [~] F12-17 (`fin-cost-control`) کنترل هزینه‌ها — اجرا در فاز 6؛ منو/آیکون ✔؛ هفت تحویل‌شدنی `[ ]`. — **ردیف منو؛ هنگام ساخت با صاحب فاز اصلی ادغام می‌شود.**
+  - **P1 · PARTIAL** · MoneyIntelligencePanel Drill-down هزینه دارد؛ fin-cost-control هنوز /planned و گردش کامل هزینه در برابر بودجه باز.
 - [~] F12-18 (`fin-reports`) گزارش‌های مالی — اجرا در فاز 9؛ منو/آیکون ✔؛ هفت تحویل‌شدنی `[ ]`. — **ردیف منو؛ هنگام ساخت با صاحب فاز اصلی ادغام می‌شود.**
+  - **P1 · PARTIAL** · ReportsHub finance و /ledger/books, /ledger/pnl؛ گزارش‌های رسمی بخشی؛ ترازنامه و تطبیق مالی واقعی باز.
 - [~] F12-19 (`fin-commission`) محاسبه پورسانت — اجرا در فاز 8؛ منو/آیکون ✔؛ هفت تحویل‌شدنی `[ ]`. — **ردیف منو؛ هنگام ساخت با صاحب فاز اصلی ادغام می‌شود.**
+  - **P1 · PARTIAL** · calculateCommissionForSeller و 021؛ بخشی از موتور هست؛ fin-commission → /planned و محاسبه/تسویهٔ چندبعدی باز.
 - [~] F12-20 (`fin-invoice-discount`) تخفیفات فاکتور — اجرا در فاز 6؛ منو/آیکون ✔؛ هفت تحویل‌شدنی `[ ]`. — **ردیف منو؛ هنگام ساخت با صاحب فاز اصلی ادغام می‌شود.**
+  - **P1 · PARTIAL** · taskRequestContract تغییر مبلغ/قیمت و تخفیف سفارش را کنترل می‌کند؛ fin-invoice-discount → /planned؛ کنترل مستقل پس از صدور باز.
 - [~] F12-21 (`fin-invoice-profit`) سود فاکتور (وابسته به FIFO) — اجرا در فاز 7؛ منو/آیکون ✔؛ هفت تحویل‌شدنی `[ ]`. — **ردیف منو؛ هنگام ساخت با صاحب فاز اصلی ادغام می‌شود.**
+  - **P0 · PARTIAL** · invoiceFifoEvidence و InvoiceFifoSheet ریز حاشیه دارند؛ کاشی fin-invoice-profit هنوز /planned و تطبیق کامل ERP باز.
 - [~] F12-22 (`fin-dispatch-profit`) سود برنامه توزیع — اجرا در فاز 7؛ منو/آیکون ✔؛ هفت تحویل‌شدنی `[ ]`. — **ردیف منو؛ هنگام ساخت با صاحب فاز اصلی ادغام می‌شود.**
-- [~] F12-23 (`fin-cash-discount`) تخفیف نقد فاکتور و برنامه توزیع — اجرا در فاز 6؛ منو/آیکون ✔؛ هفت تحویل‌شدنی `[ ]`. — **ردیف منو؛ هنگام ساخت با صاحب فاز اصلی ادغام می‌شود.**
+  - **P2 · PARTIAL** · OperationsControlWorkspace profitability تخمین هزینهٔ پخش دارد؛ fin-dispatch-profit → /planned و سود برنامه با اسناد قطعی باز.
+- [ ] F12-23 (`fin-cash-discount`) تخفیف نقد فاکتور و برنامه توزیع — اجرا در فاز 6؛ منو/آیکون ✔؛ هفت تحویل‌شدنی `[ ]`. — **ردیف منو؛ هنگام ساخت با صاحب فاز اصلی ادغام می‌شود.**
+  - **P2 · NOT IMPLEMENTED** · fin-cash-discount → /planned؛ fin/ledger و مسیر کنترل تخفیف سفارش جای کنترل تخفیف نقد در فاکتور و برنامهٔ پخش را نمی‌گیرند.
 - [~] F12-24 (`fin-targets`) تعریف و تحقق اهداف فروش — اجرا در فاز 8؛ منو/آیکون ✔؛ هفت تحویل‌شدنی `[ ]`. — **ردیف منو؛ هنگام ساخت با صاحب فاز اصلی ادغام می‌شود.**
+  - **P1 · PARTIAL** · 017/028 و ReportsHub اهداف پایه را می‌خوانند؛ fin-targets → /planned و تعریف نسخه‌دار اهداف/اتصال داده باز.
 - [~] F12-25 (`dist-route-planning`) برنامه‌ریزی مسیر و تور ویزیت — اجرا در فاز 5؛ منو/آیکون ✔؛ هفت تحویل‌شدنی `[ ]`. — **ردیف منو؛ هنگام ساخت با صاحب فاز اصلی ادغام می‌شود.**
+  - **P1 · PARTIAL** · GeoIntelligenceWorkspace و crm.Visit؛ زون و مشاهدهٔ ویزیت موجود؛ dist-route-planning → /planned و برنامهٔ روزانه باز.
 - [~] F12-26 (`dist-settlement-sales`) هماهنگی تسویه/برگشتی هر فاکتور با واحد فروش — اجرا در فاز 5؛ منو/آیکون ✔؛ هفت تحویل‌شدنی `[ ]`. — **ردیف منو؛ هنگام ساخت با صاحب فاز اصلی ادغام می‌شود.**
+  - **P1 · PARTIAL** · OperationsControlWorkspace returns و journalCoverage؛ برگشتی خواندنی موجود؛ dist-settlement-sales → /planned و گردش تسویهٔ فاکتور باز.
 - [~] F12-27 (`dist-operations`) یکپارچگی عملیات توزیع (فاکتور، موجودی، خودرو، راننده، مشتری، تسویه، برگشتی) — اجرا در فاز 5؛ منو/آیکون ✔؛ هفت تحویل‌شدنی `[ ]`. — **ردیف منو؛ هنگام ساخت با صاحب فاز اصلی ادغام می‌شود.**
-- [ ] F12-28 اطمینان نهایی: هر قابلیت فهرست سند معماری سازمانی در منو وجود دارد و هر واحد تکمیل و آزمون‌شده است؛ در غیر این صورت وضعیتش صریح «ساخته‌نشده/تأییدنشده» می‌ماند.
-- [ ] F12-29 الزامات یکپارچگی ۱۲‌گانه برای تک‌تک واحدها: ماژول مستقل، منوی استاندارد، داشبورد، جداول و روابط، ذخیره دائمی در پایگاه داده، ممنوعیت داده آزمایشی، نقش و مجوز، تاریخچه تغییرات، گردش کار و تأییدیه، گزارش، هشدار سررسید/بدهی/قرارداد/وظیفه، رابط فارسی راست‌چین موبایل و دسکتاپ.
+  - **P1 · PARTIAL** · 008 و OperationsControlWorkspace dispatch؛ نما و مدل پایه، dist-operations → /planned و زنجیرهٔ کامل و پایدار ERP باز.
+- [~] F12-28 اطمینان نهایی: هر قابلیت فهرست سند معماری سازمانی در منو وجود دارد و هر واحد تکمیل و آزمون‌شده است؛ در غیر این صورت وضعیتش صریح «ساخته‌نشده/تأییدنشده» می‌ماند.
+  - **P2 · PARTIAL** · moduleLanding.ts و plannedModules.ts؛ منو قرارداد فعال/برنامه‌ریزی را نشان می‌دهد؛ اتصال تمام کاشی‌ها و تست همهٔ واحدها هنوز باز.
+- [~] F12-29 الزامات یکپارچگی ۱۲‌گانه برای تک‌تک واحدها: ماژول مستقل، منوی استاندارد، داشبورد، جداول و روابط، ذخیره دائمی در پایگاه داده، ممنوعیت داده آزمایشی، نقش و مجوز، تاریخچه تغییرات، گردش کار و تأییدیه، گزارش، هشدار سررسید/بدهی/قرارداد/وظیفه، رابط فارسی راست‌چین موبایل و دسکتاپ.
+  - **P1 · PARTIAL** · active routes و 001–048؛ بخشی از واحدها داده و عمل دارند؛ یکپارچگی ۱۲بندی در همهٔ واحدها احراز نشده.
 
 ## فاز ۱۳ — کیفیت و انتشار
 - [~] F13-00 تثبیت‌شده: هدر جزیره‌ای/منوی شیشه‌ای قفل (`designLockContracts`, `seamlessHeaderContracts` PASS)؛ Design Token (صفر hex خارج از seed، ۲۳۰ متغیر)؛ فارسی‌سازی (باقی‌مانده: `docs/DESIGN_SYSTEM_FA.md` §۸)؛ ثبت اولیه ممیزی (`audit:contracts` PASS ایستا).
-- [ ] F13-01 تست بصری 320/360/375/390/430/768/1024/1440 + Light/Dark + RTL + Safe Area.
-- [ ] F13-02 تعامل هدر/چت/اعلان/Drawer/Bottom Dock؛ دسترس‌پذیری؛ UAT.
+  - **P2 · PARTIAL** · DESIGN_SYSTEM_FA §۳-پ، FloatingHeader و check-design-lock؛ designLockContracts PASS؛ کل مهاجرت کامپوننت و پذیرش بصری باز.
+- [~] F13-01 تست بصری 320/360/375/390/430/768/1024/1440 + Light/Dark + RTL + Safe Area.
+  - **P2 · PARTIAL** · ux-quality.yml و test-ux-browser.py؛ بخشی از ماتریس مرورگر تعریف شده، آزمون کامل اندازه/حالت/Safe Area روی نسخهٔ جاری ثبت نشده.
+- [~] F13-02 تعامل هدر/چت/اعلان/Drawer/Bottom Dock؛ دسترس‌پذیری؛ UAT.
+  - **P2 · PARTIAL** · Layout.tsx، GroupsWorkspace، NotificationCenter و test-ux-browser.py:124 به بعد؛ سناریوها حاضرند؛ پوشش اعلان/چت واقعی و UAT نقش‌ها باز.
 - [x] F13-03 ادغام واژه‌نامه و وضعیت فارسی‌سازی در `docs/DESIGN_SYSTEM_FA.md` §۸ (سند جداگانهٔ ممیزی حذف شد). شاهد: `persianLocalizationContracts` (PASS در همین اجرا).
-- [ ] F13-04 ZIP نهایی + `unzip -t` + بدون `node_modules`/secret.
+  - **VERIFIED** · DESIGN_SYSTEM_FA §۸ و git ls-files اسناد؛ واژه‌نامه ادغام شده است. آزمون persianLocalizationContracts در UI هشدار دارد؛ تسویهٔ فارسی‌سازی کل UI مجزا است.
+- [x] F13-04 ZIP نهایی + `unzip -t` + بدون `node_modules`/secret.
+  - **VERIFIED** · git archive از مبنای ممیزی و unzip -tq موفق؛ فایل‌های وابستگی بازتولیدپذیر و نام فایل‌های کلید/محیط در درخت نسخه نبودند.
 
 ## ثبت ممیزی‌ها (محل یگانهٔ نتایج ممیزی؛ هر ممیزی تاریخ و شاهد دارد)
 - **A1 — ۱۴۰۵/۰۸/۲۵ — مسیر ثبت مشتری (F0-07).** یافته‌ها (با grep روی `server/index.mjs`، `CustomersWorkspace.tsx`، `dataProvider.ts`، `optimisticMutation.ts`): (۱) ثبت محلی مستقیم در `state.accounts` با `origin=CRM_LOCAL`/`isLocalDraft` و صف offline عمومی `accounts CREATE` انجام می‌شد؛ (۲) مسیر پیشنهاد سرور `POST /api/v1/accounts` (Outbox `crm.customer.create-proposed`، idempotency، audit، `canonicalRecordCreated:false`) فقط با `ACCOUNTS_SOURCE=typed` فعال است و هیچ مصرف‌کنندهٔ کلاینتی نداشت؛ `DataProvider.createAccount(account, idempotencyKey)` موجود ولی بی‌استفاده؛ (۳) `findDuplicateAccounts` فقط فهرست‌محور و فقط بر پایهٔ تلفن بود (تطبیق کد ملی/اقتصادی/نام نبود)؛ (۴) متن اعلان «با موفقیت در سامانه ایجاد شد» ادعای مشتری رسمی می‌کرد. وضعیت: ۲ و ۴ و ۳ اصلاح/تکمیل شد؛ ۱ (اتصال شبکه‌ای) باز و BLOCKED.
@@ -709,70 +896,125 @@
 - **A5 — ۲۰۲۶-۱۱-۱۶ — ممیزی هدفمند هویت و چرخه پرسنل (F2-09/F8).** یافته‌های سورس: (۱) `UserAccount` در `src/types.ts` دارای `employeeCode` است، اما فیلدهای قراردادی مشخص برای کد بازرگانی و کد تفصیلی ندارد؛ (۲) تعریف/مدیریت کاربر و نقش هنوز در `SettingsWorkspace` است؛ `handleCreateUser` رکورد را در `state.users` می‌سازد؛ (۳) `onboarding.ts` درخواست همکاری، ارجاع مصاحبه، نتیجه مصاحبه و پرونده پرسنلی متصل به `userId` را دارد و جداسازی «تأیید پرونده» از «فعال‌سازی حساب» را رعایت می‌کند؛ اما تبدیل پذیرفته‌شده به کارمند/کاربر و گردش جامع وضعیت شغلی در این مسیر اثبات نشد؛ (۴) `personnelFiles` و `onboardingApplications` در `AppState`/`stateCollections` وجود دارند، اما مسیرهای بررسی‌شده عمدتاً از State/ClientStorage استفاده می‌کنند؛ اتصال کامل سروری/Provider برای چرخه پرسنل اثبات نشد؛ (۵) در `payrollEngine` دادهٔ پرسنل و حقوق مصرف می‌شود، اما مسیر آموزشی نقش‌محور، سطوح، بانک سوالات/آزمون، تأیید PASS مدیر و اتصال قطعی سطح به پلکان افزایش حقوق در ممیزی هدفمند پیدا نشد؛ (۶) `core.AppUser` در SQL وجود دارد و `ManagerUserId` نیز Migration دارد، اما در جست‌وجوی هدفمند، مدل مستقل و کامل Employee با تاریخچه شغلی/آموزشی و نگاشت کد بازرگانی/تفصیلی اثبات نشد. وضعیت: همهٔ موارد فوق باز هستند؛ این ممیزی محدود به فایل‌ها و الگوهای ذکرشده است و جایگزین ممیزی کامل Migrationها/Provider نیست. گام اجرایی: F2-09 تا F2-13، سپس F8-11 تا F8-17؛ قبل از هر Migration، مدل و جداول موجود دوباره ممیزی شوند.
 
 ## معیار پذیرش هر صفحه (از چک‌لیست بازطراحی قبلی)
+
+این معیارها برای پذیرش هر صفحه تکرار می‌شوند. شواهد و اولویتِ کار به ردیف‌های شناسه‌دار ارجاع دارند و شمارش جداگانه نمی‌شوند.
 - [ ] اقدام اصلی روشن؛ ۳–۵ KPI؛ نمودار اصلی شاخص‌تر؛ رتبه‌بندی با معیار و دوره.
+  - **PARTIAL** در سطح محصول. ReportsHub و MoneyIntelligencePanel نمونهٔ اقدام و KPI دارند؛ پوشش همهٔ صفحات در F9-07 و F18-07 باز.
 - [ ] داده واقعی و منبع‌دار؛ بدون اسپارک‌لاین/عدد ساختگی؛ Empty State به‌جای صفر ساختگی؛ وضعیت LIVE/LOCAL/DEMO/PARTIAL/STALE/UNAVAILABLE.
+  - **PARTIAL** در سطح محصول. officialLedgerReads و reportStatus وضعیت منبع دارند؛ پذیرش داده و پوشش کل صفحات در F9-13 و F18-04 باز.
 - [ ] Drill-down با RBAC؛ Timeline واقعی؛ اطلاعات حساس permission-scoped؛ CTA فقط برای عملیات مجاز.
+  - **PARTIAL** در سطح محصول. Customer360، InvoiceFifoSheet و TaskRequest detail ریزگردش و اقدام مجاز دارند؛ پوشش در F2-14 و F18-07 باز.
 - [ ] موبایل‌اول، RTL، Light/Dark، Touch target، Focus، Label.
+  - **PARTIAL** در سطح محصول. FloatingHeader، Modal، کامپوننت‌های مشترک و گیت UX شاهد سورس‌اند؛ مرور دستگاه و UAT در F13-01 و F13-02 باز.
 - [ ] ردیف مشتری فقط نام/شماره/نشانی/مانده معتبر؛ سقف اعتبار هرگز جای بدهی نباشد؛ نشانگر سراسری سبز فقط پس از همگام‌سازی موفق بدون صف معوق.
+  - **PARTIAL** در سطح محصول. CustomersWorkspace:411,443 مانده را پشت مجوز می‌خواند؛ پذیرش نمایش سراسری وضعیت منبع در F0-05 و F2-17 باز.
 - [ ] تست جدید در `scripts/tests.manifest.json`؛ این چک‌لیست و سند مرتبط با شاهد به‌روز.
+  - **PARTIAL** در سطح محصول. scripts/tests.manifest.json و اسناد شواهد دارند؛ پذیرش سراسری با F0-02 و F18-08 باز.
 
 
 ## فاز ۱۴ — پایش عملیاتی ERP، موتور قوانین و چرخه عمر مغایرت (الحاقیه مالک ۲۰۲۶-۱۱-۱۶)
 > تمام ردیف‌ها در زمان افزودن این الحاقیه `[ ]` هستند؛ وجود مشخصات یا کدهای اولیه قبلی به‌تنهایی PASS نیست. هر ردیف باید با ممیزی کد/Schema، پیاده‌سازی، تست اختصاصی و شاهد بسته شود.
-- [ ] F14-01 ممیزی یکپارچه DataProvider/DataSyncController/ETL/SQL و اتصال دیتابیس تجمیعی ERP؛ تعیین منبع، نسخه، مجوز read-only، tenant/branch و پیش‌نیازهای واقعی. خروجی: نقشه مسیر داده و موارد BLOCKED.
-- [ ] F14-02 انتخاب و پیاده‌سازی روش Change Detection پس از بررسی قابلیت واقعی DB (CDC/Change Tracking/Timestamp/Snapshot)؛ تشخیص Insert/Update/Delete با checkpoint و آزمون قطع/وصل.
+- [B] F14-01 ممیزی یکپارچه DataProvider/DataSyncController/ETL/SQL و اتصال دیتابیس تجمیعی ERP؛ تعیین منبع، نسخه، مجوز read-only، tenant/branch و پیش‌نیازهای واقعی. خروجی: نقشه مسیر داده و موارد BLOCKED.
+  - **P0 · BLOCKED** · import-erp-financial-feed، financialFeedExtract و Database schemas؛ اتصال/استخراج واقعی بدون مجوز خواندن و نمونهٔ منبع ممکن نیست.
+- [~] F14-02 انتخاب و پیاده‌سازی روش Change Detection پس از بررسی قابلیت واقعی DB (CDC/Change Tracking/Timestamp/Snapshot)؛ تشخیص Insert/Update/Delete با checkpoint و آزمون قطع/وصل.
+  - **P0 · PARTIAL** · 032 و financialFeedWorker؛ Cursor و watermark به‌همراه snapshot/replay موجود، انتخاب مسیر CDC یا جایگزین رسمی نیازمند بررسی ERP است.
 - [~] F14-03 تکمیل Sync Run/Event و checkpoint: batch ID، زمان، checksum، شمارش new/updated/deleted/rejected، خطا، retry و idempotent replay.
+  - **P0 · PARTIAL** · 032/033 و financialFeedWorker؛ دسته/checksum/replay/checkpoint حاضر، Retry عملیاتی و مشاهدهٔ رویدادهای همهٔ حوزه‌ها باز.
   - **IMPLEMENTED — NOT TESTED:** Migrationهای ۰۴۰–۰۴۱ و ورودی `scripts/import-erp-financial-feed.mjs` کدینگ رسمی، دوره، تفصیلی و روابط و سند/آرتیکل را در جداول موجود منتشر می‌کنند. کنترل مستقل ERP، نسخهٔ مرتب حتی بدون UpdatedAt، cursor، قرنطینهٔ کل دسته، نگهداری Raw، محافظت از نسخهٔ قدیمی و اتصال دقیق سند به چند عملیات ثبت شده‌اند. دسته/کدینگ ناسالم هیچ سندی منتشر نمی‌کند. حساب‌های از پیش واردشده با نقش مصوب حفظ می‌شوند و سند قدیمی بدون نسخه نیازمند تعیین مبنا است. قرارداد Adapter اختصاصی، دادهٔ واقعی SQL/ERP و اجرای QA همچنان NOT VERIFIED است.
   - **IMPLEMENTED — NOT TESTED با ERP واقعی:** دریافت فایل و Pull از HTTPS یا View فقط‌خواندنی، شرکت و نقطهٔ ادامه را از Connector مصوب می‌خواند. قرارداد آداپتور Excel/CSV یا CDC هر فروشنده و اجرای اتصال زنده باز است. آزمون‌های سبک قرارداد محلی انجام شدند؛ گزارش تازه‌بودن و جریان واقعی SQL نیازمند QA مستقل است.
 - [ ] F14-04 اجرای خودکار Ruleهای وابسته پس از Sync موفق/جزئی؛ جلوگیری از اجرای غیرضروری کل کاتالوگ و ثبت نسخه قانون/داده مبنا.
+  - **P1 · NOT IMPLEMENTED** · financialFeedWorker و journalCoverage مستقل‌اند؛ hook بعد از Sync موفق/جزئی برای اجرای گزینشی Rule در Worker یافت نشد.
 - [ ] F14-05 ممیزی و تکمیل مدل پایدار Finding در SQL؛ ابتدا جست‌وجوی جدول‌های هم‌معنا و Migrationهای موجود؛ طراحی کلید منطقی یکتا و tenant-scoped.
-- [ ] F14-06 پیاده‌سازی Finding Evidence و نگهداری before/after، اسناد منبع، شواهد، confidence، source lineage و محدودیت پوشش.
+  - **P1 · NOT IMPLEMENTED** · erpDataQuality نتیجهٔ در حافظه و journalCoverage فقط تسک ممیزی‌دار می‌سازند؛ مدل پایدار عمومی Finding در Migrationها یافت نشد.
+- [~] F14-06 پیاده‌سازی Finding Evidence و نگهداری before/after، اسناد منبع، شواهد، confidence، source lineage و محدودیت پوشش.
+  - **P1 · PARTIAL** · 041، journalCoverage و AuditWorkspace شاهد/شناسه منبع بخش مالی دارند؛ Before/After و ردیابی پایدار برای همهٔ Findingها باز.
 - [ ] F14-07 پیاده‌سازی Finding Lifecycle و تاریخچه append-only برای NEW/OBSERVED/NEEDS_EXPLANATION/PENDING_CORRECTION/PENDING_APPROVAL/APPROVED_WITH_REASON/RESOLVED/REJECTED_WITH_REASON/REOPENED.
-- [ ] F14-08 تخصیص مسئول، گروه رسیدگی، SLA/مهلت، ارجاع و تغییر مسئول با تاریخچه و RBAC.
-- [ ] F14-09 ثبت نظر، توضیح، پیوست و مستندات پرونده؛ کنترل دسترسی فایل و نگهداری امن.
-- [ ] F14-10 گردش تأیید/رد/استثنا با علت، مستند، تأییدکننده، تاریخ اعتبار و scope؛ استثنا نباید Rule یا تشخیص رخداد بعدی را خاموش کند.
+  - **P1 · NOT IMPLEMENTED** · taskRequests lifecycle تسک دارد؛ مدل سراسری append-only چرخهٔ Finding مستقل از وضعیت اقدام در SQL پیدا نشد.
+- [~] F14-08 تخصیص مسئول، گروه رسیدگی، SLA/مهلت، ارجاع و تغییر مسئول با تاریخچه و RBAC.
+  - **P1 · PARTIAL** · journalCoverage.createJournalCoverageFollowUp و taskRequests؛ ارجاع و SLA در تسک مشترک، مسئول/سیاست اختصاصی همهٔ پرونده‌های مغایرت باز.
+- [~] F14-09 ثبت نظر، توضیح، پیوست و مستندات پرونده؛ کنترل دسترسی فایل و نگهداری امن.
+  - **P1 · PARTIAL** · /tasks/requests/:id/files ضمیمهٔ محافظت‌شده دارد؛ اتصال نظر/ضمیمه به پروندهٔ پایدار مغایرت عمومی باز.
+- [~] F14-10 گردش تأیید/رد/استثنا با علت، مستند، تأییدکننده، تاریخ اعتبار و scope؛ استثنا نباید Rule یا تشخیص رخداد بعدی را خاموش کند.
+  - **P1 · PARTIAL** · taskRequestContract تأیید/رد/شرط دارد؛ استثنای Rule با زمان اعتبار و Scope مستقل Finding پیاده نشده.
 - [ ] F14-11 Resolution Verification: فقط پس از Sync معتبر و اجرای مجدد Rule، پرونده رفع‌شده بسته شود؛ در قطع/کمبود داده پرونده باز بماند.
+  - **P0 · NOT IMPLEMENTED** · journalCoverage وضعیت از SQL جاری می‌خواند؛ اتصال checkpoint موفق و اجرای Rule مجدد به بستن Finding ثبت‌شده دیده نشد.
 - [ ] F14-12 مدیریت occurrence و بازگشایی: رفع و وقوع مجدد به سابقه پیوند بخورد؛ از پرونده تکراری و حذف تاریخچه جلوگیری شود.
-- [ ] F14-13 Badge Counter واقعی و تفکیک‌شده برای new/active/critical/action-required؛ Query پایدار، tenant/RBAC-scoped و تست شمارش.
-- [ ] F14-14 Audit History و Notification Service برای ایجاد/تغییر/ارجاع/SLA/تأیید/رد/رفع/بازگشایی با dedupe و retry.
+  - **P1 · NOT IMPLEMENTED** · journalCoverage issueKey برای تکرار تسک دارد؛ قرارداد occurrence برای رفع و بازگشایی پروندهٔ یکسان یافت نشد.
+- [~] F14-13 Badge Counter واقعی و تفکیک‌شده برای new/active/critical/action-required؛ Query پایدار، tenant/RBAC-scoped و تست شمارش.
+  - **P1 · PARTIAL** · AuditWorkspace شمارش high/medium/low از یافته‌های فعلی می‌گیرد؛ Badge پایدار جدید/فعال/اقدام‌لازم با Scope باز.
+- [~] F14-14 Audit History و Notification Service برای ایجاد/تغییر/ارجاع/SLA/تأیید/رد/رفع/بازگشایی با dedupe و retry.
+  - **P1 · PARTIAL** · 013 AuditEvent، taskRequests.notify و journalCoverage follow-up؛ تاریخچه و اعلان در تسک هست؛ پوشش همهٔ رویدادهای Finding و Retry باز.
   - **IMPLEMENTED — NOT TESTED:** از پوشش اسناد در خزانه‌داری می‌توان پس از بازخوانی یافته و کنترل مجوز مالی و وظیفه، پیگیری یکتا ایجاد کرد. مسئول اولیه درخواست‌کننده است. جزئیات مالی و دلیل تشخیص در همان تراکنش در Audit ثبت می‌شوند و از پروندهٔ وظیفه تنها با مجوز هر دو بخش خوانده می‌شوند. اجرای خودکار قواعد، Escalation و تایید رفع پس از Sync باز است.
-- [ ] F14-15 صفحه Landing حوزه‌ای: هر فضای کاری یک ورودی پایش؛ نگاشت ۱۱ حوزه مالک به ۸ فضای کاری؛ بدون آیکون یا تب مستقل برای تک‌تک قوانین.
+- [~] F14-15 صفحه Landing حوزه‌ای: هر فضای کاری یک ورودی پایش؛ نگاشت ۱۱ حوزه مالک به ۸ فضای کاری؛ بدون آیکون یا تب مستقل برای تک‌تک قوانین.
+  - **P2 · IMPLEMENTED — NOT TESTED** · moduleLanding.ts هشت ورودی audit و AuditWorkspace حوزه‌ها را گروه‌بندی می‌کند؛ پذیرش نگاشت/نقش بصری اجرا نشده.
 - [~] F14-16 صفحه یکپارچه حوزه: وضعیت آخرین دسته از API مرکز داده قابل مشاهده است. KPIهای فعال/جدید/بحرانی/پوشش، روند، توزیع شدت، فهرست گروه‌بندی‌شده، فیلتر و جست‌وجو باز هستند.
+  - **P1 · PARTIAL** · AuditWorkspace، SyncCenterWorkspace و sync-overview؛ نما و شمارش حاضر، روند واقعی lifecycle و وضعیت پوشش همهٔ حوزه‌ها باز.
   - **IMPLEMENTED — NOT TESTED:** Migration ۰۴۳ معیار مشترک اعتبار سند و تاریخ اثر مالی دارد. در خزانه‌داری، کنترل پوشش فاکتور فروش، برگشت فروش و دریافت/پرداخت با لینک رسمی ERP، فیلتر و ریز آرتیکل فعال است. سند مشاهده‌نشده پیش از اثبات پوشش کامل به فاقد سند تبدیل نمی‌شود. محاسبهٔ اختلاف FIFO و دفتر از دو مبنای مستقل است. اتصال خرید/برگشت خرید، پایش خودکار قواعد، تاریخچه و پیوند تسک همچنان باز است.
-- [ ] F14-17 پرونده جزئیات کامل: عنوان/حوزه/شناسه ERP/نوع سند/مبلغ یا مقدار/تاریخ/شدت/Rule/قبل‌و‌بعد/شواهد/مسئول/توضیحات/پیوست/Timeline/نتیجه بررسی.
-- [ ] F14-18 Rule Registry و نسخه‌بندی: شناسه، شرح، حوزه، شرط، پارامتر، شدت، پوشش، منبع، شواهد، تست و تاریخ اعتبار؛ فعال‌سازی/غیرفعال‌سازی با audit.
-- [ ] F14-19 Rule Settings: آستانه، بازه زمانی، شعبه/انبار، مسئول، SLA، حداقل سود، سقف تخفیف و اقدام مورد انتظار؛ بدون business hardcode.
-- [ ] F14-20 Data Mapping Catalog: برای هر قانون جدول/ویو و ستون واقعی، کلید اتصال، فیلتر tenant/branch/period، سند شواهد و وضعیت تأیید نگاشت ثبت شود؛ حدس ممنوع.
-- [ ] F14-21 پوشش کامل حسابداری/مالی: تمام کنترل‌های فهرست §۱۲-۴(۱) Master Spec؛ هر کنترل دارای ruleCode/شرط/شدت/پارامتر/شواهد/تست.
-- [ ] F14-22 پوشش کامل مشتری/اعتبار: تمام کنترل‌های §۱۲-۴(۲) شامل شناسه ملی مشترک، چندکدی شعب، بدهی معوق، سقف اعتبار و تغییرات غیرعادی.
-- [ ] F14-23 پوشش کامل فروش/سفارش: تمام کنترل‌های §۱۲-۴(۳)، به‌ویژه سود فاکتور بر مبنای بهای تمام‌شده واقعی، مالیات، تخفیف و هزینه مرتبط.
-- [ ] F14-24 پوشش کامل خرید/تأمین‌کننده: تمام کنترل‌های §۱۲-۴(۴) و تطبیق فاکتور/رسید/سند/پرداخت.
-- [ ] F14-25 پوشش کامل خزانه/بانک: تمام کنترل‌های §۱۲-۴(۵) از جمله دریافت تخصیص‌نیافته، پرداخت تکراری، تغییر حساب بانکی و چک.
-- [ ] F14-26 پوشش کامل انبار: تمام کنترل‌های §۱۲-۴(۶)؛ اختلاف واقعی فقط در صورت داده شمارش واقعی؛ عدم وجود شمارش = NOT EVALUATED.
-- [ ] F14-27 پوشش کامل پخش/حمل/توزیع: تمام کنترل‌های §۱۲-۴(۷) و چرخه فاکتور تا تحویل و تسویه.
-- [ ] F14-28 پوشش کامل قیمت‌گذاری/تخفیف: تمام کنترل‌های §۱۲-۴(۸)، طرح مصوب و حداقل حاشیه سود.
-- [ ] F14-29 پوشش کامل پورسانت/عملکرد: تمام کنترل‌های §۱۲-۴(۹) با مبنای فروش قطعی/خالص/وصول طبق سیاست مصوب.
-- [ ] F14-30 پوشش کامل کاربران/کنترل داخلی: تمام کنترل‌های §۱۲-۴(۱۰)، تفکیک وظایف و تغییرات حساس.
-- [ ] F14-31 پوشش کامل کیفیت داده و ساختار: تمام کنترل‌های §۱۲-۴(۱۱)، ارتباطات شکسته و فرآیندهای نیمه‌تمام.
-- [ ] F14-32 پوشش کامل تطبیق بین‌ماژولی: تمام کنترل‌های §۱۲-۴(۱۲) با مبلغ/تعداد/وضعیت و سندهای مرتبط.
-- [ ] F14-33 پوشش کامل کنترل‌های اختصاصی پخش: تمام کنترل‌های §۱۲-۴(۱۳)، سودآوری و اختلاف عملکرد ویزیتورها.
-- [ ] F14-34 علت‌یابی بستانکاری مشتری: تطبیق مانده تفصیلی×معین×دوره با فاکتور، برگشت، دریافت نقد/بانک، چک، پیش‌پرداخت، سند اصلاحی، تسویه و تخصیص‌ها.
-- [ ] F14-35 سناریوهای علت‌یابی: دریافت تخصیص‌نیافته/پیش‌پرداخت/دریافت تکراری/برگشت/تفصیلی اشتباه/مشتری اشتباه/اصلاحیه/اختلاف زمانی/انتقال مانده/چک/تسویه؛ فقط با شواهد.
-- [ ] F14-36 خروجی علت‌یابی: فرضیه، سند، مبلغ، تاریخ، confidence توضیح‌پذیر، شواهد موافق/مخالف، داده بررسی‌نشده و «علت نامشخص» در نبود شواهد.
-- [ ] F14-37 کارتابل تصمیم مالی: تأیید بستانکاری معتبر با علت/مدرک و تأیید مدیر، یا اعلام مغایرت و ارجاع اصلاح در ERP؛ ثبت تاریخچه کامل.
-- [ ] F14-38 آزمون end-to-end مغایرت: کشف، Badge، پرونده، توضیح/پیوست، تأیید، اصلاح ERP، Sync، رفع، حفظ سابقه، occurrence مجدد و dedupe.
+- [~] F14-17 پرونده جزئیات کامل: عنوان/حوزه/شناسه ERP/نوع سند/مبلغ یا مقدار/تاریخ/شدت/Rule/قبل‌و‌بعد/شواهد/مسئول/توضیحات/پیوست/Timeline/نتیجه بررسی.
+  - **P1 · PARTIAL** · AuditWorkspace نمایش شواهد و journalCoverage رکورد/مدرک دارد؛ پروندهٔ واحد با تاریخچه و پیوست تمام یافته‌ها باز.
+- [~] F14-18 Rule Registry و نسخه‌بندی: شناسه، شرح، حوزه، شرط، پارامتر، شدت، پوشش، منبع، شواهد، تست و تاریخ اعتبار؛ فعال‌سازی/غیرفعال‌سازی با audit.
+  - **P1 · PARTIAL** · erpDataQuality.QUALITY_RULE_LABELS، ETL_RULES و TaskRequestPolicyEditor؛ قوانین پایه در کد، Registry اجرایی نسخه‌دار و تاریخ اعتبار کامل نیست.
+- [~] F14-19 Rule Settings: آستانه، بازه زمانی، شعبه/انبار، مسئول، SLA، حداقل سود، سقف تخفیف و اقدام مورد انتظار؛ بدون business hardcode.
+  - **P1 · PARTIAL** · SettingsWorkspace و metricConfig آستانه‌های محدود دارند؛ تنظیم بازه/شعبه/مسئول/SLA به ازای همهٔ Ruleها باز.
+- [B] F14-20 Data Mapping Catalog: برای هر قانون جدول/ویو و ستون واقعی، کلید اتصال، فیلتر tenant/branch/period، سند شواهد و وضعیت تأیید نگاشت ثبت شود؛ حدس ممنوع.
+  - **P0 · BLOCKED** · 041 و financialFeedContract شناسهٔ داخلی دارند؛ کاتالوگ واقعی ستون/فیلتر با منشأ تجمیع ERP قابل تکمیل است.
+- [~] F14-21 پوشش کامل حسابداری/مالی: تمام کنترل‌های فهرست §۱۲-۴(۱) Master Spec؛ هر کنترل دارای ruleCode/شرط/شدت/پارامتر/شواهد/تست.
+  - **P0 · PARTIAL** · erpDataQuality و 043/044؛ توازن و اعتبار بعضی آرتیکل‌ها؛ سناریوهای کامل شرح/ماهیت/مالیات و داده واقعی باز.
+- [~] F14-22 پوشش کامل مشتری/اعتبار: تمام کنترل‌های §۱۲-۴(۲) شامل شناسه ملی مشترک، چندکدی شعب، بدهی معوق، سقف اعتبار و تغییرات غیرعادی.
+  - **P1 · PARTIAL** · erpDataQuality و financialIntelligence.buildCustomerCreditSection؛ اعتبار و شناسه چند کنترل دارد؛ پوشش کامل نقد/سقف/همهٔ تغییرات باز.
+- [~] F14-23 پوشش کامل فروش/سفارش: تمام کنترل‌های §۱۲-۴(۳)، به‌ویژه سود فاکتور بر مبنای بهای تمام‌شده واقعی، مالیات، تخفیف و هزینه مرتبط.
+  - **P0 · PARTIAL** · invoiceFifoEvidence و taskRequestContract؛ حداقل حاشیه سفارش/فاکتور بخشی؛ تخفیف/مالیات و تحلیل کامل منابع فروش/توزیع باز.
+- [~] F14-24 پوشش کامل خرید/تأمین‌کننده: تمام کنترل‌های §۱۲-۴(۴) و تطبیق فاکتور/رسید/سند/پرداخت.
+  - **P1 · PARTIAL** · journalCoverage و fifoFeedWorker بخشی از خرید/برگشت را می‌خوانند؛ تطبیق فاکتور/رسید/سند/پرداخت رسمی تأیید نشده.
+- [~] F14-25 پوشش کامل خزانه/بانک: تمام کنترل‌های §۱۲-۴(۵) از جمله دریافت تخصیص‌نیافته، پرداخت تکراری، تغییر حساب بانکی و چک.
+  - **P0 · PARTIAL** · collectionReceiptEvidence، 039 و treasuryFlow؛ شواهد بانک/چک بخشی، کل قواعد تکرار و تغییر حساب بانکی باز.
+- [~] F14-26 پوشش کامل انبار: تمام کنترل‌های §۱۲-۴(۶)؛ اختلاف واقعی فقط در صورت داده شمارش واقعی؛ عدم وجود شمارش = NOT EVALUATED.
+  - **P1 · PARTIAL** · FifoInventoryPanel، fifoPublication و 036؛ مقدار/ارزش تحلیلی موجود، تغذیهٔ شمارش واقعی و مقایسهٔ رسمی انبار باز.
+- [~] F14-27 پوشش کامل پخش/حمل/توزیع: تمام کنترل‌های §۱۲-۴(۷) و چرخه فاکتور تا تحویل و تسویه.
+  - **P1 · PARTIAL** · OperationsControlWorkspace و journalCoverage؛ نماهای تحویل/مرجوعی حاضر؛ تطبیق کامل پخش تا تحویل/تسویه باز.
+- [~] F14-28 پوشش کامل قیمت‌گذاری/تخفیف: تمام کنترل‌های §۱۲-۴(۸)، طرح مصوب و حداقل حاشیه سود.
+  - **P1 · PARTIAL** · taskRequestContract و QuotesWorkspace؛ کنترل مجوز ویژه و حاشیهٔ سفارش حاضر؛ طرح مصوب و تخفیف همهٔ فاکتورها باز.
+- [~] F14-29 پوشش کامل پورسانت/عملکرد: تمام کنترل‌های §۱۲-۴(۹) با مبنای فروش قطعی/خالص/وصول طبق سیاست مصوب.
+  - **P1 · PARTIAL** · payrollEngine و CommissionPlan در 021؛ منطق پایه، ردیابی همهٔ فروش قطعی/وصول و تشخیص مغایرت پورسانت باز.
+- [~] F14-30 پوشش کامل کاربران/کنترل داخلی: تمام کنترل‌های §۱۲-۴(۱۰)، تفکیک وظایف و تغییرات حساس.
+  - **P0 · PARTIAL** · entityStore، 045 و personnelProfile؛ Scope و تفکیک درخواست مساعده/پرداخت؛ ماتریس و کنترل همهٔ تغییرات حساس باز.
+- [~] F14-31 پوشش کامل کیفیت داده و ساختار: تمام کنترل‌های §۱۲-۴(۱۱)، ارتباطات شکسته و فرآیندهای نیمه‌تمام.
+  - **P1 · PARTIAL** · erpDataQuality، /state/integrity و SyncCenterWorkspace؛ چند کنترل ارتباط و کیفیت؛ زنجیرهٔ کامل فرایندهای نیمه‌تمام باز.
+- [~] F14-32 پوشش کامل تطبیق بین‌ماژولی: تمام کنترل‌های §۱۲-۴(۱۲) با مبلغ/تعداد/وضعیت و سندهای مرتبط.
+  - **P0 · PARTIAL** · 041، journalCoverage و collectionReceiptEvidence؛ پیوند چند دسته سند، تطبیق عمومی مبلغ/تعداد/وضعیت باز.
+- [~] F14-33 پوشش کامل کنترل‌های اختصاصی پخش: تمام کنترل‌های §۱۲-۴(۱۳)، سودآوری و اختلاف عملکرد ویزیتورها.
+  - **P2 · PARTIAL** · ReportsHub distribution و OperationsControlWorkspace profitability؛ تخمین/سنجه محدود، کنترل پوشش پخش/بهره‌وری روی داده معتبر باز.
+- [~] F14-34 علت‌یابی بستانکاری مشتری: تطبیق مانده تفصیلی×معین×دوره با فاکتور، برگشت، دریافت نقد/بانک، چک، پیش‌پرداخت، سند اصلاحی، تسویه و تخصیص‌ها.
+  - **P0 · PARTIAL** · CreditorBalanceReview، receivableReconciliation و officialLedgerReads؛ مانده و گردش بخشی، تحلیل رسمی علت با همهٔ اسناد باز.
+- [~] F14-35 سناریوهای علت‌یابی: دریافت تخصیص‌نیافته/پیش‌پرداخت/دریافت تکراری/برگشت/تفصیلی اشتباه/مشتری اشتباه/اصلاحیه/اختلاف زمانی/انتقال مانده/چک/تسویه؛ فقط با شواهد.
+  - **P1 · PARTIAL** · creditNoteEvidence و reconcileReceivables؛ چند علت محتمل پوشش داده می‌شود؛ اختصاص اشتباه، پیش‌پرداخت و تمام سناریوهای مرجع باز.
+- [~] F14-36 خروجی علت‌یابی: فرضیه، سند، مبلغ، تاریخ، confidence توضیح‌پذیر، شواهد موافق/مخالف، داده بررسی‌نشده و «علت نامشخص» در نبود شواهد.
+  - **P1 · PARTIAL** · journalCoverage و AuditWorkspace شواهد/منبع و عدم مشاهده دارند؛ خروجی یکپارچهٔ فرضیهٔ بستانکاری و شواهد مخالف باز.
+- [~] F14-37 کارتابل تصمیم مالی: تأیید بستانکاری معتبر با علت/مدرک و تأیید مدیر، یا اعلام مغایرت و ارجاع اصلاح در ERP؛ ثبت تاریخچه کامل.
+  - **P0 · PARTIAL** · CreditorBalanceReview و journalCoverage follow-up؛ Drill-down و ارجاع موجود، قبول بستانکاری با دو تصمیم، مدرک و مسیر ERP باز.
+- [B] F14-38 آزمون end-to-end مغایرت: کشف، Badge، پرونده، توضیح/پیوست، تأیید، اصلاح ERP، Sync، رفع، حفظ سابقه، occurrence مجدد و dedupe.
+  - **P0 · BLOCKED** · 018/032/041 و تست‌های قرارداد دامنه وجود دارند؛ سناریوی رفع/وقوع مجدد به ERP/SQL زنده و lifecycle پیاده‌نشده وابسته است.
 
 ## پیش‌نیازهای مشترک پایش ERP، منابع انسانی و تحویل
 > ردیف‌های جذب، هویت، آموزش و پلکان حقوق فقط یک‌بار در فاز ۸ نگهداری می‌شوند؛ ردیف‌های F15-01 تا F15-18 در F8-11 تا F8-17 ادغام شدند. موارد زیر پیش‌نیاز مشترک باقی‌مانده‌اند و شناسه جدید F14-39 تا F14-47 دارند.
-- [ ] F14-39 دریافت/ثبت مشخصات دیتابیس تجمیعی ERP، نسخه موتور، دسترسی read-only، Schema/Data Dictionary و محیط تست؛ در نبود آن، فقط ردیف‌های وابسته BLOCKED شوند.
-- [ ] F14-40 تعیین و مستندسازی روابط واقعی اسناد مالی: فاکتور، برگشت، دریافت، تخصیص، چک، پیش‌پرداخت، سند اصلاحی، تسویه، تفصیلی و معین.
-- [ ] F14-41 تعریف نقش‌های مسئول رسیدگی/تأیید در هر حوزه و ماتریس RBAC واقعی؛ تأییدکننده نباید در موارد نیازمند تفکیک وظایف همان ثبت‌کننده باشد.
-- [ ] F14-42 تست حجم بالا، pagination، index/query plan و عدم افت عملکرد Sync/Rule/Badge؛ معیار حجم بر اساس داده واقعی/توافق مالک ثبت شود.
-- [ ] F14-43 تست قطع و وصل ارتباط، retry/backoff، checkpoint، replay، عدم overwrite داده جدید و عدم بستن اشتباه پرونده.
-- [ ] F14-44 ممیزی امنیتی secrets، read-only ERP، audit، RLS، tenant isolation، پیوست‌ها و دسترسی داده حساس.
-- [ ] F14-45 کنترل تطبیق تمام داشبوردها و گزارش‌ها با Query دیتابیس و ثبت پوشش/تازگی/منبع.
-- [ ] F14-46 گزارش نهایی قبل/بعد، قابلیت‌های عملیاتی، ناقص، BLOCKED و NOT VERIFIED؛ نصب/استقرار و نسخه/تاریخ دقیق.
-- [ ] F14-47 ZIP کامل سورس با `unzip -t` موفق، فایل‌های پروژه حاضر، بدون node_modules/secret؛ Build و تست‌ها فقط در صورت اجرای واقعی PASS شوند.
+- [B] F14-39 دریافت/ثبت مشخصات دیتابیس تجمیعی ERP، نسخه موتور، دسترسی read-only، Schema/Data Dictionary و محیط تست؛ در نبود آن، فقط ردیف‌های وابسته BLOCKED شوند.
+  - **P0 · BLOCKED** · پارامترهای import-erp-financial-feed مرجع لازم را نشان می‌دهند؛ Schema/نسخه/دسترسی و sandbox واقعی در محیط حاضر نیستند.
+- [B] F14-40 تعیین و مستندسازی روابط واقعی اسناد مالی: فاکتور، برگشت، دریافت، تخصیص، چک، پیش‌پرداخت، سند اصلاحی، تسویه، تفصیلی و معین.
+  - **P0 · BLOCKED** · 041 و financialReferenceSql کلیدهای داخلی دارند؛ روابط واقعی اسناد به Data Dictionary و نمونهٔ رسمی وابسته‌اند.
+- [~] F14-41 تعریف نقش‌های مسئول رسیدگی/تأیید در هر حوزه و ماتریس RBAC واقعی؛ تأییدکننده نباید در موارد نیازمند تفکیک وظایف همان ثبت‌کننده باشد.
+  - **P0 · PARTIAL** · taskRequests reportingLines، 045 و PersonnelLearning supervision؛ تفکیک بخشی حاضر، ماتریس رسمی همهٔ حوزه‌ها باز.
+- [B] F14-42 تست حجم بالا، pagination، index/query plan و عدم افت عملکرد Sync/Rule/Badge؛ معیار حجم بر اساس داده واقعی/توافق مالک ثبت شود.
+  - **P0 · BLOCKED** · 033، 034 و 045 ایندکس و بعضی APIها صفحه‌بندی دارند؛ تست بار/Query plan به حجم نمایندهٔ واقعی و SQL نیاز دارد.
+- [~] F14-43 تست قطع و وصل ارتباط، retry/backoff، checkpoint، replay، عدم overwrite داده جدید و عدم بستن اشتباه پرونده.
+  - **P0 · PARTIAL** · financialFeedWorker کنترل نسخه/کهنگی/Replay دارد؛ تست قطع/وصل و Backoff و تضمین عدم بسته‌شدن Finding روی شکست باز.
+- [~] F14-44 ممیزی امنیتی secrets، read-only ERP، audit، RLS، tenant isolation، پیوست‌ها و دسترسی داده حساس.
+  - **P0 · PARTIAL** · 006، 029–034، 045/048 و مسیر فایل Task؛ کنترل‌های امنیتی موجود؛ ممیزی عملیاتی کامل/چند مستأجر و ابطال دسترسی باز.
+- [B] F14-45 کنترل تطبیق تمام داشبوردها و گزارش‌ها با Query دیتابیس و ثبت پوشش/تازگی/منبع.
+  - **P0 · BLOCKED** · officialLedgerReads و reportStatus جهت منبع حاضرند؛ تطبیق نهایی همهٔ KPIها به داده و Query مرجع ERP/SQL وابسته است.
+- [B] F14-46 گزارش نهایی قبل/بعد، قابلیت‌های عملیاتی، ناقص، BLOCKED و NOT VERIFIED؛ نصب/استقرار و نسخه/تاریخ دقیق.
+  - **P3 · BLOCKED** · INSTRUCTIONS و ثبت‌های تحویل شاهد نسخهٔ کد و گام بعد دارند؛ گزارش نهایی استقرار تا پذیرش فازها و آماده‌شدن محیط قابل بستن نیست.
+- [x] F14-47 ZIP کامل سورس با `unzip -t` موفق، فایل‌های پروژه حاضر، بدون node_modules/secret؛ Build و تست‌ها فقط در صورت اجرای واقعی PASS شوند.
+  - **VERIFIED** · git archive از مبنای ممیزی و unzip -tq موفق؛ همان خروجی F13-04. این شاهد پذیرش Build یا دستگاه نیست.
 
 ### ثبت ممیزی مستندات — A7 (۲۰۲۶-۱۱-۱۷)
 - تعریف محصول یکپارچه شد: مرز ERP/CRM، تحلیل سفارش و فاکتور ERP، طبقه‌بندی ریسک/نقدی/فرصت افزایش فروش، میز مذاکره روی سفارش، دستور پرداخت قطعی/غیرقطعی، توان پرداخت شرکت، تسک سراسری، مالی، HR، انبار، هوش جغرافیایی و پایش در Master Spec مرجع شدند.
@@ -935,18 +1177,22 @@
 
 ## فاز ۱۷ — اتاق فرمان مالی و پیگیری اجرایی (الحاقیه مالک؛ مالکیت موتورهای قبلی حفظ شود)
 - [~] F17-01 اتاق فرمان «فروش تا واریز قطعی»: آبشار فروش/مانده/چک/بانک، تفکیک وصول قطعی از چک در راه، علت اختلاف، دوره/منبع/Drill-down، عدم دوباره‌شماری؛ وابسته به F6-04 و منابع ERP/بانک.
+  - **P0 · PARTIAL** · moneyIntelligence، 037/039 و MoneyIntelligencePanel؛ ردیابی گردش و آبشار موجود؛ وصل‌کردن قطعی تمام فروش/واریز، تعدیل و تایید بانک باز.
   - **IMPLEMENTED — NOT TESTED:** «پول کجاست؟» در خزانه‌داری از API مالی سازمانی و آینهٔ اسناد ERP استفاده می‌کند؛ بازهٔ قابل اشتراک، افتتاحیه و اختتامیهٔ دفتری، دریافت/پرداخت و انتقال خنثی، سود خالص، آبشار از سود تا تغییر نقد و ریز طرف‌حساب/تفصیلی/معین/مرجع سند. اسناد نامتوازن، کدینگ مبهم و ارز فاقد تبدیل مشخص علامت‌گذاری می‌شوند. تطبیق سندبه‌سند بانک، گردش فروش تا واریز بانکی و اتصال زنده همچنان باز است.
 - [~] F17-02 کارتابل وصول مانورپذیر: سنی و ریسک مطالبات بر مبنای تفصیلی×معین×دوره، فیلتر/انتخاب گروهی/ارجاع، مالک/مبلغ هدف/SLA/وعده/تماس/مراجعه/یادآور/تشدید؛ نتیجه تنها با تطبیق وصول واقعی بسته شود؛ مرتبط با F8-08 و F4-09.
+  - **P0 · PARTIAL** · CollectionWorkbench، BatchCollectionFollowUp و collectionReceiptEvidence؛ پیگیری و سند قابل استفاده‌اند؛ SLA و تسویهٔ قطعی ERP/بانک کامل نیست.
   - **IMPLEMENTED — NOT TESTED:** تمرکز ماندهٔ بدهکار برای مشتریان قابل مقایسهٔ همان کارتابل، با یک منبع دفتری ریالی، حذف تفصیلی‌های مشترک از جمع، مخرج و پوشش قابل مشاهده، تعهد سررسیدگذشته و اقدام پیگیری موجود. رشد بین‌دوره‌ای، آستانهٔ هشدار تمرکز، اتصال با برنامه پرداخت و پذیرش SQL باز هستند.
   - **IMPLEMENTED — NOT TESTED:** کارتابل مشترک با فیلتر مالک/ریسک/تعهد، ریز تفصیلی×معین×دوره، تشخیص برآورد در برابر ماندهٔ نامشخص، و پیگیری گروهی با کنترل سرور، ثبت جداگانهٔ هر نتیجه و تلاش دوباره بدون ثبت تکراری. اثبات وصول حقیقی، بستن تعهد با سند بانک/ERP، SLA و تشدید خودکار باقی است.
   - **IMPLEMENTED — NOT TESTED:** تعهد از ریز کارتابل به دریافتی قطعی ERP برای همان مشتری و مبلغ وصل می‌شود. API دسترسی حساب و مالی، ارز، وضعیت، تاریخ و جلوگیری از استفادهٔ دوباره از سند را کنترل می‌کند. ثبت و Audit در یک تراکنش‌اند. معکوس‌کردن یا تغییر سند در بازخوانی تعهد را به پیگیری برمی‌گرداند. تأیید بانک، تطبیق جزئی، بستن خودکار وظیفه و پذیرش میدانی همچنان باز است.
 - [~] F17-03 موتور نقدینگی عملیاتی: ادغام سنجیده دو نسخه cashFlowEngine، مانده بانک/صندوق، انتقال داخلی خنثی، پیش‌بینی سناریویی، تعهدات، تاریخ کسری، کیفیت داده و ممنوعیت توان پرداخت با داده ناقص؛ مالک فاز ۶.
+  - **P0 · PARTIAL** · treasuryFlow، CashFlowPanel و cashFlowEngine؛ سناریوها و کیفیت داده پیاده‌اند؛ فایل cashFlowEngineV2.candidate و کنترل اقلام/ماندهٔ تاییدشده باقی است.
   - **IMPLEMENTED — NOT TESTED:** افق‌های ۲، ۷، ۳۰ و ۹۰ روزه و سه سناریوی صریح در همان موتور. کسری برآوردی با دادهٔ ناقص به‌عنوان نیاز به تطبیق نمایش داده می‌شود. از چک پرداختنی ERP دارای طرف‌حساب، پیگیری مالی با مرجع تحت کنترل دسترسی ثبت می‌شود. پوشش چک برای همهٔ منابع تنظیم‌شده بررسی می‌شود. تطبیق بانک، زمان‌بندی هشدار خودکار و پذیرش SQL/دستگاه باز هستند.
   - **IMPLEMENTED — NOT TESTED (F6-04):** قرارداد مستقل خواندن منابع خزانه از SQL با قلمرو سازمان، نمایش تازگی ثبت و پوشش منابع، سناریوی مبنا/بدون وصول، اصلاح کسر چکِ مرتبط فقط تا مبلغ پوشش فاکتور و مسدودسازی امکان‌سنجی با مانده ناقص یا بدون شاهد بانک. گردش بانکی معتبر، انتقال داخلی با شناسهٔ دوطرفه و پذیرش محاسبات باز است.
   - **IMPLEMENTED — NOT TESTED:** گزارش دفتری ۰۳۷ گردش روزانه/هفتگی/ماهانه، انتقال صرفاً از سند متوازن دو حساب نقدی، خالص اسناد ترکیبی جدا، و سرمایهٔ در گردش از مانده‌های ERP و اجرای FIFO تطبیق‌داده‌شده با موجودی هم‌تاریخ را دارد. مبالغ بدون شاهد بانک «نامشخص» هستند. Migration، دادهٔ زنده، تطبیق مبلغ و دستگاه واقعی برای QA مستقل باقی‌اند.
   - **IMPLEMENTED — NOT TESTED:** پیش‌بینی ۷/۳۰/۹۰ روز با نمودار تمام افق و سناریوی بدون دریافت. Migration 038 خواندن چک قطعیِ باز از آینهٔ ERP را با نگاشت مصوب وضعیت و پوشش ریالی فعال می‌کند. فاکتور خرید با احتمال هم‌پوشانی چک پرداختنی جدا می‌شود. سررسید بدون چک، تطبیق بانک و پیوند چک ERP به فاکتور خرید باقی‌اند.
   - **IMPLEMENTED — NOT TESTED:** Migration 039 کنترل ماندهٔ اعلامی بانک و مبلغ ناخالص اسناد تطبیق‌نشده را از تازه‌ترین ورود معتبر و کامل همان تاریخ، برای Connector مستقل می‌خواند. شاهد هر رقم تا دستهٔ ورود و شناسهٔ کنترل در همان پنل در دسترس است. مانده و گردش دفتری هر حساب نقدی نیز در سطح معین × تفصیلی جدا و قابل‌ردیابی تا سند است. ورود واقعی صورتحساب، تطبیق سندبه‌سند، آزمون SQL/API و تطبیق بانکی افتتاحیهٔ سناریو هنوز `NOT VERIFIED — EXTERNAL DEPENDENCY` است.
 - [~] F17-04 موتور سود فاکتور و تحلیل چندبعدی: FIFO معتبر، تخفیف و برگشت، سود تجاری و حاشیه، گزارش زیان و کف سود؛ حمل و توزیع در گزارش مستقل هزینه و بهره‌وری، خارج از حاشیهٔ تجاری سفارش و فاکتور. RBAC سمت API/SQL و Audit؛ مرتبط با F12-21/F14-23 و فاز ۷.
+  - **P0 · PARTIAL** · invoiceFifoEvidence و InvoiceFifoSheet؛ حاشیه جدا از حمل و تسک پیگیری؛ برگشت و برش چندبعدی و تطبیق ERP/FIFO کامل نیست.
   - **IMPLEMENTED — NOT TESTED:** در نمای شواهد فاکتور، جمع فروش خالص، بهای FIFO، سود و حاشیه با نگاشت قطعی ERP، پوشش تمام ردیف‌ها و تطبیق مبلغ سرفاکتور نمایش داده می‌شوند. برگشت مرتبط تا تطبیق اثر ریالی و بازگشت بها، جمع سود را نامشخص نگه می‌دارد. سود تجمیعی چندبعدی، پوشش برگشتی و پذیرش SQL باز هستند.
   - **IMPLEMENTED — NOT TESTED:** از همان نمای شواهد، فاکتور با سود تجاری منفی یا مغایرت تطبیق، در صورت وجود طرف‌حساب و مجوز، به فرم مشترک Workflow پیوند می‌خورد. مبالغ خرید و سود در متن پیش‌فرض تسک درج نمی‌شوند.
   - **IMPLEMENTED — NOT TESTED:** پیش از تأیید سفارش، حاشیهٔ اقلام با بهای کاملِ ثبت‌شده و کف فعلی سیاست سازمان برای کاربران دارای مجوز مالی/بها مقایسه می‌شود. تصمیم حساس پنجرهٔ تأیید دارد. برآورد هزینهٔ پخش، مرجوعی و سود واقعی پس از صدور و اجرای SQL باز هستند.
@@ -955,19 +1201,31 @@
   - **IMPLEMENTED — NOT TESTED:** خوراک عملیاتی `INVENTORY_FIFO` از همان کارگر ETL با کنترل تعداد گردش، مقدار رسمی ابتدا و پایان هر انبار و واحد پایهٔ کالا منتشر می‌شود. Migration ۰۴۲ اجرای FIFO را به دستهٔ واردسازی وصل می‌کند. برگشت خرید فقط از لایهٔ رسید مرجع کسر می‌شود و کمبود آن نیازمند بررسی است. سناریوی اتصال واقعی و پوشش مستند همهٔ خرید/فروش/برگشت‌های ERP باز است.
   - **IMPLEMENTED — NOT TESTED:** Migration ۰۴۴ و مسیرهای دفتر، سود و زیان و مطالبات را به منبع/شرکت و ارز جدا، آرتیکل معتبر و نقش دوره‌دار حساب وصل می‌کنند. مرور دفتر و تراز با جست‌وجو، صفحه‌بندی، مبلغ اعشاری و آرتیکل از Overview مالی در دسترس‌اند. ماندهٔ رسمی مطالبات از سرفصل دریافتنی و تفصیلی تأییدشده است و فاقد گواهی پوشش، نامشخص می‌ماند. گزارش سود و زیان از پیشوند ثابت استفاده نمی‌کند و با دادهٔ محلی عدد رسمی نمی‌دهد. آزمون صحت SQL و دادهٔ واقعی مستقل باقی است.
 - [~] F17-05 نقشه مصرف پول و هزینه: دو نمای «پرداخت نقدی» و «هزینه شناسایی‌شده»، Top N و روند/بودجه/انحراف، کدینگ/مرکز هزینه/پروژه/طرف حساب، جداسازی خرید موجودی، بدهی، انتقال و سرمایه‌ای؛ Drill-down سند واقعی.
+  - **P1 · PARTIAL** · moneyIntelligence و Expense/Bank queries؛ Drill-down سند، بخش نقد/تعهدی؛ بودجه/انحراف و همهٔ ابعاد مصرف پول کامل نیستند.
   - **IMPLEMENTED — NOT TESTED:** فیلتر ریز اسناد دارای مبلغ نامتعارف یا اسناد هم‌مبلغ یک طرف‌حساب با همان محاسبهٔ گزارش. نبود نمونهٔ کافی یا پوشش دورهٔ مقایسه، شاخص ناهنجاری را نامشخص نگه می‌دارد. ریز اسناد از سرور محدود شده و شمارهٔ مرجع، طرف‌حساب و حساب را نگه می‌دارد. پذیرش SQL و ارجاع مستقیم مغایرت هزینه باز است.
   - **IMPLEMENTED — NOT TESTED:** پرداخت نقدی از ردیف‌های قابل‌تخصیص سند و هزینهٔ شناسایی‌شده از کدینگ ERP، به تفکیک نوع، مرکز هزینه، طرف‌حساب یا ماه شمسی. تعداد سند، مقایسه با دورهٔ هم‌طول، نشان پرداخت‌های هم‌مبلغ به یک طرف و اسناد خارج از دامنهٔ آماری دورهٔ قبل، پرداخت تخصیص‌نیافته و ریز قابل جست‌وجو فراهم است. بودجه، پروژه و پذیرش مالی زنده باز است.
-- [ ] F17-06 پروژه‌ها و ساخت‌وساز: تفکیک CAPEX از OPEX، بودجه/قرارداد/پیمانکار/فاز/پیش‌پرداخت/تعهد/پرداخت/انحراف؛ طبقه‌بندی نامعلوم بدون حدس، ایجاد تسک مغایرت.
-- [ ] F17-07 تاریخچه و عملکرد تسک: Timeline تغییرناپذیر، ارجاع/تمدید/تأیید/رد/بازگشایی، گزارش تیم/کارمند، SLA، اثربخشی مبلغ وصول‌شده، فیلتر و Drill-down به مشتری/چک/فاکتور/پروژه؛ مرتبط با F14-14.
-- [ ] F17-08 پذیرش و کنترل: تست edge cases و سناریوهای واقعی/کنترل‌شده، reconciliation بانک/ERP، صحت محاسبات و دسترسی‌ها، UI موبایل RTL و طراحی قفل‌شده، تست‌های Provider/API/SQL و ثبت PASS/FAIL/BLOCKED/NOT VERIFIED با شاهد. گزارش‌های فاز ۹ نیز از حیث صحت داده، مجوز، فیلتر، Drill-down و تسک ممیزی شوند؛ تکمیل خودکار ممنوع.
+- [~] F17-06 پروژه‌ها و ساخت‌وساز: تفکیک CAPEX از OPEX، بودجه/قرارداد/پیمانکار/فاز/پیش‌پرداخت/تعهد/پرداخت/انحراف؛ طبقه‌بندی نامعلوم بدون حدس، ایجاد تسک مغایرت.
+  - **P2 · PARTIAL** · 027 و moneyIntelligence ابعاد و CAPEX تحلیلی دارند؛ CRUD برنامه/بودجه/پیمانکار/تعهد و کنترل پروژه اجرا نشده.
+- [~] F17-07 تاریخچه و عملکرد تسک: Timeline تغییرناپذیر، ارجاع/تمدید/تأیید/رد/بازگشایی، گزارش تیم/کارمند، SLA، اثربخشی مبلغ وصول‌شده، فیلتر و Drill-down به مشتری/چک/فاکتور/پروژه؛ مرتبط با F14-14.
+  - **P1 · PARTIAL** · taskRequests، WorkflowTimeline و collectionTaskOutcome؛ تاریخچه و SLA بخشی؛ اثربخشی واحدها/مبلغ واقعی و Drill-down سراسری باز.
+- [B] F17-08 پذیرش و کنترل: تست edge cases و سناریوهای واقعی/کنترل‌شده، reconciliation بانک/ERP، صحت محاسبات و دسترسی‌ها، UI موبایل RTL و طراحی قفل‌شده، تست‌های Provider/API/SQL و ثبت PASS/FAIL/BLOCKED/NOT VERIFIED با شاهد. گزارش‌های فاز ۹ نیز از حیث صحت داده، مجوز، فیلتر، Drill-down و تسک ممیزی شوند؛ تکمیل خودکار ممنوع.
+  - **P0 · BLOCKED** · تست‌های قرارداد مالی پوشش گزینشی دارند؛ گیت پذیرش تطبیق بانک و ERP و نقش‌های واقعی به SQL و داده معتبر نیاز دارد.
 
 
 ## فاز ۱۸ — تکمیل سراسری و لندینگ مرجع مالک (وابسته به همه فازها؛ فاز مستقل موازی نساز)
-- [ ] F18-01 بازبینی کل Checklist از اولین ردیف باز تا آخرین ردیف؛ تکمیل همهٔ فازها، نه فقط فاز مالی، با شواهد اجرایی و تست.
-- [ ] F18-02 تطبیق Landing هشت فضای کاری با `docs/design-reference/landing-owner-reference-2026-11-19.webp`: گروه‌بندی زیرمجموعه‌ها، آیکون‌های گرد، شبکه ۴ستونه، باز/بسته‌شدن واقعی، RTL موبایل؛ بدون تغییر هدر/منوی قفل‌شده.
-- [ ] F18-03 کنترل تک‌تک کاشی‌ها، Routeها، Deep Linkها، عملیات + زمینه‌ای و RBAC؛ هیچ دکمهٔ بی‌عمل یا صفحهٔ نمایشی.
-- [ ] F18-04 قرارداد دادهٔ پویا و SQL-first برای تمام ماژول‌ها، گزارش‌ها، نمودارها و اعلان‌ها؛ جایگزینی خودکار منبع واقعی با اتصال معتبر، بدون fallback ساختگی و با نمایش وضعیت قطع اتصال.
-- [ ] F18-05 نگاشت نسخه‌دار User↔PersonnelCode↔ERPUser و AccountDetailCode با Scope و تعارض/اعتبار؛ کنترل Role+Scope در API/SQL و منع افشای دادهٔ نامجاز.
-- [ ] F18-06 اعلان امن سراسری: مجوز هنگام ایجاد/نمایش/بازکردن، Deep Link، dedupe، تاریخچه، تغییر نقش و ابطال نگاشت، عدم افشای پیش‌نمایش.
-- [ ] F18-07 گزارش‌های قابل اقدام: فیلتر/Drill-down/سند/تسک/تاریخچه/کیفیت داده و تطبیق واقعی مالی؛ بازبینی تمام گزارش‌ها نه فقط گزارش‌های نقدینگی.
-- [ ] F18-08 تست تصویری موبایل و RTL، ماتریس مجوز و نگاشت، تست SQL/ERP/API، build/typecheck، سناریوهای end-to-end و تحویل ZIP/GitHub با وضعیت PASS/FAIL/BLOCKED/NOT VERIFIED؛ بدون ادعای تکمیل غیرمستند.
+- [~] F18-01 بازبینی کل Checklist از اولین ردیف باز تا آخرین ردیف؛ تکمیل همهٔ فازها، نه فقط فاز مالی، با شواهد اجرایی و تست.
+  - **P1 · PARTIAL** · این ممیزی وضعیت ردیف‌ها را ثبت می‌کند؛ تکمیل و تست همهٔ فازهای CRM همچنان باز است.
+- [~] F18-02 تطبیق Landing هشت فضای کاری با `docs/design-reference/landing-owner-reference-2026-11-19.webp`: گروه‌بندی زیرمجموعه‌ها، آیکون‌های گرد، شبکه ۴ستونه، باز/بسته‌شدن واقعی، RTL موبایل؛ بدون تغییر هدر/منوی قفل‌شده.
+  - **P2 · IMPLEMENTED — NOT TESTED** · تصویر landing-owner-reference، ModuleLandingWorkspace و moduleLanding.ts؛ هشت فضا، چهارستون و گروه‌بندی فعال‌اند؛ تطبیق تصویری دستگاه باز.
+- [~] F18-03 کنترل تک‌تک کاشی‌ها، Routeها، Deep Linkها، عملیات + زمینه‌ای و RBAC؛ هیچ دکمهٔ بی‌عمل یا صفحهٔ نمایشی.
+  - **P1 · PARTIAL** · App.tsx، headerQuickActions و moduleLanding؛ قراردادهای پایه PASS ولی PlannedModulePage و تور بدون پوشش همهٔ مسیرها بازند.
+- [~] F18-04 قرارداد دادهٔ پویا و SQL-first برای تمام ماژول‌ها، گزارش‌ها، نمودارها و اعلان‌ها؛ جایگزینی خودکار منبع واقعی با اتصال معتبر، بدون fallback ساختگی و با نمایش وضعیت قطع اتصال.
+  - **P0 · PARTIAL** · dataProvider، stateSyncRuntime و APIهای رسمی؛ مسیر SQL-first بخشی؛ خواندن مستقیم State در گزارش/حقوق و سازگاری همهٔ ماژول‌ها باز.
+- [~] F18-05 نگاشت نسخه‌دار User↔PersonnelCode↔ERPUser و AccountDetailCode با Scope و تعارض/اعتبار؛ کنترل Role+Scope در API/SQL و منع افشای دادهٔ نامجاز.
+  - **P0 · PARTIAL** · 026/028/045، recruitmentReview و personnelProfile؛ پیوند CRM و Scope بخشی، نگاشت نسخه‌دار رسمی ERP User و Audit تعارض باز.
+- [~] F18-06 اعلان امن سراسری: مجوز هنگام ایجاد/نمایش/بازکردن، Deep Link، dedupe، تاریخچه، تغییر نقش و ابطال نگاشت، عدم افشای پیش‌نمایش.
+  - **P0 · PARTIAL** · entityStore، conversationScope، NotificationCenter، purchaseCycle و taskRequests؛ کنترل گیرنده و dedupe بخشی؛ ابطال/اجازهٔ تاریخی و سراسری باز.
+- [~] F18-07 گزارش‌های قابل اقدام: فیلتر/Drill-down/سند/تسک/تاریخچه/کیفیت داده و تطبیق واقعی مالی؛ بازبینی تمام گزارش‌ها نه فقط گزارش‌های نقدینگی.
+  - **P1 · PARTIAL** · ReportsHub، PurchaseCycleFollowUp، MoneyIntelligencePanel و journalCoverage؛ گزارش‌های مستند/قابل پیگیری بخشی؛ QA مالی همهٔ گزارش‌ها باز.
+- [B] F18-08 تست تصویری موبایل و RTL، ماتریس مجوز و نگاشت، تست SQL/ERP/API، build/typecheck، سناریوهای end-to-end و تحویل ZIP/GitHub با وضعیت PASS/FAIL/BLOCKED/NOT VERIFIED؛ بدون ادعای تکمیل غیرمستند.
+  - **P0 · BLOCKED** · ux-quality.yml و تست‌های قرارداد قابل اجرا هستند؛ معیار مرکب تحویل به داده/ERP/SQL و ماتریس دستگاه واقعی نیاز دارد.
