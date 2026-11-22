@@ -545,6 +545,7 @@ app.get('/api/v1/erp/route-map/filter-options',authenticate,requirePermission('g
   return res.status(503).json({error:{code:'AUTH_CONTEXT_INVALID',message:'نشست معتبر نیست.'}});
  const organizationWide=await hasSqlPermission(req.auth,'geo.view',{organizationWide:true});
  const financeAllowed=await hasSqlPermission(req.auth,'finance.view');
+ const financeOrganizationWide=financeAllowed&&await hasSqlPermission(req.auth,'finance.view',{organizationWide:true});
  const date=String(req.query.date||new Date().toISOString().slice(0,10));
  if(!/^\d{4}-\d{2}-\d{2}$/.test(date))
   return res.status(400).json({error:{code:'INVALID_DATE',message:'تاریخ معتبر نیست.'}});
@@ -558,7 +559,8 @@ app.get('/api/v1/erp/route-map/summary',authenticate,requirePermission('geo.view
  catch(error){return res.status(error.status||400).json({error:{code:'ROUTE_FILTER_INVALID',message:error.message}});}
  const organizationWide=await hasSqlPermission(req.auth,'geo.view',{organizationWide:true});
  const financeAllowed=await hasSqlPermission(req.auth,'finance.view');
- const report=await routeMapAnalytics.mapSummary(req.auth,{filters,organizationWide,financeAllowed});
+ const financeOrganizationWide=financeAllowed&&await hasSqlPermission(req.auth,'finance.view',{organizationWide:true});
+ const report=await routeMapAnalytics.mapSummary(req.auth,{filters,organizationWide,financeAllowed,financeOrganizationWide});
  res.json(report);
 }));
 app.get('/api/v1/erp/route-map/:id/detail',authenticate,requirePermission('geo.view'),wrap(async(req,res)=>{
@@ -572,7 +574,8 @@ app.get('/api/v1/erp/route-map/:id/detail',authenticate,requirePermission('geo.v
  }
  const organizationWide=await hasSqlPermission(req.auth,'geo.view',{organizationWide:true});
  const financeAllowed=await hasSqlPermission(req.auth,'finance.view');
- const report=await routeCustomerDetail(req.auth,{routeId:req.params.id,filters,organizationWide,financeAllowed});
+ const financeOrganizationWide=financeAllowed&&await hasSqlPermission(req.auth,'finance.view',{organizationWide:true});
+ const report=await routeCustomerDetail(req.auth,{routeId:req.params.id,filters,organizationWide,financeAllowed,financeOrganizationWide});
  if(!report)return res.status(404).json({error:{code:'ROUTE_NOT_FOUND',message:'مسیر مجاز پیدا نشد.'}});
  res.json(report);
 }));
