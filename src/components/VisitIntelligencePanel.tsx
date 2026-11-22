@@ -21,8 +21,8 @@ interface Props {
 const fmt=(n:number)=>n.toLocaleString('fa-IR',{maximumFractionDigits:0});
 const currency=(n:number|null)=>n===null?'نامشخص':fmt(n)+' ریال';
 const fdate=(date:string|null)=>date?new Date(date+'T00:00:00Z').toLocaleDateString('fa-IR'):'ثبت نشده';
-type Filter='all'|'unvisited'|'tour'|'tour-collection'|'missed'|'collection'|'valuable'|'no-order';
-const filterNames:Record<Filter,string>={all:'همه',unvisited:'فاقد ویزیت ثبت‌شده',tour:'تور این هفته','tour-collection':'وصول در تور این هفته',missed:'تور بدون مراجعه ثبت‌شده',collection:'وصول معوق',valuable:'ارزشمند / عمده', 'no-order':'بدون سفارش'};
+type Filter='all'|'unvisited'|'tour'|'tour-collection'|'missed'|'collection'|'valuable'|'purchase-due'|'no-order';
+const filterNames:Record<Filter,string>={all:'همه',unvisited:'فاقد ویزیت ثبت‌شده',tour:'تور این هفته','tour-collection':'وصول در تور این هفته',missed:'تور بدون مراجعه ثبت‌شده',collection:'وصول معوق',valuable:'ارزشمند / عمده', 'purchase-due':'موعد خرید مجدد', 'no-order':'بدون سفارش'};
 export function VisitIntelligencePanel(props: Props) {
   const [filter,setFilter]=useState<Filter>('all');
   const [search,setSearch]=useState('');
@@ -43,6 +43,7 @@ export function VisitIntelligencePanel(props: Props) {
     if(filter==='missed')return row.unconfirmedTourStops>0;
     if(filter==='collection')return !!row.receivable&&row.receivable.overdueAmount>0;
     if(filter==='valuable')return row.reasons.includes('HIGH_VALUE')||row.reasons.includes('WHOLESALE');
+    if(filter==='purchase-due')return row.purchaseDue;
     if(filter==='no-order')return row.reasons.includes('NO_ORDER');
     return true;
   });
@@ -106,6 +107,7 @@ export function VisitIntelligencePanel(props: Props) {
           {expanded===row.customerId&&<div className="mt-3 space-y-2 border-t border-border pt-3 text-xs leading-6 text-text-main">
             <p><strong>آخرین نتیجه مراجعه:</strong> {row.lastVisitOutcome||'نامشخص'} {row.lastNoOrderReason?' — '+row.lastNoOrderReason:''}</p>
             <p><strong>رابطه ثبت‌شده ویزیت و خرید:</strong> {row.visitLinkedInvoice ? 'فاکتور '+(row.visitLinkedInvoice.invoiceNumber||row.visitLinkedInvoice.id) : 'شناسه سند مرتبط در ویزیت ثبت نشده؛ آخرین فاکتور زیر لزوماً نتیجه آخرین ویزیت نیست.'}</p>
+            <p><strong>ریتم خرید:</strong> {props.financeVisible&&row.purchaseCycleDays!==null ? 'هر '+fmt(row.purchaseCycleDays)+' روز (میانه فاصله خرید)' : 'سابقه کافی یا مجوز مالی موجود نیست'}{props.financeVisible&&row.daysSincePurchase!==null?' · '+fmt(row.daysSincePurchase)+' روز از آخرین فاکتور':''}</p>
             <p><strong>سابقه خرید موجود:</strong> {props.financeVisible?currency(row.salesTotal):'مجوز مشاهده مالی وجود ندارد'} {props.financeVisible&&row.averageInvoice!==null?' · میانگین هر فاکتور '+currency(row.averageInvoice):''}</p>
             {props.financeVisible&&row.lastInvoice&&<div className="rounded-lg bg-canvas p-2">
               <p><strong>آخرین فاکتور موجود مشتری (نه لزوماً مربوط به آخرین ویزیت):</strong> {row.lastInvoice.invoiceNumber||row.lastInvoice.id} · {fdate(row.lastInvoiceDate)} · {currency(typeof row.lastInvoice.totalAmount==='number'?row.lastInvoice.totalAmount:null)}</p>
