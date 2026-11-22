@@ -1,7 +1,7 @@
 import { SearchableSelect } from './ui/SearchableSelect';
 import { formatCount } from '../lib/format';
 import React, { useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { AppState, GeoPolygonGeometry, GeoZone, Priority } from '../types';
 import { GEO_METRIC_CATALOG, createZoneGeometryVersion, isPointInsideZone, readCustomerGeoPoint, validateZonePolygon } from '../lib/geoIntelligence';
 import { optimizeRouteStops } from '../lib/geoRoutingEngine';
@@ -61,7 +61,8 @@ function PolygonGeometryPreview({ geometry }: { geometry: GeoPolygonGeometry }) 
 export function GeoIntelligenceWorkspace({ state, updateState }: Props) {
   const { rbac, can, canOn, denied } = useCan(state, updateState);
   const canEdit = can('geo', 'EDIT');
-  const [mode, setMode] = useState<Mode>('zones');
+  const location = useLocation();
+  const [mode, setMode] = useState<Mode>(() => new URLSearchParams(location.search).get('mode') === 'operations' ? 'operations' : 'zones');
   const [selectedZoneId, setSelectedZoneId] = useState('');
   const [zoneName, setZoneName] = useState('');
   const [zoneCode, setZoneCode] = useState('');
@@ -205,6 +206,26 @@ export function GeoIntelligenceWorkspace({ state, updateState }: Props) {
     const url = URL.createObjectURL(blob); const link = document.createElement('a');
     link.href = url; link.download = `akhavan-collection-${selectedZone.code || selectedZone.id}-${suffix}.csv`;
     document.body.appendChild(link); link.click(); link.remove(); window.setTimeout(() => URL.revokeObjectURL(url), 1500);
+  };
+  const exportRouteStops = () => {
+    if (!selectedZone || !can('geo', 'VIEW') || !routePlan) { denied('خروجی مسیر پیشنهادی'); return; }
+    const escapeCsv = (value: string) => {
+      // Excel formula injection protection for customer-provided names and codes.
+      const safe = /^[=+@\-\t\r]/.test(value.trimStart()) ? "'" + value : value;
+      return '"' + safe.replace(/"/g, '""') + '"';
+    };
+    const rows = [
+      ['ردیف', 'شناسه مشتری', 'نام مشتری', 'عرض جغرافیایی', 'طول جغرافیایی'].map(escapeCsv).join(','),
+      ...routePlan.orderedStops.map((stop, index) => [
+        String(index + 1), stop.id, stop.name, String(stop.point.latitude), String(stop.point.longitude),
+      ].map(escapeCsv).join(',')),
+    ];
+    const blob = new Blob(['\uFEFF' + rows.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url; link.download = 'akhavan-zone-route-' + (selectedZone.code || selectedZone.id) + '.csv';
+    document.body.appendChild(link); link.click(); link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1500);
   };
   const exportCollectionReport = () => downloadCollectionCsv(collectionReportToCsv(collectionReport), 'summary');
   const exportCollectionDetails = () => downloadCollectionCsv(collectionReportDetailsToCsv(collectionReport), 'details');
@@ -404,7 +425,22 @@ export function GeoIntelligenceWorkspace({ state, updateState }: Props) {
       </Card>
     </div>}
     {mode==='heatmap' && <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(280px,0.75fr)]"><Card padding="lg" className="space-y-4"><div><h2 className="text-base font-black text-text-main">تعریف سنجهٔ تحلیل</h2><p className="mt-1 text-xs leading-6 text-text-secondary">در هر تحلیل فقط یک سنجه انتخاب می‌شود؛ رنگ و اولویت آن تا تعریف دقیق منبع و معنای «بیشتر بهتر است/بدتر است» نباید حدس زده شود.</p></div><label className="block text-xs font-bold text-text-secondary">سنجهٔ اصلی<Select value={metricKey} onChange={event=>setMetricKey(event.target.value as keyof typeof GEO_METRIC_CATALOG)} className="mt-1.5">{Object.values(GEO_METRIC_CATALOG).map(metric=><option key={metric.key} value={metric.key}>{metric.label}</option>)}</Select></label><div className="grid gap-3 sm:grid-cols-2"><Input label="از تاریخ (پس از فراهم‌شدن منبع معتبر)" type="date" value={dateFrom} onChange={event=>setDateFrom(event.target.value)}/><Input label="تا تاریخ (پس از فراهم‌شدن منبع معتبر)" type="date" value={dateTo} onChange={event=>setDateTo(event.target.value)}/></div><div className="rounded-2xl border border-warning/30 bg-warning-soft p-4"><div className="flex items-center gap-2 font-bold text-warning"><ShieldAlert size={17}/>این سنجه هنوز منبع واقعی ندارد</div><p className="mt-2 text-sm leading-7 text-text-main">{activeMetric.limitation}</p></div></Card><Card padding="lg" className="space-y-3"><h2 className="text-base font-black text-text-main">قرارداد سنجه</h2><div className="rounded-xl border border-border p-3"><div className="text-xs text-text-secondary">واحد</div><div className="mt-1 font-bold text-text-main">{activeMetric.unit}</div></div><div className="rounded-xl border border-border p-3"><div className="text-xs text-text-secondary">تجمیع</div><div className="mt-1 text-sm leading-6 text-text-main">{activeMetric.aggregation}</div></div><div className="rounded-xl border border-border p-3"><div className="text-xs text-text-secondary">منبع معتبر</div><div className="mt-1 text-sm leading-6 text-text-main">{activeMetric.sourceDescription}</div></div><div className="rounded-xl border border-border p-3"><div className="text-xs text-text-secondary">معنای مقدار بالاتر</div><div className="mt-1 font-bold text-text-main">{activeMetric.higherIsBetter===null?'باید با انتخاب سنجه مشخص شود':activeMetric.higherIsBetter?'مطلوب‌تر':'نامطلوب‌تر'}</div></div><div className="text-xs leading-6 text-text-secondary">هیچ نقشهٔ حرارتی، عدد یا رتبهٔ ساختگی نمایش داده نمی‌شود. فیلتر تاریخ پس از اتصال به منبع باید بر همان منبع معتبر اعمال شود.</div></Card></div>}
-    {mode==='operations' && <div className="grid gap-4 xl:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]"><Card padding="lg" className="space-y-3"><h2 className="text-base font-black text-text-main">مشتریان داخل زون</h2><label className="block text-xs font-bold text-text-secondary">زون<Select value={selectedZoneId} onChange={event=>{const zone=zones.find(item=>item.id===event.target.value);if(zone)selectZone(zone);else setSelectedZoneId('');}} className="mt-1.5"><option value="">انتخاب زون</option>{zones.map(zone=><option key={zone.id} value={zone.id}>{zone.name} · {zone.status==='ACTIVE'?'فعال':zone.status==='ARCHIVED'?'بایگانی':'پیش‌نویس'}</option>)}</Select></label><div className="grid grid-cols-2 gap-3"><div className="rounded-xl border border-border bg-canvas p-3"><div className="text-xs text-text-secondary">مشتری داخل مرز</div><div className="mt-1 text-2xl font-black text-text-main">{customersInside.length.toLocaleString('fa-IR')}</div></div><div className="rounded-xl border border-border bg-canvas p-3"><div className="text-xs text-text-secondary">انتساب فعال</div><div className="mt-1 text-2xl font-black text-text-main">{selectedZoneAssignments ? selectedZoneAssignments.length.toLocaleString('fa-IR') : assignmentQuery.loading ? '…' : 'نامشخص'}</div></div></div>{routePlan&&<p className="text-xs text-text-secondary">مسیر پیشنهادی مراجعه (برآورد): {routePlan.totalDistanceKm.toLocaleString('fa-IR')} کیلومتر · حدود {routePlan.estimatedDriveMinutes.toLocaleString('fa-IR')} دقیقه برای {routePlan.orderedStops.length.toLocaleString('fa-IR')} مشتری</p>}<Button block disabled={!canEdit||!selectedZone||selectedZone.status!=='ACTIVE'||!activeGeometry||!assignments||assignmentSyncPending} onClick={assignCustomersInZone} icon={<Users size={15}/>}>انتساب / به‌روزرسانی مشتریان داخل مرز</Button><p className="text-xs leading-6 text-text-secondary">این عمل فقط مشتریانی را در نظر می‌گیرد که مختصات واقعی و معتبر دارند و از سطح دسترسی اجازهٔ مشاهدهٔ آن‌ها را دارید. انتساب‌های قبلی همین مشتریان با پایان اعتبار بسته می‌شوند؛ رکوردهای خارج از محدودهٔ دسترسی تغییر نمی‌کنند.</p>
+    {mode==='operations' && <div className="grid gap-4 xl:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]"><Card padding="lg" className="space-y-3"><h2 className="text-base font-black text-text-main">مشتریان داخل زون</h2><label className="block text-xs font-bold text-text-secondary">زون<Select value={selectedZoneId} onChange={event=>{const zone=zones.find(item=>item.id===event.target.value);if(zone)selectZone(zone);else setSelectedZoneId('');}} className="mt-1.5"><option value="">انتخاب زون</option>{zones.map(zone=><option key={zone.id} value={zone.id}>{zone.name} · {zone.status==='ACTIVE'?'فعال':zone.status==='ARCHIVED'?'بایگانی':'پیش‌نویس'}</option>)}</Select></label><div className="grid grid-cols-2 gap-3"><div className="rounded-xl border border-border bg-canvas p-3"><div className="text-xs text-text-secondary">مشتری داخل مرز</div><div className="mt-1 text-2xl font-black text-text-main">{customersInside.length.toLocaleString('fa-IR')}</div></div><div className="rounded-xl border border-border bg-canvas p-3"><div className="text-xs text-text-secondary">انتساب فعال</div><div className="mt-1 text-2xl font-black text-text-main">{selectedZoneAssignments ? selectedZoneAssignments.length.toLocaleString('fa-IR') : assignmentQuery.loading ? '…' : 'نامشخص'}</div></div></div>{routePlan && <div className="space-y-3 rounded-2xl border border-border bg-canvas p-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h3 className="text-sm font-black text-text-main">ترتیب پیشنهادی مراجعه</h3>
+            <p className="mt-1 text-xs text-text-secondary">{routePlan.orderedStops.length.toLocaleString('fa-IR')} مشتری · فاصله مستقیم تخمینی {routePlan.totalDistanceKm.toLocaleString('fa-IR')} کیلومتر</p>
+          </div>
+          <Button size="sm" variant="outline" onClick={exportRouteStops} icon={<Download size={15}/>}>خروجی مسیر CSV</Button>
+        </div>
+        <p className="text-xs leading-5 text-warning">این ترتیب صرفاً برآورد فاصله هوایی میان مختصات است؛ مسیر خیابانی، زمان ترافیک یا تور رسمی ثبت‌شده نیست.</p>
+        <ol className="max-h-56 space-y-1 overflow-auto" aria-label="ترتیب ایستگاه‌های پیشنهادی">
+          {routePlan.orderedStops.map((stop, index) => <li key={stop.id} className="flex items-center gap-2 rounded-lg border border-border px-2 py-1.5 text-xs">
+            <span className="min-w-6 font-black text-primary">{(index + 1).toLocaleString('fa-IR')}.</span>
+            <span className="min-w-0 flex-1 truncate text-text-main" title={stop.name}>{stop.name}</span>
+          </li>)}
+        </ol>
+      </div>}<Button block disabled={!canEdit||!selectedZone||selectedZone.status!=='ACTIVE'||!activeGeometry||!assignments||assignmentSyncPending} onClick={assignCustomersInZone} icon={<Users size={15}/>}>انتساب / به‌روزرسانی مشتریان داخل مرز</Button><p className="text-xs leading-6 text-text-secondary">این عمل فقط مشتریانی را در نظر می‌گیرد که مختصات واقعی و معتبر دارند و از سطح دسترسی اجازهٔ مشاهدهٔ آن‌ها را دارید. انتساب‌های قبلی همین مشتریان با پایان اعتبار بسته می‌شوند؛ رکوردهای خارج از محدودهٔ دسترسی تغییر نمی‌کنند.</p>
       <div className="mt-5 border-t border-border pt-4"><h3 className="mb-1 text-sm font-black text-text-main">ایجاد وظیفهٔ پیگیری وصول از زون</h3><p className="mb-3 text-xs leading-6 text-text-secondary">وظیفه به موتور وظایف موجود اضافه می‌شود؛ مبلغ وصول یا موفقیت مراجعه به‌صورت خودکار فرض نمی‌شود و باید بعداً با نتیجهٔ واقعی ثبت شود.</p>
       <div className="grid gap-3 sm:grid-cols-2"><SearchableSelect label="مشتری" placeholder="انتخاب مشتری داخل زون" value={taskCustomerId} onChange={setTaskCustomerId}
         options={prioritizedCustomersInside.map(customer => ({
