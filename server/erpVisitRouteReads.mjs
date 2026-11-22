@@ -111,11 +111,60 @@ export function createErpVisitRouteReader({sql,run}){
    const results=[];
    for(const query of statements) results.push(await query());
    const [members,staff,tours,visits,gps]=results;
+   const geometryRows=await request().query(`SELECT TOP (1) GeometryVersionId,VersionNumber,GeometryGeoJson,
+      CoveragePercent,DerivedFromCustomerCount,MethodCode,ReviewStatusCode,CreatedAtUtc
+      FROM crm.VisitRouteZoneGeometry WHERE TenantId=@tenant AND RouteId=@routeId
+      ORDER BY VersionNumber DESC`);
+   const stored=geometryRows.recordset[0]||null;
+   const analysisBoundary=stored?{
+      version:stored.VersionNumber,status:stored.ReviewStatusCode,
+      method:stored.MethodCode,coveragePercent:stored.CoveragePercent,
+      sourceCount:stored.DerivedFromCustomerCount,geometry:JSON.parse(stored.GeometryGeoJson)
+   }:null;
    return {source:'ERP_SQL',asOf:date,route:routes.recordset[0],
      customers:members.recordset,staff:staff.recordset,tours:tours.recordset,
-     visits:visits.recordset,gps:gps.recordset,
+     visits:visits.recordset,gps:gps.recordset,analysisBoundary,
      limits:{visitsMax:1500,gpsMax:1500,mayBeTruncated:visits.recordset.length===1500||gps.recordset.length===1500}};
   });
  };
- return {list,overview};
+ const saveBoundary=async(auth,{routeId,geometry,coveragePercent,sourceCount,method='AUTO_80_PERCENT'}={})=>{
+  const ring=geometry?.type==='Polygon'&&Array.isArray(geometry.coordinates)?geometry.coordinates[0]:null;
+  if(!Array.isArray(ring)||ring.length<4 ||ring.length>501)
+    throw Object.assign(new Error('مرز چندضلعی معتبر نیست.'),{status:400});
+  const points=ring.map(point=>Array.isArray(point)&&point.length===2?point:null);
+  if(points.some(p=>!p||!p.every(n=>typeof n==='number'&&Number.isFinite(n))
+      ||p[0]<-180||p[0]>180||p[1]<-90||p[1]>90)
+    ||points[0][0]!==points.at(-1)[0]||points[0][1]!==points.at(-1)[1]
+    ||new Set(points.slice(0,-1).map(p=>p.join(','))).size<3)
+    throw Object.assign(new Error('مختصات یا بسته‌شدن مرز معتبر نیست.'),{status:400});
+  if(!['AUTO_80_PERCENT','MANUAL'].includes(method) ||
+    (coveragePercent!=null&&(!Number.isFinite(coveragePercent)||coveragePercent<0||coveragePercent>100)) ||
+    (sourceCount!=null&&(!Number.isInteger(sourceCount)||sourceCount<0)))
+    throw Object.assign(new Error('مشخصات محدوده معتبر نیست.'),{status:400});
+  const payload=JSON.stringify(geometry);
+  if(payload.length>40000)throw Object.assign(new Error('حجم محدوده بیش از حد مجاز است.'),{status:400});
+  return run(auth,async transaction=>{
+    const req=()=>new sql.Request(transaction)
+       .input('tenant',sql.UniqueIdentifier,auth.tenantId)
+       .input('routeId',sql.UniqueIdentifier,routeId)
+       .input('actor',sql.UniqueIdentifier,auth.userId)
+       .input('json',sql.NVarChar(sql.MAX),payload)
+       .input('method',sql.VarChar(24),method)
+       .input('coverage',sql.Decimal(5,2),coveragePercent??null)
+       .input('sourceCount',sql.Int,sourceCount??null);
+    const record=await req().query(`SELECT TOP (1) route.RouteId
+       FROM crm.VisitRouteMirror route WITH (UPDLOCK,HOLDLOCK)
+       WHERE route.TenantId=@tenant AND route.RouteId=@routeId AND route.IsDeleted=0`);
+    if(!record.recordset.length)return null;
+    const result=await req().query(`DECLARE @next int=ISNULL((
+       SELECT MAX(VersionNumber) FROM crm.VisitRouteZoneGeometry WITH (UPDLOCK,HOLDLOCK)
+       WHERE TenantId=@tenant AND RouteId=@routeId),0)+1;
+       INSERT INTO crm.VisitRouteZoneGeometry(TenantId,RouteId,VersionNumber,GeometryGeoJson,
+           CoveragePercent,DerivedFromCustomerCount,MethodCode,ReviewStatusCode,CreatedByUserId)
+       OUTPUT INSERTED.GeometryVersionId,INSERTED.VersionNumber,INSERTED.ReviewStatusCode
+       VALUES(@tenant,@routeId,@next,@json,@coverage,@sourceCount,@method,'DRAFT',@actor)`);
+    return {saved:true,...result.recordset[0]};
+  });
+ };
+ return {list,overview,saveBoundary};
 }
