@@ -93,13 +93,13 @@ export function VisitIntelligencePanel(props: Props) {
     </div>
     {report.routes.length>0&&<div className="rounded-xl border border-border bg-canvas p-3">
       <h3 className="text-xs font-black text-text-main">عملکرد ثبت‌شده تورهای رسمی این هفته</h3>
-      <p className="mt-1 text-micro text-text-secondary">مقایسه برنامه ERP با مراجعه‌های ثبت‌شده در همان تاریخ و برای شناسه ویزیتور منطبق؛ سفارش اعلام‌شده در ویزیت هنوز فاکتور قطعی ERP محسوب نمی‌شود. نبود رویداد، اثبات عدم انجام مراجعه نیست.</p>
+      <p className="mt-1 text-micro text-text-secondary">مقایسه برنامه ERP با مراجعه‌های ثبت‌شده در همان تاریخ و برای شناسه ویزیتور منطبق؛ سفارش اعلام‌شده در ویزیت هنوز فاکتور قطعی ERP محسوب نمی‌شود؛ مبلغ فقط از فاکتورهای دارای شناسه پیوند صریح در داده مجاز فعلی محاسبه می‌شود. نبود رویداد، اثبات عدم انجام مراجعه نیست.</p>
       <div className="mt-2 overflow-x-auto">
         <table className="w-full min-w-[520px] text-right text-xs">
-          <thead className="text-text-secondary"><tr><th className="p-2">مسیر / ویزیتور</th><th className="p-2">ایستگاه برنامه‌ریزی‌شده</th><th className="p-2">مراجعه ثبت‌شده</th><th className="p-2">سفارش اعلام‌شده در ویزیت</th><th className="p-2">ایستگاه گذشته بدون ثبت</th><th className="p-2">دارای مانده معوق معتبر</th></tr></thead>
+          <thead className="text-text-secondary"><tr><th className="p-2">مسیر / ویزیتور</th><th className="p-2">ایستگاه برنامه‌ریزی‌شده</th><th className="p-2">مراجعه ثبت‌شده</th><th className="p-2">سفارش اعلام‌شده در ویزیت</th><th className="p-2">فاکتور مرتبط با شناسه سند</th><th className="p-2">مبلغ فاکتورهای مرتبط</th><th className="p-2">ایستگاه گذشته بدون ثبت</th><th className="p-2">دارای مانده معوق معتبر</th></tr></thead>
           <tbody>{report.routes.map(route=><tr key={route.routeId+route.repId} className="border-t border-border">
             <td className="p-2">{route.routeId} / {route.repId}</td>
-            <td className="p-2">{fmt(route.plannedStops)}</td><td className="p-2">{fmt(route.recordedVisitsOnTourDate)}</td><td className="p-2">{fmt(route.recordedOrderOutcomes)}</td>
+            <td className="p-2">{fmt(route.plannedStops)}</td><td className="p-2">{fmt(route.recordedVisitsOnTourDate)}</td><td className="p-2">{fmt(route.recordedOrderOutcomes)}</td><td className="p-2">{props.financeVisible?fmt(route.linkedInvoiceCount):'محدود'}</td><td className="p-2">{props.financeVisible?currency(route.linkedInvoiceValue):'محدود'}</td>
             <td className="p-2">{fmt(route.unconfirmedPastStops)}</td><td className="p-2">{props.financeVisible?fmt(route.collectionDueStops):'محدود'}</td>
           </tr>)}</tbody>
         </table>
