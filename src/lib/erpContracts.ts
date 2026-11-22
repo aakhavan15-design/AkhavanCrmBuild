@@ -142,6 +142,51 @@ export interface ERPVisitTourReadContract extends ERPRecordIdentity {
   }>;
 }
 
+/** Customer may belong to several routes; each membership is ERP-owned and effective-dated. */
+export interface ERPVisitRouteCustomerContract extends ERPRecordIdentity {
+  routeExternalId: string;
+  externalCustomerId: string;
+  subRouteCode?: string | null;
+  effectiveFrom: string;
+  effectiveTo?: string | null;
+  isDeleted?: boolean;
+}
+/** One route can have several representatives and supervisors. */
+export interface ERPVisitRouteStaffContract extends ERPRecordIdentity {
+  routeExternalId: string;
+  externalStaffId: string;
+  staffRoleCode: 'SALES_REP' | 'SUPERVISOR';
+  effectiveFrom: string;
+  effectiveTo?: string | null;
+  isDeleted?: boolean;
+}
+export interface ERPVisitNoOrderReasonContract extends ERPRecordIdentity {
+  reasonCode: string;
+  reasonTitleFa: string;
+  isActive?: boolean;
+}
+export interface ERPVisitEventContract extends ERPRecordIdentity {
+  externalCustomerId: string;
+  externalSalesRepId: string;
+  visitedAtUtc: string;
+  externalTourId?: string | null;
+  outcomeCode?: string | null;
+  noOrderReasonCode?: string | null;
+  resultingExternalOrderId?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  accuracyMeters?: number | null;
+  isDeleted?: boolean;
+}
+export interface ERPRepGpsLogContract extends ERPRecordIdentity {
+  externalSalesRepId: string;
+  recordedAtUtc: string;
+  latitude: number;
+  longitude: number;
+  accuracyMeters?: number | null;
+  isDeleted?: boolean;
+}
+
 /** A successful sync timestamp is local integration metadata, not an ERP-authored field. */
 export interface ERPSyncReceipt {
   tenantId: string;
