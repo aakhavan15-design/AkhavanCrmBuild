@@ -43,7 +43,7 @@ const shapeRow=(row,financial,customerCount,visited,invoiceCount,netSales,custom
   orderOutcomeCount:Number(orderOutcomes||0),
   invoiceCount:financial&&invoiceCount!=null?Number(invoiceCount):null,netSales:financial?money(netSales):null,
   missingCoordinateCount:Number(missingCoords||0),coordinateCoveragePercent:coverage,
-  returnAmount:money(supplement.returnAmount),profitAmount:null,receivableAmount:money(supplement.receivableAmount),targetAchievedPercent:null,
+  returnAmount:money(supplement.returnAmount),profitAmount:null,receivableAmount:money(supplement.receivableAmount),targetAchievedPercent:money(supplement.targetAchievedPercent),
   receivableDate:supplement.receivableDate||null,
   attentionPercent:counts>0?Math.round(Number(visited||0)*10000/counts)/100:null,
   health:'UNKNOWN',metricAvailability:{
@@ -51,7 +51,7 @@ const shapeRow=(row,financial,customerCount,visited,invoiceCount,netSales,custom
    visitCount:'ERP_VISIT_EVENT',invoiceCount:financial?'ERP_INVOICE':'DENIED',
    netSales:financial?'ERP_INVOICE_LINE':'DENIED',
    returnAmount:supplement.returnAmount!=null?'ERP_SALES_RETURN':'UNAVAILABLE',profitAmount:'UNAVAILABLE',
-   receivableAmount:supplement.receivableAmount!=null?'ACCOUNT_RECEIVABLE_CURRENT':'UNAVAILABLE',targetAchievedPercent:'UNAVAILABLE',
+   receivableAmount:supplement.receivableAmount!=null?'ACCOUNT_RECEIVABLE_CURRENT':'UNAVAILABLE',targetAchievedPercent:supplement.targetAchievedPercent!=null?'APPROVED_SALES_TARGET':'UNAVAILABLE',
   },source:'ERP_SQL',sourceStatus:'PARTIAL'
  };
 };
@@ -75,7 +75,7 @@ export function createRouteMapAnalytics({sql,run}) {
   * deduplicated within a route; same official sale in two routes is marked
   * per-route and never shown as an organisation-wide sum.
   */
- const mapSummary=async(auth,{filters,organizationWide=false,financeAllowed=false,financeOrganizationWide=false,returnAllowed=false,receivableAllowed=false}={})=>run(auth,async tx=>{
+ const mapSummary=async(auth,{filters,organizationWide=false,financeAllowed=false,financeOrganizationWide=false,returnAllowed=false,receivableAllowed=false,targetAllowed=false}={})=>run(auth,async tx=>{
   const sqlText=`
   WITH AllowedRoutes AS (
    SELECT r.RouteId,r.RouteCode,r.RouteName,r.TenantId
@@ -228,7 +228,27 @@ export function createRouteMapAnalytics({sql,run}) {
   const permittedMetrics=['customerCount','visitCount','attentionPercent',
      ...(financeAllowed?['activeCustomerCount','invoiceCount','netSales']:[]),
      ...(returnAllowed?['returnAmount']:[]),
-     ...(receivableAllowed?['receivableAmount']:[])];
+     ...(receivableAllowed?['receivableAmount']:[]),
+     ...(targetAllowed&&financeAllowed?['targetAchievedPercent']:[])];
+  let approvedTargets=new Map();
+  if(targetAllowed && financeAllowed && !filters.productIds.length && !filters.brandIds.length &&
+      !filters.supplierIds.length && !filters.repIds.length){
+    const result=await filtersRequest(tx,auth,filters,organizationWide,financeOrganizationWide).query(`
+      SELECT target.ScopeId AS RouteId,target.TargetValue
+      FROM crm.SalesTarget target JOIN crm.VisitRouteMirror route
+        ON route.TenantId=target.TenantId AND route.RouteId=target.ScopeId
+      WHERE target.TenantId=@tenant AND route.IsDeleted=0 AND target.ScopeTypeCode='ROUTE'
+        AND target.KpiCode='NET_SALES_IRR' AND target.ApprovalStatusCode='APPROVED'
+        AND target.PeriodStart=@dateFrom AND target.PeriodEnd=@dateTo AND target.TargetValue>0
+        AND (NOT EXISTS(SELECT 1 FROM OPENJSON(@routeJson)) OR
+             CONVERT(nvarchar(36),route.RouteId) IN(SELECT value FROM OPENJSON(@routeJson)))
+        AND (@organizationWide=1 OR EXISTS(
+          SELECT 1 FROM crm.VisitRouteStaffMirror st WHERE st.TenantId=route.TenantId
+            AND st.RouteId=route.RouteId AND st.StaffUserId=@actor
+            AND st.EffectiveFrom<=@dateTo AND (st.EffectiveTo IS NULL OR st.EffectiveTo>=@dateFrom)))
+    `);
+    approvedTargets=new Map(result.recordset.map(x=>[String(x.RouteId).toLowerCase(),x]));
+  }
   return {source:'ERP_SQL',period:{dateFrom:filters.from,dateTo:filters.to},permittedMetrics,
     caveats:['مشتری چندمسیره در هر مسیر مستقل شمرده می‌شود؛ مجموع مسیرها لزوماً جمع سازمان نیست.',
       'فروش از ریز فاکتور و برگشتی از ریز سند برگشت رسمی محاسبه می‌شود. ارقام فقط در صورت مجوز مربوط نمایش داده می‌شوند.',
@@ -243,7 +263,9 @@ export function createRouteMapAnalytics({sql,run}) {
        r.VisitCount,r.OrderOutcomes,r.MissingGps,
        count>0?Math.round((count-Number(r.MissingGps))*10000/count)/100:null,
        {returnAmount:returned?.ReturnAmount??null,receivableAmount:receivable?.ReceivableAmount??null,
-        receivableDate:receivable?new Date().toISOString().slice(0,10):null});
+        receivableDate:receivable?new Date().toISOString().slice(0,10):null,
+        targetAchievedPercent:approvedTargets.get(key)?.TargetValue>0 && f?.NetSales!=null
+          ? Math.round(Number(f.NetSales)*10000/Number(approvedTargets.get(key).TargetValue))/100 : null});
     })};
  });
  const filterOptions=async(auth,{organizationWide=false,financeAllowed=false,date}={})=>run(auth,async tx=>{
