@@ -16,7 +16,7 @@ interface RouteSummary {
  missingCoordinateCount:number;coordinateCoveragePercent:number|null;
  health:string;source:string;metricAvailability:Record<string,string>;
 }
-interface MapResult {rows:RouteSummary[];source:string;period:{dateFrom:string;dateTo:string};caveats:string[]}
+interface MapResult {rows:RouteSummary[];source:string;period:{dateFrom:string;dateTo:string};caveats:string[];permittedMetrics:MetricId[]}
 interface Choice{id:string;name:string}
 interface FilterOptions{salesReps:Choice[];products:Choice[];suppliers:Choice[];brands:Choice[];categories:Choice[];unavailable:string[]}
 interface DetailCustomer {
@@ -24,6 +24,7 @@ interface DetailCustomer {
  latitude:number|null;longitude:number|null;visitCount:number;lastVisitAt:string|null;
  lastVisitOutcome:string|null;noOrderReason:string|null;invoiceCount:number|null;netSales:number|null;
  lastInvoice:{number:string;date:string;items:Array<{name:string;quantity:number;unitPrice:number}>}|null;
+ returnAmount?:number|null;receivableAmount?:number|null;receivableAsOf?:string|null;
  status:'BOUGHT'|'VISITED_NO_ORDER'|'NOT_BOUGHT'|'VISITED'|'UNKNOWN';
 }
 interface Detail {
@@ -146,6 +147,8 @@ export function RouteMapOverview(){
  },[selectedRoute,filterQuery]);
  const rows=report?.rows||[];
  const routeChoices=rows.map(r=>({id:r.routeId,name:r.routeCode+' · '+r.routeName}));
+ const permitted=new Set<MetricId>(report?.permittedMetrics||['customerCount','visitCount','attentionPercent']);
+ const currentPrimary=permitted.has(primary)?primary:'customerCount';
  const visibleMetricIds=metrics.filter(id=>id==='customerCount'||id===primary||id!=='customerCount');
  const color=(r:RouteSummary):Tone=>{
   // Thresholds are an explicit VISIT COVERAGE indicator only, not "route health".
@@ -160,7 +163,7 @@ export function RouteMapOverview(){
   return [{
    id:r.routeId,name:r.routeCode+' · '+r.routeName,kind:'ROUTE' as const,
    point:{latitude:point.latitude,longitude:point.longitude},
-   tone:color(r),bubbleLabel:displayMetric(primary,r[primary]),detailPath:undefined
+   tone:color(r),bubbleLabel:displayMetric(currentPrimary,r[currentPrimary]),detailPath:undefined
   }];
  });
  const selectedSummary=rows.find(r=>r.routeId===selectedRoute);
@@ -213,7 +216,7 @@ export function RouteMapOverview(){
      <span className="text-micro text-text-secondary">چندانتخابی · شاخص اصلی داخل حباب</span>
     </div>
     <div className="flex flex-wrap gap-1.5">
-     {metricIds.map(id=><button key={id} type="button" onClick={()=>chooseMetric(id)}
+     {metricIds.filter(id=>permitted.has(id)).map(id=><button key={id} type="button" onClick={()=>chooseMetric(id)}
        aria-pressed={metrics.includes(id)}
        className={`min-h-8 rounded-full border px-2.5 py-1 text-xs ${metrics.includes(id)?'border-primary bg-primary/10 font-bold text-primary':'border-border text-text-secondary'}`}>
       {metricCatalog[id].name}</button>)}
@@ -221,7 +224,7 @@ export function RouteMapOverview(){
     <label className="flex items-center gap-2 text-xs text-text-secondary">عدد اصلی روی نقشه
      <select value={primary} onChange={e=>{const id=e.target.value as MetricId;setPrimary(id);if(!metrics.includes(id))setMetrics([...metrics,id]);}}
        className="min-h-9 flex-1 rounded-xl border border-border bg-canvas px-2 text-text-main">
-      {metrics.map(id=><option key={id} value={id}>{metricCatalog[id].name}</option>)}
+      {metrics.filter(id=>permitted.has(id)).map(id=><option key={id} value={id}>{metricCatalog[id].name}</option>)}
      </select>
     </label>
    </div>
@@ -253,7 +256,7 @@ export function RouteMapOverview(){
        <strong className="truncate text-sm text-text-main">{row.routeCode} · {row.routeName}</strong>
        <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${color(row)==='good'?'bg-emerald-600':color(row)==='warn'?'bg-amber-500':color(row)==='bad'?'bg-rose-600':'bg-slate-500'}`}/>
       </div>
-      <p className="mt-1 text-lg font-black text-text-main">{displayMetric(primary,row[primary])}</p>
+      <p className="mt-1 text-lg font-black text-text-main">{displayMetric(currentPrimary,row[currentPrimary])}</p>
       <div className="mt-2 flex flex-wrap gap-1 text-micro text-text-secondary">
        <span className="rounded-md border border-border px-2 py-1">کل مشتری: {displayMetric('customerCount',row.customerCount)}</span>
        {visibleMetricIds.filter(x=>x!==primary && x!=='customerCount').slice(0,3).map(id=>
@@ -308,8 +311,10 @@ export function RouteMapOverview(){
        <div className="mt-2 grid grid-cols-2 gap-1 text-xs text-text-secondary">
         <span>ویزیت: {fa(c.visitCount)} بار</span>
         <span>فاکتور: {c.invoiceCount==null?'محدود':fa(c.invoiceCount)}</span>
-        <span>فروش: {c.netSales==null?'محدود':compact(c.netSales)+' ریال'}</span>
+        <span>فروش: {c.netSales==null?'نامشخص':compact(c.netSales)+' ریال'}</span>
         <span>آخرین ویزیت: {c.lastVisitAt?String(c.lastVisitAt).slice(0,10):'ثبت نشده'}</span>
+        <span>برگشتی: {c.returnAmount==null?'نامشخص':compact(c.returnAmount)+' ریال'}</span>
+        <span>مطالبات فعلی: {c.receivableAmount==null?'نامشخص':compact(c.receivableAmount)+' ریال'}</span>
        </div>
        <div className="mt-2 flex items-center justify-between gap-2">
         <Link to={'/accounts/'+encodeURIComponent(c.id)} className="text-xs font-bold text-primary">پرونده مشتری</Link>
