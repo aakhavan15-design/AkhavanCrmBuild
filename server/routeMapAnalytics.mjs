@@ -111,16 +111,23 @@ export function createRouteMapAnalytics({sql,run}) {
     GROUP BY m.RouteId
   ), RouteStats AS (
     SELECT RouteId,COUNT(DISTINCT AccountId) AS CustomerCount,
-      SUM(CASE WHEN Latitude IS NULL OR Longitude IS NULL THEN 1 ELSE 0 END) AS MissingGps,
-      AVG(CASE WHEN Latitude IS NOT NULL THEN CONVERT(float,Latitude) END) AS CenterLat,
-      AVG(CASE WHEN Longitude IS NOT NULL THEN CONVERT(float,Longitude) END) AS CenterLon
+      SUM(CASE WHEN Latitude IS NULL OR Longitude IS NULL THEN 1 ELSE 0 END) AS MissingGps
     FROM Members GROUP BY RouteId
+  ), LocationMedians AS (
+    SELECT RouteId,
+      PERCENTILE_CONT(0.5) WITHIN GROUP(ORDER BY Latitude) OVER(PARTITION BY RouteId) AS MedianLatitude,
+      PERCENTILE_CONT(0.5) WITHIN GROUP(ORDER BY Longitude) OVER(PARTITION BY RouteId) AS MedianLongitude
+    FROM Members WHERE Latitude IS NOT NULL AND Longitude IS NOT NULL
+  ), RouteCenter AS (
+    SELECT RouteId,MAX(MedianLatitude) AS CenterLat,MAX(MedianLongitude) AS CenterLon
+    FROM LocationMedians GROUP BY RouteId
   )
   SELECT r.RouteId,r.RouteCode,r.RouteName,
-   COALESCE(s.CustomerCount,0) AS CustomerCount,COALESCE(s.MissingGps,0) AS MissingGps,s.CenterLat,s.CenterLon,
+   COALESCE(s.CustomerCount,0) AS CustomerCount,COALESCE(s.MissingGps,0) AS MissingGps,c.CenterLat,c.CenterLon,
    COALESCE(v.VisitCount,0) AS VisitCount,COALESCE(v.VisitedCount,0) AS VisitedCount,COALESCE(v.OrderOutcomes,0) AS OrderOutcomes
   FROM AllowedRoutes r LEFT JOIN RouteStats s ON s.RouteId=r.RouteId
-  LEFT JOIN RouteVisits v ON v.RouteId=r.RouteId ORDER BY r.RouteCode,r.RouteId`;
+  LEFT JOIN RouteVisits v ON v.RouteId=r.RouteId
+  LEFT JOIN RouteCenter c ON c.RouteId=r.RouteId ORDER BY r.RouteCode,r.RouteId`;
   const rows=(await filtersRequest(tx,auth,filters,organizationWide,financeOrganizationWide).query(sqlText)).recordset;
   // Financial query is entirely skipped without the server-side permission.
   let financial=new Map();
