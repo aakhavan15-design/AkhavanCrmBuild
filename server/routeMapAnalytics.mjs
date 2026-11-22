@@ -54,11 +54,12 @@ const shapeRow=(row,financial,customerCount,visited,invoiceCount,netSales,custom
  };
 };
 export function createRouteMapAnalytics({sql,run}) {
- const filtersRequest=(transaction,auth,{from,to,productIds,repIds,routeIds},organizationWide)=>{
+ const filtersRequest=(transaction,auth,{from,to,productIds,repIds,routeIds},organizationWide,financeOrganizationWide)=>{
   const req=new sql.Request(transaction)
    .input('tenant',sql.UniqueIdentifier,auth.tenantId)
    .input('actor',sql.UniqueIdentifier,auth.userId)
    .input('organizationWide',sql.Bit,organizationWide?1:0)
+   .input('financeWide',sql.Bit,financeOrganizationWide?1:0)
    .input('dateFrom',sql.Date,from).input('dateTo',sql.Date,to)
    .input('productJson',sql.NVarChar(sql.MAX),JSON.stringify(productIds))
    .input('repJson',sql.NVarChar(sql.MAX),JSON.stringify(repIds))
@@ -69,7 +70,7 @@ export function createRouteMapAnalytics({sql,run}) {
   * deduplicated within a route; same official sale in two routes is marked
   * per-route and never shown as an organisation-wide sum.
   */
- const mapSummary=async(auth,{filters,organizationWide=false,financeAllowed=false}={})=>run(auth,async tx=>{
+ const mapSummary=async(auth,{filters,organizationWide=false,financeAllowed=false,financeOrganizationWide=false}={})=>run(auth,async tx=>{
   const sqlText=`
   WITH AllowedRoutes AS (
    SELECT r.RouteId,r.RouteCode,r.RouteName,r.TenantId
@@ -92,6 +93,7 @@ export function createRouteMapAnalytics({sql,run}) {
     SELECT m.RouteId,COUNT_BIG(*) AS VisitCount,COUNT(DISTINCT v.AccountId) AS VisitedCount,
      SUM(CASE WHEN v.OutcomeCode='ORDER_TAKEN' THEN 1 ELSE 0 END) AS OrderOutcomes
     FROM Members m JOIN crm.ErpVisitEventMirror v ON v.TenantId=@tenant AND v.AccountId=m.AccountId
+     JOIN crm.VisitTourMirror tour ON tour.TenantId=v.TenantId AND tour.TourId=v.TourId AND tour.RouteId=m.RouteId
     WHERE v.IsDeleted=0 AND v.VisitedAtUtc>=@dateFrom AND v.VisitedAtUtc<DATEADD(day,1,@dateTo)
      AND (@organizationWide=1 OR v.SalesRepUserId=@actor OR EXISTS(
       SELECT 1 FROM crm.VisitRouteStaffMirror st WHERE st.TenantId=v.TenantId
@@ -113,7 +115,7 @@ export function createRouteMapAnalytics({sql,run}) {
    COALESCE(v.VisitCount,0) AS VisitCount,COALESCE(v.VisitedCount,0) AS VisitedCount,COALESCE(v.OrderOutcomes,0) AS OrderOutcomes
   FROM AllowedRoutes r LEFT JOIN RouteStats s ON s.RouteId=r.RouteId
   LEFT JOIN RouteVisits v ON v.RouteId=r.RouteId ORDER BY r.RouteCode,r.RouteId`;
-  const rows=(await filtersRequest(tx,auth,filters,organizationWide).query(sqlText)).recordset;
+  const rows=(await filtersRequest(tx,auth,filters,organizationWide,financeOrganizationWide).query(sqlText)).recordset;
   // Financial query is entirely skipped without the server-side permission.
   let financial=new Map();
   if(financeAllowed) {
@@ -134,7 +136,7 @@ export function createRouteMapAnalytics({sql,run}) {
        AND EXISTS(SELECT 1 FROM security.fn_RecordReadScope(a.TenantId,N'accounts.view',a.OwnerUserId,a.BranchId,a.TerritoryId,a.TeamId))
     ), FilteredInvoices AS (
       SELECT i.InvoiceMirrorId,i.AccountId,i.SourceSystemCode,i.GrossAmount
-      FROM crm.InvoiceMirror i WHERE i.TenantId=@tenant AND i.IsVoided=0
+      FROM crm.InvoiceMirror i WHERE i.TenantId=@tenant AND i.IsVoided=0 AND i.CurrencyCode='IRR'
        AND i.StatusCode IN ('POSTED','CONFIRMED','CLOSED')
        AND i.InvoiceDate BETWEEN @dateFrom AND @dateTo
        AND (NOT EXISTS(SELECT 1 FROM OPENJSON(@repJson)) OR i.SalesRepExternalId IN (SELECT value FROM OPENJSON(@repJson)))
@@ -148,13 +150,13 @@ export function createRouteMapAnalytics({sql,run}) {
       COUNT(DISTINCT i.AccountId) AS ActiveCustomerCount,SUM(l.Amount) AS NetSales
     FROM Members m JOIN FilteredInvoices i ON i.AccountId=m.AccountId
     JOIN InvoiceLines l ON l.InvoiceMirrorId=i.InvoiceMirrorId
-    WHERE @organizationWide=1 OR i.SalesRepUserId=@actor OR EXISTS (
+    WHERE @financeWide=1 OR i.SalesRepUserId=@actor OR EXISTS (
       SELECT 1 FROM crm.VisitRouteStaffMirror manager
       WHERE manager.TenantId=@tenant AND manager.RouteId=m.RouteId AND manager.StaffUserId=@actor
       AND manager.StaffRoleCode='SUPERVISOR'
       AND manager.EffectiveFrom<=@dateTo AND (manager.EffectiveTo IS NULL OR manager.EffectiveTo>=@dateFrom))
     GROUP BY m.RouteId`;
-   financial=new Map((await filtersRequest(tx,auth,filters,organizationWide).query(amountQuery)).recordset.map(x=>[String(x.RouteId).toLowerCase(),x]));
+   financial=new Map((await filtersRequest(tx,auth,filters,organizationWide,financeOrganizationWide).query(amountQuery)).recordset.map(x=>[String(x.RouteId).toLowerCase(),x]));
   }
   return {source:'ERP_SQL',period:{dateFrom:filters.from,dateTo:filters.to},
     caveats:['مشتری چندمسیره در هر مسیر مستقل شمرده می‌شود؛ مجموع مسیرها لزوماً جمع سازمان نیست.',
