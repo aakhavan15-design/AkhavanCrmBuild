@@ -466,6 +466,21 @@
     },
     "erpVisitTours": {
       "profile": "erpVisitMirror"
+    },
+    "erpVisitRouteCustomers": {
+      "profile": "erpVisitMirror"
+    },
+    "erpVisitRouteStaff": {
+      "profile": "erpVisitMirror"
+    },
+    "erpVisitNoOrderReasons": {
+      "profile": "erpVisitMirror"
+    },
+    "erpVisitEvents": {
+      "profile": "erpVisitMirror"
+    },
+    "erpSalesRepGpsLogs": {
+      "profile": "erpVisitMirror"
     }
   }
 }
