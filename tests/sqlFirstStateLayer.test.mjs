@@ -181,6 +181,7 @@ test('SQL driver filters account reads and authorizes existing and incoming reco
         if (!this.params.scoped) {
           assert.match(text, /record.TenantId,@?N'accounts.view'/);
           assert.match(text, /fn_EntityFinancialDocumentScope/);
+          assert.match(text, /fn_EntitySalesDocumentScope\(\s*record.TenantId,LOWER\(record.CollectionName\),N'quotes.view',record.JsonDoc/);
           assert.match(text, /fn_TaskEntityScope\(record.TenantId,record.JsonDoc,'VIEW'\)/);
           return { recordset: [] };
         }
@@ -189,6 +190,8 @@ test('SQL driver filters account reads and authorizes existing and incoming reco
         assert.match(text, /incoming.EntityId,incoming.JsonDoc,@userId/);
         assert.match(text, /collection.Name,N'finance.manage',previous.JsonDoc/);
         assert.match(text, /collection.Name,N'finance.manage',incoming.JsonDoc/);
+        assert.match(text, /fn_EntitySalesDocumentScope\(\s*@tenantId,collection.Name,N'quotes.create',previous.JsonDoc/);
+        assert.match(text, /fn_EntitySalesDocumentScope\(\s*@tenantId,collection.Name,N'quotes.create',incoming.JsonDoc/);
         return { recordset: [{ RowIndex: JSON.parse(this.params.scoped).find(row => row.i === 'own-draft').index }] };
       }
       if (this.params.tasks) {
@@ -217,17 +220,23 @@ test('SQL driver filters account reads and authorizes existing and incoming reco
   const svc = createEntityService({ driver, registry, hasPermission: allow });
   assert.equal((await svc.snapshot(auth)).serverVersion, 3);
   const result = await svc.sync(auth, {
-    upserts: { accounts: [{ id: 'own-draft' }, { id: 'different-branch' }], tasks: [{ id: 'task1' }, { id: 'stale-task' }, { id: 'other-task' }], invoices: [{ id: 'different-branch-invoice' }] },
-    deletes: { customers: ['hidden'] },
+    upserts: { accounts: [{ id: 'own-draft' }, { id: 'different-branch' }], tasks: [{ id: 'task1' }, { id: 'stale-task' }, { id: 'other-task' }], invoices: [{ id: 'different-branch-invoice' }],
+      quotes: [{ id: 'different-branch-quote' }], Quotes: [{ id: 'wrong-partition-case' }] },
+    deletes: { customers: ['hidden'], salesOrders: ['different-branch-order'] },
+    singletons: { salesOrders: [{ id: 'invalid-singleton' }] },
   });
   assert.equal(result.upserted, 2);
   assert.equal(result.deleted, 0);
   assert.deepEqual(result.rejected, [
+    { collection: 'Quotes', reason: 'INVALID_COLLECTION' },
+    { collection: 'salesOrders', reason: 'INVALID_SINGLETON' },
     { collection: 'tasks', id: 'stale-task', reason: 'TASK_VERSION_CONFLICT' },
     { collection: 'tasks', id: 'other-task', reason: 'FORBIDDEN_SCOPE' },
     { collection: 'accounts', id: 'different-branch', reason: 'FORBIDDEN_SCOPE' },
     { collection: 'invoices', id: 'different-branch-invoice', reason: 'FORBIDDEN_SCOPE' },
+    { collection: 'quotes', id: 'different-branch-quote', reason: 'FORBIDDEN_SCOPE' },
     { collection: 'customers', id: 'hidden', reason: 'FORBIDDEN_SCOPE' },
+    { collection: 'salesOrders', id: 'different-branch-order', reason: 'FORBIDDEN_SCOPE' },
   ]);
   assert.deepEqual(applied.map(row => row.i), ['own-draft', 'task1']);
 });
@@ -239,6 +248,15 @@ test('financial scope checks both persisted references and rejects contradictory
   assert.match(migration, /fn_EntityFinancialPartyScope\(invoice.TenantId,@PermissionCode,invoice.JsonDoc\)/);
   assert.match(migration, /payment.IsDeleted=0/);
   assert.match(migration, /invoice.IsDeleted=0/);
+});
+
+test('sales visibility requires the linked customer and resolves a quote salesperson from canonical rows', () => {
+  const migration = fs.readFileSync(new URL('../database/sqlserver/v1/049_scoped_commercial_documents.sql', import.meta.url), 'utf8');
+  assert.match(migration, /account.TenantId=@TenantId AND account.DeletedAtUtc IS NULL/);
+  assert.match(migration, /N'accounts.view',account.OwnerUserId,account.BranchId,account.TerritoryId,account.TeamId/);
+  assert.match(migration, /quoteOwner.TenantId=account.TenantId/);
+  assert.match(migration, /TRY_CONVERT\(uniqueidentifier,ref.AccountId\)=TRY_CONVERT\(uniqueidentifier,ref.CustomerId\)/);
+  assert.doesNotMatch(migration, /JSON_VALUE\(@JsonDoc,'\$\.(branchId|teamId|territoryId)'\)/);
 });
 
 test('file driver persists across restarts', async () => {

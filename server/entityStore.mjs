@@ -14,8 +14,10 @@ const NAME_RE = /^[A-Za-z][A-Za-z0-9_]{0,79}$/;
 export const LIMITS = Object.freeze({ maxRecordBytes: 1_000_000, maxChangeRecords: 5000, maxBootstrapRecords: 50000 });
 const PARTY_COLLECTIONS = ['accounts', 'customers'];
 const FINANCIAL_PARTY_COLLECTIONS = ['invoices', 'payments', 'cheques', 'paymentallocations', 'creditnotes', 'collectionpromises'];
+const COMMERCIAL_COLLECTIONS = ['quotes', 'salesOrders'];
+const commercialPartitions = COMMERCIAL_COLLECTIONS.map(name => name.toLowerCase());
 const sqlCollectionList = names => names.map(name => `N'${name}'`).join(',');
-const scopedCollections = new Set([...PARTY_COLLECTIONS, ...FINANCIAL_PARTY_COLLECTIONS]);
+const scopedCollections = new Set([...PARTY_COLLECTIONS, ...FINANCIAL_PARTY_COLLECTIONS, ...commercialPartitions]);
 const taskWorkflowFields = sqlCollectionList([
   'status', 'result', 'nextAction', 'blockReason', 'blockedAt', 'unblockedAt', 'completedAt', 'activityHistory',
 ]);
@@ -115,6 +117,11 @@ export class MssqlEntityDriver {
             AND (LOWER(record.CollectionName) NOT IN (${sqlCollectionList(FINANCIAL_PARTY_COLLECTIONS)}) OR EXISTS (
               SELECT 1 FROM security.fn_EntityFinancialDocumentScope(
                 record.TenantId,LOWER(record.CollectionName),N'finance.view',record.JsonDoc
+              )
+            ))
+            AND (LOWER(record.CollectionName) NOT IN (${sqlCollectionList(commercialPartitions)}) OR EXISTS (
+              SELECT 1 FROM security.fn_EntitySalesDocumentScope(
+                record.TenantId,LOWER(record.CollectionName),N'quotes.view',record.JsonDoc
               )
             ))
             AND (LOWER(record.CollectionName)<>N'tasks' OR (record.EntityId NOT LIKE N'taskreq-%' AND EXISTS (
@@ -352,6 +359,11 @@ export class MssqlEntityDriver {
                       @tenantId,collection.Name,N'finance.manage',previous.JsonDoc
                     )
                   ))
+                  OR (collection.Name IN (${sqlCollectionList(commercialPartitions)}) AND EXISTS (
+                    SELECT 1 FROM security.fn_EntitySalesDocumentScope(
+                      @tenantId,collection.Name,N'quotes.create',previous.JsonDoc
+                    )
+                  ))
                 )
                 AND (
                   incoming.IsDelete=1
@@ -363,6 +375,11 @@ export class MssqlEntityDriver {
                   OR (collection.Name IN (${sqlCollectionList(FINANCIAL_PARTY_COLLECTIONS)}) AND EXISTS (
                     SELECT 1 FROM security.fn_EntityFinancialDocumentScope(
                       @tenantId,collection.Name,N'finance.manage',incoming.JsonDoc
+                    )
+                  ))
+                  OR (collection.Name IN (${sqlCollectionList(commercialPartitions)}) AND EXISTS (
+                    SELECT 1 FROM security.fn_EntitySalesDocumentScope(
+                      @tenantId,collection.Name,N'quotes.create',incoming.JsonDoc
                     )
                   ))
                 )`);
@@ -437,7 +454,7 @@ export function createEntityService({ driver, registry, hasPermission, excludeFi
         ))
       : full.singletons;
     for (const name of Object.keys(singletons)) if (CHAT_COLLECTIONS.has(name.toLowerCase()) || name.toLowerCase() === 'attachments'
-      || name.toLowerCase() === 'onboardingapplications') delete singletons[name];
+      || name.toLowerCase() === 'onboardingapplications' || commercialPartitions.includes(name.toLowerCase())) delete singletons[name];
     return { collections, singletons, serverVersion: full.version, hiddenCollections: hidden, generatedAt: now() };
   }
 
@@ -447,7 +464,8 @@ export function createEntityService({ driver, registry, hasPermission, excludeFi
     const rejected = [];
     let total = 0;
     const writable = new Map();
-    const privateNames = new Map(['groups', 'messages', 'attachments', 'onboardingApplications', 'collectionPromises'].map(name => [name.toLowerCase(), name]));
+    const privateNames = new Map(['groups', 'messages', 'attachments', 'onboardingApplications', 'collectionPromises', ...COMMERCIAL_COLLECTIONS]
+      .map(name => [name.toLowerCase(), name]));
     const canonical = name => !privateNames.has(name.toLowerCase()) || privateNames.get(name.toLowerCase()) === name;
     const canWrite = async (name) => {
       const code = policyOf(name, registry).write;
