@@ -14,6 +14,8 @@ on:
       - 'src/lib/visitIntelligence.ts'
       - 'tests/geoRouteAnalysis.test.mjs'
       - 'tests/visitIntelligence.test.mjs'
+      - 'tests/routeMetricHealth.test.mjs'
+      - 'src/lib/routeMetricHealth.ts'
       - '.github/workflows/route-map-focused.yml'
   workflow_dispatch:
 jobs:
@@ -40,4 +42,4 @@ jobs:
             src/components/GeoZoneMapEditor.tsx \
             src/components/GeoIntelligenceWorkspace.tsx
       - name: Visit and geographical calculation tests
-        run: bun test tests/geoRouteAnalysis.test.mjs tests/visitIntelligence.test.mjs tests/erpVisitToursContracts.test.mjs
+        run: bun test tests/geoRouteAnalysis.test.mjs tests/visitIntelligence.test.mjs tests/erpVisitToursContracts.test.mjs tests/routeMetricHealth.test.mjs
