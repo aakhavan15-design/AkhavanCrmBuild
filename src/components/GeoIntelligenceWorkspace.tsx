@@ -221,7 +221,9 @@ export function GeoIntelligenceWorkspace({ state, updateState }: Props) {
     : [];
   const scopedVisitReturns = canReadVisitFinance
     ? ((state.salesReturns || []) as Array<Record<string, unknown>>).filter(ret =>
-      zoneCustomerIds.has(String(ret.customerId || ret.accountId || '')) &&
+      (zoneCustomerIds.has(String(ret.customerId || ret.accountId || '')) ||
+        scopedVisitInvoices.some(invoice => (ret.invoiceId && String(ret.invoiceId) === invoice.id) ||
+          (ret.externalInvoiceId && [invoice.id, invoice.invoiceNumber].includes(String(ret.externalInvoiceId))))) &&
       rbac.canActOnRecord('finance', 'VIEW', {
         ownerId: ret.ownerId as string | undefined, branchId: ret.branchId as string | undefined,
         territoryId: ret.territoryId as string | undefined, teamId: ret.teamId as string | undefined,
@@ -230,7 +232,9 @@ export function GeoIntelligenceWorkspace({ state, updateState }: Props) {
       }))
       .map(ret => ({
         id: String(ret.id || ''),
-        customerId: String(ret.customerId || ret.accountId || ''),
+        customerId: String(ret.customerId || ret.accountId || scopedVisitInvoices.find(invoice =>
+          (ret.invoiceId && String(ret.invoiceId) === invoice.id) ||
+          (ret.externalInvoiceId && [invoice.id, invoice.invoiceNumber].includes(String(ret.externalInvoiceId))))?.customerId || ''),
         externalInvoiceId: ret.externalInvoiceId == null ? undefined : String(ret.externalInvoiceId),
         invoiceId: ret.invoiceId == null ? undefined : String(ret.invoiceId),
         returnDate: ret.returnDate == null ? undefined : String(ret.returnDate),
