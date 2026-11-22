@@ -1,4 +1,5 @@
 import React, { useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import { AppState, NavigationTab } from '../types';
 import { useCan } from '../hooks/useCan';
 import { portFromAppState, readReportCollections } from '../lib/dataPorts';
@@ -119,6 +120,10 @@ export function ReportsWorkspace({ state, updateState, setActiveTab }: ReportsWo
         <span className="font-semibold text-text-main">وضعیت منبع: {DATA_SOURCE_STATUS_LABELS[sourceStatus]}</span>
         <span className="ms-2">{sourceStatusNote(sourceStatus)}</span>
       </div>
+      {can('geo','VIEW') && <Link to="/geo-intelligence?mode=operations" className="inline-flex min-h-11 items-center justify-between rounded-xl border border-border bg-surface px-3 py-2 text-sm font-bold text-primary">
+        <span>گزارش هوشمند ویزیت، اولویت مشتریان و عملکرد تور ERP</span>
+        <span aria-hidden="true">←</span>
+      </Link>}
       <ReportsHub
         canViewChurn={can('accounts','VIEW') && can('quotes','VIEW')}
         canCreateFollowUp={can('tasks','CREATE')}
