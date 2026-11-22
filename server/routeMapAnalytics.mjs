@@ -24,13 +24,11 @@ export function parseRouteMapFilters(query = {}) {
  };
  const productIds=values('productIds'),repIds=values('salesRepIds'),routeIds=values('routeIds');
  const supplierIds=values('supplierIds'),brandIds=values('brandIds'),customerCategoryIds=values('customerCategoryIds');
- const unsupported=['supervisorIds']
-   .filter(field=>values(field).length);
- if(unsupported.length)throw Object.assign(new Error('فیلترهای '+unsupported.join('، ')+' هنوز به نگاشت تأییدشده ERP متصل نیستند.'),{status:422});
- if([...productIds,...repIds,...supplierIds,...brandIds,...customerCategoryIds].some(x=>x.length>200)||
+ const supervisorIds=values('supervisorIds');
+ if([...productIds,...repIds,...supplierIds,...brandIds,...customerCategoryIds,...supervisorIds].some(x=>x.length>200)||
    routeIds.some(x=>!/^[0-9a-f-]{36}$/i.test(x)))
   throw Object.assign(new Error('شناسه فیلتر معتبر نیست.'),{status:400});
- return {from,to,productIds,repIds,routeIds,supplierIds,brandIds,customerCategoryIds};
+ return {from,to,productIds,repIds,routeIds,supplierIds,brandIds,customerCategoryIds,supervisorIds};
 }
 const money = x => x === null || x === undefined ? null : Number(x);
 const shapeRow=(row,financial,customerCount,visited,invoiceCount,netSales,customerActiveCount,visitCount,orderOutcomes,missingCoords,coverage,supplement={})=>{
@@ -56,7 +54,7 @@ const shapeRow=(row,financial,customerCount,visited,invoiceCount,netSales,custom
  };
 };
 export function createRouteMapAnalytics({sql,run}) {
- const filtersRequest=(transaction,auth,{from,to,productIds,repIds,routeIds,supplierIds,brandIds,customerCategoryIds},organizationWide,financeOrganizationWide)=>{
+ const filtersRequest=(transaction,auth,{from,to,productIds,repIds,routeIds,supplierIds,brandIds,customerCategoryIds,supervisorIds},organizationWide,financeOrganizationWide)=>{
   const req=new sql.Request(transaction)
    .input('tenant',sql.UniqueIdentifier,auth.tenantId)
    .input('actor',sql.UniqueIdentifier,auth.userId)
@@ -67,6 +65,7 @@ export function createRouteMapAnalytics({sql,run}) {
    .input('supplierJson',sql.NVarChar(sql.MAX),JSON.stringify(supplierIds))
    .input('brandJson',sql.NVarChar(sql.MAX),JSON.stringify(brandIds))
    .input('categoryJson',sql.NVarChar(sql.MAX),JSON.stringify(customerCategoryIds))
+   .input('supervisorJson',sql.NVarChar(sql.MAX),JSON.stringify(supervisorIds))
    .input('repJson',sql.NVarChar(sql.MAX),JSON.stringify(repIds))
    .input('routeJson',sql.NVarChar(sql.MAX),JSON.stringify(routeIds));
   return req;
@@ -129,6 +128,16 @@ export function createRouteMapAnalytics({sql,run}) {
   LEFT JOIN RouteVisits v ON v.RouteId=r.RouteId
   LEFT JOIN RouteCenter c ON c.RouteId=r.RouteId ORDER BY r.RouteCode,r.RouteId`;
   const rows=(await filtersRequest(tx,auth,filters,organizationWide,financeOrganizationWide).query(sqlText)).recordset;
+  let reportRows=rows;
+  if(filters.supervisorIds.length){
+    const selection=(await filtersRequest(tx,auth,filters,organizationWide,financeOrganizationWide)
+      .query(`SELECT DISTINCT st.RouteId FROM crm.VisitRouteStaffMirror st
+        WHERE st.TenantId=@tenant AND st.StaffRoleCode='SUPERVISOR'
+          AND st.ExternalStaffId IN (SELECT value FROM OPENJSON(@supervisorJson))
+          AND st.EffectiveFrom<=@dateTo AND (st.EffectiveTo IS NULL OR st.EffectiveTo>=@dateFrom)`)).recordset;
+    const matching=new Set(selection.map(row=>String(row.RouteId).toLowerCase()));
+    reportRows=rows.filter(row=>matching.has(String(row.RouteId).toLowerCase()));
+  }
   const visitFeed=(await new sql.Request(tx).input('tenant',sql.UniqueIdentifier,auth.tenantId)
     .query(`SELECT CASE WHEN EXISTS(SELECT 1 FROM crm.ErpVisitEventMirror WHERE TenantId=@tenant AND IsDeleted=0) THEN 1 ELSE 0 END AS HasVisitFeed`))
     .recordset[0]?.HasVisitFeed===1;
@@ -264,7 +273,7 @@ export function createRouteMapAnalytics({sql,run}) {
       'فروش از ریز فاکتور و برگشتی از ریز سند برگشت رسمی محاسبه می‌شود. ارقام فقط در صورت مجوز مربوط نمایش داده می‌شوند.',
       'مطالبات، در صورت وجود منبع معتبر و مجوز، مانده فعلی است نه مانده تاریخی بازه. سود تنها با بهای تمام‌شده مستند قابل گزارش خواهد بود.',
       ...(!visitFeed?['پوشش دیتای ویزیت ERP تأیید نشده و نرخ توجه به مسیر قابل محاسبه نیست.']:[])],
-    rows:rows.map(r=>{
+    rows:reportRows.map(r=>{
       const f=financial.get(String(r.RouteId).toLowerCase());
       const count=Number(r.CustomerCount);
       const key=String(r.RouteId).toLowerCase();
@@ -321,8 +330,8 @@ export function createRouteMapAnalytics({sql,run}) {
      products:products.map(x=>({id:x.ExternalProductId,name:x.ProductName})),
      suppliers:unique('SupplierExternalId'),brands:unique('BrandExternalId'),
      categories:categories.map(x=>({id:x.BusinessCategoryCode,name:x.BusinessCategoryCode})),
-     supported:['dateFrom','dateTo','routeIds','salesRepIds','productIds','supplierIds','brandIds','customerCategoryIds'],
-     unavailable:['supervisorIds']};
+     supported:['dateFrom','dateTo','routeIds','salesRepIds','productIds','supplierIds','brandIds','customerCategoryIds','supervisorIds'],
+     unavailable:[]};
  });
  return {mapSummary,filterOptions};
 }
