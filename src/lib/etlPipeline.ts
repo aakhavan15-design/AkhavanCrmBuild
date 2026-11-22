@@ -93,6 +93,40 @@ export const ETL_RULES: Record<ErpEntityType, Rule[]> = {
       return null;
     },
   ],
+  VISIT_ROUTE_CUSTOMER: [
+    anyOf(['routeExternalId'], 'VISIT_MEMBERSHIP_ROUTE_MISSING'),
+    anyOf(['externalCustomerId'], 'VISIT_MEMBERSHIP_CUSTOMER_MISSING'),
+    dateRule('effectiveFrom','VISIT_MEMBERSHIP_DATE_INVALID'),
+    r => r.effectiveTo && Number.isFinite(Date.parse(String(r.effectiveTo))) && String(r.effectiveTo) < String(r.effectiveFrom)
+      ? ['VISIT_MEMBERSHIP_RANGE_INVALID','تاریخ پایان عضویت قبل از آغاز است.'] : null,
+  ],
+  VISIT_ROUTE_STAFF: [
+    anyOf(['routeExternalId'], 'VISIT_STAFF_ROUTE_MISSING'),
+    anyOf(['externalStaffId'], 'VISIT_STAFF_ID_MISSING'),
+    dateRule('effectiveFrom','VISIT_STAFF_DATE_INVALID'),
+    r => ['SALES_REP','SUPERVISOR'].includes(String(r.staffRoleCode)) ? null : ['VISIT_STAFF_ROLE_INVALID','نقش فروشنده یا سرپرست معتبر نیست.'],
+  ],
+  VISIT_NO_ORDER_REASON: [
+    anyOf(['reasonCode'], 'VISIT_REASON_CODE_MISSING'),
+    anyOf(['reasonTitleFa'], 'VISIT_REASON_TITLE_MISSING'),
+  ],
+  VISIT_EVENT: [
+    anyOf(['externalCustomerId'], 'VISIT_EVENT_CUSTOMER_MISSING'),
+    anyOf(['externalSalesRepId'], 'VISIT_EVENT_REP_MISSING'),
+    dateRule('visitedAtUtc','VISIT_EVENT_DATE_INVALID'),
+    r => ((r.latitude==null && r.longitude==null) || (r.latitude!=null && r.longitude!=null
+      && Number.isFinite(Number(r.latitude)) && Number.isFinite(Number(r.longitude))
+      && Math.abs(Number(r.latitude))<=90 && Math.abs(Number(r.longitude))<=180))
+        ? null : ['VISIT_EVENT_GEO_INVALID','مختصات ویزیت باید هر دو معتبر یا هر دو نامشخص باشند.'],
+  ],
+  SALES_REP_GPS: [
+    anyOf(['externalSalesRepId'], 'GPS_REP_MISSING'),
+    dateRule('recordedAtUtc','GPS_TIME_INVALID'),
+    r => (r.latitude!=null && r.longitude!=null && Number.isFinite(Number(r.latitude))
+      && Number.isFinite(Number(r.longitude)) && Math.abs(Number(r.latitude))<=90
+      && Math.abs(Number(r.longitude))<=180 && !(Number(r.latitude)===0 && Number(r.longitude)===0))
+        ? null : ['GPS_COORDINATE_INVALID','مختصات ثبت‌شده فروشنده معتبر نیست.'],
+  ],
   DELIVERY_EVENT: [anyOf(['externalInvoiceId', 'invoiceId'], 'DELIVERY_INVOICE_REF_MISSING'), r => (DELIVERY_STATUS.includes(String(r.deliveryStatusCode)) ? null : ['DELIVERY_STATUS_INVALID', 'وضعیت تحویل نامعتبر است.']),
     r => ((r.latitude == null || Math.abs(num(r.latitude)) <= 90) && (r.longitude == null || Math.abs(num(r.longitude)) <= 180) ? null : ['DELIVERY_COORDINATE_INVALID', 'مختصات خارج از بازهٔ معتبر است.'])],
 };
