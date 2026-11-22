@@ -224,13 +224,16 @@ BEGIN
     OR @ModifiedAtUtc IS NULL
    THROW 51051,N'ERP customer coordinates are missing or invalid.',1;
  IF @AccuracyMeters<0 THROW 51052,N'GPS accuracy must not be negative.',1;
- DECLARE @Id uniqueidentifier;
- SELECT @Id=MIN(LocalEntityId)
+ DECLARE @Id uniqueidentifier, @Count int;
+ SELECT @Count=COUNT(DISTINCT LocalEntityId)
  FROM integration.ExternalIdentityMap
  WHERE TenantId=@TenantId AND SourceSystemCode=@SourceSystemCode
-   AND EntityType IN (N'ACCOUNT',N'CUSTOMER') AND ExternalRecordId=@ExternalCustomerId
- HAVING COUNT(DISTINCT LocalEntityId)=1;
- IF @Id IS NULL THROW 51053,N'ERP customer identity cannot be mapped unambiguously.',1;
+   AND EntityType IN (N'ACCOUNT',N'CUSTOMER') AND ExternalRecordId=@ExternalCustomerId;
+ IF @Count<>1 THROW 51053,N'ERP customer identity cannot be mapped unambiguously.',1;
+ SELECT TOP(1) @Id=LocalEntityId
+ FROM integration.ExternalIdentityMap
+ WHERE TenantId=@TenantId AND SourceSystemCode=@SourceSystemCode
+   AND EntityType IN (N'ACCOUNT',N'CUSTOMER') AND ExternalRecordId=@ExternalCustomerId;
  UPDATE crm.Account WITH (UPDLOCK)
  SET Latitude=@Latitude,Longitude=@Longitude,GeoAccuracyMeters=@AccuracyMeters,
      GeoSourceCode='ERP',GeoUpdatedAtUtc=@ModifiedAtUtc,UpdatedAtUtc=SYSUTCDATETIME()
