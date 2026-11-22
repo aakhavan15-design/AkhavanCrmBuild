@@ -40,7 +40,7 @@ GO
 IF OBJECT_ID(N'crm.VisitRouteCustomerMirror',N'U') IS NULL
 CREATE TABLE crm.VisitRouteCustomerMirror (
  TenantId uniqueidentifier NOT NULL, RouteId uniqueidentifier NOT NULL, AccountId uniqueidentifier NOT NULL,
- ExternalCustomerId nvarchar(200) NOT NULL,
+ ExternalCustomerId nvarchar(200) NOT NULL, SubRouteCode nvarchar(100) NULL,
  EffectiveFrom date NOT NULL, EffectiveTo date NULL, SourceModifiedAtUtc datetime2(3) NULL,
  CONSTRAINT PK_VRouteCustomer PRIMARY KEY(TenantId,RouteId,AccountId,EffectiveFrom),
  CONSTRAINT FK_VRC_Tenant FOREIGN KEY(TenantId) REFERENCES core.Tenant(TenantId),
@@ -123,6 +123,30 @@ CREATE TABLE crm.SalesRepGpsMirror (
 );
 CREATE INDEX IX_SalesRepGps_UserDate ON crm.SalesRepGpsMirror(TenantId,SalesRepUserId,RecordedAtUtc DESC) INCLUDE(Latitude,Longitude,AccuracyMeters);
 GO
+/* ERP visit facts: separate read-only source mirror, never overwritten by CRM-owned crm.Visit. */
+IF OBJECT_ID(N'crm.ErpVisitEventMirror',N'U') IS NULL
+CREATE TABLE crm.ErpVisitEventMirror (
+ VisitEventId uniqueidentifier NOT NULL CONSTRAINT DF_EV_Id DEFAULT NEWSEQUENTIALID(),
+ TenantId uniqueidentifier NOT NULL,SourceSystemCode varchar(40) NOT NULL,
+ ExternalVisitId nvarchar(200) NOT NULL,ExternalCustomerId nvarchar(200) NOT NULL,
+ ExternalSalesRepId nvarchar(200) NOT NULL,ExternalTourId nvarchar(200) NULL,
+ AccountId uniqueidentifier NULL,SalesRepUserId uniqueidentifier NULL,TourId uniqueidentifier NULL,
+ VisitedAtUtc datetime2(3) NOT NULL,OutcomeCode nvarchar(80) NULL,
+ NoOrderReasonCode nvarchar(100) NULL,ResultingExternalOrderId nvarchar(200) NULL,
+ Latitude decimal(9,6) NULL,Longitude decimal(9,6) NULL,AccuracyMeters decimal(9,2) NULL,
+ SourceModifiedAtUtc datetime2(3) NULL,IsDeleted bit NOT NULL CONSTRAINT DF_EV_Delete DEFAULT 0,
+ CONSTRAINT PK_ErpVisitEvent PRIMARY KEY(VisitEventId),
+ CONSTRAINT FK_EV_Tenant FOREIGN KEY(TenantId) REFERENCES core.Tenant(TenantId),
+ CONSTRAINT FK_EV_Account FOREIGN KEY(AccountId) REFERENCES crm.Account(AccountId),
+ CONSTRAINT FK_EV_User FOREIGN KEY(SalesRepUserId) REFERENCES core.AppUser(UserId),
+ CONSTRAINT FK_EV_Tour FOREIGN KEY(TourId) REFERENCES crm.VisitTourMirror(TourId),
+ CONSTRAINT UQ_EV_Source UNIQUE(TenantId,SourceSystemCode,ExternalVisitId),
+ CONSTRAINT CK_EV_Location CHECK((Latitude IS NULL AND Longitude IS NULL) OR
+   (Latitude BETWEEN -90 AND 90 AND Longitude BETWEEN -180 AND 180)),
+ CONSTRAINT CK_EV_Accuracy CHECK(AccuracyMeters IS NULL OR AccuracyMeters>=0)
+);
+CREATE INDEX IX_EV_CustomerDate ON crm.ErpVisitEventMirror(TenantId,AccountId,VisitedAtUtc DESC) INCLUDE(OutcomeCode,NoOrderReasonCode,SalesRepUserId,TourId,Latitude,Longitude);
+GO
 /* Link visits to source tour if known; existing Visit GPS fields remain authoritative for the recorded visit. */
 IF COL_LENGTH(N'crm.Visit',N'TourId') IS NULL ALTER TABLE crm.Visit ADD TourId uniqueidentifier NULL;
 IF COL_LENGTH(N'crm.Visit',N'ExternalVisitId') IS NULL ALTER TABLE crm.Visit ADD ExternalVisitId nvarchar(200) NULL;
@@ -162,5 +186,7 @@ BEGIN
   ALTER SECURITY POLICY security.TenantIsolationPolicy ADD FILTER PREDICATE security.fn_TenantAccessPredicate(TenantId) ON crm.VisitRouteMirror;
  IF NOT EXISTS(SELECT 1 FROM sys.security_predicates WHERE object_id=OBJECT_ID(N'security.TenantIsolationPolicy') AND target_object_id=OBJECT_ID(N'crm.VisitTourMirror'))
   ALTER SECURITY POLICY security.TenantIsolationPolicy ADD FILTER PREDICATE security.fn_TenantAccessPredicate(TenantId) ON crm.VisitTourMirror;
+ IF NOT EXISTS(SELECT 1 FROM sys.security_predicates WHERE object_id=OBJECT_ID(N'security.TenantIsolationPolicy') AND target_object_id=OBJECT_ID(N'crm.ErpVisitEventMirror'))
+  ALTER SECURITY POLICY security.TenantIsolationPolicy ADD FILTER PREDICATE security.fn_TenantAccessPredicate(TenantId) ON crm.ErpVisitEventMirror;
 END;
 GO
