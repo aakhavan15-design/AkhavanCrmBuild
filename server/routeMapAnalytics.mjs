@@ -168,5 +168,34 @@ export function createRouteMapAnalytics({sql,run}) {
        count>0?Math.round((count-Number(r.MissingGps))*10000/count)/100:null);
     })};
  });
- return {mapSummary};
+ const filterOptions=async(auth,{organizationWide=false,financeAllowed=false,date}={})=>run(auth,async tx=>{
+   const request=()=>new sql.Request(tx)
+     .input('tenant',sql.UniqueIdentifier,auth.tenantId)
+     .input('actor',sql.UniqueIdentifier,auth.userId)
+     .input('organizationWide',sql.Bit,organizationWide?1:0)
+     .input('asOf',sql.Date,date);
+   const staff=(await request().query(`
+     SELECT DISTINCT st.ExternalStaffId,st.StaffRoleCode
+     FROM crm.VisitRouteStaffMirror st JOIN crm.VisitRouteMirror route
+      ON route.TenantId=st.TenantId AND route.RouteId=st.RouteId
+     WHERE st.TenantId=@tenant AND route.IsDeleted=0
+       AND st.EffectiveFrom<=@asOf AND (st.EffectiveTo IS NULL OR st.EffectiveTo>=@asOf)
+       AND (@organizationWide=1 OR EXISTS (
+        SELECT 1 FROM crm.VisitRouteStaffMirror mine WHERE mine.TenantId=route.TenantId
+         AND mine.RouteId=route.RouteId AND mine.StaffUserId=@actor
+         AND mine.EffectiveFrom<=@asOf AND (mine.EffectiveTo IS NULL OR mine.EffectiveTo>=@asOf)))
+     ORDER BY st.StaffRoleCode,st.ExternalStaffId`)).recordset;
+   let products=[];
+   if(financeAllowed){
+     products=(await request().query(`SELECT TOP(500) p.ExternalProductId,p.ProductName
+       FROM crm.ExternalProduct p WHERE p.TenantId=@tenant AND p.IsActive=1
+       ORDER BY p.ProductName,p.ExternalProductId`)).recordset;
+   }
+   return {source:'ERP_SQL',salesReps:staff.filter(x=>x.StaffRoleCode==='SALES_REP').map(x=>({id:x.ExternalStaffId,name:x.ExternalStaffId})),
+     supervisors:staff.filter(x=>x.StaffRoleCode==='SUPERVISOR').map(x=>({id:x.ExternalStaffId,name:x.ExternalStaffId})),
+     products:products.map(x=>({id:x.ExternalProductId,name:x.ProductName})),
+     supported:['dateFrom','dateTo','routeIds','salesRepIds','productIds'],
+     unavailable:['supplierIds','brandIds','customerCategoryIds','supervisorIds']};
+ });
+ return {mapSummary,filterOptions};
 }
