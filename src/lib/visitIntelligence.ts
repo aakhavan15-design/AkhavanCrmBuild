@@ -61,7 +61,7 @@ export interface VisitIntelRow {
 export interface VisitIntelReport {
   asOf: string; weekStart: string; weekEnd: string;
   customerCount: number; withRecordedVisits: number; withoutRecordedVisits: number;
-  inErpTour: number; totalActualVisits: number; customerRows: VisitIntelRow[];
+  inErpTour: number; totalActualVisits: number; unmappedTourStops: number; customerRows: VisitIntelRow[];
   incompleteSources: string[]; reasonCounts: Array<{reason: string; count: number}>;
   routes: Array<{routeId: string; repId: string; plannedStops: number; recordedVisitsOnTourDate: number; recordedOrderOutcomes: number; linkedInvoiceCount: number; linkedInvoiceValue: number | null; unconfirmedPastStops: number; collectionDueStops: number}>;
 }
@@ -120,12 +120,14 @@ export function buildVisitIntelligence(args: VisitIntelArgs): VisitIntelReport {
     }
   }
   const tourStops=new Map<string,VisitIntelRow['tourStops']>();
+  let unmappedTourStops=0;
   for(const tour of args.tours||[]) {
     if(tour.isDeleted||!ymd(tour.tourDate)||tour.tourDate<weekStart||tour.tourDate>weekEnd || emptyOrVoided(tour)) continue;
     for(const stop of tour.stops||[]) {
       const scopedKey=String(tour.tenantId||'').trim()+'|'+String(tour.sourceSystemCode||'').trim().toUpperCase()+'|'+String(stop.externalCustomerId||'').trim();
       const customerId=externalCustomerIds.get(scopedKey);
-      if(!customerId||!ids.has(customerId)||!Number.isSafeInteger(stop.stopSequence)||stop.stopSequence<1) continue;
+      if(!customerId||!ids.has(customerId)) { unmappedTourStops++; continue; }
+      if(!Number.isSafeInteger(stop.stopSequence)||stop.stopSequence<1) continue;
       const arr=tourStops.get(customerId)||[];
       arr.push({tourId:tour.externalId,date:tour.tourDate,routeId:tour.routeExternalId,repId:tour.salesRepExternalId,sequence:stop.stopSequence});
       tourStops.set(customerId,arr);
@@ -214,6 +216,7 @@ export function buildVisitIntelligence(args: VisitIntelArgs): VisitIntelReport {
   const reasonCounts=[...reasonMap].map(([reason,count])=>({reason,count})).sort((a,b)=>b.count-a.count);
   const routesMap=new Map<string,VisitIntelReport['routes'][number]>();
   const routeLinkedInvoices=new Map<string,Set<string>>();
+  const routeUnknownAmounts=new Set<string>();
   for(const row of customerRows)for(const stop of row.tourStops){
     const key=stop.routeId+'|'+stop.repId;
     const entry=routesMap.get(key)||{routeId:stop.routeId,repId:stop.repId,plannedStops:0,recordedVisitsOnTourDate:0,recordedOrderOutcomes:0,linkedInvoiceCount:0,linkedInvoiceValue:null,unconfirmedPastStops:0,collectionDueStops:0};
@@ -230,7 +233,8 @@ export function buildVisitIntelligence(args: VisitIntelArgs): VisitIntelReport {
       if(!invoice || seen.has(invoice.id))continue;
       seen.add(invoice.id);entry.linkedInvoiceCount++;
       const amount=money(invoice.totalAmount);
-      entry.linkedInvoiceValue=amount===null?null:(entry.linkedInvoiceValue||0)+amount;
+      if(amount===null)routeUnknownAmounts.add(key);
+      entry.linkedInvoiceValue=routeUnknownAmounts.has(key)?null:(entry.linkedInvoiceValue||0)+(amount||0);
     }
     routeLinkedInvoices.set(key,seen);
     if(done)entry.recordedVisitsOnTourDate++;
@@ -241,12 +245,12 @@ export function buildVisitIntelligence(args: VisitIntelArgs): VisitIntelReport {
   return {asOf,weekStart,weekEnd,customerCount:args.customers.length,
     withRecordedVisits:customerRows.filter(r=>r.recordedVisits>0).length,
     withoutRecordedVisits:customerRows.filter(r=>!r.recordedVisits).length,
-    inErpTour:customerRows.filter(r=>r.tourStops.length>0).length,totalActualVisits:visits.length,
+    inErpTour:customerRows.filter(r=>r.tourStops.length>0).length,totalActualVisits:visits.length,unmappedTourStops,
     customerRows,routes:[...routesMap.values()].sort((a,b)=>b.unconfirmedPastStops-a.unconfirmedPastStops||b.collectionDueStops-a.collectionDueStops),incompleteSources:[
       ...(!args.historyComplete?['تاریخچه کامل ویزیت تأیید نشده']:[]),
       ...(!args.invoiceHistoryComplete?['تاریخچه کامل فروش تأیید نشده']:[]),
       ...(!(args.tours||[]).length?['تور ERP برای هفته جاری در داده قابل مشاهده نیست']:[]),
-      ...((args.tours||[]).length && [...tourStops.values()].every(stops=>stops.length===0)?['نگاشت شناسه خارجی مشتری ERP به مشتری CRM موجود/تأیید نشده است']:[]),
+      ...(unmappedTourStops>0?['برای '+unmappedTourStops+' ایستگاه ERP نگاشت شناسه خارجی به مشتری مجاز CRM قابل اثبات نیست']:[]),
       ...(!(args.receivables||[]).length?['مانده تأییدشده دفتر کل برای اولویت وصول در دسترس نیست']:[])
     ],reasonCounts};
 }
