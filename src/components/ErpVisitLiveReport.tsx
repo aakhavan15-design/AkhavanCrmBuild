@@ -49,10 +49,12 @@ export function ErpVisitLiveReport({canManage=false}:{canManage?:boolean}){
  const [showGps,setShowGps]=useState(false);
  const [showVisits,setShowVisits]=useState(true);
  const [showCustomers,setShowCustomers]=useState(true);
+ const [selectedTourId,setSelectedTourId]=useState('');
+ const [selectedGpsRepId,setSelectedGpsRepId]=useState('');
  const [editedGeometry,setEditedGeometry]=useState<GeoPolygonGeometry|null>(null);
  const [saveMessage,setSaveMessage]=useState('');
  const [saving,setSaving]=useState(false);
- useEffect(()=>{setEditedGeometry(null);setSaveMessage('');},[routeId,date]);
+ useEffect(()=>{setEditedGeometry(null);setSaveMessage('');setSelectedTourId('');setSelectedGpsRepId('');},[routeId,date]);
  useEffect(()=>{
   const controller=new AbortController();
   setLoading(true);setError('');
@@ -76,7 +78,8 @@ export function ErpVisitLiveReport({canManage=false}:{canManage?:boolean}){
  const customers=detail?.customers||[];
  const visits=detail?.visits||[];
  const gps=detail?.gps||[];
- const officialStops=(detail?.tours||[]).filter(r=>r.AccountId&&Number.isInteger(r.StopSequence));
+ const availableTours=[...new Map((detail?.tours||[]).map(tour=>[tour.TourId,tour])).values()];
+ const officialStops=(detail?.tours||[]).filter(r=>r.TourId===selectedTourId && r.AccountId&&Number.isInteger(r.StopSequence));
  const orderedStops=[...officialStops].sort((a,b)=>(a.StopSequence||0)-(b.StopSequence||0));
  const sourceCustomers=useMemo(()=>customers.map(c=>({id:c.AccountId,name:c.Name,latitude:c.Latitude,longitude:c.Longitude})),[detail]);
  const suggested=useMemo(()=>suggestRoutePolygonFromCustomers(sourceCustomers),[sourceCustomers]);
@@ -90,7 +93,7 @@ export function ErpVisitLiveReport({canManage=false}:{canManage?:boolean}){
  const anomaly=useMemo(()=>boundary?inspectRouteCoordinates(sourceCustomers,visits.map(v=>({
   id:v.ExternalVisitId,customerId:v.AccountId,latitude:v.Latitude,longitude:v.Longitude,
  })),boundary):null,[sourceCustomers,visits,boundary]);
- const gpsTrack = showGps ? [...gps].sort((a,b)=>a.RecordedAtUtc.localeCompare(b.RecordedAtUtc))
+ const gpsTrack = showGps && selectedGpsRepId ? [...gps].filter(g=>g.ExternalSalesRepId===selectedGpsRepId).sort((a,b)=>a.RecordedAtUtc.localeCompare(b.RecordedAtUtc))
    .slice(-500).flatMap(log=>{
      const point=readCustomerGeoPoint({latitude:log.Latitude,longitude:log.Longitude});
      return point?[point]:[];
@@ -110,7 +113,7 @@ export function ErpVisitLiveReport({canManage=false}:{canManage?:boolean}){
    return [{id:v.ExternalVisitId,name:'ویزیت '+(customers.find(c=>c.AccountId===v.AccountId)?.Name||v.AccountId||''),point,
     kind:'VISIT' as const,outside:!!anomaly?.visitsOutside.some(x=>x.id===v.ExternalVisitId)}];
   }):[]),
-  ...(showGps?gps.slice(0,300).flatMap(g=>{
+  ...(showGps&&selectedGpsRepId?gps.filter(g=>g.ExternalSalesRepId===selectedGpsRepId).slice(0,300).flatMap(g=>{
    const point=readCustomerGeoPoint({latitude:g.Latitude,longitude:g.Longitude});
    if(!point)return [];
    return [{id:g.ExternalLocationId,name:g.ExternalSalesRepId+' · '+g.RecordedAtUtc,point,kind:'GPS' as const}];
@@ -173,6 +176,20 @@ export function ErpVisitLiveReport({canManage=false}:{canManage?:boolean}){
      {saving?'در حال ثبت…':'ثبت نسخه مرز در SQL'}
     </button>}
     {saveMessage&&<span role="status" className="text-xs text-text-secondary">{saveMessage}</span>}
+   </div>
+   <div className="grid gap-2 sm:grid-cols-2">
+    <label className="text-xs font-bold text-text-secondary">تور ویزیت مشخص
+      <select className="mt-1 min-h-10 w-full rounded-xl border border-border bg-canvas p-2" value={selectedTourId} onChange={e=>setSelectedTourId(e.target.value)}>
+       <option value="">انتخاب تور برای شماره‌گذاری</option>
+       {availableTours.map(tour=><option key={tour.TourId} value={tour.TourId}>{tour.TourDate} · {tour.TourCode||tour.ExternalTourId} · فروشنده {tour.ExternalSalesRepId}</option>)}
+      </select>
+    </label>
+    <label className="text-xs font-bold text-text-secondary">فروشنده برای مسیر حرکت GPS
+      <select className="mt-1 min-h-10 w-full rounded-xl border border-border bg-canvas p-2" value={selectedGpsRepId} onChange={e=>setSelectedGpsRepId(e.target.value)}>
+       <option value="">انتخاب فروشنده</option>
+       {[...new Set(gps.map(item=>item.ExternalSalesRepId))].map(id=><option key={id} value={id}>{id}</option>)}
+      </select>
+    </label>
    </div>
    <div className="flex flex-wrap gap-3 text-xs">
     <label><input type="checkbox" checked={showCustomers} onChange={e=>setShowCustomers(e.target.checked)}/> مشتریان</label>
