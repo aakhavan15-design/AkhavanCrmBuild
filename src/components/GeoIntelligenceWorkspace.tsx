@@ -17,6 +17,9 @@ import { useDataSyncStatus } from '../services/dataSyncController';
 import { enqueueOptimisticMutation } from '../lib/optimisticMutation';
 import { useCan } from '../hooks/useCan';
 import { GeoZoneMapEditor } from './GeoZoneMapEditor';
+import type { GeoMapPin } from './GeoZoneMapEditor';
+import { suggestRoutePolygonFromCustomers, inspectRouteCoordinates } from '../lib/geoRouteAnalysis';
+import { inspectErpRouteMembership } from '../lib/erpRouteGeoView';
 import { VisitIntelligencePanel } from './VisitIntelligencePanel';
 import { Card } from './ui/Card';
 import { Button } from './ui/Button';
@@ -65,6 +68,7 @@ export function GeoIntelligenceWorkspace({ state, updateState }: Props) {
   const location = useLocation();
   const [mode, setMode] = useState<Mode>(() => new URLSearchParams(location.search).get('mode') === 'operations' ? 'operations' : 'zones');
   const [selectedZoneId, setSelectedZoneId] = useState('');
+  const [selectedErpRouteId, setSelectedErpRouteId] = useState('');
   const [zoneName, setZoneName] = useState('');
   const [zoneCode, setZoneCode] = useState('');
   const [coordinateText, setCoordinateText] = useState('');
@@ -89,6 +93,20 @@ export function GeoIntelligenceWorkspace({ state, updateState }: Props) {
   const [reportDateTo, setReportDateTo] = useState('');
   const visibleCustomers = (state.customers || []).filter(customer => rbac.canActOnRecord('accounts', 'VIEW', { ownerId: customer.ownerId, branchId: customer.branchId, territoryId: customer.territoryId, teamId: customer.teamId, tenantId: customer.tenantId, deletedAt: customer.deletedAt, isDeleted: customer.isDeleted }));
   const visibleCustomerIdSet = new Set(visibleCustomers.map(customer => customer.id));
+  // ERP route membership is sensitive: until a route-scoped server API exists it is admin-only.
+  const canInspectErpRoutes = can('geo','VIEW') && rbac.hasPermission('settings.manage');
+  const erpRoutes = canInspectErpRoutes ? (state.erpVisitRoutes || []).filter(route=>!route.isDeleted) : [];
+  const selectedErpRoute = erpRoutes.find(route=>route.externalId===selectedErpRouteId) || null;
+  const routeMembership = selectedErpRoute ? inspectErpRouteMembership(
+    selectedErpRoute,visibleCustomers,state.erpVisitRouteCustomers||[],state.erpVisitRouteStaff||[],toLocalDateISO()
+  ):null;
+  const routeZoneSuggestion = routeMembership ? suggestRoutePolygonFromCustomers(routeMembership.customers) : null;
+  const routeVisitFacts = selectedErpRoute && routeMembership ? (state.erpVisitEvents||[])
+    .filter(visit=>visit.tenantId===selectedErpRoute.tenantId &&
+      visit.sourceSystemCode.toUpperCase()===selectedErpRoute.sourceSystemCode.toUpperCase() &&
+      routeMembership.customers.some(customer=>String(customer.externalId||customer.externalAccountId)===visit.externalCustomerId))
+    : [];
+
   const zones = state.geoZones || [];
   const versions = state.zoneGeometryVersions || [];
   const { serverVersion, lastSyncedAt, isSqlActive, state: syncState } = useDataSyncStatus();
@@ -107,6 +125,30 @@ export function GeoIntelligenceWorkspace({ state, updateState }: Props) {
     try { const geometry = parseCoordinates(coordinateText); const validation = validateZonePolygon(geometry); return validation.valid ? { geometry, error: '' } : { geometry, error: validation.errors.join(' ') }; }
     catch (error) { return { geometry: null, error: error instanceof Error ? error.message : 'مختصات نامعتبر است.' }; }
   }, [coordinateText]);
+  const displayedRouteGeometry = parsedGeometry?.geometry && !parsedGeometry.error
+    ? parsedGeometry.geometry : activeGeometry?.geometry;
+  const routeOutliers = routeMembership && displayedRouteGeometry
+    ? inspectRouteCoordinates(routeMembership.customers,routeVisitFacts.map(visit=>({
+      ...visit,id:visit.externalId,customerId:routeMembership.customers.find(customer=>
+        String(customer.externalId||customer.externalAccountId)===visit.externalCustomerId)?.id,
+      latitude:visit.latitude,longitude:visit.longitude,
+    })),displayedRouteGeometry) : null;
+  const routeMapPins: GeoMapPin[] = routeMembership ? [
+    ...routeMembership.customers.flatMap(customer=>{
+      const point=readCustomerGeoPoint(customer);
+      if(!point)return [];
+      return [{id:customer.id,name:customer.name,kind:'CUSTOMER' as const,point,
+        outside:!!routeOutliers?.customersOutside.some(out=>out.id===customer.id),
+        detailPath:'/accounts/'+encodeURIComponent(customer.id)}];
+    }),
+    ...routeVisitFacts.flatMap(visit=>{
+      const point=readCustomerGeoPoint({latitude:visit.latitude,longitude:visit.longitude});
+      if(!point)return [];
+      return [{id:visit.externalId,name:'ویزیت مشتری '+visit.externalCustomerId,kind:'VISIT' as const,
+        point,outside:!!routeOutliers?.visitsOutside.some(out=>out.id===visit.externalId)}];
+    }),
+  ]:[];
+
   const customersInside = useMemo(() => {
     if (!activeGeometry) return [];
     return visibleCustomers.filter(customer => { const point = readCustomerPoint(customer); return point ? isPointInsideZone(point, activeGeometry.geometry) : false; });
@@ -149,6 +191,7 @@ export function GeoIntelligenceWorkspace({ state, updateState }: Props) {
   };
   const selectZone = (zone: GeoZone) => {
     setSelectedZoneId(zone.id); setZoneName(zone.name); setZoneCode(zone.code);
+    setSelectedErpRouteId(String(zone.erpRouteExternalId || ''));
     const current = versions.find(version => version.id === zone.currentGeometryVersionId) || versions.filter(version => version.zoneId === zone.id && !version.effectiveTo).sort((a,b) => b.version-a.version)[0];
     setCoordinateText(coordinatesToText(current?.geometry)); setChangeReason(''); setStatusMessage(null);
   };
@@ -169,8 +212,12 @@ export function GeoIntelligenceWorkspace({ state, updateState }: Props) {
         if (!draft.geoZones) draft.geoZones = [];
         if (!draft.zoneGeometryVersions) draft.zoneGeometryVersions = [];
         const oldZone = draft.geoZones.find(zone => zone.id === zoneId);
-        if (oldZone) Object.assign(oldZone, { name: zoneName.trim(), code: zoneCode.trim(), updatedAt: now, currentGeometryVersionId: version.id, status: oldZone.status === 'ARCHIVED' ? 'DRAFT' : oldZone.status });
-        else draft.geoZones.push({ id: zoneId, code: zoneCode.trim(), name: zoneName.trim(), status: 'DRAFT', createdAt: now, updatedAt: now, currentGeometryVersionId: version.id, ownerId: draft.currentUserId } as GeoZone);
+        if (oldZone) Object.assign(oldZone, { name: zoneName.trim(), code: zoneCode.trim(), updatedAt: now,
+          ...(selectedErpRoute ? {erpRouteExternalId:selectedErpRoute.externalId,erpSourceSystemCode:selectedErpRoute.sourceSystemCode,erpTenantId:selectedErpRoute.tenantId}:{}),
+          currentGeometryVersionId: version.id, status: oldZone.status === 'ARCHIVED' ? 'DRAFT' : oldZone.status });
+        else draft.geoZones.push({ id: zoneId, code: zoneCode.trim(), name: zoneName.trim(), status: 'DRAFT',
+        ...(selectedErpRoute ? {erpRouteExternalId:selectedErpRoute.externalId,erpSourceSystemCode:selectedErpRoute.sourceSystemCode,erpTenantId:selectedErpRoute.tenantId}:{}),
+        createdAt: now, updatedAt: now, currentGeometryVersionId: version.id, ownerId: draft.currentUserId } as GeoZone);
         draft.zoneGeometryVersions = (draft.zoneGeometryVersions || []).map(item => item.zoneId === zoneId && !item.effectiveTo ? { ...item, effectiveTo: now } : item);
         draft.zoneGeometryVersions.push(version);
         recordAudit(draft, existing ? 'GEO_ZONE_GEOMETRY_VERSION_CREATED' : 'GEO_ZONE_CREATED', zoneId, `زون «${zoneName.trim()}»؛ نسخه هندسه ${version.version} ذخیره شد.`);
@@ -490,9 +537,37 @@ export function GeoIntelligenceWorkspace({ state, updateState }: Props) {
         <div className="space-y-2">{zones.map(zone=>{const v=versions.find(item=>item.id===zone.currentGeometryVersionId)||versions.filter(item=>item.zoneId===zone.id).sort((a,b)=>b.version-a.version)[0];return <button key={zone.id} onClick={()=>selectZone(zone)} className={`w-full rounded-2xl border p-3 text-start transition-colors ${selectedZoneId===zone.id?'border-primary/50 bg-primary/5':'border-border bg-white hover:bg-canvas'}`}><div className="flex items-start justify-between gap-2"><div><div className="font-bold text-text-main">{zone.name}</div><div className="mt-1 text-xs text-text-secondary">کد {zone.code} · نسخه {v?.version||0}</div></div><span className={`rounded-lg px-2 py-1 text-micro font-bold ${zone.status==='ACTIVE'?'bg-success-soft text-success':zone.status==='ARCHIVED'?'bg-canvas text-text-secondary':'bg-warning-soft text-warning'}`}>{zone.status==='ACTIVE'?'فعال':zone.status==='ARCHIVED'?'بایگانی':'پیش‌نویس'}</span></div></button>;})}</div>
       </Card>
       <Card className="space-y-4" padding="lg"><div><h2 className="text-base font-black text-text-main">{selectedZone?'ویرایش زون و ثبت نسخهٔ جدید':'تعریف زون جدید'}</h2><p className="mt-1 text-xs leading-6 text-text-secondary">مختصات را در ترتیب طول، عرض جغرافیایی وارد کنید؛ هر رأس در یک خط، نمونهٔ قالب: <code>51.42, 35.72</code>. حلقه هنگام ذخیره بسته می‌شود.</p></div>
+        {canInspectErpRoutes && <div className="space-y-2 rounded-2xl border border-border bg-canvas p-3">
+          <label className="block text-xs font-black text-text-main">انتخاب مسیر رسمی ERP
+            <Select value={selectedErpRouteId} className="mt-2" onChange={event=>{
+              const route=erpRoutes.find(item=>item.externalId===event.target.value);
+              setSelectedErpRouteId(route?.externalId||'');setSelectedZoneId('');
+              setZoneName(route?route.routeName+' — محدوده تحلیلی':'');setZoneCode(route?'ERP-'+route.routeCode:'');
+              setCoordinateText('');setChangeReason('');setStatusMessage(null);
+            }}>
+              <option value="">انتخاب مسیر</option>
+              {erpRoutes.map(route=><option key={route.tenantId+':'+route.sourceSystemCode+':'+route.externalId} value={route.externalId}>{route.routeCode} — {route.routeName}</option>)}
+            </Select>
+          </label>
+          {routeMembership && <div className="space-y-2 text-xs leading-6 text-text-secondary">
+            <p>عضویت‌های ERP: {routeMembership.officialMembershipCount.toLocaleString('fa-IR')} · مشتری نگاشت‌شده و مجاز: {routeMembership.customers.length.toLocaleString('fa-IR')} · بدون نگاشت: {routeMembership.unmappedCount.toLocaleString('fa-IR')}</p>
+            <p>فروشنده‌ها: {routeMembership.sellerIds.join('، ')||'نامشخص'} · سرپرست‌ها: {routeMembership.supervisorIds.join('، ')||'نامشخص'}</p>
+            <p>زیرمسیرها: {routeMembership.subRoutes.map(sub=>sub.code+' ('+sub.count+')').join('، ')||'فاقد کد زیرمسیر'}</p>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" disabled={!canEdit||routeZoneSuggestion?.status!=='READY'} onClick={()=>{
+                if(!routeZoneSuggestion?.geometry)return;
+                setCoordinateText(coordinatesToText(routeZoneSuggestion.geometry));
+                setChangeReason('پیشنهاد خودکار از ۸۰٪ مشتریان متراکم ERP؛ نیازمند تأیید مرز');
+              }}>پیشنهاد مرز از ۸۰٪ مشتریان</Button>
+              <span>{routeZoneSuggestion?.status==='READY' ? 'پوشش واقعی: '+routeZoneSuggestion.actualCoveragePercent.toLocaleString('fa-IR')+'٪' : 'نقاط معتبر کافی نیست'}</span>
+            </div>
+            <p>این محدوده فقط برای تحلیل است؛ عضویت مشتری و ترتیب تور ERP تغییر نمی‌کند.</p>
+            {routeOutliers && <p className="text-warning">مشتری خارج از مرز: {routeOutliers.customersOutside.length.toLocaleString('fa-IR')} · ویزیت خارج از مرز: {routeOutliers.visitsOutside.length.toLocaleString('fa-IR')} · مختصات نامشخص: {(routeOutliers.unknownCustomers.length+routeOutliers.unknownVisits.length).toLocaleString('fa-IR')}</p>}
+          </div>}
+        </div>}
         <div className="grid gap-3 sm:grid-cols-2"><Input label="نام زون" value={zoneName} onChange={event=>setZoneName(event.target.value)} placeholder="مثلاً منطقه شمالی" required/><Input label="کد یکتا" value={zoneCode} onChange={event=>setZoneCode(event.target.value)} placeholder="مثلاً ۰۰۱" required/></div>
         <label className="block text-xs font-bold text-text-secondary">رأس‌های مرز (طول، عرض)<Textarea value={coordinateText} onChange={event=>setCoordinateText(event.target.value)} rows={7} placeholder={'51.42, 35.72\n51.50, 35.70\n51.48, 35.78'} className="mt-1.5 font-mono" /></label>
-        <GeoZoneMapEditor key={selectedZoneId || 'new-zone'} geometry={parsedGeometry?.geometry || undefined} coordinateText={coordinateText} disabled={!canEdit} mapConfig={state.settings?.mapConfig || {}} onMapConfigChange={config=>updateState(draft=>{if(!draft.settings)draft.settings={};draft.settings.mapConfig=config;})} onChange={geometry=>{if(geometry)setCoordinateText(coordinatesToText(geometry));}} onPointsChange={points=>setCoordinateText(points.map(point=>`${point.longitude}, ${point.latitude}`).join('\n'))} />
+        <GeoZoneMapEditor key={selectedZoneId || selectedErpRouteId || 'new-zone'} geometry={parsedGeometry?.geometry || undefined} markers={routeMapPins} coordinateText={coordinateText} disabled={!canEdit} mapConfig={state.settings?.mapConfig || {}} onMapConfigChange={config=>updateState(draft=>{if(!draft.settings)draft.settings={};draft.settings.mapConfig=config;})} onChange={geometry=>{if(geometry)setCoordinateText(coordinatesToText(geometry));}} onPointsChange={points=>setCoordinateText(points.map(point=>`${point.longitude}, ${point.latitude}`).join('\n'))} />
         <Input label="دلیل تغییر مرز / توضیح ممیزی" value={changeReason} onChange={event=>setChangeReason(event.target.value)} placeholder="اختیاری؛ مثلاً اصلاح محدوده پوشش"/>
         {parsedGeometry && <div className={`rounded-xl border p-3 text-xs leading-6 ${parsedGeometry.error?'border-danger/30 bg-danger-soft text-danger':'border-success/30 bg-success-soft text-success'}`}>{parsedGeometry.error || `هندسه معتبر است؛ ${validateZonePolygon(parsedGeometry.geometry!).vertexCount.toLocaleString('fa-IR')} رأس متمایز.`}</div>}{parsedGeometry?.geometry && !parsedGeometry.error && <PolygonGeometryPreview geometry={parsedGeometry.geometry} />}
         <div className="flex flex-wrap gap-2"><Button onClick={saveZone} disabled={!canEdit || !zoneName.trim() || !zoneCode.trim() || !parsedGeometry?.geometry || !!parsedGeometry.error} icon={<Save size={15}/>}>ذخیره نسخهٔ هندسه</Button>{selectedZone?.status!=='ACTIVE'&&selectedZone&&<Button variant="success" disabled={!canEdit||!activeGeometry} onClick={()=>changeZoneStatus(selectedZone,'ACTIVE')} icon={<CheckCircle2 size={15}/>}>فعال‌سازی زون</Button>}{selectedZone?.status==='ACTIVE'&&<Button variant="outline" disabled={!canEdit} onClick={()=>changeZoneStatus(selectedZone,'DRAFT')}>بازگشت به پیش‌نویس</Button>}{selectedZone&&selectedZone.status!=='ARCHIVED'&&<Button variant="ghost" disabled={!canEdit} onClick={()=>changeZoneStatus(selectedZone,'ARCHIVED')} icon={<Archive size={15}/>}>بایگانی</Button>}</div>
