@@ -5,6 +5,7 @@ import test from 'node:test';
 import fs from 'node:fs';
 import {
   classify, recordId, splitState, buildHashIndex, diffAgainstIndex, applyToIndex, mergeSnapshot, checkIntegrity, profileCollections,
+  PRIVATE_PERSONNEL_COLLECTIONS, stripPrivatePersonnel,
 } from '../src/lib/stateModel.mjs';
 import { StateSyncEngine } from '../src/services/stateSync.ts';
 import { createEntityService, MemoryEntityDriver, FileEntityDriver, MssqlEntityDriver } from '../server/entityStore.mjs';
@@ -410,6 +411,37 @@ test('authoritative receipts update the visible record once and preserve interve
   assert.equal(engine.acknowledgeRecord('quotes',{...approved,status:'ACCEPTED'},approved),false);
   assert.equal(store.getState().state.quotes[0],newer);
   engine.stop();
+});
+
+test('private HR records leave the browser cache and prior SQL rows disappear after scope loss', async () => {
+  const sensitive = Object.fromEntries(PRIVATE_PERSONNEL_COLLECTIONS.map(name => [name, [{ id: name, userId: 'employee' }]]));
+  const original = { ...sensitive, accounts: [{ id: 'customer' }], attachments: [
+    { id: 'identity', entityType: 'personnel_file' }, { id: 'recruitment', entityType: 'APPLICATION' },
+    { id: 'business', entityType: 'ACCOUNT' },
+  ] };
+  const cached = stripPrivatePersonnel(original);
+  for (const name of PRIVATE_PERSONNEL_COLLECTIONS) {
+    assert.deepEqual(cached[name], []);
+    assert.equal(original[name].length, 1);
+  }
+  assert.deepEqual(cached.attachments, [original.attachments[2]]);
+  assert.equal(cached.accounts, original.accounts);
+
+  let visible = true;
+  const driver = { kind: 'mssql', load: async () => ({ collections: visible ? sensitive : {}, singletons: {}, version: 1 }) };
+  const service = createEntityService({ driver, registry, hasPermission: async (_auth, permission) => visible || permission !== 'users.manage' });
+  const store = fakeStore({});
+  const engine = new StateSyncEngine(store, serviceProvider(service, auth), registry, { debounceMs: 50 });
+  try {
+    await engine.start();
+    assert.equal(store.getState().state.personnelFiles.length, 1);
+    visible = false;
+    const snapshot = await service.snapshot(auth);
+    assert.deepEqual(snapshot.collections.personnelFiles, []);
+    assert.ok(snapshot.hiddenCollections.includes('onboardingApplications'));
+    await engine.hydrate();
+    for (const name of PRIVATE_PERSONNEL_COLLECTIONS) assert.deepEqual(store.getState().state[name], []);
+  } finally { engine.stop(); }
 });
 
 test('round trip: client edits reach SQL, a second client sees them, deletes propagate', async () => {

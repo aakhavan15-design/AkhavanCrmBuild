@@ -3,6 +3,16 @@
 // Source of truth for collections/permissions: src/config/stateCollections.json (passed in as `registry`).
 
 export const SINGLETON_PREFIX = '__singleton__';
+export const PAYROLL_COLLECTIONS = Object.freeze(['salaryProfiles', 'advanceRequests', 'payrollRuns', 'payslips', 'commissionTransactions']);
+export const PRIVATE_PERSONNEL_COLLECTIONS = Object.freeze(['personnelFiles', 'onboardingApplications', ...PAYROLL_COLLECTIONS]);
+const privatePersonnelAttachments = new Set(['APPLICATION', 'PERSONNEL_FILE', 'PERSONNEL']);
+
+export function stripPrivatePersonnel(state) {
+  return { ...state, ...Object.fromEntries(PRIVATE_PERSONNEL_COLLECTIONS.map(name => [name, []])),
+    attachments: Array.isArray(state.attachments)
+      ? state.attachments.filter(item => item && !privatePersonnelAttachments.has(String(item.entityType).toUpperCase())) : [] };
+}
+
 const isPlainObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 
 /** Historical and generated fixture labels used by CRM seed profiles. */

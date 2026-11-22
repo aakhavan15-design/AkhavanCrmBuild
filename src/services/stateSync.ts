@@ -3,7 +3,7 @@
 // provider (SQL Server via /api/v1/state/*). Import-light on purpose so it can be unit-tested without a browser.
 import type { AppState } from '../types';
 import {
-  splitState, diffAgainstIndex, applyToIndex, mergeSnapshot, recordId, hashRecord, type HashIndex, type ChangeSet,
+  splitState, diffAgainstIndex, applyToIndex, mergeSnapshot, recordId, hashRecord, PRIVATE_PERSONNEL_COLLECTIONS, type HashIndex, type ChangeSet,
 } from '../lib/stateModel.mjs';
 
 export interface StateSnapshot { collections: Record<string, Array<Record<string, unknown>>>; singletons: Record<string, any>; serverVersion?: number; hiddenCollections?: string[] }
@@ -118,7 +118,7 @@ export class StateSyncEngine {
     const current = this.store.getState().state;
     const { patch, index } = mergeSnapshot(current, snapshot, this.index, this.registry);
     const revoked = new Set(snapshot.hiddenCollections ?? []);
-    for (const name of ['groups', 'messages', 'onboardingApplications', 'attachments'] as const) {
+    for (const name of ['groups', 'messages', 'attachments', ...PRIVATE_PERSONNEL_COLLECTIONS]) {
       if (revoked.has(name)) {
         patch[name] = [];
         delete index.collections[name];

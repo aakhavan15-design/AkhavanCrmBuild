@@ -23,7 +23,7 @@ import { LiveAnnouncer } from './components/ui/LiveAnnouncer';
 import { RBACService } from './lib/rbac';
 import { makeCanAccess } from './lib/navigation';
 import { AuthService } from './services/AuthService';
-import { stopStateSync } from './services/stateSyncRuntime';
+import { isSqlProviderActive, stopStateSync } from './services/stateSyncRuntime';
 import { dataSyncController } from './services/dataSyncController';
 import { ThemeProvider } from './theme/ThemeProvider';
 import { ToastProvider } from './components/ui/Toast';
@@ -192,11 +192,16 @@ function AppContent() {
   // صفحه ورود قابل دسترسی است؛ تا اتصال ارائه‌دهنده واقعی، ورود موفق یا عبور امنیتی شبیه‌سازی نمی‌شود.
   // بعد از ورود موفق: پرونده ناقص → فرم تکمیل؛ کامل → داشبورد (ورود واقعی فقط با سرویس احراز هویت فعال می‌شود)
   const onboardingConfig = getOnboardingConfig(state);
-  const afterLogin = (u: { id: string }) => {
+  const afterLogin = async (u: { id: string }) => {
     stopStateSync();
-    updateState(withoutPrivateSnapshot);
-    const file = (state.personnelFiles as PersonnelFile[] | undefined)?.find(item => item.userId === u.id);
-    navigate(onboardingConfig.enabled && file?.status !== 'APPROVED' && computeMissing(file, onboardingConfig).length ? '/personnel-file' : '/');
+    const remote = isSqlProviderActive();
+    updateState(saved => withoutPrivateSnapshot(saved, remote));
+    if (remote) await dataSyncController.initialize();
+    const fresh = useAppStore.getState().state;
+    if (!AuthService.isAuthenticated() || fresh.currentUserId !== u.id) return;
+    const config = getOnboardingConfig(fresh);
+    const file = (fresh.personnelFiles as PersonnelFile[] | undefined)?.find(item => item.userId === u.id);
+    navigate(config.enabled && file?.status !== 'APPROVED' && computeMissing(file, config).length ? '/personnel-file' : '/');
   };
   if (location.pathname !== '/login' && location.pathname !== '/apply' && !AuthService.isAuthenticated()) return <Navigate to="/login" replace state={{ from: location.pathname }} />;
   if (location.pathname === '/login') return <div className="crm-workspace" data-ui-density="compact"><LoginWorkspace state={state} tenantName={getTenantName(state)} logoUrl={state.settings?.orgConfig?.logoUrl} applyEnabled={onboardingConfig.enabled} onAuthenticated={afterLogin} /></div>;
@@ -251,7 +256,7 @@ function AppContent() {
     <>
       <LiveAnnouncer />
       <Layout
-        onLogout={() => { track(AnalyticsEvents.LOGOUT); stopStateSync(); AuthService.clearSession(); updateState(withoutPrivateSnapshot); navigate('/login', { replace: true }); }}
+        onLogout={() => { track(AnalyticsEvents.LOGOUT); stopStateSync(); AuthService.clearSession(); updateState(saved => withoutPrivateSnapshot(saved, isSqlProviderActive())); navigate('/login', { replace: true }); }}
         onOpenSearch={() => setIsSearchOpen(true)}
         onOpenNotifications={() => setIsNotificationsOpen(true)}
         notifications={visibleNotifications}

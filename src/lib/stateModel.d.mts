@@ -1,4 +1,7 @@
 export const SINGLETON_PREFIX: string;
+export const PAYROLL_COLLECTIONS: readonly string[];
+export const PRIVATE_PERSONNEL_COLLECTIONS: readonly string[];
+export function stripPrivatePersonnel<State extends { attachments?: { entityType: string }[] }>(state: State): State;
 export function isMarkedFixture(record: unknown, id?: string | null): boolean;
 export function fnv1a(text: string): string;
 export function hashRecord(record: unknown): string;

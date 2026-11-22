@@ -4,7 +4,7 @@ import type { AppState } from '../types';
 import { idbGet, idbSet, idbDel } from './idb';
 import { generateSeedData } from './seed';
 import { DEFAULT_COA_MIRROR, DEFAULT_REPORT_BUCKETS, DEFAULT_ACCOUNT_MAP_RULES } from './accountingMapping';
-import { isMarkedFixture } from './stateModel.mjs';
+import { isMarkedFixture, stripPrivatePersonnel } from './stateModel.mjs';
 import { createAppStorePort, type DataPort } from './dataPorts';
 import { getOfflineQueue, retryFailedOfflineOperations } from './offline';
 
@@ -17,9 +17,10 @@ const SYNC_CHANNEL_NAME = 'akhavan_state_sync_channel';
 const MAX_LOG_RECORDS = 1000;
 const MAX_NOTIFICATIONS = 200;
 
-export function withoutPrivateSnapshot(state: AppState): AppState {
-  return { ...state, groups: [], messages: [], onboardingApplications: [],
-    attachments: state.attachments?.filter(item => item.entityType !== 'APPLICATION'),
+export function withoutPrivateSnapshot(state: AppState, stripPersonnel = true): AppState {
+  const publicState = stripPersonnel ? stripPrivatePersonnel(state) : state;
+  return { ...publicState, groups: [], messages: [], onboardingApplications: [],
+    attachments: publicState.attachments?.filter(item => item.entityType !== 'APPLICATION'),
     notifications: state.notifications?.filter(item => item.linkTab !== 'groups' && !item.recipientId) };
 }
 

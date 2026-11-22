@@ -8,6 +8,7 @@ import { CHAT_COLLECTIONS, isConversationMember, canChangeConversation, canChang
 import path from 'node:path';
 import {
   splitState, policyOf, recordId, classify, isMarkedFixture, checkIntegrity, profileCollections, SINGLETON_PREFIX,
+  PAYROLL_COLLECTIONS, PRIVATE_PERSONNEL_COLLECTIONS,
 } from '../src/lib/stateModel.mjs';
 
 const NAME_RE = /^[A-Za-z][A-Za-z0-9_]{0,79}$/;
@@ -16,9 +17,7 @@ const PARTY_COLLECTIONS = ['accounts', 'customers'];
 const FINANCIAL_PARTY_COLLECTIONS = ['invoices', 'payments', 'cheques', 'paymentallocations', 'creditnotes', 'collectionpromises'];
 const COMMERCIAL_COLLECTIONS = ['quotes', 'salesOrders'];
 const commercialPartitions = COMMERCIAL_COLLECTIONS.map(name => name.toLowerCase());
-const PAYROLL_COLLECTIONS = ['salaryProfiles', 'advanceRequests', 'payrollRuns', 'payslips', 'commissionTransactions'];
-const personnelCollections = ['personnelFiles', 'onboardingApplications', ...PAYROLL_COLLECTIONS];
-const personnelPartitions = personnelCollections.map(name => name.toLowerCase());
+const personnelPartitions = PRIVATE_PERSONNEL_COLLECTIONS.map(name => name.toLowerCase());
 const payrollPartitions = PAYROLL_COLLECTIONS.map(name => name.toLowerCase());
 const sqlCollectionList = names => names.map(name => `N'${name}'`).join(',');
 const scopedCollections = new Set([...PARTY_COLLECTIONS, ...FINANCIAL_PARTY_COLLECTIONS, ...commercialPartitions]);
@@ -581,6 +580,7 @@ export function createEntityService({ driver, registry, hasPermission, excludeFi
         item.entityType !== 'APPLICATION' || mayReadApplications),
     };
     for (const name of includeEmptyCollections) storedCollections[name] ??= [];
+    if (driver.kind === 'mssql') for (const name of PRIVATE_PERSONNEL_COLLECTIONS) storedCollections[name] ??= [];
     for (const [name, list] of Object.entries(storedCollections)) {
       if (await canRead(name)) {
         collections[name] = excludeFixtures ? list.filter(row => !isMarkedFixture(row, recordId(row, name, registry))) : list;
@@ -602,7 +602,7 @@ export function createEntityService({ driver, registry, hasPermission, excludeFi
     const rejected = [];
     let total = 0;
     const writable = new Map();
-    const privateNames = new Map(['groups', 'messages', 'attachments', 'collectionPromises', ...personnelCollections, ...COMMERCIAL_COLLECTIONS]
+    const privateNames = new Map(['groups', 'messages', 'attachments', 'collectionPromises', ...PRIVATE_PERSONNEL_COLLECTIONS, ...COMMERCIAL_COLLECTIONS]
       .map(name => [name.toLowerCase(), name]));
     const canonical = name => !privateNames.has(name.toLowerCase()) || privateNames.get(name.toLowerCase()) === name;
     const canWrite = async (name) => {
