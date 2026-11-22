@@ -613,7 +613,7 @@ export function createEntityService({ driver, registry, hasPermission, excludeFi
     const rejected = [];
     let total = 0;
     const writable = new Map();
-    const privateNames = new Map(['groups', 'messages', 'attachments', 'collectionPromises', 'erpVisitRoutes', 'erpVisitTours', ...PRIVATE_PERSONNEL_COLLECTIONS, ...COMMERCIAL_COLLECTIONS]
+    const privateNames = new Map(['groups', 'messages', 'attachments', 'collectionPromises', 'erpVisitRoutes', 'erpVisitTours', 'erpVisitRouteCustomers', 'erpVisitRouteStaff', 'erpVisitNoOrderReasons', 'erpVisitEvents', 'erpSalesRepGpsLogs', ...PRIVATE_PERSONNEL_COLLECTIONS, ...COMMERCIAL_COLLECTIONS]
       .map(name => [name.toLowerCase(), name]));
     const canonical = name => !privateNames.has(name.toLowerCase()) || privateNames.get(name.toLowerCase()) === name;
     const canWrite = async (name) => {
