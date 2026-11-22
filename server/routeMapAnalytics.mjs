@@ -161,7 +161,7 @@ export function createRouteMapAnalytics({sql,run}) {
        AND (NOT EXISTS(SELECT 1 FROM OPENJSON(@categoryJson)) OR a.BusinessCategoryCode IN (SELECT value FROM OPENJSON(@categoryJson)))
        AND EXISTS(SELECT 1 FROM security.fn_RecordReadScope(a.TenantId,N'accounts.view',a.OwnerUserId,a.BranchId,a.TerritoryId,a.TeamId))
     ), FilteredInvoices AS (
-      SELECT i.InvoiceMirrorId,i.AccountId,i.SourceSystemCode,i.GrossAmount
+      SELECT i.InvoiceMirrorId,i.AccountId,i.SourceSystemCode,i.GrossAmount,i.InvoiceDate
       FROM crm.InvoiceMirror i WHERE i.TenantId=@tenant AND i.IsVoided=0 AND i.CurrencyCode='IRR'
        AND i.StatusCode IN ('POSTED','CONFIRMED','CLOSED')
        AND i.InvoiceDate BETWEEN @dateFrom AND @dateTo
@@ -179,6 +179,10 @@ export function createRouteMapAnalytics({sql,run}) {
       COUNT(DISTINCT i.AccountId) AS ActiveCustomerCount,SUM(l.Amount) AS NetSales
     FROM Members m JOIN FilteredInvoices i ON i.AccountId=m.AccountId
     JOIN InvoiceLines l ON l.InvoiceMirrorId=i.InvoiceMirrorId
+    AND EXISTS(SELECT 1 FROM crm.VisitRouteCustomerMirror validMembership
+      WHERE validMembership.TenantId=@tenant AND validMembership.RouteId=m.RouteId
+       AND validMembership.AccountId=i.AccountId AND validMembership.EffectiveFrom<=i.InvoiceDate
+       AND (validMembership.EffectiveTo IS NULL OR validMembership.EffectiveTo>=i.InvoiceDate))
     WHERE @financeWide=1 OR i.SalesRepUserId=@actor OR EXISTS (
       SELECT 1 FROM crm.VisitRouteStaffMirror manager
       WHERE manager.TenantId=@tenant AND manager.RouteId=m.RouteId AND manager.StaffUserId=@actor
@@ -209,6 +213,10 @@ export function createRouteMapAnalytics({sql,run}) {
     const returnSql=permittedMembers+`
       SELECT m.RouteId,SUM(ret.ReturnedAmount) AS ReturnAmount
       FROM Members m JOIN analytics.vw_FactReturns ret ON ret.TenantId=@tenant AND ret.AccountId=m.AccountId
+      AND EXISTS(SELECT 1 FROM crm.VisitRouteCustomerMirror validMembership
+        WHERE validMembership.TenantId=@tenant AND validMembership.RouteId=m.RouteId
+          AND validMembership.AccountId=ret.AccountId AND validMembership.EffectiveFrom<=ret.DateKey
+          AND (validMembership.EffectiveTo IS NULL OR validMembership.EffectiveTo>=ret.DateKey))
       JOIN crm.SalesReturnMirror sourceReturn ON sourceReturn.TenantId=ret.TenantId
         AND sourceReturn.SalesReturnMirrorId=ret.SalesReturnMirrorId
       LEFT JOIN crm.ExternalProduct product ON product.TenantId=ret.TenantId
