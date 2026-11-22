@@ -61,3 +61,19 @@ test('cross-tenant tour stop and missing explicit external mapping do not leak i
  assert.equal(unmapped.inErpTour,0);
  assert.ok(unmapped.incompleteSources.some(reason=>reason.includes('نگاشت شناسه خارجی')));
 });
+
+test('a documented invoice link in a route is distinct from the reported order outcome',()=>{
+ const r=buildVisitIntelligence({...base,tours:[tour('2026-11-21',['C1'])],
+   visits:[v('V1','C1','2026-11-21','ORDER_TAKEN',{ownerId:'REP-01',invoiceId:'I1'})],
+   invoices:[invoice('I1','C1','2026-11-21',4500000)]});
+ assert.equal(r.routes[0].recordedVisitsOnTourDate,1);
+ assert.equal(r.routes[0].recordedOrderOutcomes,1);
+ assert.equal(r.routes[0].linkedInvoiceCount,1);
+ assert.equal(r.routes[0].linkedInvoiceValue,4500000);
+});
+test('a visit with unknown representative cannot be assigned to a specific ERP tour salesperson',()=>{
+ const r=buildVisitIntelligence({...base,tours:[tour('2026-11-21',['C1'])],visits:[v('V1','C1','2026-11-21')]});
+ assert.equal(r.totalActualVisits,1);
+ assert.equal(r.routes[0].recordedVisitsOnTourDate,0);
+ assert.equal(r.routes[0].unconfirmedPastStops,1);
+});
