@@ -6,6 +6,7 @@
 export interface VisitIntelCustomer {
   id: string; name: string; code?: string; tags?: string[]; channel?: string;
   customerClass?: string; businessType?: string; createdAt?: string;
+  externalId?: string; externalAccountId?: string; sourceSystemCode?: string; tenantId?: string;
 }
 export interface VisitIntelVisit {
   id: string; customerId?: string; accountId?: string;
@@ -28,7 +29,7 @@ export interface VisitIntelReturn {
 }
 export interface VisitIntelTour {
   externalId: string; tourDate: string; routeExternalId: string; salesRepExternalId: string;
-  sourceSystemCode?: string; statusCode?: string; isDeleted?: boolean;
+  sourceSystemCode?: string; tenantId?: string; statusCode?: string; isDeleted?: boolean;
   stops: Array<{ externalCustomerId: string; stopSequence: number }>;
 }
 export interface VisitIntelReceivable {customerId: string; outstandingAmount: number; overdueAmount: number; maxDaysOverdue: number}
@@ -99,12 +100,27 @@ export function buildVisitIntelligence(args: VisitIntelArgs): VisitIntelReport {
   const visits=(args.visits||[]).filter(v=>ids.has(String(v.customerId||v.accountId||'')) && realVisit(v) && (ymd(v.checkInAt||v.dateTime)||'')<=asOf);
   const invoices=(args.invoices||[]).filter(i=>ids.has(String(i.customerId||i.accountId||'')) && !emptyOrVoided(i) && !!ymd(i.date) && (ymd(i.date)||'')<=asOf);
   const returns=(args.returns||[]).filter(r=>!emptyOrVoided(r) && !!ymd(r.returnDate) && (ymd(r.returnDate) as string) <= asOf);
+  // Resolve external ERP customer IDs through explicit source-scoped identities only.
+  // An arbitrary CRM id or customer code must NOT be assumed equal to the ERP id.
+  const externalCustomerIds=new Map<string,string>();
+  for(const customer of args.customers) {
+    const externalId=String(customer.externalId||customer.externalAccountId||'').trim();
+    const source=String(customer.sourceSystemCode||'').trim().toUpperCase();
+    const tenant=String(customer.tenantId||'').trim();
+    if(externalId && source && tenant){
+      const key=tenant+'|'+source+'|'+externalId;
+      if(externalCustomerIds.has(key) && externalCustomerIds.get(key)!==customer.id)
+        externalCustomerIds.delete(key); // ambiguous ERP identity: fail closed
+      else externalCustomerIds.set(key,customer.id);
+    }
+  }
   const tourStops=new Map<string,VisitIntelRow['tourStops']>();
   for(const tour of args.tours||[]) {
     if(tour.isDeleted||!ymd(tour.tourDate)||tour.tourDate<weekStart||tour.tourDate>weekEnd || emptyOrVoided(tour)) continue;
     for(const stop of tour.stops||[]) {
-      const customerId=String(stop.externalCustomerId||'');
-      if(!ids.has(customerId)||!Number.isSafeInteger(stop.stopSequence)||stop.stopSequence<1) continue;
+      const scopedKey=String(tour.tenantId||'').trim()+'|'+String(tour.sourceSystemCode||'').trim().toUpperCase()+'|'+String(stop.externalCustomerId||'').trim();
+      const customerId=externalCustomerIds.get(scopedKey);
+      if(!customerId||!ids.has(customerId)||!Number.isSafeInteger(stop.stopSequence)||stop.stopSequence<1) continue;
       const arr=tourStops.get(customerId)||[];
       arr.push({tourId:tour.externalId,date:tour.tourDate,routeId:tour.routeExternalId,repId:tour.salesRepExternalId,sequence:stop.stopSequence});
       tourStops.set(customerId,arr);
@@ -194,6 +210,7 @@ export function buildVisitIntelligence(args: VisitIntelArgs): VisitIntelReport {
       ...(!args.historyComplete?['تاریخچه کامل ویزیت تأیید نشده']:[]),
       ...(!args.invoiceHistoryComplete?['تاریخچه کامل فروش تأیید نشده']:[]),
       ...(!(args.tours||[]).length?['تور ERP برای هفته جاری در داده قابل مشاهده نیست']:[]),
+      ...((args.tours||[]).length && [...tourStops.values()].every(stops=>stops.length===0)?['نگاشت شناسه خارجی مشتری ERP به مشتری CRM موجود/تأیید نشده است']:[]),
       ...(!(args.receivables||[]).length?['مانده تأییدشده دفتر کل برای اولویت وصول در دسترس نیست']:[])
     ],reasonCounts};
 }
