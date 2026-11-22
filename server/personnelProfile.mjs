@@ -10,7 +10,9 @@ WHERE u.TenantId=@tenant AND u.UserId=@user AND u.IsActive=1;
 
 SELECT TOP(2) e.EmployeeCode AS employeeCode,e.CommercialCode AS commercialCode,e.DetailCode AS detailCode,
   e.PositionTitle AS position,e.OperationalRole AS operationalRole,e.EmploymentStatus AS employmentStatus,
-  e.Origin AS origin,CONVERT(char(10),e.HireDate,126) AS hireDate,branch.Name AS branchName
+  e.Origin AS origin,CONVERT(char(10),e.HireDate,126) AS hireDate,branch.Name AS branchName,
+  CONVERT(char(10),e.TerminationDate,126) AS terminationDate,
+  REPLACE(CONVERT(varchar(23),COALESCE(e.UpdatedAtUtc,e.CreatedAtUtc),121),' ','T') AS revision
 FROM hr.Employee e
 JOIN core.AppUser u ON u.TenantId=e.TenantId AND u.UserId=e.UserId AND u.IsActive=1
 LEFT JOIN core.Branch branch ON branch.TenantId=e.TenantId AND branch.BranchId=e.BranchId
@@ -37,6 +39,24 @@ JOIN core.AppUser employee ON employee.TenantId=r.TenantId AND employee.UserId=r
 CROSS APPLY security.fn_TaskRequestGrant(@tenant,@user,N'internal.manage',employee.UserId,employee.BranchId,employee.TerritoryId,employee.TeamId,1)
 WHERE r.TenantId=@tenant AND employee.ManagerUserId=@user AND employee.UserId<>@user AND r.StatusCode='REQUESTED'
 ORDER BY r.CreatedAtUtc,r.AdvanceRequestId;`;
+
+const employmentHistorySql = `
+SELECT TOP(20) CONVERT(varchar(20),a.AuditEventId) AS id,a.OccurredAtUtc AS at,firstActor.DisplayName AS actor,
+  JSON_VALUE(a.DetailsJson,'$.previousStatus') AS previousStatus,JSON_VALUE(a.DetailsJson,'$.status') AS status,
+  JSON_VALUE(a.DetailsJson,'$.reason') AS reason
+FROM hr.Employee e JOIN security.AuditEvent a ON a.TenantId=e.TenantId AND a.EntityId=LOWER(CONVERT(varchar(36),e.EmployeeId))
+LEFT JOIN core.AppUser firstActor ON firstActor.TenantId=a.TenantId AND firstActor.UserId=a.ActorUserId
+WHERE e.TenantId=@tenant AND e.UserId=@user AND e.IsDeleted=0 AND a.EntityType=N'EMPLOYEE'
+  AND a.EventType=N'HR_EMPLOYMENT_STATUS_CHANGED' AND a.OutcomeCode='SUCCESS'
+ORDER BY a.OccurredAtUtc DESC,a.AuditEventId DESC;`;
+
+export function parseEmploymentStatusChange(body) {
+  const statuses=['ONBOARDING','PROBATION','ACTIVE','SUSPENDED','TERMINATED'];
+  const reason=typeof body?.reason==='string' ? body.reason.trim() : '';
+  if (!uuid(body?.commandId) || !statuses.includes(body.status) || !reason || reason.length>750 ||
+      typeof body.revision!=='string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}$/.test(body.revision)) return null;
+  return {commandId:body.commandId.toLowerCase(),revision:body.revision,status:body.status,reason};
+}
 
 const advanceNotice = `
 IF @recipient IS NOT NULL
@@ -73,18 +93,59 @@ export function createPersonnelService({ sql,run }) {
   const request=(tx,auth,user)=>new sql.Request(tx).input('tenant',sql.UniqueIdentifier,auth.tenantId).input('user',sql.UniqueIdentifier,user);
   async function read(auth,userId,own) {
     return run(auth,async tx=>{
-      const result=await request(tx,auth,userId).query(identitySql+(own ? ownPayrollSql : ''));
+      const result=await request(tx,auth,userId).query(identitySql+(own ? ownPayrollSql : employmentHistorySql));
       const [users,employees,payslips=[],advances=[],advanceReview=[]]=result.recordsets;
       if (!users.length) return null;
       return {user:users[0],employment:employees.length===1 ? employees[0] : null,
         status:employees.length===1 ? 'LINKED' : employees.length ? 'AMBIGUOUS' : 'UNLINKED',
-        ...(own ? {payslips,advances,advanceReview} : {})};
+        ...(own ? {payslips,advances,advanceReview} : {history:employees.length===1 ? payslips : []})};
     });
   }
 
   return {
     self: auth=>read(auth,auth.userId,true),
     linkedUser: (auth,userId)=>read(auth,userId,false),
+    changeEmploymentStatus: (auth,userId,input)=>run(auth,async tx=>{
+      const fingerprint=createHash('sha256').update(JSON.stringify(input)).digest('hex');
+      const result=await request(tx,auth,userId).input('actor',sql.UniqueIdentifier,auth.userId)
+        .input('status',sql.NVarChar(32),input.status).input('revision',sql.VarChar(23),input.revision)
+        .input('reason',sql.NVarChar(750),input.reason).input('command',sql.NVarChar(100),input.commandId)
+        .input('fingerprint',sql.VarChar(64),fingerprint).query(`SET NOCOUNT ON;
+          IF @user=@actor OR NOT EXISTS(SELECT 1 FROM security.fn_TaskRequestGrant(@tenant,@actor,N'users.manage',NULL,NULL,NULL,NULL,1))
+            BEGIN SELECT 'UNAVAILABLE' AS outcome; RETURN; END;
+          IF (SELECT COUNT_BIG(*) FROM hr.Employee WITH(UPDLOCK,HOLDLOCK) WHERE TenantId=@tenant AND UserId=@user AND IsDeleted=0)<>1
+            BEGIN SELECT 'UNAVAILABLE' AS outcome; RETURN; END;
+          DECLARE @id uniqueidentifier,@current nvarchar(32),@recordRevision datetime2(3),@hireDate date,
+            @today date=CONVERT(date,DATEADD(minute,210,SYSUTCDATETIME()));
+          SELECT @id=e.EmployeeId,@current=e.EmploymentStatus,@recordRevision=COALESCE(e.UpdatedAtUtc,e.CreatedAtUtc),@hireDate=e.HireDate
+            FROM hr.Employee e JOIN core.AppUser u WITH(HOLDLOCK) ON u.TenantId=e.TenantId AND u.UserId=e.UserId AND u.IsActive=1
+            WHERE e.TenantId=@tenant AND e.UserId=@user AND e.Origin=N'LOCAL' AND e.IsDeleted=0;
+          IF @id IS NULL BEGIN SELECT 'UNAVAILABLE' AS outcome; RETURN; END;
+          DECLARE @subject nvarchar(36)=LOWER(CONVERT(nvarchar(36),@id)),@previousHash varchar(64),@previousActor uniqueidentifier;
+          SELECT @previousHash=JSON_VALUE(DetailsJson,'$.fingerprint'),@previousActor=ActorUserId FROM security.AuditEvent
+            WHERE TenantId=@tenant AND EntityType=N'EMPLOYEE' AND EntityId=@subject
+              AND EventType=N'HR_EMPLOYMENT_STATUS_CHANGED' AND CorrelationId=@command;
+          IF @previousActor IS NOT NULL BEGIN SELECT CASE WHEN @previousActor=@actor AND @previousHash=@fingerprint THEN 'REPLAY' ELSE 'CONFLICT' END AS outcome; RETURN; END;
+          IF REPLACE(CONVERT(varchar(23),@recordRevision,121),' ','T')<>@revision BEGIN SELECT 'CONFLICT' AS outcome; RETURN; END;
+          IF NOT (
+            (@current=N'ONBOARDING' AND @status IN(N'PROBATION',N'TERMINATED')) OR
+            (@current=N'PROBATION' AND @status IN(N'ACTIVE',N'TERMINATED')) OR
+            (@current=N'ACTIVE' AND @status IN(N'SUSPENDED',N'TERMINATED')) OR
+            (@current=N'SUSPENDED' AND @status IN(N'ACTIVE',N'TERMINATED'))
+          ) OR (@status<>N'TERMINATED' AND (@hireDate IS NULL OR @hireDate>@today))
+            BEGIN SELECT 'INVALID_TRANSITION' AS outcome; RETURN; END;
+          DECLARE @now datetime2(3)=SYSUTCDATETIME();
+          IF @now<=@recordRevision SET @now=DATEADD(millisecond,1,@recordRevision);
+          UPDATE hr.Employee SET EmploymentStatus=@status,EffectiveFromUtc=@now,UpdatedAtUtc=@now,UpdatedByUserId=@actor,
+            TerminationDate=CASE WHEN @status=N'TERMINATED' AND (@hireDate IS NULL OR @hireDate<=@today) THEN @today END
+          WHERE TenantId=@tenant AND EmployeeId=@id;
+          DECLARE @details nvarchar(max)=(SELECT @current AS previousStatus,@status AS status,@reason AS reason,
+            @fingerprint AS fingerprint FOR JSON PATH,WITHOUT_ARRAY_WRAPPER);
+          INSERT security.AuditEvent(TenantId,ActorUserId,CorrelationId,EventType,EntityType,EntityId,OutcomeCode,DetailsJson)
+            VALUES(@tenant,@actor,@command,N'HR_EMPLOYMENT_STATUS_CHANGED',N'EMPLOYEE',@subject,'SUCCESS',@details);
+          SELECT 'CHANGED' AS outcome;`);
+      return result.recordset[0]?.outcome;
+    }),
     decideAdvance: (auth,id,input)=>run(auth,async tx=>{
       const fingerprint=createHash('sha256').update(JSON.stringify(input)).digest('hex');
       const result=await request(tx,auth,auth.userId).input('id',sql.UniqueIdentifier,id)

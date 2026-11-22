@@ -1,7 +1,7 @@
 import type { ReportingLine, ReportingLineChange, TaskRequestApprovalPolicy, TaskRequestCommand, TaskRequestFile, TaskRequestInput, TaskRequestPolicyKind,
   TaskRequestRecord, TaskRequestPage, TaskRequestView, TaskRequestResource } from './taskRequests';
 import type { PurchaseCoverageScope, PurchaseCycleResult, PurchaseCycleView, PurchaseProductResult } from './purchaseCycle';
-import type { AdvanceAccountingInput, AdvanceAccountingRow, AdvanceAccountingStage, AdvanceDecisionInput, EmploymentProfile, OwnPersonnelProfile, PersonnelAdvanceInput, PersonnelAdvanceReceipt } from './personnelProfile';
+import type { AdvanceAccountingInput, AdvanceAccountingRow, AdvanceAccountingStage, AdvanceDecisionInput, EmploymentProfile, EmploymentStatusInput, OwnPersonnelProfile, PersonnelAdvanceInput, PersonnelAdvanceReceipt } from './personnelProfile';
 import type { RecruitmentReviewInput, RecruitmentReviewRow } from './recruitmentReview';
 import type { 
   AppState, 
@@ -297,6 +297,7 @@ export interface DataProvider {
   getReportingLines(): Promise<{items:ReportingLine[]}>;
   getOwnPersonnelProfile():Promise<OwnPersonnelProfile>;
   getLinkedPersonnelProfile(userId:string):Promise<EmploymentProfile>;
+  changeEmploymentStatus(userId:string,input:EmploymentStatusInput):Promise<{userId:string;replayed:boolean}>;
   requestPersonnelAdvance(input:PersonnelAdvanceInput):Promise<PersonnelAdvanceReceipt>;
   decidePersonnelAdvance(id:string,input:AdvanceDecisionInput):Promise<{id:string;replayed:boolean}>;
   listAdvanceAccounting(stage:AdvanceAccountingStage|'',page:number,focus?:string):Promise<{items:AdvanceAccountingRow[];hasMore:boolean}>;
@@ -381,6 +382,7 @@ export class ClientStorageDataProvider implements DataProvider {
   async reviewRecruitmentApplication():Promise<{application:RecruitmentReviewRow;replayed:boolean}> { throw new Error('بررسی پرونده به پایگاه مرکزی نیاز دارد.'); }
   async getOwnPersonnelProfile():Promise<OwnPersonnelProfile> { throw new Error('پروندهٔ پرسنلی به پایگاه مرکزی نیاز دارد.'); }
   async getLinkedPersonnelProfile():Promise<EmploymentProfile> { throw new Error('پروندهٔ پرسنلی به پایگاه مرکزی نیاز دارد.'); }
+  async changeEmploymentStatus():Promise<{userId:string;replayed:boolean}> { throw new Error('تغییر وضعیت پرسنل به پایگاه مرکزی نیاز دارد.'); }
   async requestPersonnelAdvance():Promise<PersonnelAdvanceReceipt> { throw new Error('درخواست مساعده به پایگاه مرکزی نیاز دارد.'); }
   async decidePersonnelAdvance():Promise<{id:string;replayed:boolean}> { throw new Error('تصمیم مساعده به پایگاه مرکزی نیاز دارد.'); }
   async getPurchaseCycle(): Promise<PurchaseCycleResult> { throw new Error('آینهٔ ERP برای گزارش چرخهٔ خرید در دسترس نیست.'); }
@@ -831,6 +833,9 @@ export class HttpBackendDataProvider implements DataProvider {
   }
   async getOwnPersonnelProfile():Promise<OwnPersonnelProfile> { return this.request('/personnel/me'); }
   async getLinkedPersonnelProfile(userId:string):Promise<EmploymentProfile> { return this.request(`/personnel/linked-user/${encodeURIComponent(userId)}`); }
+  async changeEmploymentStatus(userId:string,input:EmploymentStatusInput):Promise<{userId:string;replayed:boolean}> {
+    return this.request(`/personnel/linked-user/${encodeURIComponent(userId)}/status`,{method:'POST',body:JSON.stringify(input)});
+  }
   async requestPersonnelAdvance(input:PersonnelAdvanceInput):Promise<PersonnelAdvanceReceipt> {
     return this.request('/personnel/me/advances',{method:'POST',body:JSON.stringify(input)});
   }

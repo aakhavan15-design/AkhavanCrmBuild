@@ -1387,7 +1387,7 @@ export function SettingsWorkspace({ state, updateState }: SettingsWorkspaceProps
 
           {userSubTab === 'LIST' && (
             <div className="space-y-4">
-              {serverReportingLines && can('users','EDIT') && <ReportingLineSettings key={state.currentUserId}/>}
+              {serverReportingLines && can('users','EDIT') && <ReportingLineSettings key={state.currentUserId} viewer={state.currentUserId ?? ''}/>}
               <div className="flex justify-end">
                 <Button variant="primary" size="sm" onClick={() => setShowUserModal(true)} icon={<UserPlus className="w-4 h-4"/>}>کاربر جدید</Button>
               </div>

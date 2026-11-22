@@ -6,8 +6,9 @@ import { Card } from '../ui/Card';
 import { Textarea } from '../ui/Input';
 import { SearchableSelect } from '../ui/SearchableSelect';
 import { EmploymentDetails } from '../onboarding/EmploymentDetails';
+import { EmploymentStatusPanel } from './EmploymentStatusPanel';
 
-export function ReportingLineSettings() {
+export function ReportingLineSettings({ viewer }: { viewer: string }) {
   const {data,loading,error,refetch}=useDataQuery(provider=>provider.getReportingLines());
   const [userId,setUserId]=useState('');
   const employment=useDataQuery(async provider=>userId ? {userId,profile:await provider.getLinkedPersonnelProfile(userId)} : null,[userId,data]);
@@ -66,8 +67,10 @@ export function ReportingLineSettings() {
     </form>
     {selected && <section className="space-y-2 border-t border-border pt-2" aria-label="پروندهٔ استخدامی مرتبط">
       {employment.error ? <p role="status" className="text-caption text-warning">دریافت پروندهٔ استخدامی ممکن نیست.</p>
-        : employment.data?.userId===userId && !employment.loading ? <EmploymentDetails profile={employment.data.profile}/>
-          : <p role="status" className="text-caption">در حال دریافت پروندهٔ استخدامی…</p>}
+        : employment.data?.userId===userId ? <>
+          <EmploymentDetails profile={employment.data.profile}/>
+          <EmploymentStatusPanel key={userId} profile={employment.data.profile} userId={userId} viewer={viewer} onChanged={employment.refetch}/>
+        </> : <p role="status" className="text-caption">در حال دریافت پروندهٔ استخدامی…</p>}
     </section>}
   </Card>;
 }

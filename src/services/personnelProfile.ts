@@ -1,8 +1,17 @@
+export const employmentStatusLabels = {
+  ACTIVE:'فعال',SUSPENDED:'تعلیق‌شده',TERMINATED:'پایان همکاری',PROBATION:'آزمایشی',ONBOARDING:'شروع همکاری',
+};
+export type EmploymentStatus = keyof typeof employmentStatusLabels;
+export interface EmploymentStatusInput {commandId:string;revision:string;status:EmploymentStatus;reason:string}
+export interface EmploymentHistoryEntry {id:string;at:string;actor:string|null;previousStatus:EmploymentStatus;status:EmploymentStatus;reason:string}
+
 export interface EmploymentProfile {
   status:'LINKED'|'UNLINKED'|'AMBIGUOUS';
   user:{userCode:string;name:string;branchName:string|null;managerName:string|null};
   employment:{employeeCode:string;commercialCode:string|null;detailCode:string|null;position:string|null;operationalRole:string|null;
-    branchName:string|null;employmentStatus:'ACTIVE'|'SUSPENDED'|'TERMINATED'|'PROBATION'|'ONBOARDING';origin:'LOCAL'|'ERP_MIRROR';hireDate:string|null}|null;
+    branchName:string|null;employmentStatus:EmploymentStatus;origin:'LOCAL'|'ERP_MIRROR';hireDate:string|null;
+    terminationDate:string|null;revision:string}|null;
+  history?:EmploymentHistoryEntry[];
 }
 
 export interface OwnPersonnelProfile extends EmploymentProfile {

@@ -19,7 +19,7 @@ import { createJournalCoverageReader, createJournalCoverageFollowUp, createJourn
 import { createCollectionActions } from './collectionActions.mjs';
 import { createPublicRecruitment } from './publicRecruitment.mjs';
 import { createRecruitmentReview, recruitmentCommand, recruitmentFilters } from './recruitmentReview.mjs';
-import { createPersonnelService, parseAdvanceAccounting, parseAdvanceDecision, parseAdvanceRequest } from './personnelProfile.mjs';
+import { createPersonnelService, parseAdvanceAccounting, parseAdvanceDecision, parseAdvanceRequest, parseEmploymentStatusChange } from './personnelProfile.mjs';
 import { buildReportStatus } from './reportStatus.mjs';
 import { getVapidPublicKey, saveSubscription, removeSubscription, sendPushToUser, initPushModule } from './pushStore.mjs';
 import { recordId } from '../src/lib/stateModel.mjs';
@@ -788,6 +788,18 @@ app.get('/api/v1/personnel/linked-user/:id',authenticate,requireSignedSession,re
     const result=await personnel.linkedUser(req.auth,id);
     if (!result) return bad(req,res,404,'PERSONNEL_USER_UNAVAILABLE','حساب فعال در سازمان پیدا نشد.');
     res.json(result);
+  }));
+app.post('/api/v1/personnel/linked-user/:id/status',authenticate,requireSignedSession,requirePermission('users.manage',{organizationWide:true}),
+  personnelEndpoint(async(req,res)=>{
+    const {id}=req.params;
+    const input=parseEmploymentStatusChange(req.body);
+    if (!uuid(id) || !input) return bad(req,res,400,'EMPLOYMENT_STATUS_INVALID','وضعیت، نسخه یا دلیل تغییر معتبر نیست.');
+    const outcome=await personnel.changeEmploymentStatus(req.auth,id,input);
+    if (outcome==='UNAVAILABLE') return bad(req,res,404,'EMPLOYMENT_UNAVAILABLE','پروندهٔ استخدامی قابل تغییر یافت نشد.');
+    if (outcome==='CONFLICT') return bad(req,res,409,'EMPLOYMENT_VERSION_CONFLICT','نسخهٔ پرونده تغییر کرده است. دوباره آن را باز کنید.');
+    if (outcome==='INVALID_TRANSITION') return bad(req,res,422,'EMPLOYMENT_TRANSITION_INVALID','تغییر وضعیت با وضعیت فعلی یا تاریخ شروع همکاری سازگار نیست.');
+    if (outcome!=='CHANGED' && outcome!=='REPLAY') throw new Error('Unexpected employment status outcome');
+    res.json({userId:id.toLowerCase(),replayed:outcome==='REPLAY'});
   }));
 app.post('/api/v1/personnel/me/advances',authenticate,requireSignedSession,personnelEndpoint(async(req,res)=>{
   const input=parseAdvanceRequest(req.body);

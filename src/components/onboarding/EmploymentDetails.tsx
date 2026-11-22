@@ -1,15 +1,14 @@
 import { formatAppDate } from '../../lib/utils';
-import type { EmploymentProfile } from '../../services/personnelProfile';
-
-const statuses={ACTIVE:'فعال',SUSPENDED:'تعلیق‌شده',TERMINATED:'پایان همکاری',PROBATION:'آزمایشی',ONBOARDING:'شروع همکاری'};
+import { employmentStatusLabels, type EmploymentProfile } from '../../services/personnelProfile';
 
 export function EmploymentDetails({profile}:{profile:EmploymentProfile}) {
   const {user,employment}=profile;
   const rows=[
     ['کد کاربری',user.userCode],['شعبه',employment?.branchName ?? user.branchName],['سرپرست مستقیم',user.managerName],
     ...(employment ? [['کد پرسنلی',employment.employeeCode],['کد بازرگانی',employment.commercialCode],['کد تفصیلی',employment.detailCode],
-      ['سمت',employment.position],['نقش عملیاتی',employment.operationalRole],['وضعیت همکاری',statuses[employment.employmentStatus]],
-      ['تاریخ شروع',employment.hireDate ? formatAppDate(employment.hireDate) : null]] : []),
+      ['سمت',employment.position],['نقش عملیاتی',employment.operationalRole],['وضعیت همکاری',employmentStatusLabels[employment.employmentStatus]],
+      ['تاریخ شروع',employment.hireDate ? formatAppDate(employment.hireDate) : null],
+      ...(employment.terminationDate ? [['تاریخ پایان',formatAppDate(employment.terminationDate)]] : [])] : []),
   ];
   return <div className="space-y-2">
     {profile.status!=='LINKED' && <p role="status" className="text-caption text-warning">{profile.status==='AMBIGUOUS'
