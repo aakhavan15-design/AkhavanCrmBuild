@@ -20,18 +20,22 @@ import { getActiveDataProvider } from '../../services/dataProvider';
 import { advanceAccountingLabels } from '../../services/personnelProfile';
 import { toLatinDigits, toPersianDigits } from '../../lib/digits';
 import { formatDecimalString } from '../../lib/format';
+import { useCan } from '../../hooks/useCan';
+import { PersonnelLearningPanel } from './PersonnelLearningPanel';
 
-type Step = 'identity' | 'documents' | 'bank' | 'address' | 'payroll';
+type Step = 'identity' | 'documents' | 'bank' | 'address' | 'payroll' | 'learning';
 const STEPS: { id: Step; label: string }[] = [
   { id: 'identity', label: 'هویت' },
   { id: 'documents', label: 'مدارک' },
   { id: 'bank', label: 'بانکی' },
   { id: 'address', label: 'نشانی' },
-  { id: 'payroll', label: 'حقوق و مساعده' }
+  { id: 'payroll', label: 'حقوق و مساعده' },
+  { id: 'learning', label: 'آموزش و آزمون' },
 ];
 const advanceStatuses:Record<string,string>={REQUESTED:'در انتظار بررسی',APPROVED:'تأییدشده',REJECTED:'ردشده',SETTLED:'تسویه‌شده',CANCELLED:'لغوشده'};
 
 export function PersonnelFilePage({ state, updateState }: { state: AppState; updateState: (u: (d: AppState) => AppState | void) => void }) {
+  const {can}=useCan(state);
   const me = state.currentUserId || ''; 
   const cfg = getOnboardingConfig(state); 
   const [params]=useSearchParams();
@@ -187,7 +191,7 @@ export function PersonnelFilePage({ state, updateState }: { state: AppState; upd
 
       {/* تب‌های ناوبری مراحل پرونده */}
       <nav id="personnel-nav" data-tour-actions className="flex gap-1 overflow-x-auto no-scrollbar" aria-label="مراحل پرونده">
-        {STEPS.map(s => { 
+        {STEPS.filter(item => item.id!=='learning' || remote).map(s => {
           const bad = missing.some(m => m.key.startsWith(s.id === 'documents' ? 'doc.' : s.id + '.')); 
           return (
             <button 
@@ -208,7 +212,8 @@ export function PersonnelFilePage({ state, updateState }: { state: AppState; upd
       </nav>
 
       {/* محتوای هر مرحله */}
-      <section className="bg-surface border border-border rounded-xl p-3.5 space-y-3">
+      {step==='learning' && remote && <PersonnelLearningPanel key={me} viewer={me} canReview={can('internal','APPROVE')}/>}
+      {step!=='learning' && <section className="bg-surface border border-border rounded-xl p-3.5 space-y-3">
         {locked && (
           <p className="rounded-lg bg-warning-soft p-2 text-caption text-warning">
             پرونده در حال حاضر در انتظار بررسی مدیر بوده و موقتاً قفل است.
@@ -326,11 +331,11 @@ export function PersonnelFilePage({ state, updateState }: { state: AppState; upd
             )}
           </div>
         )}
-      </section>
+      </section>}
 
       {msg && <p role="status" className="rounded-xl bg-primary/10 p-2.5 text-xs font-bold text-primary">{msg}</p>}
 
-      {step !== 'payroll' && (
+      {step !== 'payroll' && step !== 'learning' && (
         <Button 
           variant="primary" 
           disabled={locked || eff.status === 'APPROVED'} 

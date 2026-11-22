@@ -143,7 +143,7 @@ export function NotificationCenter({
               )}
               {n.linkTab && (
                 <span className="mt-1.5 inline-block text-micro font-medium text-primary/80">
-                  باز کردن: {n.linkTab === 'tasks' ? 'وظایف' : n.linkTab === 'finance-advance' ? 'بررسی حسابداری مساعده' : n.linkTab === 'finance' ? 'مالی' : n.linkTab === 'personnel-file' ? 'پروندهٔ پرسنلی' : n.linkTab}
+                  باز کردن: {n.linkTab.startsWith('churn-') ? 'گزارش پیگیری مشتریان' : n.linkTab === 'tasks' ? 'وظایف' : n.linkTab === 'finance-advance' ? 'بررسی حسابداری مساعده' : n.linkTab === 'finance' ? 'مالی' : n.linkTab === 'personnel-file' ? 'پروندهٔ پرسنلی' : n.linkTab}
                 </span>
               )}
             </button>

@@ -1,4 +1,5 @@
 export type PurchaseCycleView = 'all' | 'follow-up';
+export type PurchaseCycleAudience = 'owner' | 'supervisor' | 'manager';
 
 export interface PurchaseCycleRow {
   accountId:string; source:string; name:string; owner:string|null; territory:string|null;

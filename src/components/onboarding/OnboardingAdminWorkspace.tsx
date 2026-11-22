@@ -36,8 +36,9 @@ import { Wallet, Calculator, Sliders, CheckCircle2, AlertTriangle, ArrowUpRight,
 import { FilterChip } from '../ui/Tabs';
 import { getActiveDataProvider } from '../../services/dataProvider';
 import { RecruitmentReviewPanel } from './RecruitmentReviewPanel';
+import { LearningCatalogPanel } from './LearningCatalogPanel';
 
-type Tab = 'apps' | 'files' | 'payroll' | 'config';
+type Tab = 'apps' | 'files' | 'payroll' | 'learning' | 'config';
 const maskNid = (n?: string) => (n ? n.slice(0, 3) + '****' + n.slice(-3) : '—');
 
 export function OnboardingAdminWorkspace({ state, updateState }: { state: AppState; updateState: (u: (d: AppState) => AppState | void) => void }) {
@@ -137,16 +138,16 @@ export function OnboardingAdminWorkspace({ state, updateState }: { state: AppSta
       <div id="onboarding-tabs" data-tour-actions><PageToolbar 
         title="منابع انسانی، جذب و امور حقوقی" 
         subtitle="درخواست همکاری، پرونده پرسنلی، صدور فیش دوره و مدیریت مساعده" 
-        search={tab !== 'config' && tab !== 'payroll' ? q : undefined} 
-        onSearchChange={tab !== 'config' && tab !== 'payroll' ? setQ : undefined} 
+        search={tab === 'apps' || tab === 'files' ? q : undefined}
+        onSearchChange={tab === 'apps' || tab === 'files' ? setQ : undefined}
         searchPlaceholder="جستجو در نام، کد یا عنوان..."
         filters={
           <div className="flex gap-1 overflow-x-auto no-scrollbar">
-            {(['apps', 'files', 'payroll', 'config'] as Tab[]).map(t => (
+            {(['apps', 'files', 'payroll', 'learning', 'config'] as Tab[]).filter(t=>t!=='learning' || remote && can('onboarding','EDIT')).map(t => (
               <FilterChip active={tab === t} key={t} onClick={() => setTab(t)} >
                 {t === 'apps' ? (remote ? 'درخواست‌های همکاری' : `درخواست‌های همکاری (${apps.length})`) :
                  t === 'files' ? `پرونده‌های پرسنلی (${files.length})` :
-                 t === 'payroll' ? 'حقوق، مساعده و پورسانت' : 'تنظیمات'}
+                 t === 'payroll' ? 'حقوق، مساعده و پورسانت' : t === 'learning' ? 'آموزش و آزمون' : 'تنظیمات'}
               </FilterChip>
             ))}
           </div>
@@ -159,6 +160,7 @@ export function OnboardingAdminWorkspace({ state, updateState }: { state: AppSta
       {tab==='apps' && remote && <div id="onboarding-content" data-tour-primary>
         <RecruitmentReviewPanel key={me} search={q} viewer={me || ''} canEdit={can('onboarding','EDIT')} attachments={state.attachments ?? []}/>
       </div>}
+      {tab==='learning' && remote && can('onboarding','EDIT') && <LearningCatalogPanel key={me} viewer={me ?? ''}/>}
       {tab === 'apps' && !remote && (
         <div id="onboarding-content" data-tour-primary className="space-y-2">
           {visibleApps.map(a => (

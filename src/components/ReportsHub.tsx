@@ -1,7 +1,7 @@
 import { useLedgerBookScope } from '../hooks/useLedgerBookScope';
 import { LedgerBookSourceSelect } from './finance/LedgerBookSourceSelect';
 import React, { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Users, Package, MapPin, Wallet, ShoppingCart, Activity,
   FileText, Target, Truck, RotateCcw, ClipboardList, Banknote, ArrowRight, Flame
@@ -32,6 +32,8 @@ import { CreditorBalanceReview } from './reports/CreditorBalanceReview';
 import { ReceivablesLifoPanel } from './reports/ReceivablesLifoPanel';
 import { ProfitLossWidget } from './finance/ProfitLossWidget';
 import { CashFlowPanel } from './finance/CashFlowPanel';
+import { PurchaseCycleFollowUp } from './reports/PurchaseCycleFollowUp';
+import { getActiveDataProvider } from '../services/dataProvider';
 import type { CreditNoteEvidenceRow } from '../services/dataProvider';
 
 interface ReportsHubProps {
@@ -40,6 +42,8 @@ interface ReportsHubProps {
   setActiveTab: (tab: NavigationTab) => void;
   canViewFinance: boolean;
   canViewPayments: boolean;
+  canViewChurn: boolean;
+  canCreateFollowUp: boolean;
   receivableAccounts: Account[];
 }
 
@@ -86,7 +90,10 @@ const PERIOD_OPTIONS = [
   { value: 'all', label: 'کل سوابق', days: null },
 ];
 
-export function ReportsHub({ state, canViewFinance, canViewPayments, receivableAccounts }: ReportsHubProps) {
+export function ReportsHub({ state, canViewFinance, canViewPayments, canViewChurn, canCreateFollowUp, receivableAccounts }: ReportsHubProps) {
+  const [params] = useSearchParams();
+  const churn = params.get('churn');
+  const audience = churn === 'owner' || churn === 'supervisor' || churn === 'manager' ? churn : undefined;
   const [domain, setDomain] = useTabParam(
     ['sales', 'distribution', 'team', 'inventory', 'finance', 'receivables'] as const,
     'sales',
@@ -278,6 +285,10 @@ export function ReportsHub({ state, canViewFinance, canViewPayments, receivableA
           </button>
         ))}
       </div>
+
+      {domain === 'sales' && (audience || !activeReport) && canViewChurn && getActiveDataProvider().name === 'SQLSERVER_BACKEND' &&
+        <PurchaseCycleFollowUp key={JSON.stringify([state.currentUserId,audience])} viewer={state.currentUserId ?? ''}
+          accounts={state.accounts ?? []} canCreate={canCreateFollowUp} audience={audience} />}
 
       {domain === 'receivables' && (
         canViewFinance

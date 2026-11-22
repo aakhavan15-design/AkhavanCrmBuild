@@ -9,23 +9,18 @@ const verifiedInvoiceStatus = `CROSS APPLY (
     AND m.EffectiveFrom<=i.InvoiceDate AND (m.EffectiveTo IS NULL OR m.EffectiveTo>=i.InvoiceDate)
 ) mapping`;
 
-const accountScope = `CROSS APPLY security.fn_RecordReadScope(a.TenantId,N'accounts.view',a.OwnerUserId,a.BranchId,a.TerritoryId,a.TeamId)
-  CROSS APPLY security.fn_RecordReadScope(a.TenantId,N'quotes.view',a.OwnerUserId,a.BranchId,a.TerritoryId,a.TeamId)`;
+const accountScope = `CROSS APPLY security.fn_RecordReadScope(a.TenantId,N'accounts.view',a.OwnerUserId,a.BranchId,a.TerritoryId,a.TeamId) accountGrant
+  CROSS APPLY security.fn_RecordReadScope(a.TenantId,N'quotes.view',a.OwnerUserId,a.BranchId,a.TerritoryId,a.TeamId) quoteGrant`;
 
-const query = `
+const thresholdsSql = `
 DECLARE @minimumSales decimal(19,4),@minimumDays int;
 SELECT @minimumDays=TRY_CONVERT(int,JSON_VALUE(JsonDoc,'$.orgConfig.churnRiskDays')),
   @minimumSales=TRY_CONVERT(decimal(19,4),JSON_VALUE(JsonDoc,'$.orgConfig.churnRiskMinSales'))
-FROM sync.EntityStore WHERE TenantId=@tenantId AND CollectionName=N'__singleton__' AND EntityId=N'settings' AND IsDeleted=0;
+FROM sync.EntityStore WHERE TenantId=@tenantId AND CollectionName=N'__singleton__' AND EntityId=N'settings' AND IsDeleted=0;`;
 
-SELECT @minimumDays AS minimumDays,CONVERT(varchar(42),@minimumSales) AS minimumSales;
-
+const purchaseRiskSql = visibleAccounts => `
 WITH visibleAccounts AS (
-  SELECT a.AccountId,a.Name,a.OwnerUserId,a.TerritoryId
-  FROM crm.Account a
-  ${accountScope}
-  WHERE a.TenantId=@tenantId AND a.DeletedAtUtc IS NULL
-    AND (@search=N'' OR CHARINDEX(@search,a.Name)>0)
+  ${visibleAccounts}
 ), purchaseDays AS (
   SELECT i.AccountId,i.SourceSystemCode,i.InvoiceDate,SUM(i.GrossAmount) AS snapshotSales,COUNT_BIG(*) AS invoiceCount,
     CASE WHEN COUNT_BIG(*)=1 THEN MAX(i.InvoiceNumber) END AS invoiceNumber,MAX(i.SyncedAtUtc) AS refreshedAt
@@ -61,7 +56,17 @@ WITH visibleAccounts AS (
   LEFT JOIN core.AppUser u ON u.TenantId=@tenantId AND u.UserId=a.OwnerUserId AND u.IsActive=1
   LEFT JOIN core.Territory t ON t.TenantId=@tenantId AND t.TerritoryId=a.TerritoryId
 )
-SELECT * INTO #rankedPurchase FROM ranked;
+SELECT * INTO #rankedPurchase FROM ranked;`;
+
+const query = `
+${thresholdsSql}
+SELECT @minimumDays AS minimumDays,CONVERT(varchar(42),@minimumSales) AS minimumSales;
+${purchaseRiskSql(`SELECT a.AccountId,a.Name,a.OwnerUserId,a.TerritoryId FROM crm.Account a
+  ${accountScope}
+  WHERE a.TenantId=@tenantId AND a.DeletedAtUtc IS NULL AND (@search=N'' OR CHARINDEX(@search,a.Name)>0)
+    AND (@audience='' OR (@audience='owner' AND a.OwnerUserId=@viewer) OR (@audience='supervisor' AND EXISTS(
+      SELECT 1 FROM core.AppUser owner WHERE owner.TenantId=a.TenantId AND owner.UserId=a.OwnerUserId
+        AND owner.ManagerUserId=@viewer AND owner.IsActive=1 AND owner.UserId<>@viewer)))`)}
 
 WITH pageRows AS (
   SELECT * FROM #rankedPurchase WHERE (@onlyRisk=0 OR followUp=1)
@@ -135,10 +140,10 @@ ORDER BY s.priorDays DESC,s.lastSeen DESC,p.ExternalProductId;`;
 
 export function parsePurchaseCycleQuery(params) {
   const search=params.search ?? '', view=params.view ?? 'follow-up', page=Number(params.page ?? 1);
-  const territory=params.territory ?? null, owner=params.owner ?? null;
+  const territory=params.territory ?? null, owner=params.owner ?? null, audience=params.audience ?? '';
   return typeof search==='string' && search.length<=100 && ['all','follow-up'].includes(view) &&
-    Number.isInteger(page) && page>=1 && page<=500 && ((territory===null && owner===null) || (uuid(territory) && uuid(owner)))
-    ? {search:search.trim(),view,page,territory,owner} : null;
+    Number.isInteger(page) && page>=1 && page<=500 && ['','owner','supervisor'].includes(audience) && ((territory===null && owner===null) || (uuid(territory) && uuid(owner)))
+    ? {search:search.trim(),view,page,territory,owner,...(audience ? {audience} : {})} : null;
 }
 
 export function parsePurchaseProductQuery(params) {
@@ -163,6 +168,7 @@ export function createPurchaseCycleReader({sql,run}) {
     const asOf=tehranDate.format(now);
     const result=await new sql.Request(tx).input('tenantId',sql.UniqueIdentifier,auth.tenantId)
       .input('asOf',sql.Date,new Date(asOf)).input('search',sql.NVarChar(100),filter.search)
+      .input('viewer',sql.UniqueIdentifier,auth.userId).input('audience',sql.VarChar(12),filter.audience ?? '')
       .input('territory',sql.UniqueIdentifier,filter.territory).input('owner',sql.UniqueIdentifier,filter.owner)
       .input('nextDayUtc',sql.DateTime2,new Date(`${asOf}T20:30:00Z`))
       .input('nowUtc',sql.DateTime2,now)
@@ -171,5 +177,87 @@ export function createPurchaseCycleReader({sql,run}) {
     const rows=result.recordsets[1];
     return {asOf,configured:thresholds.minimumDays>0 && Number(thresholds.minimumSales)>0,
       rows:rows.slice(0,20),hasMore:filter.page<500 && rows.length>20,coverage:result.recordsets[2]};
+  });
+}
+
+const churnAudienceSql = `
+SET NOCOUNT ON;
+DECLARE @lock int,@lockName nvarchar(120)=CONCAT('churn-alerts:',@tenantId);
+EXEC @lock=sys.sp_getapplock @Resource=@lockName,@LockMode='Exclusive',@LockOwner='Transaction',@LockTimeout=1000;
+IF @lock<0 BEGIN SELECT CAST(NULL AS uniqueidentifier) AS recipient WHERE 1=0; RETURN; END;
+IF NOT EXISTS(SELECT 1 FROM security.fn_TaskRequestGrant(@tenantId,@actor,N'settings.manage',NULL,NULL,NULL,NULL,1))
+  BEGIN SELECT CAST(NULL AS uniqueidentifier) AS recipient WHERE 1=0; RETURN; END;
+${thresholdsSql}
+IF @minimumSales IS NULL OR @minimumSales<=0 OR @minimumDays IS NULL OR @minimumDays<=0
+  BEGIN SELECT CAST(NULL AS uniqueidentifier) AS recipient WHERE 1=0; RETURN; END;
+
+${purchaseRiskSql(`SELECT a.AccountId,a.Name,a.OwnerUserId,a.TerritoryId FROM crm.Account a
+  WHERE a.TenantId=@tenantId AND a.DeletedAtUtc IS NULL`)}
+
+SELECT DISTINCT a.AccountId,a.OwnerUserId,a.BranchId,a.TerritoryId,a.TeamId
+INTO #riskAccounts
+FROM #rankedPurchase r JOIN crm.Account a ON a.TenantId=@tenantId AND a.AccountId=r.AccountId
+WHERE r.followUp=1 AND a.DeletedAtUtc IS NULL;
+
+WITH organizationManagers AS (
+  SELECT u.UserId FROM core.AppUser u
+  CROSS APPLY security.fn_TaskRequestGrant(@tenantId,u.UserId,N'accounts.view',NULL,NULL,NULL,NULL,0) accountGrant
+  CROSS APPLY security.fn_TaskRequestGrant(@tenantId,u.UserId,N'quotes.view',NULL,NULL,NULL,NULL,0) quoteGrant
+  CROSS APPLY security.fn_TaskRequestGrant(@tenantId,u.UserId,N'quotes.approve',NULL,NULL,NULL,NULL,1) decisionGrant
+  WHERE u.TenantId=@tenantId AND u.IsActive=1
+), candidates AS (
+  SELECT a.AccountId,a.OwnerUserId,a.BranchId,a.TerritoryId,a.TeamId,recipient.userId,recipient.tier
+  FROM #riskAccounts a
+  JOIN core.AppUser owner ON owner.TenantId=@tenantId AND owner.UserId=a.OwnerUserId AND owner.IsActive=1
+  CROSS APPLY (VALUES(owner.UserId,1),(owner.ManagerUserId,2)) recipient(userId,tier)
+  WHERE recipient.userId IS NOT NULL AND (recipient.tier=1 OR recipient.userId<>owner.UserId)
+  UNION ALL
+  SELECT a.AccountId,a.OwnerUserId,a.BranchId,a.TerritoryId,a.TeamId,manager.UserId,3
+  FROM #riskAccounts a CROSS JOIN organizationManagers manager
+), permitted AS (
+  SELECT c.userId AS recipient,c.tier,COUNT_BIG(DISTINCT c.AccountId) AS customerCount
+  FROM candidates c
+  CROSS APPLY security.fn_TaskRequestGrant(@tenantId,c.userId,N'accounts.view',c.OwnerUserId,c.BranchId,c.TerritoryId,c.TeamId,0) accountGrant
+  CROSS APPLY security.fn_TaskRequestGrant(@tenantId,c.userId,N'quotes.view',c.OwnerUserId,c.BranchId,c.TerritoryId,c.TeamId,0) quotesGrant
+  GROUP BY c.userId,c.tier
+), preferred AS (
+  SELECT *,ROW_NUMBER() OVER(PARTITION BY recipient ORDER BY tier DESC) AS seq FROM permitted
+)
+SELECT p.recipient,p.tier,p.customerCount FROM preferred p WHERE p.seq=1 AND NOT EXISTS(
+  SELECT 1 FROM sync.EntityStore n WHERE n.TenantId=@tenantId AND n.CollectionName=N'notifications'
+    AND n.EntityId LIKE N'churn-alert-%' AND n.CreatedAtUtc>DATEADD(day,-7,SYSUTCDATETIME())
+    AND TRY_CONVERT(uniqueidentifier,JSON_VALUE(n.JsonDoc,'$.recipientId'))=p.recipient
+    AND JSON_VALUE(n.JsonDoc,'$.linkTab')=CASE p.tier WHEN 1 THEN 'churn-owner' WHEN 2 THEN 'churn-supervisor' ELSE 'churn-manager' END
+);`;
+
+const countFa = new Intl.NumberFormat('fa-IR');
+
+export function churnNotice(rank, count) {
+  const amount = countFa.format(count);
+  if (rank === 1) return { linkTab: 'churn-owner', title: 'مشتریان شما در اولویت مراجعه',
+    message: `برای ${amount} مشتری فاصلهٔ خرید از الگوی مشاهده‌شده بیشتر است. پیشنهاد کالا و اقدام پیگیری را در گزارش ببینید.` };
+  if (rank === 2) return { linkTab: 'churn-supervisor', title: 'اولویت پیگیری در تیم فروش شما',
+    message: `در تیم شما ${amount} مشتری در اولویت پیگیری‌اند. پوشش ثبت مراجعه و مسئول هر مورد را بررسی کنید.` };
+  return { linkTab: 'churn-manager', title: 'هشدار مدیریتی ریسک ریزش',
+    message: `در سطح سازمان ${amount} مشتری در اولویت پیگیری‌اند. پراکندگی مناطق، پوشش و مسئولان را در گزارش مرور کنید.` };
+}
+
+export function createChurnAlertPublisher({ sql, run }) {
+  return (auth, asOf) => run(auth, async tx => {
+    const request = () => new sql.Request(tx).input('tenantId', sql.UniqueIdentifier, auth.tenantId)
+      .input('actor', sql.UniqueIdentifier, auth.userId);
+    const { recordset } = await request().input('asOf', sql.Date, new Date(asOf)).query(churnAudienceSql);
+    if (!recordset.length) return;
+    const payload = recordset.map(row => ({
+      id: `churn-alert-${row.tier}-${asOf}-${row.recipient.toLowerCase()}`,
+      recipientId: row.recipient.toLowerCase(), ...churnNotice(row.tier, row.customerCount),
+      type: 'WARNING', read: false, createdAt: new Date().toISOString(),
+    }));
+    await request().input('articles', sql.NVarChar(sql.MAX), JSON.stringify(payload)).query(`
+      INSERT sync.EntityStore(TenantId,CollectionName,EntityId,JsonDoc,UpdatedByUserId)
+      SELECT @tenantId,N'notifications',JSON_VALUE(entry.value,'$.id'),entry.value,@actor
+      FROM OPENJSON(@articles) entry
+      WHERE NOT EXISTS(SELECT 1 FROM sync.EntityStore stored WITH(UPDLOCK,HOLDLOCK)
+        WHERE stored.TenantId=@tenantId AND stored.CollectionName=N'notifications' AND stored.EntityId=JSON_VALUE(entry.value,'$.id'));`);
   });
 }

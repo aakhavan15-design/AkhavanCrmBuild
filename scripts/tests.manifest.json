@@ -1,5 +1,9 @@
 [
   {
+    "file": "tests/personnelLearningChurnContracts.test.mjs",
+    "flags": []
+  },
+  {
     "file": "tests/taskRequestWorkflowContracts.test.mjs",
     "flags": ["--experimental-strip-types"]
   },

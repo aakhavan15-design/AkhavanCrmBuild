@@ -13,13 +13,14 @@ import { createAccountDirectory } from './accountDirectory.mjs';
 import { createInvoiceFifoEvidence } from './invoiceFifoEvidence.mjs';
 import { createCollectionReceiptEvidence } from './collectionReceiptEvidence.mjs';
 import { createTreasuryFlowReader } from './treasuryFlow.mjs';
-import { createPurchaseCycleReader, createPurchaseProductReader, parsePurchaseCycleQuery, parsePurchaseProductQuery } from './purchaseCycle.mjs';
+import { createChurnAlertPublisher, createPurchaseCycleReader, createPurchaseProductReader, parsePurchaseCycleQuery, parsePurchaseProductQuery } from './purchaseCycle.mjs';
 import { createMoneyIntelligenceReader, parseMoneyReportQuery } from './moneyIntelligence.mjs';
 import { createJournalCoverageReader, createJournalCoverageFollowUp, createJournalFollowUpEvidenceReader, coverageFilter } from './journalCoverage.mjs';
 import { createCollectionActions } from './collectionActions.mjs';
 import { createPublicRecruitment } from './publicRecruitment.mjs';
 import { createRecruitmentReview, recruitmentCommand, recruitmentFilters } from './recruitmentReview.mjs';
 import { createPersonnelService, parseAdvanceAccounting, parseAdvanceDecision, parseAdvanceRequest, parseEmploymentStatusChange } from './personnelProfile.mjs';
+import { createPersonnelLearning, learningAction, learningCourse } from './personnelLearning.mjs';
 import { buildReportStatus } from './reportStatus.mjs';
 import { getVapidPublicKey, saveSubscription, removeSubscription, sendPushToUser, initPushModule } from './pushStore.mjs';
 import { recordId } from '../src/lib/stateModel.mjs';
@@ -776,6 +777,49 @@ const personnelEndpoint = handler => wrap(async(req,res)=>{
   if (entityDriverKind!=='mssql') return bad(req,res,503,'PERSONNEL_SOURCE_UNAVAILABLE','پروندهٔ پرسنلی به پایگاه مرکزی نیاز دارد.');
   await handler(req,res);
 });
+const personnelLearning = createPersonnelLearning({ sql, run: withTenantContext });
+const learningEndpoint = handler => personnelEndpoint(async (req,res)=>{
+  try {
+    await handler(req,res);
+  } catch (error) {
+    if (error?.code!=='LEARNING_REJECTED') throw error;
+    return bad(req,res,error.status,error.code,error.message);
+  }
+});
+const learningManager = requirePermission('users.manage',{organizationWide:true});
+app.get('/api/v1/personnel/learning/catalog',authenticate,requireSignedSession,learningManager,learningEndpoint(async(req,res)=>{
+  const {search='',employee=null}=req.query;
+  if (typeof search!=='string' || search.length>100 || (employee!==null && !uuid(employee))) {
+    return bad(req,res,400,'LEARNING_FILTER_INVALID','جست‌وجو یا شناسهٔ کارمند معتبر نیست.');
+  }
+  res.json(await personnelLearning.directory(req.auth,search.trim(),employee));
+}));
+app.post('/api/v1/personnel/learning/catalog',authenticate,requireSignedSession,learningManager,learningEndpoint(async(req,res)=>{
+  const input=learningCourse(req.body);
+  if (!input) return bad(req,res,400,'LEARNING_COURSE_INVALID','محتوا، مسیر یا قواعد آزمون معتبر نیست.');
+  res.json(await personnelLearning.publish(req.auth,input));
+}));
+app.post('/api/v1/personnel/learning/assignments',authenticate,requireSignedSession,learningManager,learningEndpoint(async(req,res)=>{
+  const {commandId,employeeId,courseId}=req.body ?? {};
+  if (![commandId,employeeId,courseId].every(uuid)) return bad(req,res,400,'LEARNING_ASSIGNMENT_INVALID','شناسهٔ تخصیص معتبر نیست.');
+  res.json(await personnelLearning.assign(req.auth,{
+    commandId:commandId.toLowerCase(),employeeId:employeeId.toLowerCase(),courseId:courseId.toLowerCase(),
+  }));
+}));
+app.get('/api/v1/personnel/learning',authenticate,requireSignedSession,learningEndpoint(async(req,res)=>{
+  const page=String(req.query.page ?? '1');
+  if (!/^[1-9]\d{0,2}$/.test(page)) return bad(req,res,400,'LEARNING_PAGE_INVALID','شمارهٔ صفحه معتبر نیست.');
+  res.json(await personnelLearning.list(req.auth,req.query.view==='review',Number(page)));
+}));
+app.get('/api/v1/personnel/learning/:id',authenticate,requireSignedSession,learningEndpoint(async(req,res)=>{
+  if (!uuid(req.params.id)) return bad(req,res,400,'LEARNING_ID_INVALID','شناسهٔ آموزش معتبر نیست.');
+  res.json(await personnelLearning.item(req.auth,req.params.id,req.query.view==='review'));
+}));
+app.post('/api/v1/personnel/learning/:id/actions',authenticate,requireSignedSession,learningEndpoint(async(req,res)=>{
+  const input=learningAction(req.body);
+  if (!input || !uuid(req.params.id)) return bad(req,res,400,'LEARNING_ACTION_INVALID','اقدام، نسخه یا اطلاعات آزمون معتبر نیست.');
+  res.json(await personnelLearning.change(req.auth,req.params.id,input));
+}));
 app.get('/api/v1/personnel/me',authenticate,requireSignedSession,personnelEndpoint(async(req,res)=>{
   const result=await personnel.self(req.auth);
   if (!result) return bad(req,res,404,'PERSONNEL_USER_UNAVAILABLE','حساب فعال پیدا نشد.');
@@ -1212,6 +1256,7 @@ app.post('/api/v1/push/send', authenticate, requireSignedSession, limitPushSend,
 
 const readPurchaseCycle = createPurchaseCycleReader({sql,run:withTenantContext});
 const readPurchaseProducts = createPurchaseProductReader({sql,run:withTenantContext});
+const publishChurnAlerts = createChurnAlertPublisher({sql,run:withTenantContext});
 app.get('/api/v1/analytics/purchase-cycle',authenticate,requirePermission('quotes.view'),wrap(async(req,res)=>{
   res.set('Cache-Control','private, no-store');
   if (entityDriverKind!=='mssql') return bad(req,res,503,'SALES_SOURCE_UNAVAILABLE','چرخهٔ خرید به آینهٔ ERP در SQL نیاز دارد.');
@@ -1466,13 +1511,21 @@ function startTaskRequestReminders() {
   const validId=value=>typeof value==='string' && /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(value);
   if (!validId(admins.tenantId) || !validId(admins.userId)) return;
   let running=false;
+  let lastChurnDate='';
   const dates=new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Tehran',year:'numeric',month:'2-digit',day:'2-digit'});
   const check=async()=>{
     if (running) return;
     running=true;
     try {
       if (await hasSqlPermission(admins,'settings.manage',{organizationWide:true})) {
-        await taskRequests.runReminders(admins,dates.format(new Date()));
+        const today=dates.format(new Date());
+        const jobs=[taskRequests.runReminders(admins,today)];
+        if (lastChurnDate!==today) {
+          jobs.push(publishChurnAlerts(admins,today).then(()=>{lastChurnDate=today;}));
+        }
+        const outcomes=await Promise.allSettled(jobs);
+        if (outcomes[0].status==='rejected') console.error(JSON.stringify({level:'error',event:'task_request_reminder_failed'}));
+        if (outcomes[1]?.status==='rejected') console.error(JSON.stringify({level:'error',event:'churn_alert_publication_failed'}));
       }
     } catch {
       console.error(JSON.stringify({level:'error',event:'task_request_reminder_failed'}));

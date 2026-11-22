@@ -4,7 +4,7 @@ import { useDataQuery } from '../../hooks/useDataProvider';
 import { formatCount, formatDecimalString } from '../../lib/format';
 import { formatAppDate } from '../../lib/utils';
 import { useDataSyncStatus } from '../../services/dataSyncController';
-import type { PurchaseCoverageScope, PurchaseCycleRow, PurchaseCycleView, PurchaseProductHint } from '../../services/purchaseCycle';
+import type { PurchaseCoverageScope, PurchaseCycleAudience, PurchaseCycleRow, PurchaseCycleView, PurchaseProductHint } from '../../services/purchaseCycle';
 import type { Account } from '../../types';
 import { QuickTaskRequest } from '../tasks/QuickTaskRequest';
 import { Button } from '../ui/Button';
@@ -38,27 +38,31 @@ function PurchaseProductHints({account,source,onSelect}:{account:string;source:s
   </div>;
 }
 
-export function PurchaseCycleFollowUp({viewer,accounts,canCreate}:{viewer:string;accounts:Account[];canCreate:boolean}) {
-  const [view,setView]=useState<PurchaseCycleView>('all');
+const audienceTitles:Record<PurchaseCycleAudience,string>={
+  owner:'مشتریان تحت مسئولیت من',supervisor:'پوشش و پیگیری تیم من',manager:'اولویت‌های پیگیری سازمان',
+};
+
+export function PurchaseCycleFollowUp({viewer,accounts,canCreate,audience}:{viewer:string;accounts:Account[];canCreate:boolean;audience?:PurchaseCycleAudience}) {
+  const [view,setView]=useState<PurchaseCycleView>(audience ? 'follow-up' : 'all');
   const [search,setSearch]=useState('');
   const [activeSearch,setActiveSearch]=useState('');
   const [page,setPage]=useState(1);
   const [scope,setScope]=useState<PurchaseCoverageScope>();
-  const [coverageOpen,setCoverageOpen]=useState(false);
+  const [coverageOpen,setCoverageOpen]=useState(audience==='supervisor' || audience==='manager');
   const [selection,setSelection]=useState<{row:PurchaseCycleRow; product?:PurchaseProductHint}|null>(null);
   const selected=selection?.row;
   const navigate=useNavigate();
   const {serverVersion}=useDataSyncStatus();
-  const requestKey=JSON.stringify([viewer,view,activeSearch,page,serverVersion,scope]);
+  const requestKey=JSON.stringify([viewer,view,activeSearch,page,serverVersion,scope,audience]);
   const {data,loading,error,refetch}=useDataQuery(async provider=>({requestKey,
-    report:await provider.getPurchaseCycle(activeSearch,view,page,scope),
+    report:await provider.getPurchaseCycle(activeSearch,view,page,scope,audience),
   }),[requestKey]);
   const report=data?.requestKey===requestKey ? data.report : null;
   const taskAccount=selected ? accounts.find(account=>account.id.toLowerCase()===selected.accountId.toLowerCase()) : null;
 
   return <Card padding="md" className="space-y-3">
     <div>
-      <h3 className="text-sm font-bold">چرخهٔ خرید و اولویت پیگیری</h3>
+      <h3 className="text-sm font-bold">{audience ? audienceTitles[audience] : 'چرخهٔ خرید و اولویت پیگیری'}</h3>
       <p className="text-caption text-text-secondary">بر اساس فاکتورهای قطعیِ مشاهده‌شده در ۳۶۵ روز اخیر، به تفکیک منبع ERP. کامل بودن دریافت ویزیت و فاکتور تأیید نشده است.</p>
     </div>
     <form className="flex flex-wrap items-end gap-2" onSubmit={event=>{event.preventDefault();setActiveSearch(search.trim());setPage(1);}}>

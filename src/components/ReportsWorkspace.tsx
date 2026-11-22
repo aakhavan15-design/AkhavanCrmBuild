@@ -120,6 +120,8 @@ export function ReportsWorkspace({ state, updateState, setActiveTab }: ReportsWo
         <span className="ms-2">{sourceStatusNote(sourceStatus)}</span>
       </div>
       <ReportsHub
+        canViewChurn={can('accounts','VIEW') && can('quotes','VIEW')}
+        canCreateFollowUp={can('tasks','CREATE')}
         state={reportHubState}
         updateState={updateState}
         setActiveTab={setActiveTab}

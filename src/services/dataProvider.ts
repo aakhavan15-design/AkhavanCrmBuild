@@ -1,8 +1,9 @@
 import type { ReportingLine, ReportingLineChange, TaskRequestApprovalPolicy, TaskRequestCommand, TaskRequestFile, TaskRequestInput, TaskRequestPolicyKind,
   TaskRequestRecord, TaskRequestPage, TaskRequestView, TaskRequestResource } from './taskRequests';
-import type { PurchaseCoverageScope, PurchaseCycleResult, PurchaseCycleView, PurchaseProductResult } from './purchaseCycle';
+import type { PurchaseCoverageScope, PurchaseCycleAudience, PurchaseCycleResult, PurchaseCycleView, PurchaseProductResult } from './purchaseCycle';
 import type { AdvanceAccountingInput, AdvanceAccountingRow, AdvanceAccountingStage, AdvanceDecisionInput, EmploymentProfile, EmploymentStatusInput, OwnPersonnelProfile, PersonnelAdvanceInput, PersonnelAdvanceReceipt } from './personnelProfile';
 import type { RecruitmentReviewInput, RecruitmentReviewRow } from './recruitmentReview';
+import type { LearningActionInput, LearningAssignmentInput, LearningCatalog, LearningCourseInput, LearningDetail, LearningPage } from './personnelLearning';
 import type { 
   AppState, 
   Account, 
@@ -296,6 +297,12 @@ export interface DataProvider {
   getTaskRequestResources(type:TaskRequestResource,accountId:string,search:string): Promise<{items:{id:string;title:string;unit?:string;sku?:string}[]}>;
   getReportingLines(): Promise<{items:ReportingLine[]}>;
   getOwnPersonnelProfile():Promise<OwnPersonnelProfile>;
+  listPersonnelLearning(review:boolean,page:number):Promise<LearningPage>;
+  getPersonnelLearning(id:string,review:boolean):Promise<LearningDetail>;
+  changePersonnelLearning(id:string,input:LearningActionInput):Promise<LearningDetail>;
+  getLearningCatalog(search:string,employee?:string):Promise<LearningCatalog>;
+  publishLearningCourse(input:LearningCourseInput):Promise<{id:string}>;
+  assignLearningCourse(input:LearningAssignmentInput):Promise<{id:string}>;
   getLinkedPersonnelProfile(userId:string):Promise<EmploymentProfile>;
   changeEmploymentStatus(userId:string,input:EmploymentStatusInput):Promise<{userId:string;replayed:boolean}>;
   requestPersonnelAdvance(input:PersonnelAdvanceInput):Promise<PersonnelAdvanceReceipt>;
@@ -326,7 +333,7 @@ export interface DataProvider {
   getDetailSubsidiaryBalances(options?: LedgerBalanceOptions): Promise<DetailBalancesResult>;
   getLedgerPnlData(filter?: Pick<JournalLineFilter, 'fromDate' | 'toDate' | 'periodCode' | 'source' | 'currency'>): Promise<LedgerPnlDataResult>;
   getCashFlowData(): Promise<CashFlowDataResult>;
-  getPurchaseCycle(search:string,view:PurchaseCycleView,page:number,scope?:PurchaseCoverageScope): Promise<PurchaseCycleResult>;
+  getPurchaseCycle(search:string,view:PurchaseCycleView,page:number,scope?:PurchaseCoverageScope,audience?:PurchaseCycleAudience): Promise<PurchaseCycleResult>;
   getPurchaseProductHints(account:string,source:string): Promise<PurchaseProductResult>;
   getMoneyReport(period: MoneyPeriod): Promise<MoneyReport>;
   getJournalCoverage(period: MoneyPeriod, filter: JournalCoverageFilter): Promise<JournalCoveragePage>;
@@ -376,6 +383,12 @@ const MAX_PNL_JOURNAL_PAGES = 100;
  * 1. پیاده‌سازی ارائه‌دهنده داده سمت کلاینت (IndexedDB / Local-first)
  */
 export class ClientStorageDataProvider implements DataProvider {
+  async listPersonnelLearning():Promise<LearningPage> { throw new Error('آموزش پرسنل به پایگاه مرکزی نیاز دارد.'); }
+  async getPersonnelLearning():Promise<LearningDetail> { throw new Error('آموزش پرسنل به پایگاه مرکزی نیاز دارد.'); }
+  async changePersonnelLearning():Promise<LearningDetail> { throw new Error('آموزش پرسنل به پایگاه مرکزی نیاز دارد.'); }
+  async getLearningCatalog():Promise<LearningCatalog> { throw new Error('آموزش پرسنل به پایگاه مرکزی نیاز دارد.'); }
+  async publishLearningCourse():Promise<{id:string}> { throw new Error('آموزش پرسنل به پایگاه مرکزی نیاز دارد.'); }
+  async assignLearningCourse():Promise<{id:string}> { throw new Error('آموزش پرسنل به پایگاه مرکزی نیاز دارد.'); }
   async listAdvanceAccounting():Promise<{items:AdvanceAccountingRow[];hasMore:boolean}> { throw new Error('کارتابل مساعده به پایگاه مرکزی نیاز دارد.'); }
   async reviewAdvanceAccounting():Promise<{id:string;replayed:boolean}> { throw new Error('بررسی حسابداری به پایگاه مرکزی نیاز دارد.'); }
   async listRecruitmentApplications():Promise<{items:RecruitmentReviewRow[];hasMore:boolean}> { return {items:[],hasMore:false}; }
@@ -832,6 +845,26 @@ export class HttpBackendDataProvider implements DataProvider {
     return this.request(`/recruitment/applications/${encodeURIComponent(id)}/actions`,{method:'POST',body:JSON.stringify(input)});
   }
   async getOwnPersonnelProfile():Promise<OwnPersonnelProfile> { return this.request('/personnel/me'); }
+  async listPersonnelLearning(review:boolean,page:number):Promise<LearningPage> {
+    return this.request(`/personnel/learning?page=${page}&view=${review ? 'review' : 'own'}`);
+  }
+  async getPersonnelLearning(id:string,review:boolean):Promise<LearningDetail> {
+    return this.request(`/personnel/learning/${encodeURIComponent(id)}?view=${review ? 'review' : 'own'}`);
+  }
+  async changePersonnelLearning(id:string,input:LearningActionInput):Promise<LearningDetail> {
+    return this.request(`/personnel/learning/${encodeURIComponent(id)}/actions`,{method:'POST',body:JSON.stringify(input)});
+  }
+  async getLearningCatalog(search:string,employee?:string):Promise<LearningCatalog> {
+    const params=new URLSearchParams({search});
+    if (employee) params.set('employee',employee);
+    return this.request(`/personnel/learning/catalog?${params}`);
+  }
+  async publishLearningCourse(input:LearningCourseInput):Promise<{id:string}> {
+    return this.request('/personnel/learning/catalog',{method:'POST',body:JSON.stringify(input)});
+  }
+  async assignLearningCourse(input:LearningAssignmentInput):Promise<{id:string}> {
+    return this.request('/personnel/learning/assignments',{method:'POST',body:JSON.stringify(input)});
+  }
   async getLinkedPersonnelProfile(userId:string):Promise<EmploymentProfile> { return this.request(`/personnel/linked-user/${encodeURIComponent(userId)}`); }
   async changeEmploymentStatus(userId:string,input:EmploymentStatusInput):Promise<{userId:string;replayed:boolean}> {
     return this.request(`/personnel/linked-user/${encodeURIComponent(userId)}/status`,{method:'POST',body:JSON.stringify(input)});
@@ -842,9 +875,10 @@ export class HttpBackendDataProvider implements DataProvider {
   async decidePersonnelAdvance(id:string,input:AdvanceDecisionInput):Promise<{id:string;replayed:boolean}> {
     return this.request(`/personnel/advances/${encodeURIComponent(id)}/decision`,{method:'POST',body:JSON.stringify(input)});
   }
-  async getPurchaseCycle(search:string,view:PurchaseCycleView,page:number,scope?:PurchaseCoverageScope): Promise<PurchaseCycleResult> {
+  async getPurchaseCycle(search:string,view:PurchaseCycleView,page:number,scope?:PurchaseCoverageScope,audience?:PurchaseCycleAudience): Promise<PurchaseCycleResult> {
     const params=new URLSearchParams({search,view,page:String(page)});
     if (scope) {params.set('territory',scope.territory);params.set('owner',scope.owner);}
+    if (audience && audience!=='manager') params.set('audience',audience);
     return this.request(`/analytics/purchase-cycle?${params}`);
   }
   async getPurchaseProductHints(account:string,source:string): Promise<PurchaseProductResult> {
