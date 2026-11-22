@@ -55,7 +55,7 @@ export interface CollectionPromiseRecord {
   status: 'PENDING' | 'FULFILLED' | 'BROKEN';
   createdAt: string;
   createdById?: string;
-  receiptEvidence?: { id: string };
+  receiptEvidence?: { id: string; matchedBy?: string; matchedAt?: string };
 }
 
 export interface CollectionDashboardSummary {

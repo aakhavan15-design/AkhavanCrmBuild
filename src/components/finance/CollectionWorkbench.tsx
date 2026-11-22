@@ -3,6 +3,7 @@ import type { Account, AppState } from '../../types';
 import type { CollectionPromiseRecord, CustomerCollectionProfile, RiskLevel } from '../../services/collectionEngine';
 import type { LedgerAgingCustomer } from '../../services/agingBuckets';
 import type { CollectionActionInput } from '../../services/dataProvider';
+import { getActiveDataProvider } from '../../services/dataProvider';
 import { resolveCustomerBalanceView, type DetailBalancesResult } from '../../lib/receivableReconciliation';
 import { pareto } from '../../lib/reportAnalytics';
 import { formatCount, formatMoney, formatNumber } from '../../lib/format';
@@ -75,6 +76,17 @@ export function CollectionWorkbench({ state, accounts, profiles, balances, aging
   const accountsById = new Map(accounts.map(account => [account.id, account]));
   const agingById = new Map(aging.map(row => [row.id, row]));
   const names = new Map(state.users.map(user => [user.id, user.name]));
+  const verifiedByRecorder = new Map<string, Set<string>>();
+  if (getActiveDataProvider().name === 'SQLSERVER_BACKEND') for (const [accountId, verified] of closedByAccount) {
+    if (!accountsById.has(accountId)) continue;
+    for (const promise of verified) {
+      const recorder = promise.receiptEvidence?.matchedBy;
+      if (!recorder || !promise.receiptEvidence?.matchedAt) continue;
+      const receipts = verifiedByRecorder.get(recorder) ?? new Set<string>();
+      receipts.add(promise.receiptEvidence.id);
+      verifiedByRecorder.set(recorder, receipts);
+    }
+  }
   const rows = profiles.flatMap((profile): CollectionRow[] => {
     const account = accountsById.get(profile.accountId);
     if (!account) return [];
@@ -142,6 +154,14 @@ export function CollectionWorkbench({ state, accounts, profiles, balances, aging
         {canFollowUp && <Button type="button" size="sm" variant="ghost" onClick={()=>onAction('FOLLOW_UP',item.row.profile)}>پیگیری</Button>}
       </li>)}</ul>
     </Card>}
+    {verifiedByRecorder.size > 0 && <details className="rounded-xl border border-border bg-surface p-3">
+      <summary className="min-h-11 cursor-pointer py-2 text-sm font-bold">نتیجهٔ تطبیق وصول به تفکیک ثبت‌کننده</summary>
+      <p className="text-caption text-text-secondary">شمار رسیدهای یکتای ERP که در آخرین دریافت سرور همچنان با تعهدهای قابل مشاهده منطبق‌اند.</p>
+      <ul className="divide-y divide-border text-caption">
+        {[...verifiedByRecorder].sort((a,b) => b[1].size - a[1].size).map(([id, receipts]) =>
+          <li key={id} className="flex justify-between gap-2 py-2"><span>{names.get(id) ?? 'ثبت‌کنندهٔ نامشخص'}</span><strong>{formatCount(receipts.size)} رسید منطبق</strong></li>)}
+      </ul>
+    </details>}
     <DataTable tableId="collection-workbench" savedFiltersScope={state.currentUserId || undefined}
       title="کارتابل وصول مطالبات" subtitle="مبنای مانده دفتر کل است. معوق و ریسک، برآورد پیگیری‌اند."
       rows={rows} getRowId={getRowId} columns={columns} filterGroups={filters}

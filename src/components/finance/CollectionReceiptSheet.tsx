@@ -43,7 +43,7 @@ export function CollectionReceiptSheet({ promise, locale, canEdit, onClose, onRe
     setError('');
     try {
       await getActiveDataProvider().linkCollectionReceipt(promise.id, selected.id);
-      void getStateSyncEngine()?.hydrate().catch(() => {});
+      await getStateSyncEngine()?.hydrate().catch(() => false);
       onRecorded();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'ثبت مدرک تأیید نشد.');
