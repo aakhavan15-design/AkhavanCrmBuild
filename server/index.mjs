@@ -11,6 +11,7 @@ import fs from 'node:fs';
 import { createEntityService, FileEntityDriver, MssqlEntityDriver, MemoryEntityDriver } from './entityStore.mjs';
 import { createAccountDirectory } from './accountDirectory.mjs';
 import { createErpVisitRouteReader } from './erpVisitRouteReads.mjs';
+import { createRouteMapAnalytics, parseRouteMapFilters } from './routeMapAnalytics.mjs';
 import { createQuoteDecisions, quoteDecisionInput } from './quoteDecisions.mjs';
 import { createInvoiceFifoEvidence } from './invoiceFifoEvidence.mjs';
 import { createCollectionReceiptEvidence } from './collectionReceiptEvidence.mjs';
@@ -536,6 +537,18 @@ const guardEntityDriver = (_req, res, next) => {
 const wrap = (handler) => async (req, res, next) => { try { await handler(req, res); } catch (error) { next(error); } };
 
 const visitRouteReader = createErpVisitRouteReader({ sql,run:withTenantContext });
+const routeMapAnalytics = createRouteMapAnalytics({sql,run:withTenantContext});
+app.get('/api/v1/erp/route-map/summary',authenticate,requirePermission('geo.view'),wrap(async(req,res)=>{
+ if(!isUuid(req.auth.tenantId)||!isUuid(req.auth.userId))
+   return res.status(503).json({error:{code:'AUTH_CONTEXT_INVALID',message:'نشست معتبر نیست.'}});
+ let filters;
+ try{filters=parseRouteMapFilters(req.query);}
+ catch(error){return res.status(error.status||400).json({error:{code:'ROUTE_FILTER_INVALID',message:error.message}});}
+ const organizationWide=await hasSqlPermission(req.auth,'geo.view',{organizationWide:true});
+ const financeAllowed=await hasSqlPermission(req.auth,'finance.view');
+ const report=await routeMapAnalytics.mapSummary(req.auth,{filters,organizationWide,financeAllowed});
+ res.json(report);
+}));
 app.get('/api/v1/erp/visit-routes',authenticate,requirePermission('geo.view'),wrap(async(req,res)=>{
   if(!isUuid(req.auth.tenantId)||!isUuid(req.auth.userId))
     return bad(req,res,503,'AUTH_CONTEXT_INVALID','شناسه کاربر و سازمان برای گزارش زنده معتبر نیست.');
