@@ -5,7 +5,7 @@ export type ErpEntityType =
   | 'SALES_ORDER' | 'INVOICE'
   // Canonical ETL entities (docs/MASTER_SPEC_FA.md پیوست ب). Same upsert/stale/identity engine — no parallel importer.
   | 'PAYMENT' | 'PAYMENT_ALLOCATION' | 'CREDIT_NOTE' | 'CHEQUE' | 'JOURNAL_LINE' | 'LEDGER_ACCOUNT' | 'PRODUCT' | 'PRODUCT_COST' | 'SALES_RETURN' | 'DELIVERY_EVENT'
-  | 'VISIT_ROUTE' | 'VISIT_TOUR';
+  | 'VISIT_ROUTE' | 'VISIT_TOUR' | 'VISIT_ROUTE_CUSTOMER' | 'VISIT_ROUTE_STAFF' | 'VISIT_NO_ORDER_REASON' | 'VISIT_EVENT' | 'SALES_REP_GPS';
 export type ErpImportRecord = ERPImportRecord;
 export interface ErpImportSummary {
   entityType: ErpEntityType;
@@ -33,6 +33,11 @@ const COLLECTIONS: Record<ErpEntityType, string> = {
   SALES_RETURN: 'salesReturns',
   VISIT_ROUTE: 'erpVisitRoutes',
   VISIT_TOUR: 'erpVisitTours',
+  VISIT_ROUTE_CUSTOMER: 'erpVisitRouteCustomers',
+  VISIT_ROUTE_STAFF: 'erpVisitRouteStaff',
+  VISIT_NO_ORDER_REASON: 'erpVisitNoOrderReasons',
+  VISIT_EVENT: 'erpVisitEvents',
+  SALES_REP_GPS: 'erpSalesRepGpsLogs',
   DELIVERY_EVENT: 'deliveryEvents',
 };
 export const ERP_ENTITY_TYPES = Object.keys(COLLECTIONS) as ErpEntityType[];
