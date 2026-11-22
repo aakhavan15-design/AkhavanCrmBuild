@@ -134,6 +134,7 @@ export interface ERPVisitRouteReadContract extends ERPRecordIdentity {
 
 export interface ERPVisitTourReadContract extends ERPRecordIdentity {
   entityType?: 'VISIT_TOUR';
+  tourCode?: string;
   tourDate: string;
   routeExternalId: string;
   salesRepExternalId: string;
