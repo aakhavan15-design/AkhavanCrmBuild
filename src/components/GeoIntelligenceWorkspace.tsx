@@ -121,6 +121,13 @@ export function GeoIntelligenceWorkspace({ state, updateState }: Props) {
   }, [customersInside, activeGeometry]);
   const activeMetric = GEO_METRIC_CATALOG[metricKey];
   const selectedZoneAssignments = assignments?.filter(item => item.zoneId === selectedZoneId && item.entityType === 'CUSTOMER' && visibleCustomerIdSet.has(item.entityId) && !item.effectiveTo);
+  const visitCustomerIds = new Set(customersInside.map(customer => customer.id));
+  for (const item of selectedZoneAssignments || []) {
+    if (item.effectiveFrom && String(item.effectiveFrom).slice(0, 10) > toLocalDateISO()) continue;
+    if (visibleCustomerIdSet.has(item.entityId)) visitCustomerIds.add(item.entityId);
+  }
+  // Tour intelligence includes authorized official zone assignments even when GPS is absent.
+  const visitCustomersInScope = visibleCustomers.filter(customer => visitCustomerIds.has(customer.id));
   const today = toLocalDateISO();
   const zoneLocationReview = mode === 'operations' && isSqlActive && !assignmentSyncPending && assignments
     && selectedZone?.status === 'ACTIVE' && activeGeometry && validateZonePolygon(activeGeometry.geometry).valid ? (() => {
@@ -209,7 +216,7 @@ export function GeoIntelligenceWorkspace({ state, updateState }: Props) {
     : [];
   const canReadVisitFinance = can('finance', 'VIEW');
   const scopedVisitInvoices = canReadVisitFinance
-    ? (state.invoices || []).filter(invoice => zoneCustomerIds.has(String(invoice.customerId || invoice.accountId || ''))
+    ? (state.invoices || []).filter(invoice => visitCustomerIds.has(String(invoice.customerId || invoice.accountId || ''))
       && rbac.canActOnRecord('finance', 'VIEW', {
         ownerId: (invoice as Record<string, unknown>).ownerId as string | undefined,
         branchId: (invoice as Record<string, unknown>).branchId as string | undefined,
@@ -221,7 +228,7 @@ export function GeoIntelligenceWorkspace({ state, updateState }: Props) {
     : [];
   const scopedVisitReturns = canReadVisitFinance
     ? ((state.salesReturns || []) as Array<Record<string, unknown>>).filter(ret =>
-      (zoneCustomerIds.has(String(ret.customerId || ret.accountId || '')) ||
+      (visitCustomerIds.has(String(ret.customerId || ret.accountId || '')) ||
         scopedVisitInvoices.some(invoice => (ret.invoiceId && String(ret.invoiceId) === invoice.id) ||
           (ret.externalInvoiceId && [invoice.id, invoice.invoiceNumber].includes(String(ret.externalInvoiceId))))) &&
       rbac.canActOnRecord('finance', 'VIEW', {
@@ -527,7 +534,7 @@ export function GeoIntelligenceWorkspace({ state, updateState }: Props) {
       {zoneLocationReview.length === 0 && <p className="py-2 text-caption">برای انتساب‌های قابل مشاهده موردی در دادهٔ فعلی یافت نشد.</p>}
     </details>}
     {mode==='operations' && selectedZone && can('geo','VIEW') && <VisitIntelligencePanel
-      customers={customersInside} visits={scopedVisitHistory} invoices={scopedVisitInvoices}
+      customers={visitCustomersInScope} visits={scopedVisitHistory} invoices={scopedVisitInvoices}
       returns={scopedVisitReturns} tours={scopedErpVisitTours} receivables={validReceivableRanks}
       financeVisible={canReadVisitFinance} asOf={today}
       historyComplete={false} invoiceHistoryComplete={false}
