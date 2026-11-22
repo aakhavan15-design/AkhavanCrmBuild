@@ -22,7 +22,7 @@ interface Choice{id:string;name:string}
 interface FilterOptions{salesReps:Choice[];supervisors:Choice[];products:Choice[];suppliers:Choice[];brands:Choice[];categories:Choice[];unavailable:string[]}
 interface DetailCustomer {
  id:string;name:string;code?:string;statusCode?:string;subRouteCode?:string;
- latitude:number|null;longitude:number|null;visitCount:number;lastVisitAt:string|null;
+ latitude:number|null;longitude:number|null;visitCount:number|null;lastVisitAt:string|null;
  lastVisitOutcome:string|null;noOrderReason:string|null;invoiceCount:number|null;netSales:number|null;
  lastInvoice:{number:string;date:string;items:Array<{name:string;quantity:number;unitPrice:number}>}|null;
  returnAmount?:number|null;receivableAmount?:number|null;receivableAsOf?:string|null;
@@ -30,7 +30,7 @@ interface DetailCustomer {
 }
 interface Detail {
  source:string;route:{RouteId:string;RouteCode:string;RouteName:string};
- customers:DetailCustomer[];financeVisible:boolean;period:{dateFrom:string;dateTo:string};
+ customers:DetailCustomer[];financeVisible:boolean;coverage?:{hasVisitFeed:boolean;hasInvoiceFeed:boolean};period:{dateFrom:string;dateTo:string};
  topProducts:Array<{id:string;name:string;amount:number;quantity:number}>;
  warnings:string[];
 }
@@ -279,9 +279,9 @@ export function RouteMapOverview(){
     {detailError&&<p role="alert" className="text-xs text-warning">{detailError}</p>}
     {detail&&<>
      <div className="grid grid-cols-2 gap-2">
-      {[['کل مشتری',detail.customers.length],['دارای ویزیت',detail.customers.filter(c=>c.visitCount>0).length],
-        ['دارای فاکتور',detail.financeVisible?detail.customers.filter(c=>(c.invoiceCount||0)>0).length:null],
-        ['فروش ریالی',detail.financeVisible?detail.customers.reduce((sum,c)=>sum+(c.netSales||0),0):null]].map(([name,value],index)=>
+      {[['کل مشتری',detail.customers.length],['دارای ویزیت',detail.coverage?.hasVisitFeed?detail.customers.filter(c=>(c.visitCount||0)>0).length:null],
+        ['دارای فاکتور',detail.coverage?.hasInvoiceFeed?detail.customers.filter(c=>(c.invoiceCount||0)>0).length:null],
+        ['فروش ریالی',detail.coverage?.hasInvoiceFeed?detail.customers.reduce((sum,c)=>sum+(c.netSales||0),0):null]].map(([name,value],index)=>
        <div key={String(name)} className="rounded-xl border border-border bg-canvas p-3">
         <p className="text-xs text-text-secondary">{name}</p>
         <strong className="mt-1 block text-lg text-text-main">{value==null?'نامشخص':index===3?compact(Number(value))+' ریال':fa(Number(value))}</strong>
@@ -308,7 +308,7 @@ export function RouteMapOverview(){
         <span className={`rounded-full px-2 py-1 text-micro ${detailColor(c.status)}`}>{statusLabels[c.status]}</span>
        </div>
        <div className="mt-2 grid grid-cols-2 gap-1 text-xs text-text-secondary">
-        <span>ویزیت: {fa(c.visitCount)} بار</span>
+        <span>ویزیت: {c.visitCount==null?'نامشخص':fa(c.visitCount)+' بار'}</span>
         <span>فاکتور: {c.invoiceCount==null?'محدود':fa(c.invoiceCount)}</span>
         <span>فروش: {c.netSales==null?'نامشخص':compact(c.netSales)+' ریال'}</span>
         <span>آخرین ویزیت: {c.lastVisitAt?String(c.lastVisitAt).slice(0,10):'ثبت نشده'}</span>
