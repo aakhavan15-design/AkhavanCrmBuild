@@ -306,7 +306,8 @@ export function executePayrollRun(
   state: AppState,
   periodMonth: string,
   executedByUserId: string,
-  dailyBasis: 29 | 30 | 31 = 30
+  dailyBasis: 29 | 30 | 31 = 30,
+  financialEvidence?: { ledgerReconciled: true; periodMonth: string; netSalesBySeller: Record<string,number> }
 ): {
   run: PayrollRun;
   payslips: Payslip[];
@@ -353,10 +354,17 @@ export function executePayrollRun(
       return source.ownerId === user.id && !invoice.deletedAt && !source.isDeleted
         && invoice.date?.slice(0,7) === periodMonth && postedStatuses.has(invoice.status);
     });
-    const realizedSales = userInvoices.reduce((sum, inv) => sum + (Number(inv.totalAmount) || 0), 0);
+    // Never calculate commission from gross invoice headers. Accept only an
+    // explicitly reconciled seller-period net sales slice from finance.
+    const verifiedSellerSales = financialEvidence?.ledgerReconciled === true
+      && financialEvidence.periodMonth === periodMonth
+      ? financialEvidence.netSalesBySeller[user.id] : undefined;
+    const realizedSales = typeof verifiedSellerSales === 'number'
+      && Number.isFinite(verifiedSellerSales) && verifiedSellerSales >= 0
+      ? verifiedSellerSales : null;
     // هدف فروش واقعی کاربر؛ نبود هدف ⇒ پورسانت صفر (نه هدف فرضی).
     const userTarget = Number(targets.find(t => t.userId === user.id && t.periodMonth === periodMonth)?.revenueTargetRials);
-    const commissionCalc = Number.isFinite(userTarget) && userTarget > 0
+    const commissionCalc = realizedSales !== null && Number.isFinite(userTarget) && userTarget > 0
       ? calculateCommissionForSeller(realizedSales, userTarget, plan)
       : { achievementPercent: 0, ratePercent: 0, commissionAmountRials: 0 };
 
