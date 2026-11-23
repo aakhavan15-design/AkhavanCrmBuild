@@ -18,18 +18,19 @@
 
 | کد | نام | فرمول | منبع داده | واحد | نیاز به بها | وضعیت | موتور/SQL |
 |---|---|---|---|---|---|---|---|
-| SALES_REALIZED_NET | فروش خالص تحقق‌یافته | SUM(NetLineAmount) WHERE invoice posted/confirmed/closed AND IsVoided=0 | crm.InvoiceMirror، crm.InvoiceLineMirror | IRR | خیر | تعریف SQL (اجرا نشده) | analytics.vw_SalesKpiDaily |
-| SALES_TARGET_ACHIEVEMENT | درصد تحقق هدف فروش | SALES_REALIZED_NET / TargetValue × 100 | crm.SalesTarget، analytics.vw_SalesKpiDaily | PERCENT | خیر | موتور اپ + تست | src/lib/reportAnalytics.ts |
+| SALES_REALIZED_NET | فروش خالص تحقق‌یافته | calculateNetSales(POSTED_GROSS_SALES, POSTED_SALES_RETURNS), reconciled with posted ERP ledger | crm.InvoiceMirror، crm.CreditNoteMirror، crm.JournalLineMirror | IRR | خیر | موتور اپ + تست | src/lib/financialMetricKernel.ts |
+| SALES_TARGET_ACHIEVEMENT | درصد تحقق هدف فروش | reconciled SALES_REALIZED_NET / approved TargetValue × 100 | crm.SalesTarget، analytics.vw_SalesKpiDaily | PERCENT | خیر | موتور اپ + تست | src/lib/reportAnalytics.ts |
 | ORDER_COUNT | تعداد سفارش | COUNT(SalesOrder) status active | analytics.vw_FactOrders | COUNT | خیر | تعریف SQL (اجرا نشده) | analytics.vw_FactOrders |
 | SALES_FORECAST | پیش‌بینی فروش | SUM(ExpectedAmount) open opportunities | crm.Opportunity | IRR | خیر | فقط تعریف | — |
+| CASH_DISCOUNT_INVOICE_AMOUNT | تخفیف نقدی فاکتور | SUM(verified cashDiscountRials on distinct posted ERP invoices) | crm.InvoiceMirror | IRR | خیر | فقط تعریف | src/lib/cashDiscountMonitoring.ts |
 
 ## گزارش 3
 
 | کد | نام | فرمول | منبع داده | واحد | نیاز به بها | وضعیت | موتور/SQL |
 |---|---|---|---|---|---|---|---|
 | COGS | بهای تمام‌شدهٔ کالای فروش‌رفته | bucket COGS | crm.JournalLineMirror، crm.ProductCostMirror | IRR | بله | موتور اپ + تست | src/lib/ledgerPnl.ts / analytics.vw_PnlBucketMonth |
-| SALES_REALIZED_NET | فروش خالص تحقق‌یافته | SUM(NetLineAmount) WHERE invoice posted/confirmed/closed AND IsVoided=0 | crm.InvoiceMirror، crm.InvoiceLineMirror | IRR | خیر | تعریف SQL (اجرا نشده) | analytics.vw_SalesKpiDaily |
-| PRODUCT_SALES_SHARE | سهم فروش محصول/برند | SALES_REALIZED_NET by product ÷ total | analytics.vw_FactSalesLineEnriched | PERCENT | خیر | موتور اپ + تست | src/lib/reportAnalytics.ts / analytics.vw_FactSalesLineEnriched |
+| SALES_REALIZED_NET | فروش خالص تحقق‌یافته | calculateNetSales(POSTED_GROSS_SALES, POSTED_SALES_RETURNS), reconciled with posted ERP ledger | crm.InvoiceMirror، crm.CreditNoteMirror، crm.JournalLineMirror | IRR | خیر | موتور اپ + تست | src/lib/financialMetricKernel.ts |
+| PRODUCT_SALES_SHARE | سهم فروش محصول/برند | reconciled net sales by product ÷ reconciled total; missing return attribution = UNAVAILABLE | analytics.vw_FactSalesLineEnriched | PERCENT | خیر | موتور اپ + تست | src/lib/reportAnalytics.ts / analytics.vw_FactSalesLineEnriched |
 | GROSS_PROFIT_KNOWN_COST | سود ناخالص با بهای معتبر | SUM(NetLineAmount−CostAmount) lines with cost | analytics.vw_SalesProfitCoverage | IRR | بله | تعریف SQL (اجرا نشده) | analytics.vw_SalesProfitCoverage |
 
 ## گزارش 4
@@ -37,13 +38,13 @@
 | کد | نام | فرمول | منبع داده | واحد | نیاز به بها | وضعیت | موتور/SQL |
 |---|---|---|---|---|---|---|---|
 | CUSTOMER_PURCHASE_CYCLE_DAYS | چرخهٔ خرید مشتری | median(gap between consecutive realized invoices) | crm.InvoiceMirror | DAYS | خیر | موتور اپ + تست | src/lib/reportAnalytics.ts |
-| AR_OUTSTANDING | مانده مطالبات | InvoiceGrossAmount − ValidAllocatedAmount − ValidCreditAmount | analytics.fn_InvoiceBalanceAsOf | IRR | خیر | موتور اپ + تست | src/lib/receivableReconciliation.ts / analytics.fn_InvoiceBalanceAsOf |
+| AR_OUTSTANDING | مانده مطالبات | calculateLedgerBalance(POSTED_ONLY); allocateLifo(invoice chronology, verified official balance) | crm.JournalLineMirror، crm.InvoiceMirror | IRR | خیر | موتور اپ + تست | src/services/receivableReports.ts |
 
 ## گزارش 5
 
 | کد | نام | فرمول | منبع داده | واحد | نیاز به بها | وضعیت | موتور/SQL |
 |---|---|---|---|---|---|---|---|
-| SALES_REALIZED_NET | فروش خالص تحقق‌یافته | SUM(NetLineAmount) WHERE invoice posted/confirmed/closed AND IsVoided=0 | crm.InvoiceMirror، crm.InvoiceLineMirror | IRR | خیر | تعریف SQL (اجرا نشده) | analytics.vw_SalesKpiDaily |
+| SALES_REALIZED_NET | فروش خالص تحقق‌یافته | calculateNetSales(POSTED_GROSS_SALES, POSTED_SALES_RETURNS), reconciled with posted ERP ledger | crm.InvoiceMirror، crm.CreditNoteMirror، crm.JournalLineMirror | IRR | خیر | موتور اپ + تست | src/lib/financialMetricKernel.ts |
 | REVENUE_CONCENTRATION_TOP_SHARE | سهم مشتریان برتر | cumulative share of top customers | analytics.vw_SalesKpiDaily | PERCENT | خیر | موتور اپ + تست | src/lib/reportAnalytics.ts |
 
 ## گزارش 6
@@ -56,9 +57,9 @@
 
 | کد | نام | فرمول | منبع داده | واحد | نیاز به بها | وضعیت | موتور/SQL |
 |---|---|---|---|---|---|---|---|
-| AR_OUTSTANDING | مانده مطالبات | InvoiceGrossAmount − ValidAllocatedAmount − ValidCreditAmount | analytics.fn_InvoiceBalanceAsOf | IRR | خیر | موتور اپ + تست | src/lib/receivableReconciliation.ts / analytics.fn_InvoiceBalanceAsOf |
-| AR_OVERDUE | مطالبات سررسیدگذشته | SUM(Outstanding) WHERE DaysPastDue>0 | analytics.fn_InvoiceBalanceAsOf | IRR | خیر | موتور اپ + تست | src/lib/receivableReconciliation.ts / analytics.fn_InvoiceBalanceAsOf |
-| AR_AGING_BUCKETS | سنی مطالبات | buildAgingBuckets(items, settings.agingBucketBounds) | analytics.fn_InvoiceBalanceAsOf | IRR | خیر | موتور اپ + تست | src/services/agingBuckets.ts |
+| AR_OUTSTANDING | مانده مطالبات | calculateLedgerBalance(POSTED_ONLY); allocateLifo(invoice chronology, verified official balance) | crm.JournalLineMirror، crm.InvoiceMirror | IRR | خیر | موتور اپ + تست | src/services/receivableReports.ts |
+| AR_OVERDUE | مطالبات سررسیدگذشته | SUM(allocateLifo(verifiedLedgerBalance, invoices).remaining WHERE dueDate < asOf) | crm.JournalLineMirror، crm.InvoiceMirror | IRR | خیر | موتور اپ + تست | src/services/receivableReports.ts |
+| AR_AGING_BUCKETS | سنی مطالبات | buildAgingBuckets(items, settings.agingBucketBounds) | crm.JournalLineMirror، crm.InvoiceMirror | IRR | خیر | موتور اپ + تست | src/services/agingBuckets.ts |
 | CHEQUES_OPERATIONAL | چک‌های عملیاتی | SUM(Amount) WHERE IsGuarantee=0 AND IsVoided=0 | analytics.vw_ChequeOperational | IRR | خیر | تعریف SQL (اجرا نشده) | analytics.vw_ChequeOperational |
 
 ## گزارش 8
@@ -79,6 +80,8 @@
 
 | کد | نام | فرمول | منبع داده | واحد | نیاز به بها | وضعیت | موتور/SQL |
 |---|---|---|---|---|---|---|---|
+| CASH_DISCOUNT_INVOICE_AMOUNT | تخفیف نقدی فاکتور | SUM(verified cashDiscountRials on distinct posted ERP invoices) | crm.InvoiceMirror | IRR | خیر | فقط تعریف | src/lib/cashDiscountMonitoring.ts |
+| CASH_DISCOUNT_DISTRIBUTION_AMOUNT | تخفیف نقدی حواله توزیع | SUM(distinct posted ERP invoice cashDiscountRials per distributionNoteId) | crm.InvoiceMirror، crm.DistributionMirror | IRR | خیر | فقط تعریف | src/lib/cashDiscountMonitoring.ts |
 | ON_TIME_DELIVERY_RATE | نرخ تحویل به‌موقع | SUM(IsOnTime=1)/COUNT(IsOnTime IS NOT NULL) | analytics.vw_FactDeliveries | PERCENT | خیر | موتور اپ + تست | src/lib/reportAnalytics.ts / analytics.vw_FactDeliveries |
 
 ## گزارش 11
