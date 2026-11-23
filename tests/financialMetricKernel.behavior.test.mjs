@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { calculateNetSales, calculateLedgerBalance, buildNetSalesEvidence, reconcileNetSales } from '../src/lib/financialMetricKernel.ts';
+import { calculateNetSales, calculateLedgerBalance, buildNetSalesEvidence, reconcileNetSales, attributeReconciledSalesBySeller } from '../src/lib/financialMetricKernel.ts';
 import { queryLocalRecords } from '../src/services/localQuery.ts';
 import { allocateLifo } from '../src/services/agingBuckets.ts';
 import { computeLedgerPnl } from '../src/lib/ledgerPnl.ts';
@@ -114,4 +114,34 @@ test('formal P&L accepts only explicitly finalized articles and canonical net-sa
   assert.equal(report.values.SALES_RETURNS,200);
   assert.equal(report.values.NET_SALES,800);
   assert.equal(report.usedLines,2);
+});
+
+test('seller shares use canonical reconciled net amounts, not gross invoices',()=>{
+  const invoices=[{...inv('i1','2026-11-10',100),sellerId:'X'},
+    {...inv('i2','2026-11-12',200),sellerId:'Z'}];
+  const evidence=buildNetSalesEvidence(invoices,[doc('r1','i1',25)],
+    {from:'2026-11-01',to:'2026-11-30',returnsVerified:true});
+  const official=reconcileNetSales(evidence,300,25,true);
+  const shares=attributeReconciledSalesBySeller(evidence,official,invoices,i=>i.sellerId);
+  assert.equal(shares.status,'AVAILABLE');
+  assert.deepEqual(Object.fromEntries(shares.rows.map(x=>[x.key,x.value])),{X:75,Z:200});
+  assert.equal(shares.rows.reduce((sum,r)=>sum+r.value,0),evidence.net);
+  assert.equal(attributeReconciledSalesBySeller(evidence,reconcileNetSales(evidence,300,20,true),invoices,i=>i.sellerId).status,'UNAVAILABLE');
+});
+test('seller share withheld when a posted cross-period return cannot be attributed to a period invoice fact',()=>{
+  const invoices=[{...inv('old','2026-10-12',300),sellerId:'X'}];
+  const evidence=buildNetSalesEvidence(invoices,[doc('r1','old',60)],
+    {from:'2026-11-01',to:'2026-11-30',returnsVerified:true});
+  const reconciliation=reconcileNetSales(evidence,0,60,true);
+  assert.equal(reconciliation.status,'RECONCILED');
+  const shares=attributeReconciledSalesBySeller(evidence,reconciliation,invoices,i=>i.sellerId);
+  assert.equal(shares.status,'UNAVAILABLE');
+  assert.deepEqual(shares.rows,[]);
+});
+test('seller shares block duplicate invoice IDs and missing records',()=>{
+  const invoices=[{...inv('i1','2026-11-10',100),sellerId:'X'}];
+  const evidence=buildNetSalesEvidence(invoices,[],{from:'2026-11-01',to:'2026-11-30',returnsVerified:true});
+  const reconciliation=reconcileNetSales(evidence,100,0,true);
+  assert.equal(attributeReconciledSalesBySeller(evidence,reconciliation,[...invoices,...invoices],i=>i.sellerId).status,'UNAVAILABLE');
+  assert.equal(attributeReconciledSalesBySeller(evidence,reconciliation,[],i=>i.sellerId).status,'UNAVAILABLE');
 });
