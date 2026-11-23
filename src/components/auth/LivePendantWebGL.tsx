@@ -76,21 +76,21 @@ export function LivePendantWebGL({
       vec2 scene(vec3 worldP) {
         vec3 p=pivot(worldP);
         // Spun-metal bell: thin-shell shade with open illuminated underside.
-        float shell=abs(capCone(p-vec3(0.,.55,0.),.39,.84,.29))-.035;
-        float lip=torus(p-vec3(0.,.158,0.),vec2(.835,.045));
+        float shell=abs(capCone(p-vec3(0.,2.10,0.),.39,.84,.29))-.035;
+        float lip=torus(p-vec3(0.,1.708,0.),vec2(.835,.045));
         float copper=min(shell,lip);
-        float socket=capsule(p,vec3(0.,.94,0.),vec3(0.,1.12,0.),.15);
+        float socket=capsule(p,vec3(0.,2.49,0.),vec3(0.,2.64,0.),.15);
         copper=min(copper,socket);
         // Ceiling rosette and fine suspension wire.
-        float wire=capsule(p,vec3(0.,1.13,0.),vec3(0.,2.78,0.),.013);
+        float wire=capsule(p,vec3(0.,2.60,0.),vec3(0.,2.78,0.),.013);
         float ceiling=capCone(p-vec3(0.,2.8,0.),.055,.20,.13);
         float metal=min(copper,min(wire,ceiling));
         // Interior ceramic/glass globe, recessed into shade.
-        float glass=length((p-vec3(0.,.27,0.))*vec3(1.,1.16,1.))-.31;
-        glass=max(glass,-(p.y-.56));
+        float glass=length((p-vec3(0.,1.82,0.))*vec3(1.,1.16,1.))-.31;
+        glass=max(glass,-(p.y-2.11));
         // Pull chain and bead, linked to the unchanged accessible drag handle.
-        float chain=capsule(p,vec3(.72,.39,.0),vec3(.72+pull.x,-1.05-pull.y,.0),.012);
-        float bead=length(p-vec3(.72+pull.x,-1.05-pull.y,0.))-.077;
+        float chain=capsule(p,vec3(.72,1.94,.0),vec3(.72+pull.x,.97-pull.y,.0),.012);
+        float bead=length(p-vec3(.72+pull.x,.97-pull.y,0.))-.077;
         float brass=min(chain,bead);
         vec2 result=vec2(metal,1.);
         if(glass<result.x) result=vec2(glass,2.);
@@ -134,7 +134,7 @@ export function LivePendantWebGL({
       }
       void main() {
         vec2 uv=(gl_FragCoord.xy-.5*resolution)/resolution.y;
-        // A portrait studio lens; constant world-space proportions on mobile.
+        // Portrait studio lens aligned with the existing SVG pull control and ceiling rosette.
         vec3 ro=vec3(0.,1.14,6.6);
         vec3 look=vec3(0.,.83,0.);
         vec3 forward=normalize(look-ro);
@@ -159,7 +159,7 @@ export function LivePendantWebGL({
           alpha=1.;
         }
         // Warm volumetric cone under the suspended shade; responds to sway.
-        vec3 lamp=vec3(0.,.15,0.);
+        vec3 lamp=vec3(0.,1.70,0.);
         lamp=pivot(lamp);
         float beam=0.;
         float bloom=0.;
