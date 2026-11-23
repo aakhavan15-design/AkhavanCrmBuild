@@ -22,18 +22,18 @@ export class AIAdvisorService {
       accounts.forEach(account => {
         const accQuotes = quotes.filter(q => q.accountId === account.id);
         if (accQuotes.length >= 2) {
-          const totalSales = accQuotes.reduce((sum, q) => sum + q.totalAmount, 0);
+          const quotedPipelineValue = accQuotes.reduce((sum, q) => sum + q.totalAmount, 0);
           const sorted = [...accQuotes].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
           const lastDate = new Date(sorted[0].createdAt);
           const daysSinceLastOrder = Math.floor((today.getTime() - lastDate.getTime()) / (1000 * 3600 * 24));
 
-          if (daysSinceLastOrder > churn.days && totalSales > churn.minSales) {
+          if (daysSinceLastOrder > churn.days && quotedPipelineValue > churn.minSales) {
             recommendations.push({
               id: `rec-risk-${account.id}`,
               title: `ریزش احتمالی حساب کلیدی: ${account.name}`,
               customerId: account.id,
               category: 'CUSTOMER_RISK',
-              reason: `این مشتری با ارزش تاریخی ${formatCurrency(totalSales)} ریال، بیش از ${daysSinceLastOrder} روز است سفارشی نداشته است.`,
+              reason: `این مشتری با مجموع پیش‌فاکتورهای ${formatCurrency(quotedPipelineValue)} ریال، بیش از ${daysSinceLastOrder} روز است پیش‌فاکتور جدیدی ندارد؛ این عدد فروش قطعی نیست.`,
               dataUsed: `آخرین تاریخ: ${sorted[0].createdAt}`,
               proposedAction: `تنظیم ویزیت حضوری یا ارائه پکیج Win-back`,
               actionPayload: { targetTab: 'accounts', customerId: account.id, actionType: 'PLAN_VISIT' },
@@ -51,17 +51,17 @@ export class AIAdvisorService {
       return diff > 30 * 86400000 && diff <= 60 * 86400000;
     });
 
-    const recentRev = recent30Days.reduce((s, q) => s + q.totalAmount, 0);
-    const prevRev = prev30Days.reduce((s, q) => s + q.totalAmount, 0);
+    const recentQuotedValue = recent30Days.reduce((s, q) => s + q.totalAmount, 0);
+    const previousQuotedValue = prev30Days.reduce((s, q) => s + q.totalAmount, 0);
 
-    if (prevRev > 0 && recentRev < prevRev * 0.7) { // افت 30 درصدی
+    if (previousQuotedValue > 0 && recentQuotedValue < previousQuotedValue * 0.7) { // افت 30 درصدی
       recommendations.push({
         id: `rec-anomaly-sales`,
-        title: `افت ناگهانی ۳۰ درصدی در فروش ماهانه`,
+        title: `افت حداقل ۳۰ درصدی ارزش پیش‌فاکتورهای ماهانه`,
         customerId: 'SYSTEM',
         category: 'TREND_ANOMALY',
-        reason: `درآمد ۳۰ روز گذشته (${formatCurrency(recentRev)} ریال) نسبت به ماه قبل (${formatCurrency(prevRev)} ریال) افت شدیدی داشته است.`,
-        dataUsed: `مقایسه ۶۰ روزه پیش‌فاکتورها`,
+        reason: `ارزش پیش‌فاکتورهای ۳۰ روز گذشته (${formatCurrency(recentQuotedValue)} ریال) نسبت به دوره قبل (${formatCurrency(previousQuotedValue)} ریال) افت داشته است؛ این شاخص فروش خالص نیست.`,
+        dataUsed: `مقایسه ارزش پیش‌فاکتورهای ۶۰ روزه؛ فاقد ادعای فروش محقق‌شده`,
         proposedAction: `بررسی عملکرد تیم فروش و کمپین‌های مارکتینگ`,
         actionPayload: { targetTab: 'reports', actionType: 'VIEW_SALES_REPORT' },
         createdAt: todayStr
