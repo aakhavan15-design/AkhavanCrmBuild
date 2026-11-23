@@ -177,3 +177,38 @@ export function reconcileNetSales(
       grossDifference,returnsDifference};
   return {status:'RECONCILED',grossDifference,returnsDifference};
 }
+
+/**
+ * Seller attribution is a VIEW of canonical net-sales facts, not a second
+ * net-sales formula. Cross-period returns may have no current-period invoice
+ * fact; in that case segment amounts must remain unavailable, even when the
+ * company-wide ledger total reconciles.
+ */
+export function attributeReconciledSalesBySeller<T extends {id:string}>(
+  evidence: NetSalesEvidence,
+  reconciliation: NetSalesReconciliation,
+  invoices: T[],
+  sellerOf: (invoice:T)=>string
+): {status:'AVAILABLE'|'UNAVAILABLE';reason?:string;rows:{key:string;value:number}[]} {
+  const unavailable=(reason:string)=>({status:'UNAVAILABLE' as const,reason,rows:[]});
+  if (reconciliation.status!=='RECONCILED' || evidence.status!=='AVAILABLE' || evidence.net===null)
+    return unavailable(reconciliation.reason || evidence.reason || 'فروش خالص با دفتر تطبیق نشده است.');
+  const index=new Map<string,T>();
+  for(const invoice of invoices) {
+    if(!invoice.id || index.has(invoice.id))
+      return unavailable('شناسه فاکتور فروش تکراری یا نامعتبر است.');
+    index.set(invoice.id,invoice);
+  }
+  const rows=new Map<string,number>();
+  for(const fact of evidence.facts) {
+    const invoice=index.get(fact.invoiceId);
+    if(!invoice || !Number.isFinite(fact.amount))
+      return unavailable('فاکتور یا مبلغ تفصیلی از منبع واحد فروش خالص ناقص است.');
+    const seller=String(sellerOf(invoice)||'').trim()||'UNASSIGNED';
+    rows.set(seller,(rows.get(seller)||0)+fact.amount);
+  }
+  const total=[...rows.values()].reduce((sum,amount)=>sum+amount,0);
+  if(Math.abs(total-evidence.net)>0.01)
+    return unavailable('برگشتی‌های خارج دوره به فروشنده قابل انتساب نیستند؛ نمودار سهم فروشنده قطعی نیست.');
+  return {status:'AVAILABLE',rows:[...rows].map(([key,value])=>({key,value}))};
+}
