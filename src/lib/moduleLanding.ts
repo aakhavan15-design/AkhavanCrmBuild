@@ -153,6 +153,7 @@ export const MODULE_LANDINGS: ModuleLandingDefinition[] = [
         title: 'اهداف، گزارش و پایش فروش',
         tiles: [
           tile('sales-reports', 'گزارش‌های فروش و درآمد', 'عملکرد فروش، محصولات، مشتریان و ویزیت', '/reports?tab=sales', 'reports', ChartNoAxesCombined),
+          tile('advanced-analytics', 'بینش‌های عمیق مالی و بازرگانی', 'گزارش‌های تحلیلی با شواهد، فیلتر و جزئیات', '/reports?view=analytical', 'reports', TrendingUp),
           tile('audit-sales', 'پایش مغایرت فروش', 'کنترل کیفیت و مغایرت‌های فروش و مشتری', '/audit?module=sales', 'leads', SearchCheck),
           tile('fin-targets', 'اهداف و تحقق فروش', 'تعریف هدف و پایش تحقق', '/planned?item=fin-targets', 'finance', Target),
           tile('fin-commission', 'محاسبه پورسانت', 'هدف، پلکان و ضرایب پورسانت', '/planned?item=fin-commission', 'finance', Percent),
