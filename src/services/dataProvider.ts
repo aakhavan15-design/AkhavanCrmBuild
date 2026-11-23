@@ -24,6 +24,7 @@ import type {
 import { useAppStore } from '../lib/storage';
 import { executePayrollRun as computePayrollRun } from './payrollEngine';
 import { AuthService } from './AuthService';
+import { queryLocalRecords } from './localQuery';
 import type { StateSnapshot, StateSyncResult } from './stateSync';
 import { RBACService } from '../lib/rbac';
 import { hashRecord, policyOf, splitState } from '../lib/stateModel.mjs';
@@ -539,17 +540,7 @@ export class ClientStorageDataProvider implements DataProvider {
   }
 
   async getQuotes(filter?: any, pagination?: PaginationParams): Promise<PaginatedResult<Quote>> {
-    const list = this.getState().quotes || [];
-    const page = pagination?.page || 1;
-    const pageSize = pagination?.pageSize || 25;
-    const start = (page - 1) * pageSize;
-    return {
-      items: list.slice(start, start + pageSize),
-      total: list.length,
-      page,
-      pageSize,
-      totalPages: Math.ceil(list.length / pageSize) || 1
-    };
+    return queryLocalRecords(this.getState().quotes || [], filter, pagination, 25);
   }
 
   async getQuoteById(id: string): Promise<Quote | null> {
@@ -579,17 +570,7 @@ export class ClientStorageDataProvider implements DataProvider {
   async decideQuote():Promise<{quote:Quote;replayed:boolean}> { throw new Error('ثبت تصمیم فروش به پایگاه مرکزی نیاز دارد.'); }
 
   async getTasks(filter?: any, pagination?: PaginationParams): Promise<PaginatedResult<Task>> {
-    const list = this.getState().tasks || [];
-    const page = pagination?.page || 1;
-    const pageSize = pagination?.pageSize || 25;
-    const start = (page - 1) * pageSize;
-    return {
-      items: list.slice(start, start + pageSize),
-      total: list.length,
-      page,
-      pageSize,
-      totalPages: Math.ceil(list.length / pageSize) || 1
-    };
+    return queryLocalRecords(this.getState().tasks || [], filter, pagination, 25);
   }
 
   async getTaskById(id: string): Promise<Task | null> {
@@ -651,19 +632,16 @@ export class ClientStorageDataProvider implements DataProvider {
     return updated!;
   }
 
-  async getInvoices(): Promise<PaginatedResult<Invoice>> {
-    const list = this.getState().invoices || [];
-    return { items: list, total: list.length, page: 1, pageSize: list.length, totalPages: 1 };
+  async getInvoices(filter?: any, pagination?: PaginationParams): Promise<PaginatedResult<Invoice>> {
+    return queryLocalRecords(this.getState().invoices || [], filter, pagination, 200);
   }
 
-  async getPayments(): Promise<PaginatedResult<Payment>> {
-    const list = this.getState().payments || [];
-    return { items: list, total: list.length, page: 1, pageSize: list.length, totalPages: 1 };
+  async getPayments(filter?: any, pagination?: PaginationParams): Promise<PaginatedResult<Payment>> {
+    return queryLocalRecords(this.getState().payments || [], filter, pagination, 200);
   }
 
-  async getCheques(): Promise<PaginatedResult<Cheque>> {
-    const list = this.getState().cheques || [];
-    return { items: list, total: list.length, page: 1, pageSize: list.length, totalPages: 1 };
+  async getCheques(filter?: any, pagination?: PaginationParams): Promise<PaginatedResult<Cheque>> {
+    return queryLocalRecords(this.getState().cheques || [], filter, pagination, 200);
   }
 
   async createPayment(payment: Partial<Payment>): Promise<Payment> {
