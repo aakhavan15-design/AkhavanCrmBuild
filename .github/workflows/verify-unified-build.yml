@@ -4,6 +4,11 @@ on:
     branches: [codex/unified-ux-quality-gate]
     paths:
       - .github/workflows/verify-unified-build.yml
+      - src/lib/moduleLanding.ts
+      - src/lib/navigation.ts
+      - src/components/ModuleLandingWorkspace.tsx
+      - src/components/PlannedModulePage.tsx
+      - src/components/ReportsWorkspace.tsx
   workflow_dispatch:
 permissions:
   contents: read
