@@ -12,6 +12,8 @@ type InvoiceLine={InvoiceMirrorId:string;InvoiceLineMirrorId:string;ExternalProd
 type Report={status:'PARTIAL'|'UNAVAILABLE';reason?:string;plan?:{PlanNumber:string;PlanDate:string;DriverExternalId:string;DistributorExternalId:string|null};
  invoices?:Invoice[];invoiceLines?:InvoiceLine[];lineCoverage?:string;sellers?:Seller[];invoiceCount?:number;grossRials?:number;linkedReturnsRials?:number;
  journalBuckets?:Record<string,number|null>;missingMappings?:number;coverage?:Record<string,string>;note?:string;
+ proposals?:Array<{taskKey:string;taskId:string;sellerId:string;policyCode:string;policyVersion:string;observedRate:number;limitRate:number}>;
+ supplierScopedPoliciesSkipped?:number;
  receivableCoverage?:string;collectionZone?:{
   status:'AVAILABLE'|'UNAVAILABLE';reason?:string;geometry?:GeoPolygonGeometry|null;
   rows?:Array<{customerId:string;name:string;officialBalanceRials:number;point:{latitude:number;longitude:number}|null;inZone:boolean;manualOutside:boolean;included:boolean}>;
@@ -31,6 +33,8 @@ export function DispatchIntelligenceReports({plans}: {plans:Array<Record<string,
  const [report,setReport]=useState<Report|null>(null);
  const [loading,setLoading]=useState(false);
  const [error,setError]=useState('');
+ const [taskNotice,setTaskNotice]=useState('');
+ const [creatingTaskId,setCreatingTaskId]=useState<string|null>(null);
  const options=useMemo(()=>[...new Set(plans.map(p=>String(p.planNumber||p.PlanNumber||'')).filter(Boolean))], [plans]);
  useEffect(()=>{if(!plan&&options.length)setPlan(options[0]);},[plan,options]);
  useEffect(()=>{
@@ -79,6 +83,33 @@ export function DispatchIntelligenceReports({plans}: {plans:Array<Record<string,
   point:c.point!,tone:'bad',outside:!c.inZone
  }));
  const mapPins:GeoMapPin[]=[...pins.map(pin=>({...pin,kind:'DISPATCH' as const})),...redPins];
+ const createPenaltyTask=async(proposal:NonNullable<Report['proposals']>[number])=>{
+  const token=AuthService.getAccessToken();
+  if(!token){setTaskNotice('نشست معتبر نیست');return;}
+  setCreatingTaskId(proposal.taskId);setTaskNotice('');
+  try{
+   const headers={Authorization:'Bearer '+token,Accept:'application/json'};
+   const path='/api/v1/tasks/'+encodeURIComponent(proposal.taskId);
+   const previous=await fetch(path,{headers});
+   if(previous.ok){setTaskNotice('برای این حمل، فروشنده و نسخه سیاست قبلاً تسک بررسی ثبت شده است.');return;}
+   if(previous.status!==404)throw new Error('امکان کنترل ثبت تکراری تسک وجود ندارد.');
+   const response=await fetch('/api/v1/tasks',{method:'POST',
+    headers:{...headers,'Content-Type':'application/json'},
+    body:JSON.stringify({
+     id:proposal.taskId,title:'بررسی جریمه احتمالی فروشنده '+proposal.sellerId+' در حمل '+plan,
+     status:'OPEN',priority:'HIGH',createdAt:new Date().toISOString(),
+     description:'سیاست '+proposal.policyCode+' نسخه '+proposal.policyVersion+
+      ' · نسبت مشاهده‌شده '+(proposal.observedRate*100).toFixed(2)+'٪ · حد مجاز '+(proposal.limitRate*100).toFixed(2)+'٪',
+     dispatchNumber:plan,sellerId:proposal.sellerId,policyCode:proposal.policyCode,
+     policyVersion:proposal.policyVersion,source:'DISPATCH_PENALTY_REVIEW',
+     dedupeKey:proposal.taskKey,requiresManagerApproval:true
+    })
+   });
+   if(!response.ok){const body=await response.json().catch(()=>({}));throw new Error(body.error?.message||'ثبت تسک انجام نشد.');}
+   setTaskNotice('تسک بررسی جریمه ثبت شد؛ هیچ مبلغی به‌صورت خودکار اعمال نشده است.');
+  }catch(err){setTaskNotice(String(err instanceof Error?err.message:err))}
+  finally{setCreatingTaskId(null);}
+ };
  const current=report?.status==='PARTIAL';
  return <section className="space-y-3" dir="rtl" aria-label="تحلیل پیوسته حمل">
   <div className="flex flex-wrap items-end gap-2 rounded-2xl border border-border bg-surface p-3">
@@ -131,6 +162,22 @@ export function DispatchIntelligenceReports({plans}: {plans:Array<Record<string,
        <span className="mt-1 block h-2 overflow-hidden rounded-full bg-border"><span className="block h-full bg-rose-600" style={{width:`${s.grossRials>0&&s.returnsRials!=null?Math.min(100,s.returnsRials/s.grossRials*100):0}%`}}/></span>
       </button>)}
       {!filteredSellers.length&&<p className="text-xs text-text-secondary">فروشنده‌ای در این حمل ثبت نشده است.</p>}
+     </div>
+     <div className="space-y-2 border-t border-border pt-3">
+      <strong className="text-xs text-text-main">پیشنهادهای بررسی جریمه (تسک، نه ثبت جریمه)</strong>
+      {(report.proposals||[]).filter(p=>seller==='ALL'||p.sellerId===seller).map(p=>
+       <div key={p.taskKey} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border p-2 text-xs">
+        <span>{p.sellerId} · {p.policyCode} · {(p.observedRate*100).toFixed(1)}٪ (حد {(p.limitRate*100).toFixed(1)}٪)</span>
+        <button type="button" disabled={creatingTaskId!==null} onClick={()=>void createPenaltyTask(p)}
+         className="min-h-10 rounded-lg border border-primary px-3 font-bold text-primary disabled:opacity-50">
+         {creatingTaskId===p.taskId?'در حال ثبت…':'ایجاد تسک بررسی'}
+        </button>
+       </div>)}
+      {!(report.proposals||[]).length&&<p className="text-xs text-text-secondary">سیاست فعال دارای تخلف مستند برای این حمل یافت نشد.</p>}
+      {!!report.supplierScopedPoliciesSkipped&&<p className="text-xs text-warning">
+       {formatCount(report.supplierScopedPoliciesSkipped)} سیاست مخصوص تأمین‌کننده تا اتصال مرجوعی و مانده سطری دقیق اعمال نمی‌شود.
+      </p>}
+      {taskNotice&&<p role="status" className="text-xs text-text-secondary">{taskNotice}</p>}
      </div>
     </div>
     <div className="space-y-3 rounded-2xl border border-border bg-surface p-4">
