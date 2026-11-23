@@ -23,6 +23,9 @@ on:
       - 'tests/landingNavigationSourceContracts.test.mjs'
       - 'tests/analyticsEvidenceContracts.test.mjs'
       - 'tests/advancedReportsAccess.test.mjs'
+      - 'tests/criticalGeoFifoContracts.test.mjs'
+      - 'src/lib/erpRouteGeoView.ts'
+      - 'src/components/finance/FifoInventoryPanel.tsx'
       - 'src/components/ReportEnginePanels.tsx'
       - 'src/components/ReportsHub.tsx'
       - 'src/lib/moduleLanding.ts'
@@ -61,4 +64,4 @@ jobs:
             src/components/ReportsWorkspace.tsx \
             src/components/ReportEnginePanels.tsx
       - name: Visit and geographical calculation tests
-        run: bun test tests/geoRouteAnalysis.test.mjs tests/visitIntelligence.test.mjs tests/erpVisitToursContracts.test.mjs tests/routeMetricHealth.test.mjs tests/routeMapAnalytics.test.mjs tests/routeMapMoney.test.mjs tests/landingNavigationSourceContracts.test.mjs tests/analyticsEvidenceContracts.test.mjs tests/advancedReportsAccess.test.mjs
+        run: bun test tests/geoRouteAnalysis.test.mjs tests/visitIntelligence.test.mjs tests/erpVisitToursContracts.test.mjs tests/routeMetricHealth.test.mjs tests/routeMapAnalytics.test.mjs tests/routeMapMoney.test.mjs tests/landingNavigationSourceContracts.test.mjs tests/analyticsEvidenceContracts.test.mjs tests/advancedReportsAccess.test.mjs tests/criticalGeoFifoContracts.test.mjs
