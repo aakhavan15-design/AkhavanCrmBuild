@@ -599,6 +599,7 @@ export function ReportEnginePanels({ state, visibleInvoices, visiblePayments, vi
   return (
     <section className="space-y-3" aria-label="کتابخانه گزارش‌های تحلیلی مصوب" data-tour-heading>
       <div className="flex flex-wrap items-center justify-between gap-2">
+        {!searchParams.has('report') && (
         <div className="flex gap-1.5 overflow-x-auto pb-1 no-scrollbar flex-1" role="tablist" id="reports-tabs" data-tour-actions>
           {REPORTS.map((name, i) => (
             <button 
@@ -624,6 +625,7 @@ export function ReportEnginePanels({ state, visibleInvoices, visiblePayments, vi
             </button>
           ))}
         </div>
+        )}
 
         {selected!==8 && <Button variant="outline" size="sm" className="shrink-0" type="button" onClick={handleExportCurrentReportCsv} >
           <Download size={13} className="text-primary" />
