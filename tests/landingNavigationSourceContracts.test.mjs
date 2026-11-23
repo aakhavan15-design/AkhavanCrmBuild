@@ -61,3 +61,33 @@ test('finance analytics and user administration shortcuts respect destination RB
  assert.match(catalog,/\/settings\?tab=users', 'users'/);
  assert.match(catalog,/\/settings\?tab=users&sub=permissions', 'users'/);
 });
+
+
+test('deep links in every landing point to implemented and recognized workspace tabs',()=>{
+ const hierarchy=read('src/lib/workspaceHierarchy.ts');
+ const operations=read('src/components/OperationsControlWorkspace.tsx');
+ const onboarding=read('src/components/onboarding/OnboardingAdminWorkspace.tsx');
+ const calendar=read('src/components/CalendarWorkspace.tsx');
+ const reports=read('src/components/ReportsHub.tsx');
+ const audits=read('src/components/AuditWorkspace.tsx');
+ const viewSections={
+  '/finance':hierarchy.slice(hierarchy.indexOf('export const FINANCE_AREAS'),hierarchy.indexOf('export const OPERATIONS_AREAS')),
+  '/operations':operations.slice(operations.indexOf('const TABS:'),operations.indexOf('const money =')),
+  '/settings':hierarchy.slice(hierarchy.indexOf('export const SETTINGS_TABS'),hierarchy.indexOf('export function areaOf')),
+  '/reports':reports.slice(reports.indexOf("['sales', 'distribution', 'team', 'inventory', 'finance', 'receivables']"),reports.indexOf("['sales', 'distribution', 'team', 'inventory', 'finance', 'receivables']")+100),
+  '/onboarding':onboarding.slice(onboarding.indexOf('const TABS:'),onboarding.indexOf('const maskNid')),
+  '/calendar':calendar.slice(calendar.indexOf('const calendarTabs'),calendar.indexOf('const calendarTabs')+105),
+  '/audit':audits.slice(audits.indexOf('const MODULES:'),audits.indexOf('export function AuditWorkspace')),
+ };
+ const invalid=tiles().flatMap(tile=>{
+  const [pathname,search]=tile.path.split('?');
+  const params=new URLSearchParams(search||'');
+  const selected=params.get('tab')||(pathname==='/audit'?params.get('module'):null);
+  if(!selected)return [];
+  const source=viewSections[pathname];
+  if(!source)return [{tile:tile.id,reason:'No workspace tab catalogue for '+pathname}];
+  const found=new RegExp('(?:\\b|[\\x27\\x22])'+selected+'(?:\\b|[\\x27\\x22])').test(source);
+  return found?[]:[{tile:tile.id,reason:'Unknown destination tab '+selected+' in '+pathname}];
+ });
+ assert.deepEqual(invalid,[]);
+});
