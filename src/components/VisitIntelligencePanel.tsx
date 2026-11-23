@@ -2,6 +2,8 @@ import React, { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Card } from './ui/Card';
 import { InputControl } from './ui/Input';
+import {SearchableSelect} from './ui/SearchableSelect';
+import {formatCount} from '../lib/format';
 import { buildVisitIntelligence, visitReasonLabel } from '../lib/visitIntelligence';
 import type { VisitIntelCustomer, VisitIntelInvoice, VisitIntelReceivable, VisitIntelReturn, VisitIntelTour, VisitIntelVisit, VisitIntelLabel } from '../lib/visitIntelligence';
 
@@ -18,7 +20,7 @@ interface Props {
   historyComplete?: boolean;
   invoiceHistoryComplete?: boolean;
 }
-const fmt=(n:number)=>n.toLocaleString('fa-IR',{maximumFractionDigits:0});
+const fmt=(n:number)=>formatCount(n);
 const currency=(n:number|null)=>n===null?'نامشخص':fmt(n)+' ریال';
 const fdate=(date:string|null)=>date?new Date(date+'T00:00:00Z').toLocaleDateString('fa-IR'):'ثبت نشده';
 type Filter='all'|'unvisited'|'tour'|'tour-collection'|'missed'|'collection'|'valuable'|'purchase-due'|'no-order';
@@ -87,7 +89,8 @@ export function VisitIntelligencePanel(props: Props) {
     <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_130px]">
       <label className="text-xs font-bold text-text-secondary">جست‌وجوی مشتری<InputControl className="mt-1" value={search} onChange={e=>setSearch(e.target.value)} placeholder="نام یا شناسه"/></label>
       <label className="text-xs font-bold text-text-secondary">فیلتر
-        <select className="mt-1 min-h-10 w-full rounded-xl border border-border bg-canvas px-3 text-text-main" value={filter} onChange={e=>setFilter(e.target.value as Filter)}>{Object.entries(filterNames).map(([value,label])=><option key={value} value={value}>{label}</option>)}</select>
+        <SearchableSelect value={filter} onChange={value=>setFilter(value as Filter)}
+        options={Object.entries(filterNames).map(([value,label])=>({value,label}))} placeholder="انتخاب فیلتر"/>
       </label>
       <label className="text-xs font-bold text-text-secondary">آستانه عدم مراجعه (روز)<InputControl className="mt-1" type="number" min={1} max={365} value={days} onChange={e=>setDays(Math.max(1,Math.min(365,Number(e.target.value)||14)))}/></label>
     </div>
@@ -127,7 +130,7 @@ export function VisitIntelligencePanel(props: Props) {
             <span>ویزیت ثبت‌شده: <strong className="text-text-main">{fmt(row.recordedVisits)}</strong></span>
             <span>آخرین ویزیت: <strong className="text-text-main">{fdate(row.lastVisitDate)}</strong></span>
             <span>فاکتور ثبت‌شده: <strong className="text-text-main">{props.financeVisible?fmt(row.invoiceCount):'محدود'}</strong></span>
-            <span>تور این هفته: <strong className="text-text-main">{row.tourStops.length?row.tourStops.map(s=>s.sequence.toLocaleString('fa-IR')).join('، '):'ثبت نشده'}</strong></span>
+            <span>تور این هفته: <strong className="text-text-main">{row.tourStops.length?row.tourStops.map(s=>formatCount(s.sequence)).join('، '):'ثبت نشده'}</strong></span>
           </div>
           {expanded===row.customerId&&<div className="mt-3 space-y-2 border-t border-border pt-3 text-xs leading-6 text-text-main">
             <p><strong>آخرین نتیجه مراجعه:</strong> {row.lastVisitOutcome||'نامشخص'} {row.lastNoOrderReason?' — '+row.lastNoOrderReason:''}</p>
