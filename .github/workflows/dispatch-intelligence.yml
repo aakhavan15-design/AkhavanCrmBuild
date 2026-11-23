@@ -6,6 +6,10 @@ on:
       - 'src/lib/dispatchIntelligence.mjs'
       - 'src/lib/dispatchCollectionZone.mjs'
       - 'server/dispatchReads.mjs'
+      - 'server/index.mjs'
+      - 'src/components/dispatch/**'
+      - 'src/components/OperationsControlWorkspace.tsx'
+      - 'src/components/GeoZoneMapEditor.tsx'
       - 'tests/dispatchIntelligence.behavior.test.mjs'
       - 'tests/dispatchCollectionZone.behavior.test.mjs'
       - '.github/workflows/dispatch-intelligence.yml'
@@ -26,3 +30,17 @@ jobs:
       - name: Behavioral verification
         run: |
           node --test tests/dispatchIntelligence.behavior.test.mjs tests/dispatchCollectionZone.behavior.test.mjs
+
+  ui-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - name: Vite production build
+        run: npm run build
+      - name: TypeScript compile
+        run: ./node_modules/.bin/tsc --noEmit
