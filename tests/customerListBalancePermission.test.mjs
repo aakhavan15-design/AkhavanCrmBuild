@@ -26,7 +26,8 @@ const m = computeCustomerLedgerBalances([
   { accountId: 'c2', debitAmount: 0, creditAmount: 300, status: 'FINAL' },
   { debitAmount: 5, creditAmount: 0 },
 ]);
-assert.equal(m.get('c1').balance, 350); assert.equal(m.get('c1').debit, 1000); assert.equal(m.get('c1').credit, 650); assert.equal(m.get('c1').lineCount, 3);
+// A journal line without explicit confirmed/final status is NOT posted.
+assert.equal(m.get('c1').balance, 600); assert.equal(m.get('c1').debit, 1000); assert.equal(m.get('c1').credit, 400); assert.equal(m.get('c1').lineCount, 2);
 assert.equal(m.get('c2').balance, -300); // بستانکار
 assert.equal(m.has('c3'), false);
 assert.equal(computeCustomerLedgerBalances(undefined).size, 0);
