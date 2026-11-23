@@ -36,6 +36,17 @@ export function LoginWorkspace({
 
   // وضعیت روشنایی آباژور و صدا (شروع با چراغ خاموش طبق درخواست)
   const [isLightOn, setIsLightOn] = useState(false);
+  // Keep the form mounted briefly while the lamp fades out; never unmount mid-transition.
+  const [showLoginPanel, setShowLoginPanel] = useState(false);
+  useEffect(() => {
+    if (isLightOn) {
+      setShowLoginPanel(true);
+      return;
+    }
+    const fadeOut = window.setTimeout(() => setShowLoginPanel(false), 480);
+    return () => window.clearTimeout(fadeOut);
+  }, [isLightOn]);
+
   const [soundEnabled, setSoundEnabled] = useState(true);
 
   // تب فعال در کارت ورود: فرم ورود مستقیم یا انتخاب حساب پیش‌فرض
@@ -312,7 +323,7 @@ export function LoginWorkspace({
           </div>
 
           {/* ================= نمایش فرم در حالت روشن یا درگاه تاریک در حالت خاموش ================= */}
-          {isLightOn ? (
+          {showLoginPanel ? (
             /* فرم ورود گلسمورفیسم فوق‌العاده باکیفیت و شفاف هماهنگ با Indigo */
             <div
               key="auth-card-lit"
@@ -321,7 +332,8 @@ export function LoginWorkspace({
                 background: 'linear-gradient(145deg, color-mix(in srgb, var(--c-navy-dark) 85%, var(--c-auth-ambient)) 0%, var(--c-auth-ambient) 100%)',
                 borderTop: '1px solid color-mix(in srgb, var(--c-copper) 45%, transparent)',
                 boxShadow: '0 20px 45px color-mix(in srgb, var(--c-auth-ambient) 90%, transparent), 0 0 30px color-mix(in srgb, var(--c-cobalt) 22%, transparent)',
-                animation: 'lampRayCinematicReveal 1.05s cubic-bezier(0.16, 1, 0.3, 1) both',
+                animation: isLightOn ? 'lampRayCinematicReveal 1.05s cubic-bezier(0.16, 1, 0.3, 1) both' : 'lampCardFadeOut 480ms ease-in both',
+                pointerEvents: isLightOn ? 'auto' : 'none',
               }}
             >
               {/* هاله نور پرتو طلایی-یشمی جاروب‌کننده روی کارت هنگام پدیدار شدن */}
@@ -645,6 +657,11 @@ export function LoginWorkspace({
       )}
 
       <style>{`
+        @keyframes lampCardFadeOut {
+          from { opacity: 1; filter: blur(0); transform: translateY(0) scale(1); }
+          to { opacity: 0; filter: blur(7px); transform: translateY(12px) scale(0.97); }
+        }
+
         @keyframes lampRayCinematicReveal {
           0% {
             opacity: 0;
