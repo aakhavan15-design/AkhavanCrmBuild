@@ -111,15 +111,21 @@ export function buildNetSalesEvidence(
     if (date < from || date > to) continue;
     const amount = note.amount;
     const invoice = note.invoiceId && byInvoice.get(note.invoiceId);
+    // ERP may post an independent sales return with no original invoice number.
+    // Its customer ID is authoritative for CUSTOMER and PERIOD sales, but no
+    // invoice/seller attribution can be invented. A dangling explicit link
+    // remains invalid instead of becoming an unbased return.
+    const customer = invoice ? String(invoice.customerId||invoice.accountId||'')
+      : !note.invoiceId ? String(note.customerId||note.accountId||'') : '';
     if (!note.id || seen.has(note.id) || !Number.isFinite(amount) || amount < 0
-      || note.sourceType !== 'ERP_MIRROR' || !invoice
-      || (note.customerId && note.customerId !== (invoice.customerId || invoice.accountId))) {
+      || note.sourceType !== 'ERP_MIRROR' || !customer
+      || (invoice && note.customerId && note.customerId !== customer)) {
       invalid.push(note.id); continue;
     }
     seen.add(note.id);
     sumReturns += amount;
-    returnsByCustomer.set(String(invoice.customerId||invoice.accountId), (returnsByCustomer.get(String(invoice.customerId||invoice.accountId))||0)+amount);
-    if (invoice.date.slice(0,10) >= from && invoice.date.slice(0,10) <= to)
+    returnsByCustomer.set(customer,(returnsByCustomer.get(customer)||0)+amount);
+    if (invoice && invoice.date.slice(0,10) >= from && invoice.date.slice(0,10) <= to)
       returnsByInvoice.set(invoice.id,(returnsByInvoice.get(invoice.id)||0)+amount);
   }
   if (invalid.length) return bad('برگشتی قطعی نامعتبر یا فاقد اتصال به فاکتور وجود دارد؛ فروش خالص قابل اتکا نیست.', invalid);
