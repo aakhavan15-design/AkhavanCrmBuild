@@ -23,12 +23,15 @@ export function createRouteCustomerDetailReader({sql,run}){
     WHERE staff.TenantId=route.TenantId AND staff.RouteId=route.RouteId
       AND staff.StaffUserId=@actor AND staff.EffectiveFrom<=@dateTo
       AND (staff.EffectiveTo IS NULL OR staff.EffectiveTo>=@dateFrom)))`;
-  const route=(await request().query(`SELECT TOP(1) route.RouteId,route.RouteCode,route.RouteName
+  const route=(await scopedRequest().query(`SELECT TOP(1) route.RouteId,route.RouteCode,route.RouteName,route.SourceSystemCode
     FROM crm.VisitRouteMirror route WHERE route.TenantId=@tenant AND route.RouteId=@routeId
     AND route.IsDeleted=0 AND ${allowed}`)).recordset[0];
   if(!route)return null;
+  const source=String(route.SourceSystemCode);
+  // Each official ERP route owns its own source namespace.
+  const scopedRequest=()=>request().input('source',sql.VarChar(40),source);
   if(filters.supervisorIds.length){
-    const match=(await request().query(`SELECT TOP(1) 1 AS Match
+    const match=(await scopedRequest().query(`SELECT TOP(1) 1 AS Match
       FROM crm.VisitRouteStaffMirror st
       WHERE st.TenantId=@tenant AND st.RouteId=@routeId AND st.StaffRoleCode='SUPERVISOR'
         AND st.ExternalStaffId IN (SELECT value FROM OPENJSON(@supervisorJson))
@@ -36,7 +39,7 @@ export function createRouteCustomerDetailReader({sql,run}){
     if(!match.length)return null;
   }
   // Source-authoritative membership, never WHERE customer.Latitude IS NOT NULL.
-  const members=(await request().query(`
+  const members=(await scopedRequest().query(`
    SELECT DISTINCT a.AccountId,a.Name,a.AccountCode,a.StatusCode,
       a.Latitude,a.Longitude,a.GeoAccuracyMeters,a.BusinessCategoryCode,m.SubRouteCode
    FROM crm.VisitRouteCustomerMirror m
@@ -55,7 +58,7 @@ export function createRouteCustomerDetailReader({sql,run}){
     existing.SubRouteCode=codes.join('، ');
   }
   const uniqueMembers=[...memberById.values()];
-  const visits=(await request().query(`
+  const visits=(await scopedRequest().query(`
    SELECT v.AccountId,v.ExternalVisitId,v.ExternalSalesRepId,v.VisitedAtUtc,
       v.OutcomeCode,v.NoOrderReasonCode,reason.ReasonTitleFa
    FROM crm.ErpVisitEventMirror v
@@ -78,12 +81,12 @@ export function createRouteCustomerDetailReader({sql,run}){
   let invoices=[];
   let products=[];
   if(financeAllowed){
-   invoices=(await request().query(`
+   invoices=(await scopedRequest().query(`
      SELECT i.InvoiceMirrorId,i.AccountId,i.InvoiceNumber,i.InvoiceDate,
        i.SalesRepExternalId,i.NetAmount,i.StatusCode
      FROM crm.InvoiceMirror i
      JOIN crm.Account a ON a.TenantId=i.TenantId AND a.AccountId=i.AccountId
-     WHERE i.TenantId=@tenant AND i.IsVoided=0 AND i.CurrencyCode='IRR'
+     WHERE i.TenantId=@tenant AND i.SourceSystemCode=@source AND i.IsVoided=0 AND i.CurrencyCode='IRR'
       AND (NOT EXISTS(SELECT 1 FROM OPENJSON(@categoryJson)) OR a.BusinessCategoryCode IN (SELECT value FROM OPENJSON(@categoryJson)))
       AND i.StatusCode IN ('POSTED','CONFIRMED','CLOSED')
       AND i.InvoiceDate BETWEEN @dateFrom AND @dateTo
@@ -97,7 +100,7 @@ export function createRouteCustomerDetailReader({sql,run}){
         AND manager.RouteId=@routeId AND manager.StaffRoleCode='SUPERVISOR' AND manager.StaffUserId=@actor
         AND manager.EffectiveFrom<=@dateTo AND (manager.EffectiveTo IS NULL OR manager.EffectiveTo>=@dateFrom)))
    `)).recordset;
-   const lines=(await request().query(`
+   const lines=(await scopedRequest().query(`
      SELECT i.InvoiceMirrorId,l.ExternalProductId,l.ProductNameSnapshot,
        l.Quantity,l.NetUnitPrice,l.NetLineAmount
      FROM crm.InvoiceLineMirror l
@@ -105,7 +108,7 @@ export function createRouteCustomerDetailReader({sql,run}){
        AND product.SourceSystemCode=l.SourceSystemCode AND product.ExternalProductId=l.ExternalProductId
      JOIN crm.InvoiceMirror i ON i.TenantId=l.TenantId AND i.InvoiceMirrorId=l.InvoiceMirrorId
      JOIN crm.Account a ON a.TenantId=i.TenantId AND a.AccountId=i.AccountId
-     WHERE i.TenantId=@tenant AND i.IsVoided=0 AND i.CurrencyCode='IRR'
+     WHERE i.TenantId=@tenant AND i.SourceSystemCode=@source AND i.IsVoided=0 AND i.CurrencyCode='IRR'
       AND (NOT EXISTS(SELECT 1 FROM OPENJSON(@categoryJson)) OR a.BusinessCategoryCode IN (SELECT value FROM OPENJSON(@categoryJson)))
       AND i.StatusCode IN ('POSTED','CONFIRMED','CLOSED')
       AND i.InvoiceDate BETWEEN @dateFrom AND @dateTo
@@ -128,14 +131,14 @@ export function createRouteCustomerDetailReader({sql,run}){
   }
   let returnRows=[];
   if(returnAllowed){
-    returnRows=(await request().query(`
+    returnRows=(await scopedRequest().query(`
       SELECT ret.AccountId,SUM(ret.ReturnedAmount) AS ReturnAmount
       FROM analytics.vw_FactReturns ret
       JOIN crm.SalesReturnMirror sr ON sr.TenantId=ret.TenantId AND sr.SalesReturnMirrorId=ret.SalesReturnMirrorId
       JOIN crm.Account a ON a.TenantId=ret.TenantId AND a.AccountId=ret.AccountId
       LEFT JOIN crm.ExternalProduct product ON product.TenantId=ret.TenantId
         AND product.SourceSystemCode=sr.SourceSystemCode AND product.ExternalProductId=ret.ExternalProductId
-      WHERE ret.TenantId=@tenant AND ret.IsEffective=1
+      WHERE ret.TenantId=@tenant AND sr.SourceSystemCode=@source AND ret.IsEffective=1
         AND (NOT EXISTS(SELECT 1 FROM OPENJSON(@categoryJson)) OR a.BusinessCategoryCode IN (SELECT value FROM OPENJSON(@categoryJson))) AND ret.DateKey BETWEEN @dateFrom AND @dateTo
         AND EXISTS(SELECT 1 FROM crm.VisitRouteCustomerMirror member WHERE member.TenantId=ret.TenantId
           AND member.RouteId=@routeId AND member.AccountId=ret.AccountId
@@ -159,7 +162,7 @@ export function createRouteCustomerDetailReader({sql,run}){
   let balanceRows=[];
   if(receivableAllowed && filters.repIds.length===0 && filters.productIds.length===0 &&
      filters.supplierIds.length===0 && filters.brandIds.length===0){
-    balanceRows=(await request().query(`
+    balanceRows=(await scopedRequest().query(`
       SELECT b.AccountId,SUM(b.OutstandingAmount) AS ReceivableAmount
       FROM analytics.vw_AccountReceivable b
       JOIN crm.Account a ON a.TenantId=b.TenantId AND a.AccountId=b.AccountId
@@ -178,7 +181,7 @@ export function createRouteCustomerDetailReader({sql,run}){
   }
   const returnMap=new Map(returnRows.map(r=>[String(r.AccountId).toLowerCase(),Number(r.ReturnAmount)]));
   const balanceMap=new Map(balanceRows.map(r=>[String(r.AccountId).toLowerCase(),Number(r.ReceivableAmount)]));
-  const sourceCoverage=(await request().query(`
+  const sourceCoverage=(await scopedRequest().query(`
     SELECT
       CASE WHEN EXISTS(SELECT 1 FROM crm.ErpVisitEventMirror e WHERE e.TenantId=@tenant AND e.IsDeleted=0)
         THEN 1 ELSE 0 END AS HasVisitFeed,
@@ -188,7 +191,7 @@ export function createRouteCustomerDetailReader({sql,run}){
   `)).recordset[0]||{};
   const hasVisitFeed=sourceCoverage.HasVisitFeed===1;
   const hasInvoiceFeed=financeAllowed && sourceCoverage.HasInvoiceFeed===1;
-  const hasReturnFeed=returnAllowed && (await request().query(`
+  const hasReturnFeed=returnAllowed && (await scopedRequest().query(`
      SELECT CASE WHEN EXISTS(SELECT 1 FROM crm.SalesReturnMirror WHERE TenantId=@tenant)
        THEN 1 ELSE 0 END AS HasReturnFeed`)).recordset[0]?.HasReturnFeed===1;
   const visitByAccount=new Map();
