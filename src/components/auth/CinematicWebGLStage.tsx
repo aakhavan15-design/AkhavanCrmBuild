@@ -15,12 +15,14 @@ export function CinematicWebGLStage({ illuminated }: { illuminated: boolean }) {
     const canvas = canvasRef.current;
     if (!canvas || typeof window === 'undefined') return;
     const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
-    const gl = canvas.getContext('webgl2', {
+    const context = canvas.getContext('webgl2', {
       alpha: true, antialias: false, depth: false, stencil: false,
       premultipliedAlpha: false, powerPreference: 'low-power',
       preserveDrawingBuffer: false,
     });
-    if (!gl) return;
+    if (!context) return;
+    // A non-null immutable binding prevents stale nullable closure diagnostics.
+    const gl: WebGL2RenderingContext = context;
 
     const vertex = `#version 300 es
     precision highp float;
