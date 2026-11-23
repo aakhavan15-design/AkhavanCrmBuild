@@ -242,6 +242,8 @@ export function ReportsHub({ state, canViewFinance, canViewPayments, canOpenJour
   const returnReport = activeDef?.id === 'returns';
   // Domain-specific reports must not reuse generic invoice charts as purported evidence.
   const specializedDestinations: Record<string, {path: string; description: string}> = {
+    'sales-perf': {path:'/reports?view=analytical&report=2',description:'تحقق هدف و فروش خالص فقط پس از تطبیق دفتر قطعی با فاکتورها و مرجوعی'},
+    'rep-perf': {path:'/reports?view=analytical&report=2',description:'عملکرد فروشندگان باید از حقایق فروش خالص منطبق با دفتر و با انتساب معتبر خوانده شود'},
     routes: {path:'/geo-intelligence',description:'تحلیل مسیر و فروش منتسب به تور و مشتری'},
     visit: {path:'/reports?view=analytical&report=6',description:'شواهد ویزیت و علت ثبت‌نشدن سفارش'},
     delivery: {path:'/reports?view=analytical&report=10',description:'رویدادهای تحویل؛ درصد تحقق فروش شاخص کیفیت تحویل نیست'},
