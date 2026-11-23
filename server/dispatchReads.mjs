@@ -4,6 +4,8 @@
  * Request executes inside withTenantContext and SQL row-level permissions.
  */
 import { buildDispatchCollectionZone } from '../src/lib/dispatchCollectionZone.mjs';
+import { proposeDispatchPenaltyReviews } from '../src/lib/dispatchIntelligence.mjs';
+import crypto from 'node:crypto';
 
 export function createDispatchReader({sql,run}){
  return async(auth,planNumber)=>{
@@ -157,6 +159,28 @@ export function createDispatchReader({sql,run}){
      }else receivableCoverage='ROW_LIMIT_EXCEEDED';
     }else receivableCoverage='JOURNAL_MAPPING_OR_STATUS_INCOMPLETE';
    }
+   const policyRows=(await request().query(`
+     SELECT PolicyCode,PolicyVersion,MetricCode,MaxRate,SupplierExternalId
+     FROM crm.DispatchPenaltyPolicy
+     WHERE TenantId=@tenant AND IsActive=1 AND EffectiveFrom<=
+       (SELECT PlanDate FROM crm.DispatchPlan WHERE TenantId=@tenant AND PlanNumber=@number)
+       AND (EffectiveTo IS NULL OR EffectiveTo>=
+        (SELECT PlanDate FROM crm.DispatchPlan WHERE TenantId=@tenant AND PlanNumber=@number))
+     ORDER BY PolicyCode,PolicyVersion DESC`)).recordset;
+   const sellerRatios=[...bySeller.values()].map(row=>({
+      sellerId:row.sellerId,invoiceCount:row.invoiceCount,grossRials:row.grossRials,
+      returnedInvoiceCount:row.returnedInvoiceIds.size,linkedReturnsRials:row.returnsRials,
+      returnInvoiceRate:row.invoiceCount?row.returnedInvoiceIds.size/row.invoiceCount:null,
+      returnValueRate:row.grossRials?row.returnsRials/row.grossRials:null,
+      receivableRate:null // invoice-level posted-ledger allocation is not yet verified
+   }));
+   const policies=policyRows.filter(row=>!row.SupplierExternalId)
+     .map(row=>({enabled:true,code:String(row.PolicyCode),version:String(row.PolicyVersion),
+       metric:String(row.MetricCode),maxRate:Number(row.MaxRate)}));
+   const proposals=proposeDispatchPenaltyReviews(
+     {status:'PARTIAL',dispatchNumber:plan.PlanNumber,sellers:sellerRatios},policies
+   ).map(p=>({...p,taskId:'tsk_dispatch_'+crypto.createHash('sha256').update(p.taskKey).digest('hex').slice(0,40)}));
+   const supplierScopedPoliciesSkipped=policyRows.filter(row=>row.SupplierExternalId!=null).length;
    const stops=invoices.map(i=>({
      customerId:String(i.AccountId),name:String(i.CustomerName),
      point:i.Latitude==null||i.Longitude==null?null:
@@ -176,7 +200,7 @@ export function createDispatchReader({sql,run}){
     linkedReturnsRials:returns.filter(x=>invoiceLookup.has(String(x.InvoiceMirrorId||'').toLowerCase()))
        .reduce((n,i)=>n+Number(i.Amount),0),
     sellers:[...bySeller.values()].map(({returnedInvoiceIds,...s})=>({...s,returnedInvoiceCount:returnedInvoiceIds.size})),
-    journalBuckets,missingMappings,ambiguousMappings,collectionZone,receivableCoverage,
+    journalBuckets,missingMappings,ambiguousMappings,collectionZone,receivableCoverage,proposals,supplierScopedPoliciesSkipped,
     coverage:{invoices:true,returns:'NOT_RECONCILED',journal:missingMappings||ambiguousMappings?'UNMAPPED_OR_AMBIGUOUS':'NOT_RECONCILED',receivables:receivableCoverage},
     note:'هیچ مانده مطالبات یا سود قطعی تا تطبیق دفتر، FIFO و پوشش دوره منتشر نمی‌شود'};
   });
