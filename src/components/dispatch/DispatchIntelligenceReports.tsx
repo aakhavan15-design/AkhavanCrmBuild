@@ -7,8 +7,10 @@ import {formatMoneyCompact,formatCount} from '../../lib/format';
 type Invoice={InvoiceMirrorId:string;InvoiceNumber:string;SalesRepExternalId:string|null;CustomerName:string;
  AccountId:string;GrossAmount:number;Latitude:number|null;Longitude:number|null;GeoAccuracyMeters:number|null};
 type Seller={sellerId:string;invoiceCount:number;grossRials:number;returnsRials:number;returnedInvoiceCount:number};
+type InvoiceLine={InvoiceMirrorId:string;InvoiceLineMirrorId:string;ExternalProductId:string|null;ProductNameSnapshot:string;
+ NetLineAmount:number;Quantity:number;SupplierExternalId:string|null;BrandExternalId:string|null};
 type Report={status:'PARTIAL'|'UNAVAILABLE';reason?:string;plan?:{PlanNumber:string;PlanDate:string;DriverExternalId:string;DistributorExternalId:string|null};
- invoices?:Invoice[];sellers?:Seller[];invoiceCount?:number;grossRials?:number;linkedReturnsRials?:number;
+ invoices?:Invoice[];invoiceLines?:InvoiceLine[];lineCoverage?:string;sellers?:Seller[];invoiceCount?:number;grossRials?:number;linkedReturnsRials?:number;
  journalBuckets?:Record<string,number|null>;missingMappings?:number;coverage?:Record<string,string>;note?:string;
  receivableCoverage?:string;collectionZone?:{
   status:'AVAILABLE'|'UNAVAILABLE';reason?:string;geometry?:GeoPolygonGeometry|null;
@@ -22,6 +24,8 @@ const fmt=(n:number|null|undefined)=>n==null?'نامشخص':formatMoneyCompact(n
 export function DispatchIntelligenceReports({plans}: {plans:Array<Record<string,unknown>>}){
  const [plan,setPlan]=useState('');
  const [seller,setSeller]=useState('ALL');
+ const [supplier,setSupplier]=useState('');
+ const [brand,setBrand]=useState('');
  const [showAllReceivables,setShowAllReceivables]=useState(false);
  const [manualOutsideIds,setManualOutsideIds]=useState<string[]>([]);
  const [report,setReport]=useState<Report|null>(null);
@@ -44,11 +48,23 @@ export function DispatchIntelligenceReports({plans}: {plans:Array<Record<string,
     .finally(()=>{if(!ctrl.signal.aborted)setLoading(false);});
   return()=>ctrl.abort();
  },[plan]);
- const invoices=useMemo(()=>report?.invoices?.filter(i=>seller==='ALL'||i.SalesRepExternalId===seller)||[],[report,seller]);
  const sellers=report?.sellers||[];
- const filteredSellers=seller==='ALL'?sellers:sellers.filter(s=>s.sellerId===seller);
+ const invoiceLines=report?.invoiceLines||[];
+ const productFiltered=Boolean(supplier||brand);
+ const supplierOptions=[...new Set(invoiceLines.map(i=>i.SupplierExternalId).filter((x):x is string=>Boolean(x)))];
+ const brandOptions=[...new Set(invoiceLines.map(i=>i.BrandExternalId).filter((x):x is string=>Boolean(x)))];
+ const matchingLines=invoiceLines.filter(i=>(!supplier||i.SupplierExternalId===supplier)&&(!brand||i.BrandExternalId===brand));
+ const selectedIds=new Set(matchingLines.map(x=>x.InvoiceMirrorId));
+ const invoices=report?.invoices?.filter(i=>(seller==='ALL'||i.SalesRepExternalId===seller)
+   &&(!productFiltered||selectedIds.has(i.InvoiceMirrorId)))||[];
+ const filteredSellers=productFiltered
+  ? [...new Set(invoices.map(i=>i.SalesRepExternalId||'UNASSIGNED'))].map(sellerId=>{
+    const ids=new Set(invoices.filter(i=>(i.SalesRepExternalId||'UNASSIGNED')===sellerId).map(i=>i.InvoiceMirrorId));
+    return {sellerId,invoiceCount:ids.size,grossRials:matchingLines.filter(i=>ids.has(i.InvoiceMirrorId)).reduce((n,i)=>n+Number(i.NetLineAmount),0),
+     returnsRials:null,returnedInvoiceCount:null};
+  }) : (seller==='ALL'?sellers:sellers.filter(s=>s.sellerId===seller));
  const gross=filteredSellers.reduce((n,s)=>n+s.grossRials,0);
- const returns=filteredSellers.reduce((n,s)=>n+s.returnsRials,0);
+ const returns=productFiltered?null:filteredSellers.reduce((n,s)=>n+Number(s.returnsRials||0),0);
  const mapped=invoices.filter(i=>i.Latitude!=null&&i.Longitude!=null&&Number.isFinite(Number(i.Latitude))&&Number.isFinite(Number(i.Longitude))
   &&(i.GeoAccuracyMeters==null||Number(i.GeoAccuracyMeters)<=100));
  const pins:GeoMapPin[]=mapped.map(i=>({
@@ -68,13 +84,23 @@ export function DispatchIntelligenceReports({plans}: {plans:Array<Record<string,
   <div className="flex flex-wrap items-end gap-2 rounded-2xl border border-border bg-surface p-3">
    <div className="min-w-48 flex-1">
     <SearchableSelect label="برنامه حمل" value={plan}
-     onChange={value=>{setPlan(value);setSeller('ALL');setManualOutsideIds([]);setShowAllReceivables(false);}}
+     onChange={value=>{setPlan(value);setSeller('ALL');setSupplier('');setBrand('');setManualOutsideIds([]);setShowAllReceivables(false);}}
      options={options.map(x=>({value:x,label:x}))} placeholder="انتخاب برنامه حمل"/>
    </div>
    <div className="min-w-40 flex-1">
     <SearchableSelect label="فیلتر مشترک فروشنده" value={seller}
      onChange={value=>setSeller(value||'ALL')}
      options={[{value:'ALL',label:'همه فروشندگان'},...sellers.map(x=>({value:x.sellerId,label:x.sellerId}))]}/>
+   </div>
+   <div className="min-w-36 flex-1">
+    <SearchableSelect label="تأمین‌کننده" value={supplier} onChange={setSupplier}
+      options={supplierOptions.map(x=>({value:x,label:x}))}
+      placeholder="همه تأمین‌کنندگان" disabled={report?.lineCoverage!=='AVAILABLE'}/>
+   </div>
+   <div className="min-w-36 flex-1">
+    <SearchableSelect label="برند" value={brand} onChange={setBrand}
+      options={brandOptions.map(x=>({value:x,label:x}))}
+      placeholder="همه برندها" disabled={report?.lineCoverage!=='AVAILABLE'}/>
    </div>
   </div>
   {loading&&<p role="status" className="text-xs text-text-secondary">در حال دریافت اسناد حمل از سرور…</p>}
@@ -87,29 +113,29 @@ export function DispatchIntelligenceReports({plans}: {plans:Array<Record<string,
     <div className="space-y-3 rounded-2xl border border-border bg-surface p-4">
      <strong className="text-sm text-text-main">۱ · فروش و برگشتی حمل</strong>
      <div className="grid grid-cols-2 gap-2">
-      <div><p className="text-xs text-text-secondary">فروش فاکتور</p><strong className="text-xl text-text-main">{fmt(gross)}</strong></div>
+      <div><p className="text-xs text-text-secondary">{productFiltered?'فروش سطری کالا':'فروش فاکتور'}</p><strong className="text-xl text-text-main">{fmt(gross)}</strong></div>
       <div><p className="text-xs text-text-secondary">برگشتی متصل</p><strong className="text-xl text-text-main">{fmt(returns)}</strong></div>
      </div>
      <div className="h-3 overflow-hidden rounded-full bg-border">
-      <div className="h-full rounded-full bg-rose-600" style={{width:`${gross>0?Math.min(100,Math.max(0,returns/gross*100)):0}%`}}/>
+      <div className="h-full rounded-full bg-rose-600" style={{width:`${gross>0&&returns!==null?Math.min(100,Math.max(0,returns/gross*100)):0}%`}}/>
      </div>
-     <p className="text-xs text-text-secondary">فروش خالص رسمی نیازمند تطبیق با دفتر است؛ این نوار فقط نسبت برگشتی متصل به فاکتور را نشان می‌دهد.</p>
+     <p className="text-xs text-text-secondary">{productFiltered?'برگشتی برند/تأمین‌کننده بدون تطبیق سطر برگشت از منبع ERP نامشخص است.':'فروش خالص رسمی نیازمند تطبیق با دفتر است؛ این نوار فقط نسبت برگشتی متصل به فاکتور را نشان می‌دهد.'}</p>
     </div>
     <div className="space-y-3 rounded-2xl border border-border bg-surface p-4">
      <strong className="text-sm text-text-main">۲ · عملکرد فروشندگان</strong>
      <div className="max-h-60 space-y-2 overflow-y-auto">
       {filteredSellers.map(s=><button type="button" key={s.sellerId} onClick={()=>setSeller(s.sellerId)}
        className="w-full rounded-xl border border-border p-2 text-right text-xs hover:border-primary">
-       <span className="flex justify-between"><strong>{s.sellerId}</strong><span>{formatCount(s.invoiceCount)} فاکتور · {formatCount(s.returnedInvoiceCount)} فاکتور برگشتی</span></span>
+       <span className="flex justify-between"><strong>{s.sellerId}</strong><span>{formatCount(s.invoiceCount)} فاکتور · {s.returnedInvoiceCount==null?'نامشخص':formatCount(s.returnedInvoiceCount)} فاکتور برگشتی</span></span>
        <span className="mt-1 block">{fmt(s.grossRials)} فروش · {fmt(s.returnsRials)} برگشتی</span>
-       <span className="mt-1 block h-2 overflow-hidden rounded-full bg-border"><span className="block h-full bg-rose-600" style={{width:`${s.grossRials>0?Math.min(100,s.returnsRials/s.grossRials*100):0}%`}}/></span>
+       <span className="mt-1 block h-2 overflow-hidden rounded-full bg-border"><span className="block h-full bg-rose-600" style={{width:`${s.grossRials>0&&s.returnsRials!=null?Math.min(100,s.returnsRials/s.grossRials*100):0}%`}}/></span>
       </button>)}
       {!filteredSellers.length&&<p className="text-xs text-text-secondary">فروشنده‌ای در این حمل ثبت نشده است.</p>}
      </div>
     </div>
     <div className="space-y-3 rounded-2xl border border-border bg-surface p-4">
      <strong className="text-sm text-text-main">۳ · طبقه‌بندی وجه و اسناد حمل</strong>
-     {seller!=='ALL'&&<p className="text-xs text-warning">طبقه‌بندی سند مالی در سطح کل حمل است؛ قابل انتساب حدسی به فروشنده انتخابی نیست.</p>}
+     {(seller!=='ALL'||productFiltered)&&<p className="text-xs text-warning">مبالغ اسناد مالی کل حمل را نشان می‌دهند؛ انتساب به فروشنده/کالا بدون سند معتبر مجاز نیست.</p>}
      <div className="grid grid-cols-2 gap-2">
       {buckets.map(([code,label])=><div key={code} className="rounded-xl bg-canvas p-2">
        <p className="text-xs text-text-secondary">{label}</p>
