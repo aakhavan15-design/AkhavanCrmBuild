@@ -10,6 +10,10 @@ on:
       - 'src/components/dispatch/**'
       - 'src/components/OperationsControlWorkspace.tsx'
       - 'src/components/GeoZoneMapEditor.tsx'
+      - 'src/components/ReportEnginePanels.tsx'
+      - 'src/components/Customer360.tsx'
+      - 'src/lib/financialMetricKernel.ts'
+      - 'tests/financialMetricKernel.behavior.test.mjs'
       - 'tests/dispatchIntelligence.behavior.test.mjs'
       - 'tests/dispatchCollectionZone.behavior.test.mjs'
       - '.github/workflows/dispatch-intelligence.yml'
@@ -29,7 +33,7 @@ jobs:
           node --check server/dispatchReads.mjs
       - name: Behavioral verification
         run: |
-          node --test tests/dispatchIntelligence.behavior.test.mjs tests/dispatchCollectionZone.behavior.test.mjs
+          node --test tests/dispatchIntelligence.behavior.test.mjs tests/dispatchCollectionZone.behavior.test.mjs tests/financialMetricKernel.behavior.test.mjs
 
   ui-build:
     runs-on: ubuntu-latest
