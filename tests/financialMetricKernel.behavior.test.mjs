@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { calculateNetSales, calculateLedgerBalance, buildNetSalesEvidence, reconcileNetSales } from '../src/lib/financialMetricKernel.ts';
 import { queryLocalRecords } from '../src/services/localQuery.ts';
 import { allocateLifo } from '../src/services/agingBuckets.ts';
+import { computeLedgerPnl } from '../src/lib/ledgerPnl.ts';
 
 const doc=(id,invoiceId,amount,postedAt='2026-11-15')=>({
   id,invoiceId,customerId:'C1',amount,postedAt,status:'POSTED',sourceType:'ERP_MIRROR',
@@ -89,4 +90,28 @@ test('FIFO settlement leaves newest invoices outstanding via one LIFO financial 
   assert.deepEqual(byInvoice,{'1':0,'2':5,'3':8,'4':12});
   assert.equal(coverage.unattributed,0);
   assert.equal(coverage.rows.reduce((sum,row)=>sum+row.covered,0),25);
+});
+
+test('formal P&L accepts only explicitly finalized articles and canonical net-sales arithmetic',()=>{
+  const lines=[
+    {ledgerAccountId:'G',debitAmount:0,creditAmount:1000,documentDate:'2026-11-05',status:'POSTED'},
+    {ledgerAccountId:'R',debitAmount:200,creditAmount:0,documentDate:'2026-11-05',status:'FINAL'},
+    {ledgerAccountId:'G',debitAmount:0,creditAmount:9000,documentDate:'2026-11-06',status:'DRAFT'},
+    {ledgerAccountId:'G',debitAmount:0,creditAmount:6000,documentDate:'2026-11-06'},
+    {ledgerAccountId:'G',debitAmount:0,creditAmount:3000,documentDate:'2026-11-06',status:'VOID',isVoided:true},
+  ];
+  const accounts=[
+    {id:'G',reportBucketCode:'GROSS_SALES',natureCode:'CREDIT'},
+    {id:'R',reportBucketCode:'SALES_RETURNS',natureCode:'DEBIT'},
+  ];
+  const buckets=[
+    {key:'GROSS_SALES'},
+    {key:'SALES_RETURNS'},
+    {key:'NET_SALES',calculationExpression:'GROSS_SALES - SALES_RETURNS'}
+  ];
+  const report=computeLedgerPnl(lines,accounts,buckets);
+  assert.equal(report.values.GROSS_SALES,1000);
+  assert.equal(report.values.SALES_RETURNS,200);
+  assert.equal(report.values.NET_SALES,800);
+  assert.equal(report.usedLines,2);
 });
