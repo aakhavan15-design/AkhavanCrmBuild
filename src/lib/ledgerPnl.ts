@@ -4,6 +4,7 @@
  * Bucket keys/expressions are the existing DEFAULT_REPORT_BUCKETS (accountingMapping.ts) — no second definition.
  */
 import type { LedgerAccountDef } from './etlPipeline.ts';
+import { calculateNetSales } from './financialMetricKernel.ts';
 
 export interface PnlJournalLine { ledgerAccountId: string | null; debitAmount: number; creditAmount: number; documentDate: string; isVoided?: boolean; status?: string }
 export interface BucketDef { key: string; calculationExpression?: string }
@@ -31,6 +32,8 @@ export function computeLedgerPnl(lines: PnlJournalLine[], accounts: LedgerAccoun
       const m = def.calculationExpression.match(/^\s*([A-Z_]+)\s*([+-])\s*([A-Z_]+)\s*$/);
       if (!m) return (values[key] = null);
       const a = evalBucket(m[1], [...seen, key]), b = evalBucket(m[3], [...seen, key]);
+      if (key === 'NET_SALES' && m[1] === 'GROSS_SALES' && m[3] === 'SALES_RETURNS' && m[2] === '-')
+        return (values[key] = calculateNetSales(a, b));
       return (values[key] = a === null || b === null ? null : m[2] === '+' ? a + b : a - b);
     }
     return (values[key] = raw.has(key) ? raw.get(key)! : null);
