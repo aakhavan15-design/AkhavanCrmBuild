@@ -6,6 +6,7 @@ import { RBACService } from '../lib/rbac';
 import { makeCanAccess } from '../lib/navigation';
 import { getModuleLanding, isPlannedTile, type ModuleLandingTile } from '../lib/moduleLanding';
 import { EmptyState } from './ui/EmptyState';
+import { formatCount } from '../lib/format';
 import { cn } from '../lib/utils';
 
 interface ModuleLandingWorkspaceProps {
@@ -64,6 +65,14 @@ export function ModuleLandingWorkspace({ state }: ModuleLandingWorkspaceProps) {
     );
   }
 
+  // Landing access must match the same canonical module permissions used by the
+  // mobile drawer and desktop sidebar, not just permission to load the URL.
+  if (!canAccess(`module:${definition.id}`)) {
+    return <EmptyState surface="module_landing_access_denied"
+      title="دسترسی به این فضای کاری مجاز نیست"
+      description="هیچ دسترسی تأییدشده‌ای برای زیرمجموعه‌های این فضا ثبت نشده است."/>
+  }
+
   const visibleCount = visibleGroups.reduce((sum, group) => sum + group.tiles.length, 0);
   const Icon = definition.icon;
   const isSearching = query.trim().length > 0;
@@ -106,7 +115,7 @@ export function ModuleLandingWorkspace({ state }: ModuleLandingWorkspaceProps) {
         </label>
         {isSearching && (
           <p className="mt-1.5 px-1 text-caption text-text-muted" role="status">
-            {visibleCount.toLocaleString('fa-IR')} نتیجه در این فضای کاری
+            {formatCount(visibleCount)} نتیجه در این فضای کاری
           </p>
         )}
       </div>
@@ -149,7 +158,7 @@ export function ModuleLandingWorkspace({ state }: ModuleLandingWorkspaceProps) {
                       aria-expanded={expanded}
                       className="min-h-8 px-1.5 text-caption font-bold text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary cursor-pointer"
                     >
-                      {expanded ? 'مشاهده کمتر' : `مشاهده بیشتر (${group.tiles.length.toLocaleString('fa-IR')})`}
+                      {expanded ? 'مشاهده کمتر' : `مشاهده بیشتر (${formatCount(group.tiles.length)})`}
                     </button>
                   )}
                 </div>
