@@ -153,6 +153,7 @@ export function ReportsWorkspace({ state, updateState, setActiveTab }: ReportsWo
         <span>گزارش هوشمند ویزیت، اولویت مشتریان و عملکرد تور ERP</span>
         <span aria-hidden="true">←</span>
       </Link>}
+      {!((analyticalView) && reportParams.has('report')) && (
       <nav aria-label="نمای گزارش‌ها" className="flex items-center gap-2 rounded-xl border border-border bg-surface p-1">
         <Link to="/reports?tab=sales" aria-current={!analyticalView ? 'page' : undefined}
           className={`min-h-10 flex-1 rounded-lg px-3 py-2 text-center text-xs font-bold ${!analyticalView ? 'bg-primary text-on-primary' : 'text-text-secondary hover:bg-canvas'}`}>
@@ -163,6 +164,7 @@ export function ReportsWorkspace({ state, updateState, setActiveTab }: ReportsWo
           تحلیل‌های عمیق و بینش‌ها
         </Link>
       </nav>
+      )}
       {analyticalView ? (
         <React.Suspense fallback={<section role="status" className="rounded-xl border border-border bg-surface p-4 text-sm text-text-secondary">در حال بارگذاری گزارش تحلیلی…</section>}>
         <ReportEnginePanels
