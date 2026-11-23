@@ -297,7 +297,7 @@ export function ReportEnginePanels({ state, visibleInvoices, visiblePayments, vi
   const sourceStatus = resolveDataSourceStatus(state, {
     hasLiveSql: effectivePnlData?.source === 'SQLSERVER_BACKEND' && effectivePnlData?.status === 'LIVE',
     hasLiveErp: false,
-    requiredSourcesPresent: (state.invoices?.length ?? 0) > 0 || ((effectivePnlData && !pnlUnavailable && effectivePnlData.journalLines.length > 0)),
+    requiredSourcesPresent: (state.invoices?.length ?? 0) > 0 || Boolean(effectivePnlData && !pnlUnavailable && effectivePnlData.journalLines.length > 0),
   });
 
   const invoices = useMemo(() => reportInvoices.filter(i => !i.deletedAt && !(i as Invoice & { isDeleted?: boolean }).isDeleted && !['DRAFT','PENDING','CANCELLED','CANCELED','VOID','VOIDED','REJECTED'].includes(String(i.status || '').toUpperCase()) && Number(i.totalAmount) > 0 && Number.isFinite(Number(i.totalAmount)) && Boolean(i.date) && Boolean(i.customerId || i.accountId) && (!cutoff || String(i.date).slice(0,10) >= cutoff) && String(i.date).slice(0,10) <= asOf), [reportInvoices, cutoff, asOf]);
@@ -401,7 +401,7 @@ export function ReportEnginePanels({ state, visibleInvoices, visiblePayments, vi
     products: (state.externalProducts || []) as Array<Record<string, unknown>>,
     orders: (state.salesOrders || []) as Array<Record<string, unknown>>,
     zones: (state.geoZones || []) as Array<Record<string, unknown>>,
-    assignments: (state.zoneAssignments || []) as Array<Record<string, unknown>>
+    assignments: (state.zoneAssignments || []) as unknown as Array<Record<string, unknown>>
   }), [state.externalProducts, state.salesOrders, state.geoZones, state.zoneAssignments]);
 
   const salesKpi = useMemo(() => {
