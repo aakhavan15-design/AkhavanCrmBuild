@@ -5,6 +5,7 @@ import { useCan } from '../hooks/useCan';
 import { portFromAppState, readReportCollections } from '../lib/dataPorts';
 import { resolveDataSourceStatus, DATA_SOURCE_STATUS_LABELS, sourceStatusNote } from '../lib/dataTrust';
 import { ReportsHub } from './ReportsHub';
+import { getStateSyncEngine, isSqlProviderActive } from '../services/stateSyncRuntime';
 
 interface ReportScopeSource {
   accountId?: string;
@@ -108,9 +109,17 @@ export function ReportsWorkspace({ state, updateState, setActiveTab }: ReportsWo
     } as AppState;
   }, [state, visibleAccounts, visibleInvoices, visiblePayments, visibleCheques, visibleExpenses, visibleQuotes, visibleActivities, visibleTasks, portUsers, reportCols, can, canOn]);
 
+  // The configured provider alone does not prove a successful SQL hydration.
+  // Only a confirmed synchronized snapshot can be advertised as live.
+  const engine = getStateSyncEngine();
+  const sync = engine?.getStatus();
+  const sqlSnapshotReady = isSqlProviderActive() && engine?.hasSnapshot() === true
+    && !!sync?.lastSyncedAt && sync.phase !== 'error';
   const sourceStatus = resolveDataSourceStatus(state, {
-    hasLiveSql: false,
-    hasLiveErp: false,
+    hasLiveSql: sqlSnapshotReady,
+    hasLiveErp: false, // SQL hydration is not evidence of direct ERP freshness.
+    stale: isSqlProviderActive() && sync?.phase === 'error' && !!sync.lastSyncedAt,
+    partial: isSqlProviderActive() && !sqlSnapshotReady,
     requiredSourcesPresent: visibleInvoices.length > 0 || ((reportHubState.journalLines as unknown[] | undefined)?.length || 0) > 0,
   });
 
