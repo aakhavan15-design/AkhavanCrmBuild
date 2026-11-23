@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { calculateNetSales, calculateLedgerBalance, buildNetSalesEvidence, reconcileNetSales } from '../src/lib/financialMetricKernel.ts';
 import { queryLocalRecords } from '../src/services/localQuery.ts';
+import { allocateLifo } from '../src/services/agingBuckets.ts';
 
 const doc=(id,invoiceId,amount,postedAt='2026-11-15')=>({
   id,invoiceId,customerId:'C1',amount,postedAt,status:'POSTED',sourceType:'ERP_MIRROR',
@@ -77,4 +78,15 @@ test('official ledger and customer detail must reconcile before net-sales claims
   assert.equal(reconcileNetSales(data,200,10,true).status,'MISMATCH');
   assert.equal(reconcileNetSales(data,null,40,true).status,'UNAVAILABLE');
   assert.equal(reconcileNetSales(data,200,40,false).status,'UNAVAILABLE');
+});
+
+test('FIFO settlement leaves newest invoices outstanding via one LIFO financial display',()=>{
+  const invoices=[3,7,8,12].map((amount,i)=>({
+    id:String(i+1),total:amount,date:`2026-11-${String(i+1).padStart(2,'0')}`,number:String(i+1)
+  }));
+  const coverage=allocateLifo(25,invoices);
+  const byInvoice=Object.fromEntries(coverage.rows.map(row=>[row.id,row.covered]));
+  assert.deepEqual(byInvoice,{'1':0,'2':5,'3':8,'4':12});
+  assert.equal(coverage.unattributed,0);
+  assert.equal(coverage.rows.reduce((sum,row)=>sum+row.covered,0),25);
 });
