@@ -299,7 +299,7 @@ export function ReportEnginePanels({ state, visibleInvoices, visiblePayments, vi
     requiredSourcesPresent: (state.invoices?.length ?? 0) > 0 || ((effectivePnlData && !pnlUnavailable && effectivePnlData.journalLines.length > 0)),
   });
 
-  const invoices = useMemo(() => reportInvoices.filter(i => !i.deletedAt && !i.isDeleted && !['DRAFT','PENDING','CANCELLED','CANCELED','VOID','VOIDED','REJECTED'].includes(String(i.status || '').toUpperCase()) && Number(i.totalAmount) > 0 && Number.isFinite(Number(i.totalAmount)) && Boolean(i.date) && Boolean(i.customerId || i.accountId) && (!cutoff || String(i.date).slice(0,10) >= cutoff) && String(i.date).slice(0,10) <= asOf), [reportInvoices, cutoff, asOf]);
+  const invoices = useMemo(() => reportInvoices.filter(i => !i.deletedAt && !(i as Invoice & { isDeleted?: boolean }).isDeleted && !['DRAFT','PENDING','CANCELLED','CANCELED','VOID','VOIDED','REJECTED'].includes(String(i.status || '').toUpperCase()) && Number(i.totalAmount) > 0 && Number.isFinite(Number(i.totalAmount)) && Boolean(i.date) && Boolean(i.customerId || i.accountId) && (!cutoff || String(i.date).slice(0,10) >= cutoff) && String(i.date).slice(0,10) <= asOf), [reportInvoices, cutoff, asOf]);
   // Single calculation across customer sales, RFM monetary, Pareto and target
   // achievement. Only financial ERP-mirror credit notes may reduce a sale.
   // Never pretend unverified return coverage is equal to zero returns.
@@ -309,7 +309,7 @@ export function ReportEnginePanels({ state, visibleInvoices, visiblePayments, vi
     const creditNotes = (state.creditNotes || []).filter(note =>
       ids.has(String(note.invoiceId || '')) || customers.has(String(note.customerId || note.accountId || '')));
     return buildNetSalesEvidence(reportInvoices.filter(i =>
-      !i.deletedAt && !i.isDeleted && !['DRAFT','PENDING','CANCELLED','CANCELED','VOID','VOIDED','REJECTED'].includes(String(i.status||'').toUpperCase())
+      !i.deletedAt && !(i as Invoice & { isDeleted?: boolean }).isDeleted && !['DRAFT','PENDING','CANCELLED','CANCELED','VOID','VOIDED','REJECTED'].includes(String(i.status||'').toUpperCase())
     ).map(i=>({
       id:String(i.id),customerId:String(i.customerId||i.accountId||''),
       date:String(i.date||''),totalAmount:Number(i.totalAmount)
