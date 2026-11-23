@@ -306,9 +306,13 @@ export function ReportEnginePanels({ state, visibleInvoices, visiblePayments, vi
   // Never pretend unverified return coverage is equal to zero returns.
   const netSalesEvidence = useMemo(() => {
     const ids = new Set(reportInvoices.map(i=>String(i.id)));
-    const customers = new Set(reportInvoices.map(i=>String(i.customerId || i.accountId || '')));
+    const customers = new Set(visibleAccounts.map(account=>String(account.id)));
     const creditNotes = (state.creditNotes || []).filter(note =>
-      ids.has(String(note.invoiceId || '')) || customers.has(String(note.customerId || note.accountId || '')));
+      ids.has(String(note.invoiceId || '')) || customers.has(String(note.customerId || note.accountId || '')))
+      .map(note=>({
+        ...note,
+        sellerId:String(note.sellerId || note.salesRepId || note.salesRepExternalId || note.sellerCode || '').trim() || undefined
+      }));
     return buildNetSalesEvidence(reportInvoices.filter(i =>
       !i.deletedAt && !(i as Invoice & { isDeleted?: boolean }).isDeleted && !['DRAFT','PENDING','CANCELLED','CANCELED','VOID','VOIDED','REJECTED'].includes(String(i.status||'').toUpperCase())
     ).map(i=>({
@@ -318,7 +322,7 @@ export function ReportEnginePanels({ state, visibleInvoices, visiblePayments, vi
       from:cutoff,to:asOf,
       returnsVerified:state.creditNoteSourceStatus === 'CONNECTED'
     });
-  }, [reportInvoices, state.creditNotes, state.creditNoteSourceStatus, cutoff, asOf]);
+  }, [reportInvoices, visibleAccounts, state.creditNotes, state.creditNoteSourceStatus, cutoff, asOf]);
   // Financial totals are reconciled with the posted ERP ledger below.
   
   const ledgerInputs = useMemo(() => {
