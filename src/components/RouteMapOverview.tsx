@@ -289,7 +289,7 @@ export function RouteMapOverview(){
      <div className="grid grid-cols-2 gap-2">
       {[['کل مشتری',detail.customers.length],['دارای ویزیت',detail.coverage?.hasVisitFeed?detail.customers.filter(c=>(c.visitCount||0)>0).length:null],
         ['دارای فاکتور',detail.coverage?.hasInvoiceFeed?detail.customers.filter(c=>(c.invoiceCount||0)>0).length:null],
-        ['فروش خالص',detail.coverage?.hasInvoiceFeed&&detail.coverage?.hasReturnFeed?detail.customers.reduce((sum,c)=>sum+(c.netSales||0),0):null]].map(([name,value],index)=>
+        ['فروش خالص',detail.coverage?.hasInvoiceFeed&&detail.coverage?.hasReturnFeed&&detail.customers.every(c=>c.netSales!==null&&Number.isFinite(c.netSales))?detail.customers.reduce((sum,c)=>sum+Number(c.netSales),0):null]].map(([name,value],index)=>
        <div key={String(name)} className="rounded-xl border border-border bg-canvas p-3">
         <p className="text-xs text-text-secondary">{name}</p>
         <strong className="mt-1 block text-lg text-text-main">{value==null?'نامشخص':index===3?compact(Number(value))+' ریال':fa(Number(value))}</strong>
