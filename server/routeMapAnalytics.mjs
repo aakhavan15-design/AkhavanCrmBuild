@@ -148,7 +148,7 @@ export function createRouteMapAnalytics({sql,run}) {
   if(financeAllowed) {
    const amountQuery=`
     WITH AllowedRoutes AS (
-      SELECT r.RouteId FROM crm.VisitRouteMirror r
+      SELECT r.RouteId,r.SourceSystemCode FROM crm.VisitRouteMirror r
       WHERE r.TenantId=@tenant AND r.IsDeleted=0
       AND (NOT EXISTS(SELECT 1 FROM OPENJSON(@routeJson)) OR
         CONVERT(nvarchar(36),r.RouteId) IN (SELECT value FROM OPENJSON(@routeJson)))
@@ -180,6 +180,8 @@ export function createRouteMapAnalytics({sql,run}) {
     SELECT m.RouteId,COUNT(DISTINCT i.InvoiceMirrorId) AS InvoiceCount,
       COUNT(DISTINCT i.AccountId) AS ActiveCustomerCount,SUM(l.Amount) AS NetSales
     FROM Members m JOIN FilteredInvoices i ON i.AccountId=m.AccountId
+      AND EXISTS (SELECT 1 FROM AllowedRoutes officialRoute WHERE officialRoute.RouteId=m.RouteId
+        AND officialRoute.SourceSystemCode=i.SourceSystemCode)
     JOIN InvoiceLines l ON l.InvoiceMirrorId=i.InvoiceMirrorId
     AND EXISTS(SELECT 1 FROM crm.VisitRouteCustomerMirror validMembership
       WHERE validMembership.TenantId=@tenant AND validMembership.RouteId=m.RouteId
@@ -195,7 +197,7 @@ export function createRouteMapAnalytics({sql,run}) {
   }
   const permittedMembers=`
     WITH AllowedRoutes AS (
-      SELECT r.RouteId FROM crm.VisitRouteMirror r
+      SELECT r.RouteId,r.SourceSystemCode FROM crm.VisitRouteMirror r
       WHERE r.TenantId=@tenant AND r.IsDeleted=0
         AND (NOT EXISTS(SELECT 1 FROM OPENJSON(@routeJson))
              OR CONVERT(nvarchar(36),r.RouteId) IN (SELECT value FROM OPENJSON(@routeJson)))
@@ -221,6 +223,8 @@ export function createRouteMapAnalytics({sql,run}) {
           AND (validMembership.EffectiveTo IS NULL OR validMembership.EffectiveTo>=ret.DateKey))
       JOIN crm.SalesReturnMirror sourceReturn ON sourceReturn.TenantId=ret.TenantId
         AND sourceReturn.SalesReturnMirrorId=ret.SalesReturnMirrorId
+        AND EXISTS (SELECT 1 FROM AllowedRoutes officialRoute WHERE officialRoute.RouteId=m.RouteId
+          AND officialRoute.SourceSystemCode=sourceReturn.SourceSystemCode)
       LEFT JOIN crm.ExternalProduct product ON product.TenantId=ret.TenantId
         AND product.SourceSystemCode=sourceReturn.SourceSystemCode AND product.ExternalProductId=ret.ExternalProductId
       WHERE ret.IsEffective=1 AND ret.DateKey BETWEEN @dateFrom AND @dateTo
