@@ -33,6 +33,25 @@ export function createDispatchReader({sql,run}){
          a.TenantId,N'accounts.view',a.OwnerUserId,a.BranchId,a.TerritoryId,a.TeamId))
    `)).recordset;
    const invoiceIds=invoices.map(i=>i.InvoiceMirrorId);
+   const invoiceLines=(await request().query(`
+     SELECT TOP (10001) i.InvoiceMirrorId,l.InvoiceLineMirrorId,l.ExternalProductId,
+       l.ProductNameSnapshot,l.Quantity,l.NetLineAmount,
+       product.SupplierExternalId,product.BrandExternalId
+     FROM crm.InvoiceLineMirror l
+     JOIN crm.InvoiceMirror i ON i.TenantId=l.TenantId AND i.InvoiceMirrorId=l.InvoiceMirrorId
+     JOIN crm.Account a ON a.TenantId=i.TenantId AND a.AccountId=i.AccountId
+     LEFT JOIN crm.ExternalProduct product ON product.TenantId=l.TenantId
+      AND product.SourceSystemCode=l.SourceSystemCode AND product.ExternalProductId=l.ExternalProductId
+     WHERE l.TenantId=@tenant AND i.IsVoided=0
+      AND (i.DispatchPlanNumber=@number OR EXISTS(
+        SELECT 1 FROM crm.DispatchPlanLine d
+        JOIN crm.DispatchPlan p ON p.DispatchPlanId=d.DispatchPlanId AND p.TenantId=d.TenantId
+        WHERE d.TenantId=i.TenantId AND d.InvoiceMirrorId=i.InvoiceMirrorId AND p.PlanNumber=@number))
+      AND EXISTS(SELECT 1 FROM security.fn_RecordReadScope(
+       a.TenantId,N'accounts.view',a.OwnerUserId,a.BranchId,a.TerritoryId,a.TeamId))
+   `)).recordset;
+   const lineCoverage=invoiceLines.length>10000?'ROW_LIMIT_EXCEEDED':'AVAILABLE';
+
    // Ledger clearance and all source row coverage are separate acceptance gates.
    const journal=(await request().query(`
      SELECT jl.JournalLineMirrorId,je.JournalEntryMirrorId,je.DocumentNumber,je.DocumentDate,
@@ -146,7 +165,7 @@ export function createDispatchReader({sql,run}){
    });
    return {status:'PARTIAL',reason:'SOURCE_COVERAGE_AND_LEDGER_RECONCILIATION_REQUIRED',
     source:'SQLSERVER_ERP_MIRROR',plan,
-    invoiceCount:invoices.length,invoices,
+    invoiceCount:invoices.length,invoices,invoiceLines:lineCoverage==='AVAILABLE'?invoiceLines:[],lineCoverage,
     returnCount:returns.length,unbasedReturns:unbased,
     grossRials:invoices.reduce((n,i)=>n+Number(i.GrossAmount),0),
     linkedReturnsRials:returns.filter(x=>invoiceLookup.has(String(x.InvoiceMirrorId||'').toLowerCase()))
