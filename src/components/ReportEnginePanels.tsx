@@ -1068,11 +1068,22 @@ export function ReportEnginePanels({ state, visibleInvoices, visiblePayments, vi
               <div className="p-3.5 bg-surface rounded-xl border border-border space-y-2">
                 <h5 className="text-xs font-bold text-text-main">فروش خالص فروشندگان — تطبیق‌شده با دفتر</h5>
                 {sellerNetSales.status === 'AVAILABLE'
-                  ? <Bars money rows={sellerNetSales.rows.map(row => ({
-                      key: row.key === 'UNASSIGNED' ? 'فروشنده نامشخص' :
-                        ((state.users || []).find(user => user.id === row.key)?.name || row.key),
-                      value: row.value
-                    })).filter(row => row.value > 0)}/>
+                  ? sellerNetSales.rows.some(row => row.value < 0)
+                    ? <div className="space-y-2">
+                        <p className="text-xs text-text-secondary">برگشتیِ منتسب می‌تواند فروش خالص یک فروشنده را منفی کند؛ تمام سطرها، از جمله ارقام منفی، نمایش داده می‌شوند.</p>
+                        {sellerNetSales.rows.map(row => (
+                          <div key={row.key} className="flex justify-between gap-3 rounded-lg border border-border p-2 text-xs">
+                            <span>{row.key === 'UNASSIGNED' ? 'فروشنده نامشخص' :
+                              ((state.users || []).find(user => user.id === row.key)?.name || row.key)}</span>
+                            <strong className={row.value < 0 ? 'text-danger' : 'text-text-main'}>{formatCurrency(row.value)} ریال</strong>
+                          </div>
+                        ))}
+                      </div>
+                    : <Bars money rows={sellerNetSales.rows.map(row => ({
+                        key: row.key === 'UNASSIGNED' ? 'فروشنده نامشخص' :
+                          ((state.users || []).find(user => user.id === row.key)?.name || row.key),
+                        value: row.value
+                      }))}/>
                   : <p role="status" className="text-xs leading-6 text-text-secondary">
                       سهم فروشنده نامشخص است: {sellerNetSales.reason}
                     </p>}
