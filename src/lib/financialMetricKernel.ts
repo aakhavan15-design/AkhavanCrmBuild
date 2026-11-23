@@ -35,6 +35,7 @@ export function calculateLedgerBalance(
   for (const a of articles) {
     if (a.isDeleted || a.isVoided || ['VOID','VOIDED','CANCELLED','CANCELED','REJECTED'].includes(String(a.status || '').toUpperCase())) continue;
     if (scope === 'POSTED_ONLY' && !['POSTED','CONFIRMED','FINAL'].includes(String(a.status || '').toUpperCase())) continue;
+    if (a.debitAmount === null || a.debitAmount === undefined || a.creditAmount === null || a.creditAmount === undefined) return null;
     const d = Number(a.debitAmount), c = Number(a.creditAmount);
     if (!Number.isFinite(d) || !Number.isFinite(c) || d < 0 || c < 0) return null;
     debit += d;
