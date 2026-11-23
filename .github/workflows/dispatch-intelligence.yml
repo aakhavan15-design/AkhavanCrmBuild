@@ -13,6 +13,8 @@ on:
       - 'src/components/ReportEnginePanels.tsx'
       - 'src/components/Customer360.tsx'
       - 'src/lib/financialMetricKernel.ts'
+      - 'src/lib/operationsEngine.ts'
+      - 'tests/operationsEngine.test.mjs'
       - 'src/lib/receivableReconciliation.ts'
       - 'shared/financialArithmetic.mjs'
       - 'server/routeMapMoney.mjs'
@@ -41,7 +43,7 @@ jobs:
           node --check server/dispatchReads.mjs
       - name: Behavioral verification
         run: |
-          node --test tests/dispatchIntelligence.behavior.test.mjs tests/dispatchCollectionZone.behavior.test.mjs tests/financialMetricKernel.behavior.test.mjs tests/routeMapMoney.test.mjs
+          node --test tests/dispatchIntelligence.behavior.test.mjs tests/dispatchCollectionZone.behavior.test.mjs tests/financialMetricKernel.behavior.test.mjs tests/routeMapMoney.test.mjs tests/operationsEngine.test.mjs
 
   ui-build:
     runs-on: ubuntu-latest
