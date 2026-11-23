@@ -135,8 +135,9 @@ test('seller share withheld when a posted cross-period return cannot be attribut
   const reconciliation=reconcileNetSales(evidence,0,60,true);
   assert.equal(reconciliation.status,'RECONCILED');
   const shares=attributeReconciledSalesBySeller(evidence,reconciliation,invoices,i=>i.sellerId);
-  assert.equal(shares.status,'UNAVAILABLE');
-  assert.deepEqual(shares.rows,[]);
+  assert.equal(shares.status,'AVAILABLE');
+  assert.deepEqual(shares.rows,[{key:'X',value:-60}]);
+  assert.equal(shares.rows.reduce((sum,x)=>sum+x.value,0),evidence.net);
 });
 test('seller shares block duplicate invoice IDs and missing records',()=>{
   const invoices=[{...inv('i1','2026-11-10',100),sellerId:'X'}];
@@ -164,4 +165,26 @@ test('a dangling explicit invoice reference is not an unbased return',()=>{
  const data=buildNetSalesEvidence([inv('i1','2026-11-01',100)],[invalid],
   {from:'2026-11-01',to:'2026-11-30',returnsVerified:true});
  assert.equal(data.status,'UNAVAILABLE');
+});
+
+test('ERP posted unbased return counts in company and customer net sales with verified seller code',()=>{
+  const invoices=[{...inv('i1','2026-11-12',300),sellerId:'X'}];
+  const unbased={id:'independent-return',customerId:'C1',sellerId:'Z',amount:80,
+    postedAt:'2026-11-16',status:'POSTED',sourceType:'ERP_MIRROR'};
+  const evidence=buildNetSalesEvidence(invoices,[unbased],
+    {from:'2026-11-01',to:'2026-11-30',returnsVerified:true});
+  assert.equal(evidence.status,'AVAILABLE');
+  assert.equal(evidence.gross,300);
+  assert.equal(evidence.returns,80);
+  assert.equal(evidence.net,220);
+  assert.deepEqual(evidence.byCustomer,[{key:'C1',value:220}]);
+  assert.equal(evidence.returnsOutsideFacts[0].invoiceId,null);
+  const reconciliation=reconcileNetSales(evidence,300,80,true);
+  const seller=attributeReconciledSalesBySeller(evidence,reconciliation,invoices,i=>i.sellerId);
+  assert.equal(seller.status,'AVAILABLE');
+  assert.deepEqual(Object.fromEntries(seller.rows.map(row=>[row.key,row.value])),{X:300,Z:-80});
+  assert.equal(seller.rows.reduce((sum,row)=>sum+row.value,0),220);
+  const unknownSeller=buildNetSalesEvidence(invoices,[{...unbased,sellerId:undefined}],
+    {from:'2026-11-01',to:'2026-11-30',returnsVerified:true});
+  assert.equal(attributeReconciledSalesBySeller(unknownSeller,reconcileNetSales(unknownSeller,300,80,true),invoices,i=>i.sellerId).status,'UNAVAILABLE');
 });
