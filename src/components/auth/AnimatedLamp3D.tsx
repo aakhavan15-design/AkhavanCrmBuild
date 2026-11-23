@@ -91,6 +91,15 @@ export function AnimatedLamp3D({
 }: AnimatedLamp3DProps) {
   const [pullOffset, setPullOffset] = useState({ x: 0, y: 0 });
   const [lampTilt, setLampTilt] = useState(0);
+  // Motion only enhances the hanging lamp. Authentication never depends on a sensor.
+  const [motionEnabled, setMotionEnabled] = useState(false);
+  const [motionSupported, setMotionSupported] = useState(false);
+  const [motionError, setMotionError] = useState('');
+  const [deviceTilt, setDeviceTilt] = useState(0);
+  const motionTargetRef = useRef(0);
+  const motionFrameRef = useRef<number | null>(null);
+  const sensorSeenRef = useRef(false);
+
   const [isDragging, setIsDragging] = useState(false);
   const [isBouncing, setIsBouncing] = useState(false);
   const startPosRef = useRef({ x: 0, y: 0 });
@@ -157,6 +166,59 @@ export function AnimatedLamp3D({
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
     };
   }, []);
+
+
+  // iOS requires a user gesture before requesting DeviceOrientation permission.
+  // Unsupported/denied sensors leave the cord and click controls fully functional.
+  useEffect(() => {
+    setMotionSupported(typeof window !== 'undefined' && 'DeviceOrientationEvent' in window);
+  }, []);
+  const enableMotion = async () => {
+    if (!motionSupported) return;
+    try {
+      type MotionRequest = typeof DeviceOrientationEvent & { requestPermission?: () => Promise<'granted' | 'denied'> };
+      const ctor = window.DeviceOrientationEvent as MotionRequest | undefined;
+      if (ctor?.requestPermission && await ctor.requestPermission() !== 'granted') {
+        setMotionError('دسترسی به حسگر حرکت داده نشد؛ نخ چراغ همچنان کار می‌کند.');
+        return;
+      }
+      setMotionError('');
+      sensorSeenRef.current = false;
+      setMotionEnabled(true);
+    } catch {
+      setMotionError('حسگر حرکت در دسترس نیست؛ کنترل دستی چراغ فعال است.');
+    }
+  };
+  useEffect(() => {
+    if (!motionEnabled) return;
+    let last = 0;
+    let smoothed = 0;
+    let frame = 0;
+    const onOrientation = (event: DeviceOrientationEvent) => {
+      if (event.gamma == null || !Number.isFinite(event.gamma)) return;
+      sensorSeenRef.current = true;
+      // A maximum 30-degree swing, independent of device orientation extremes.
+      motionTargetRef.current = Math.max(-30, Math.min(30, event.gamma * 0.75));
+    };
+    const animate = (time: number) => {
+      const delta = last ? Math.min(50, time - last) : 16;
+      last = time;
+      const ease = 1 - Math.exp(-delta / 210);
+      smoothed += (motionTargetRef.current - smoothed) * ease;
+      setDeviceTilt(prev => Math.abs(prev - smoothed) > 0.05 ? smoothed : prev);
+      frame = requestAnimationFrame(animate);
+    };
+    window.addEventListener('deviceorientation', onOrientation, { passive: true });
+    frame = requestAnimationFrame(animate);
+    motionFrameRef.current = frame;
+    return () => {
+      window.removeEventListener('deviceorientation', onOrientation);
+      cancelAnimationFrame(frame);
+      motionFrameRef.current = null;
+      motionTargetRef.current = 0;
+      setDeviceTilt(0);
+    };
+  }, [motionEnabled]);
 
   // Pointer drag events - multidirectional downward pulling
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -250,7 +312,7 @@ export function AnimatedLamp3D({
           className="w-full h-full overflow-visible drop-shadow-2xl"
           xmlns="http://www.w3.org/2000/svg"
           style={{
-            transform: `rotate(${lampTilt}deg)`,
+            transform: `rotate(${Math.max(-30, Math.min(30, lampTilt + (isDragging || isBouncing ? 0 : deviceTilt)))}deg)`,
             transformOrigin: '160px 565px',
             transition: isDragging ? 'none' : 'transform 0.15s ease-out',
           }}
@@ -589,6 +651,19 @@ export function AnimatedLamp3D({
         />
       </div>
 
+      {motionSupported && (
+        <div className="relative z-30 -mt-2 flex flex-col items-center gap-1 text-center">
+          <button
+            type="button"
+            onClick={() => motionEnabled ? setMotionEnabled(false) : void enableMotion()}
+            aria-pressed={motionEnabled}
+            className="rounded-full border border-(--c-copper)/35 bg-(--c-auth-ambient)/70 px-3 py-1.5 text-xs text-(--c-auth-on-ambient) focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--c-copper)"
+          >
+            {motionEnabled ? 'توقف حرکت با گوشی' : 'فعال‌سازی حرکت چراغ با گوشی'}
+          </button>
+          {motionError && <p role="status" className="max-w-48 text-xs text-(--c-auth-on-ambient)/75">{motionError}</p>}
+        </div>
+      )}
       <style>{`
         @keyframes lamp-bead-breathe {
           0%, 100% { opacity: .18; transform: scale(.92); }
