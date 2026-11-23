@@ -26,7 +26,8 @@ interface DetailCustomer {
  lastVisitOutcome:string|null;noOrderReason:string|null;invoiceCount:number|null;netSales:number|null;
  lastInvoice:{number:string;date:string;items:Array<{name:string;quantity:number;unitPrice:number}>}|null;
  invoicedSales?:number|null;returnAmount?:number|null;receivableAmount?:number|null;receivableAsOf?:string|null;
- status:'BOUGHT'|'VISITED_NO_ORDER'|'NOT_BOUGHT'|'VISITED'|'UNKNOWN';
+ noVisitRecordedEver?:boolean|null;
+ status:'BOUGHT'|'VISITED_NO_ORDER'|'NOT_BOUGHT'|'UNVISITED'|'VISITED'|'UNKNOWN';
 }
 interface Detail {
  source:string;route:{RouteId:string;RouteCode:string;RouteName:string};
@@ -82,12 +83,13 @@ function MultiFilter({title,options,selected,onChange}:{
 }
 const statusLabels={
  BOUGHT:'خریده',VISITED_NO_ORDER:'ویزیت شده، بدون سفارش',NOT_BOUGHT:'بدون خرید در بازه',
- VISITED:'ویزیت ثبت‌شده',UNKNOWN:'وضعیت خرید نامشخص'
+ UNVISITED:'در بازه بدون ویزیت',VISITED:'ویزیت ثبت‌شده',UNKNOWN:'وضعیت خرید نامشخص'
 };
 function detailColor(s:DetailCustomer['status']){
  if(s==='BOUGHT')return 'bg-emerald-100 text-emerald-900';
  if(s==='VISITED_NO_ORDER')return 'bg-amber-100 text-amber-900';
  if(s==='NOT_BOUGHT')return 'bg-rose-100 text-rose-900';
+ if(s==='UNVISITED')return 'bg-orange-100 text-orange-900';
  return 'bg-slate-100 text-slate-700';
 }
 const metricIds=Object.keys(metricCatalog) as MetricId[];
@@ -111,6 +113,7 @@ export function RouteMapOverview(){
  const [detailOpen,setDetailOpen]=useState(false);
  const [customerSearch,setCustomerSearch]=useState('');
  const [segment,setSegment]=useState<'ALL'|DetailCustomer['status']>('ALL');
+ const [noVisitHistoryOnly,setNoVisitHistoryOnly]=useState(false);
  const [openedCustomer,setOpenedCustomer]=useState<string|null>(null);
  const [loading,setLoading]=useState(false);
  const [loadingDetail,setLoadingDetail]=useState(false);
@@ -169,7 +172,7 @@ export function RouteMapOverview(){
  });
  const selectedSummary=rows.find(r=>r.routeId===selectedRoute);
  const visibleCustomers=(detail?.customers||[]).filter(c=>
-  (segment==='ALL'||c.status===segment) &&
+  (segment==='ALL'||c.status===segment) && (!noVisitHistoryOnly||c.noVisitRecordedEver===true) &&
   (!customerSearch||[c.name,c.code||'',c.subRouteCode||''].join(' ').includes(customerSearch.trim())));
  const groupedCounts=(detail?.customers||[]).reduce((map,c)=>{
   map[c.status]=(map[c.status]||0)+1;return map;
@@ -179,7 +182,7 @@ export function RouteMapOverview(){
    const next=metrics.find(x=>x!==id);if(next)setPrimary(next);
   }}else {setMetrics([...metrics,id]);}
  };
- const openRoute=(id:string)=>{setSelectedRoute(id);setDetailOpen(true);setSegment('ALL');setOpenedCustomer(null);setCustomerSearch('');};
+ const openRoute=(id:string)=>{setSelectedRoute(id);setDetailOpen(true);setSegment('ALL');setOpenedCustomer(null);setCustomerSearch('');setNoVisitHistoryOnly(false);};
  return <section className="space-y-3" dir="rtl" aria-label="اطلس تحلیلی مسیرهای فروش">
   <Card padding="lg" className="space-y-3">
    <div className="flex flex-wrap items-start justify-between gap-2">
@@ -292,12 +295,16 @@ export function RouteMapOverview(){
      </div>
      <h4 className="mt-4 text-sm font-black text-text-main">تقسیم‌بندی مشتریان</h4>
      <div className="mt-2 flex flex-wrap gap-1.5">
-      {(['ALL','BOUGHT','VISITED_NO_ORDER','NOT_BOUGHT','UNKNOWN'] as const).map(id=>
+      {(['ALL','BOUGHT','VISITED_NO_ORDER','UNVISITED','UNKNOWN'] as const).map(id=>
        <button type="button" key={id} onClick={()=>setSegment(id)}
         className={`min-h-9 rounded-full border px-3 text-xs ${segment===id?'border-primary bg-primary/10 text-primary':'border-border'}`}>
         {id==='ALL'?'همه':statusLabels[id]} · {fa(id==='ALL'?detail.customers.length:groupedCounts[id]||0)}
        </button>)}
      </div>
+     {detail.coverage?.hasVisitFeed&&<label className="mt-2 flex items-center gap-2 rounded-xl border border-border p-2 text-xs text-text-secondary">
+      <input type="checkbox" checked={noVisitHistoryOnly} onChange={e=>setNoVisitHistoryOnly(e.target.checked)}/>
+      فقط مشتریان فاقد سابقهٔ ویزیت ثبت‌شده در این مسیر ({fa(detail.customers.filter(c=>c.noVisitRecordedEver===true).length)})
+     </label>}
      <label className="mt-3 block text-xs text-text-secondary">جست‌وجوی مشتری در همین مسیر
       <input value={customerSearch} onChange={e=>setCustomerSearch(e.target.value)} placeholder="نام، کد یا زیرمسیر"
        className="mt-1 min-h-10 w-full rounded-xl border border-border bg-canvas px-3 text-text-main"/>
@@ -307,6 +314,7 @@ export function RouteMapOverview(){
       {visibleCustomers.slice(0,200).map(c=><div key={c.id} className="rounded-xl border border-border p-3">
        <div className="flex items-center justify-between gap-2">
         <div className="min-w-0"><strong className="block truncate text-sm text-text-main">{c.name}</strong>
+         {c.noVisitRecordedEver===true&&<span className="mt-1 block text-micro text-orange-700">فاقد سابقه ویزیت ثبت‌شده در داده مجاز ERP</span>}
          <p className="mt-1 text-micro text-text-secondary">{c.code||'بدون کد'}{c.subRouteCode?' · زیرمسیر '+c.subRouteCode:''}</p></div>
         <span className={`rounded-full px-2 py-1 text-micro ${detailColor(c.status)}`}>{statusLabels[c.status]}</span>
        </div>
