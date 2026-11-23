@@ -1,0 +1,27 @@
+import React,{useMemo,useState} from 'react';
+import {analyzeFinancialDrivers} from '../../lib/financialDrivers';
+import type {PnlJournalLine,BucketDef} from '../../lib/ledgerPnl';
+import type {LedgerAccountDef} from '../../lib/etlPipeline';
+import {formatCurrency} from '../../lib/utils';
+const titles:Record<string,string>={GROSS_SALES:'فروش ناخالص',SALES_RETURNS:'برگشت و تخفیف',COGS:'بهای کالا',OPERATING_EXPENSES:'هزینه عملیاتی'};
+const money=(n:number|null)=>n===null?'نامشخص':formatCurrency(n);
+export function FinancialDriversPanel({lines,accounts,buckets,from,to,trusted}:{lines:PnlJournalLine[];accounts:LedgerAccountDef[];buckets:BucketDef[];from:string|null;to:string;trusted:boolean}){
+ const [selected,setSelected]=useState<string|null>(null);
+ const analysis=useMemo(()=>from?analyzeFinancialDrivers(lines,accounts,buckets,{from,to},trusted):null,[lines,accounts,buckets,from,to,trusted]);
+ if(!analysis)return <section className="rounded-xl border border-border p-3 text-xs text-text-secondary">تحلیل تغییر سود و هزینه: دوره محدود و منبع دفتر معتبر لازم است.</section>;
+ const rows=analysis.drivers.filter(x=>!selected||x.key===selected);
+ const max=Math.max(1,...analysis.drivers.flatMap(x=>[Math.abs(x.value??0),Math.abs(x.baseline??0)]));
+ const impactMax=Math.max(1,...analysis.drivers.map(x=>Math.abs(x.profitImpact??0)));
+ const toggle=(key:string)=>setSelected(old=>old===key?null:key);
+ return <section dir="rtl" className="space-y-3 rounded-2xl border border-border bg-surface p-3" aria-label="بینش مالی و عوامل تغییر سود">
+  <div className="flex flex-wrap items-center justify-between gap-2"><div><h4 className="text-sm font-bold">عوامل تغییر سود و کنترل هزینه</h4><p className="text-xs text-text-secondary">مقایسه دو دوره هم‌طول از دفتر مالی · ریال</p></div><button type="button" onClick={()=>setSelected(null)} className="min-h-10 rounded-lg border border-border px-3 text-xs">همه عوامل</button></div>
+  <div className="grid grid-cols-2 gap-2"><div className="rounded-xl bg-canvas p-3"><span className="text-xs text-text-secondary">تغییر سود عملیاتی</span><div className="font-bold">{money(analysis.profitDelta)}</div></div><div className="rounded-xl bg-canvas p-3"><span className="text-xs text-text-secondary">نسبت هزینه عملیاتی به فروش خالص</span><div className="font-bold">{analysis.expenseShare===null?'نامشخص':analysis.expenseShare.toFixed(1)+'٪'}</div></div></div>
+  <div className="grid gap-3 lg:grid-cols-2">
+   <div className="space-y-2 rounded-xl border border-border p-3"><h5 className="text-xs font-bold">مقایسه عوامل با دوره قبل</h5><p className="text-xs text-text-secondary">سبز: دوره جاری · خاکستری: دوره قبل</p>{analysis.drivers.map(row=><button key={row.key} type="button" aria-pressed={selected===row.key} onClick={()=>toggle(row.key)} className={'block w-full rounded-lg border p-2 text-right text-xs '+(selected===row.key?'border-primary':'border-transparent')}><div className="flex justify-between gap-2"><span>{titles[row.key]}</span><span>{money(row.value)}</span></div>{row.value!==null&&<div className="mt-1 h-2 rounded bg-emerald-600" style={{width:(Math.abs(row.value)/max*100)+'%'}}/>}{row.baseline!==null&&<div className="mt-1 h-2 rounded bg-slate-400" style={{width:(Math.abs(row.baseline)/max*100)+'%'}}/>}<span className="text-text-secondary">قبل: {money(row.baseline)}</span></button>)}</div>
+   <div className="space-y-2 rounded-xl border border-border p-3"><h5 className="text-xs font-bold">اثر هر عامل بر سود</h5>{analysis.drivers.map(row=><button key={row.key} type="button" aria-pressed={selected===row.key} onClick={()=>toggle(row.key)} className={'block w-full rounded-lg border p-2 text-right text-xs '+(selected===row.key?'border-primary':'border-transparent')}><div className="flex justify-between gap-2"><span>{titles[row.key]}</span><span>{money(row.profitImpact)}</span></div>{row.profitImpact!==null&&<div className="mt-1 flex h-3"><div className="flex w-1/2 justify-end border-l border-border">{row.profitImpact<0&&<div className="rounded bg-rose-600" style={{width:Math.abs(row.profitImpact)/impactMax*100+'%'}}/>}</div><div className="w-1/2">{row.profitImpact>=0&&<div className="h-full rounded bg-emerald-600" style={{width:row.profitImpact/impactMax*100+'%'}}/>}</div></div>}</button>)}</div>
+  </div>
+  <div className="space-y-2"><h5 className="text-xs font-bold">ریز عوامل انتخاب‌شده</h5>{rows.map(row=><div key={row.key} className="grid grid-cols-2 gap-2 rounded-lg border border-border p-2 text-xs sm:grid-cols-4"><strong>{titles[row.key]}</strong><span>جاری: {money(row.value)}</span><span>قبل: {money(row.baseline)}</span><span>تغییر: {row.changePercent===null?'نامشخص':row.changePercent.toFixed(1)+'٪'}</span></div>)}</div>
+  {analysis.warnings.filter(x=>!selected||x.key===selected).map(row=><p key={row.key} className="rounded-lg border border-warning/40 p-2 text-xs text-warning">نیازمند بررسی: {titles[row.key]} نسبت به دوره قبل {row.changePercent?.toFixed(1)}٪ افزایش داشته است. آستانه بررسی ۲۰٪ است؛ این هشدار اثبات تخلف نیست.</p>)}
+  <p className="text-xs text-text-secondary">{analysis.reconciled?'جمع اثر عوامل با تغییر سود مطابقت دارد.':'تطبیق کامل اثر عوامل با تغییر سود ممکن نیست.'} {analysis.unmappedLines+analysis.previousUnmappedLines>0?'خطوط بدون نگاشت در دو دوره وجود دارد.':''}</p>
+ </section>;
+}
