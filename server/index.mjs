@@ -561,8 +561,8 @@ app.get('/api/v1/erp/dispatch/:number/analysis',authenticate,requirePermission('
   return res.status(503).json({error:{code:'AUTH_CONTEXT_INVALID',message:'نشست معتبر نیست.'}});
  if(entityDriverKind!=='mssql')
   return res.status(503).json({status:'UNAVAILABLE',reason:'SQL_NOT_CONNECTED'});
- if(!await hasSqlPermission(req.auth,'finance.view'))
-  return res.status(403).json({error:{code:'FORBIDDEN',message:'مجوز داده مالی ندارید.'}});
+ if(!await hasSqlPermission(req.auth,'finance.view',{organizationWide:true}))
+  return res.status(403).json({error:{code:'FORBIDDEN',message:'گزارش تجمیعی حمل به مجوز مالی سراسری نیاز دارد.'}});
  const number=String(req.params.number||'').trim();
  if(!number||number.length>80)
   return res.status(400).json({error:{code:'INVALID_DISPATCH_NUMBER'}});
