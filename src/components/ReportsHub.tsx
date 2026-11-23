@@ -154,7 +154,8 @@ export function ReportsHub({ state, canViewFinance, canViewPayments, canOpenJour
     const target = (state.salesTargets || [])
       .filter(t => t.periodMonth >= fromMonth && t.periodMonth <= toMonth)
       .reduce((sum, t) => sum + Math.max(0, Number(t.revenueTargetRials) || 0), 0);
-    const achievement = target > 0 ? Math.min(100, Math.round((totalSales / target) * 100)) : 0;
+    // This view has invoice gross only: actual net sales requires finance reconciliation.
+    const achievement: number | null = null;
 
     const monthKeys = new Intl.DateTimeFormat('en-u-ca-persian-nu-latn', { year: 'numeric', month: '2-digit', timeZone: 'UTC' });
     const byMonth = new Map<string, { label: string; total: number }>();
@@ -257,13 +258,13 @@ export function ReportsHub({ state, canViewFinance, canViewPayments, canOpenJour
       ['عنوان', 'مقدار'],
       ['حوزه گزارش', domainMeta.label],
       ['بازه زمانی', periodLabel],
-      ['مجموع فروش (ریال)', metrics.hasInvoiceData ? metrics.totalSales : null],
+      ['جمع ناخالص فاکتورهای دوره (ریال؛ نه فروش خالص)', metrics.hasInvoiceData ? metrics.totalSales : null],
       ['مجموع دریافت‌های تسویه‌شده (ریال)', metrics.hasPaymentData ? metrics.totalPaid : null],
       ['تعداد فاکتورها', metrics.invoiceCount],
       ['تعداد پیش‌فاکتورها', metrics.quoteCount],
       ...(activeDef ? [['گزارش فعال', activeDef.label]] : []),
       ...(metrics.leaderboard.length > 0
-        ? [['نام فروشنده', 'فروش (ریال)'], ...metrics.leaderboard.map(row => [row.name, row.amount])] : []),
+        ? [['نام فروشنده', 'مبلغ ناخالص فاکتورهای منتسب (ریال)'], ...metrics.leaderboard.map(row => [row.name, row.amount])] : []),
     ]);
     downloadCsv(content, `report_${domain}_${period}_${toLocalDateISO()}`);
   };
@@ -362,7 +363,7 @@ export function ReportsHub({ state, canViewFinance, canViewPayments, canOpenJour
 
           <div className="grid grid-cols-2 gap-2.5">
             <KpiCard
-              label="مجموع فروش در بازه"
+              label="جمع ناخالص فاکتورهای بازه"
               value={metrics.hasInvoiceData ? formatMoneyCompact(metrics.totalSales) : '—'}
               density="compact"
               sparkline={metrics.monthlyValues}
@@ -410,7 +411,7 @@ export function ReportsHub({ state, canViewFinance, canViewPayments, canOpenJour
           ) : <>
           <div className="grid grid-cols-2 gap-2.5">
             <KpiCard
-              label="مبلغ کلیدی"
+              label="مبلغ ناخالص فاکتورهای بازه"
               value={metrics.hasInvoiceData ? formatMoneyCompact(metrics.totalSales) : '—'}
               density="compact"
               sparkline={metrics.monthlyValues}
@@ -419,10 +420,10 @@ export function ReportsHub({ state, canViewFinance, canViewPayments, canOpenJour
             />
             <KpiCard
               label="تحقق هدف"
-              value={metrics.target > 0 ? formatPercent(metrics.achievement, 0) : '—'}
+              value={metrics.achievement !== null ? formatPercent(metrics.achievement, 0) : 'نامشخص'}
               density="compact"
-              empty={metrics.target <= 0}
-              emptyMessage="هدف فروش در تنظیمات تعریف نشده"
+              empty={metrics.achievement === null}
+              emptyMessage="فروش خالص دوره با دفتر مالی تطبیق نشده است"
             />
           </div>
 
@@ -432,7 +433,7 @@ export function ReportsHub({ state, canViewFinance, canViewPayments, canOpenJour
               periodLabel={periodLabel}
               labels={metrics.monthlyLabels}
               values={metrics.monthlyValues}
-              seriesName="فروش"
+              seriesName="ناخالص فاکتورها"
               empty={!metrics.hasInvoiceData}
             />
           )}
@@ -441,10 +442,10 @@ export function ReportsHub({ state, canViewFinance, canViewPayments, canOpenJour
             <NeoGaugeChart
               title={activeDef.label}
               periodLabel={periodLabel}
-              value={Math.round(metrics.achievement)}
+              value={metrics.achievement === null ? 0 : Math.round(metrics.achievement)}
               max={100}
-              gaugeTitle="تحقق"
-              empty={metrics.target <= 0 && !metrics.hasInvoiceData}
+              gaugeTitle="تحقق هدف — نیازمند تطبیق دفتر"
+              empty={metrics.achievement === null}
             />
           )}
 
@@ -477,7 +478,7 @@ export function ReportsHub({ state, canViewFinance, canViewPayments, canOpenJour
 
           {(activeDef.chart === 'leaderboard' || activeDef.id === 'rep-perf') && (
             <ChartCard
-              title="رتبه‌بندی فروشندگان"
+              title="رتبه‌بندی مبلغ ناخالص فاکتورهای منتسب"
               periodLabel={periodLabel}
               empty={metrics.leaderboard.length === 0}
               emptyMessage="برای این بازه دادهٔ فروشنده‌ای ثبت نشده"
@@ -505,12 +506,12 @@ export function ReportsHub({ state, canViewFinance, canViewPayments, canOpenJour
 
           {activeDef.heatmap && (
             <NeoHeatmapChart
-              title={`نقشه حرارتی · ${activeDef.label}`}
+              title={`نقشه حرارتی مبلغ ناخالص فاکتورها · ${activeDef.label}`}
               periodLabel={periodLabel}
               xLabels={metrics.heatX}
               yLabels={metrics.heatY.length ? metrics.heatY : ['—']}
               cells={metrics.heatCells}
-              seriesName="فروش"
+              seriesName="ناخالص فاکتورها"
               empty={!metrics.hasInvoiceData || metrics.heatCells.length === 0}
             />
           )}
