@@ -15,8 +15,8 @@ export const DISPATCH_JOURNAL_BUCKETS=Object.freeze([
  * guessing credit/debit from textual journal descriptions.
  */
 export function buildDispatchEvidence({
- dispatchNumber, invoices, returns, journalEntries, financeComplete=false,
- returnComplete=false, invoiceComplete=false, asOf
+ dispatchNumber, invoices, returns, journalEntries, invoiceOutstanding=[], financeComplete=false,
+ receivableComplete=false, returnComplete=false, invoiceComplete=false, asOf
 }) {
  const unavailable=(reason)=>({status:'UNAVAILABLE',reason,dispatchNumber:key(dispatchNumber)});
  const number=key(dispatchNumber);
@@ -50,18 +50,33 @@ export function buildDispatchEvidence({
   }
   indexed.set(key(original.id),(indexed.get(key(original.id))||0)+ret.amountRials);
  }
+ // Official finance must allocate current balances to each invoice; customer-wide
+ // balances cannot be proportionally guessed per seller, supplier or dispatch.
+ const remainingByInvoice=new Map();
+ if(receivableComplete){
+  for(const row of invoiceOutstanding){
+   const id=key(row.invoiceId);
+   if(!id||remainingByInvoice.has(id)||!valid(row.amountRials))return unavailable('شاهد مانده فاکتور از مالی ناقص یا تکراری است');
+   remainingByInvoice.set(id,row.amountRials);
+  }
+  if([...invoiceMap.keys()].some(id=>!remainingByInvoice.has(id)))
+   return unavailable('مانده قطعی یکی از فاکتورهای حمل از مالی دریافت نشده است');
+ }
  const bySeller=new Map();
  for(const i of invoiceMap.values()){
   const id=key(i.sellerId);
-  const row=bySeller.get(id)||{sellerId:id,invoiceCount:0,returnedInvoiceCount:0,grossRials:0,linkedReturnsRials:0,customerIds:new Set()};
+  const row=bySeller.get(id)||{sellerId:id,invoiceCount:0,returnedInvoiceCount:0,grossRials:0,linkedReturnsRials:0,receivableRials:receivableComplete?0:null,customerIds:new Set()};
   row.invoiceCount++;row.grossRials+=i.grossRials;row.customerIds.add(key(i.customerId));
   const returned=indexed.get(key(i.id))||0;
   if(returned>0)row.returnedInvoiceCount++;
-  row.linkedReturnsRials+=returned;bySeller.set(id,row);
+  row.linkedReturnsRials+=returned;
+  if(receivableComplete)row.receivableRials+=remainingByInvoice.get(key(i.id));
+  bySeller.set(id,row);
  }
  const sellers=[...bySeller.values()].map(({customerIds,...r})=>({...r,customerCount:customerIds.size,
    returnInvoiceRate:r.invoiceCount?r.returnedInvoiceCount/r.invoiceCount:null,
-   returnValueRate:r.grossRials?r.linkedReturnsRials/r.grossRials:null}));
+   returnValueRate:r.grossRials?r.linkedReturnsRials/r.grossRials:null,
+   receivableRate:receivableComplete&&r.grossRials?r.receivableRials/r.grossRials:null}));
  const entries=(journalEntries||[]).filter(j=>key(j.dispatchNumber)===number&&settled.has(key(j.status).toUpperCase())&&!j.isVoided);
  const journal={};
  for(const bucket of DISPATCH_JOURNAL_BUCKETS)journal[bucket]=financeComplete?0:null;
@@ -81,6 +96,8 @@ export function buildDispatchEvidence({
    grossRials:gross,linkedReturnsRials:linkedReturns,
    unbasedReturnsRials:safeSum(unbased.map(r=>r.amountRials)),
    netLinkedSalesRials:gross-linkedReturns,
+   invoiceReceivableRials:receivableComplete?safeSum([...remainingByInvoice].filter(([id])=>invoiceMap.has(id)).map(([,amount])=>amount)):null,
+   receivableAsOf:receivableComplete?asOf||null:null,
    unbasedReturns:unbased, excludedReturnIds:excluded,
    sellers, journal, journalEvidenceStatus:financeComplete?'AVAILABLE':'UNAVAILABLE',
    invoiceIds:[...invoiceMap.keys()]};
@@ -95,7 +112,8 @@ export function proposeDispatchPenaltyReviews(evidence, policies, existingTaskKe
    if(!policy.enabled||!key(policy.version)||!key(policy.code))continue;
    if(policy.supplierId && !policy.sellerSupplierEvidence?.[seller.sellerId]?.includes(policy.supplierId))continue;
    const metric=policy.metric==='RETURN_INVOICE_RATE'?seller.returnInvoiceRate:
-    policy.metric==='RETURN_VALUE_RATE'?seller.returnValueRate:null;
+    policy.metric==='RETURN_VALUE_RATE'?seller.returnValueRate:
+    policy.metric==='RECEIVABLE_RATE'?seller.receivableRate:null;
    if(metric===null||metric===undefined||!valid(policy.maxRate)||policy.maxRate>1||metric<=policy.maxRate)continue;
    const taskKey=['DISPATCH_REVIEW',evidence.dispatchNumber,seller.sellerId,policy.code,policy.version].join(':');
    if(prior.has(taskKey))continue;
