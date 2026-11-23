@@ -27,6 +27,8 @@ on:
       - 'tests/cashFlowScenarioReconciliation.test.mjs'
       - 'tests/authLampExperienceContracts.test.mjs'
       - 'tests/personnelLoginPresentation.test.mjs'
+      - 'tests/cinematicWebGLStageContracts.test.mjs'
+      - 'src/components/auth/CinematicWebGLStage.tsx'
       - 'src/components/auth/loginCinematic.css'
       - 'src/components/onboarding/ApplyPage.tsx'
       - 'src/components/onboarding/recruitmentCinematic.css'
@@ -75,4 +77,4 @@ jobs:
             src/components/LoginWorkspace.tsx \
             src/components/onboarding/ApplyPage.tsx
       - name: Visit and geographical calculation tests
-        run: bun test tests/geoRouteAnalysis.test.mjs tests/visitIntelligence.test.mjs tests/erpVisitToursContracts.test.mjs tests/routeMetricHealth.test.mjs tests/routeMapAnalytics.test.mjs tests/routeMapMoney.test.mjs tests/landingNavigationSourceContracts.test.mjs tests/analyticsEvidenceContracts.test.mjs tests/advancedReportsAccess.test.mjs tests/criticalGeoFifoContracts.test.mjs tests/cashFlowScenarioReconciliation.test.mjs tests/authLampExperienceContracts.test.mjs tests/personnelLoginPresentation.test.mjs
+        run: bun test tests/geoRouteAnalysis.test.mjs tests/visitIntelligence.test.mjs tests/erpVisitToursContracts.test.mjs tests/routeMetricHealth.test.mjs tests/routeMapAnalytics.test.mjs tests/routeMapMoney.test.mjs tests/landingNavigationSourceContracts.test.mjs tests/analyticsEvidenceContracts.test.mjs tests/advancedReportsAccess.test.mjs tests/criticalGeoFifoContracts.test.mjs tests/cashFlowScenarioReconciliation.test.mjs tests/authLampExperienceContracts.test.mjs tests/personnelLoginPresentation.test.mjs tests/cinematicWebGLStageContracts.test.mjs
