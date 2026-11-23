@@ -189,7 +189,8 @@ const EXTENDED_PERMS: Record<string, (r: RBACService) => boolean> = {
 
 export function makeCanAccess(rbac: RBACService | null) {
   return (perm: string): boolean => {
-    if (!rbac) return true;
+    // No authenticated RBAC context means no module/feature access; never display all menu entries.
+    if (!rbac) return ALWAYS_ALLOWED.has(perm);
     if (perm.startsWith('module:')) {
       const moduleId = perm.slice('module:'.length);
       return (MODULE_ACCESS_PERMS[moduleId] || []).some(key => {
