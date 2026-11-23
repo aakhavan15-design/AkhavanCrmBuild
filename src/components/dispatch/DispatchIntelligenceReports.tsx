@@ -1,0 +1,130 @@
+import React,{useEffect,useMemo,useState} from 'react';
+import {AuthService} from '../../services/AuthService';
+import {GeoZoneMapEditor,type GeoMapPin} from '../GeoZoneMapEditor';
+import {formatMoneyCompact,formatCount} from '../../lib/format';
+type Invoice={InvoiceMirrorId:string;InvoiceNumber:string;SalesRepExternalId:string|null;CustomerName:string;
+ AccountId:string;GrossAmount:number;Latitude:number|null;Longitude:number|null;GeoAccuracyMeters:number|null};
+type Seller={sellerId:string;invoiceCount:number;grossRials:number;returnsRials:number;returnedInvoiceCount:number};
+type Report={status:'PARTIAL'|'UNAVAILABLE';reason?:string;plan?:{PlanNumber:string;PlanDate:string;DriverExternalId:string;DistributorExternalId:string|null};
+ invoices?:Invoice[];sellers?:Seller[];invoiceCount?:number;grossRials?:number;linkedReturnsRials?:number;
+ journalBuckets?:Record<string,number|null>;missingMappings?:number;coverage?:Record<string,string>;note?:string};
+const buckets=[['CASH','وجه نقد'],['CASH_DISCOUNT','تخفیف نقدی'],['INVOICE_SURCHARGE','اضافه فاکتور'],
+ ['CHEQUE','چک'],['TRANSFER','حواله بانکی'],['CASH_REFUND','وجه برگشتی']];
+const fmt=(n:number|null|undefined)=>n==null?'نامشخص':formatMoneyCompact(n);
+export function DispatchIntelligenceReports({plans}: {plans:Array<Record<string,unknown>>}){
+ const [plan,setPlan]=useState('');
+ const [seller,setSeller]=useState('ALL');
+ const [report,setReport]=useState<Report|null>(null);
+ const [loading,setLoading]=useState(false);
+ const [error,setError]=useState('');
+ const options=useMemo(()=>[...new Set(plans.map(p=>String(p.planNumber||p.PlanNumber||'')).filter(Boolean))], [plans]);
+ useEffect(()=>{if(!plan&&options.length)setPlan(options[0]);},[plan,options]);
+ useEffect(()=>{
+  if(!plan){setReport(null);return;}
+  const ctrl=new AbortController();setLoading(true);setError('');
+  const token=AuthService.getAccessToken();
+  if(!token){setError('نشست معتبر نیست');setLoading(false);return;}
+  void fetch('/api/v1/erp/dispatch/'+encodeURIComponent(plan)+'/analysis',{
+   headers:{Authorization:'Bearer '+token,Accept:'application/json'},signal:ctrl.signal
+  }).then(async resp=>{
+   const body=await resp.json().catch(()=>({}));
+   if(!resp.ok)throw new Error(body.error?.message||body.reason||'دریافت گزارش ناموفق بود');
+   setReport(body as Report);
+  }).catch(e=>{if(!ctrl.signal.aborted){setReport(null);setError(String(e.message||e));}})
+    .finally(()=>{if(!ctrl.signal.aborted)setLoading(false);});
+  return()=>ctrl.abort();
+ },[plan]);
+ const invoices=useMemo(()=>report?.invoices?.filter(i=>seller==='ALL'||i.SalesRepExternalId===seller)||[],[report,seller]);
+ const sellers=report?.sellers||[];
+ const filteredSellers=seller==='ALL'?sellers:sellers.filter(s=>s.sellerId===seller);
+ const gross=filteredSellers.reduce((n,s)=>n+s.grossRials,0);
+ const returns=filteredSellers.reduce((n,s)=>n+s.returnsRials,0);
+ const mapped=invoices.filter(i=>i.Latitude!=null&&i.Longitude!=null&&Number.isFinite(Number(i.Latitude))&&Number.isFinite(Number(i.Longitude))
+  &&(i.GeoAccuracyMeters==null||Number(i.GeoAccuracyMeters)<=100));
+ const pins:GeoMapPin[]=mapped.map(i=>({
+  id:String(i.InvoiceMirrorId),name:i.CustomerName,kind:'CUSTOMER',
+  point:{latitude:Number(i.Latitude),longitude:Number(i.Longitude)},tone:'good'
+ }));
+ const current=report?.status==='PARTIAL';
+ return <section className="space-y-3" dir="rtl" aria-label="تحلیل پیوسته حمل">
+  <div className="flex flex-wrap items-end gap-2 rounded-2xl border border-border bg-surface p-3">
+   <label className="min-w-48 flex-1 text-xs font-bold text-text-secondary">برنامه حمل
+    <select value={plan} onChange={e=>{setPlan(e.target.value);setSeller('ALL');}}
+     className="mt-1 h-11 w-full rounded-xl border border-border bg-canvas px-3 text-text-main">
+     {!options.length&&<option value="">برنامه حمل در داده مجاز موجود نیست</option>}
+     {options.map(x=><option key={x} value={x}>{x}</option>)}
+    </select>
+   </label>
+   <label className="min-w-40 flex-1 text-xs font-bold text-text-secondary">فیلتر مشترک فروشنده
+    <select value={seller} onChange={e=>setSeller(e.target.value)}
+     className="mt-1 h-11 w-full rounded-xl border border-border bg-canvas px-3 text-text-main">
+     <option value="ALL">همه فروشندگان</option>
+     {sellers.map(x=><option key={x.sellerId} value={x.sellerId}>{x.sellerId}</option>)}
+    </select>
+   </label>
+  </div>
+  {loading&&<p role="status" className="text-xs text-text-secondary">در حال دریافت اسناد حمل از سرور…</p>}
+  {error&&<p role="alert" className="rounded-xl border border-warning/40 p-3 text-xs text-warning">{error}</p>}
+  {current&&<>
+   <p className="rounded-xl border border-warning/40 bg-warning-soft p-3 text-xs leading-6 text-warning">
+    گزارش اسناد اولیه حمل است؛ تا زمان تطبیق دفتر مالی، دریافت برگشتی کامل و FIFO، ارقام سود و مطالبات قطعی محسوب نمی‌شوند.
+   </p>
+   <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+    <div className="space-y-3 rounded-2xl border border-border bg-surface p-4">
+     <strong className="text-sm text-text-main">۱ · فروش و برگشتی حمل</strong>
+     <div className="grid grid-cols-2 gap-2">
+      <div><p className="text-xs text-text-secondary">فروش فاکتور</p><strong className="text-xl text-text-main">{fmt(gross)}</strong></div>
+      <div><p className="text-xs text-text-secondary">برگشتی متصل</p><strong className="text-xl text-text-main">{fmt(returns)}</strong></div>
+     </div>
+     <div className="h-3 overflow-hidden rounded-full bg-border">
+      <div className="h-full rounded-full bg-rose-600" style={{width:`${gross>0?Math.min(100,Math.max(0,returns/gross*100)):0}%`}}/>
+     </div>
+     <p className="text-xs text-text-secondary">فروش خالص رسمی نیازمند تطبیق با دفتر است؛ این نوار فقط نسبت برگشتی متصل به فاکتور را نشان می‌دهد.</p>
+    </div>
+    <div className="space-y-3 rounded-2xl border border-border bg-surface p-4">
+     <strong className="text-sm text-text-main">۲ · عملکرد فروشندگان</strong>
+     <div className="max-h-60 space-y-2 overflow-y-auto">
+      {filteredSellers.map(s=><button type="button" key={s.sellerId} onClick={()=>setSeller(s.sellerId)}
+       className="w-full rounded-xl border border-border p-2 text-right text-xs hover:border-primary">
+       <span className="flex justify-between"><strong>{s.sellerId}</strong><span>{formatCount(s.invoiceCount)} فاکتور · {formatCount(s.returnedInvoiceCount)} فاکتور برگشتی</span></span>
+       <span className="mt-1 block">{fmt(s.grossRials)} فروش · {fmt(s.returnsRials)} برگشتی</span>
+       <span className="mt-1 block h-2 overflow-hidden rounded-full bg-border"><span className="block h-full bg-rose-600" style={{width:`${s.grossRials>0?Math.min(100,s.returnsRials/s.grossRials*100):0}%`}}/></span>
+      </button>)}
+      {!filteredSellers.length&&<p className="text-xs text-text-secondary">فروشنده‌ای در این حمل ثبت نشده است.</p>}
+     </div>
+    </div>
+    <div className="space-y-3 rounded-2xl border border-border bg-surface p-4">
+     <strong className="text-sm text-text-main">۳ · طبقه‌بندی وجه و اسناد حمل</strong>
+     {seller!=='ALL'&&<p className="text-xs text-warning">طبقه‌بندی سند مالی در سطح کل حمل است؛ قابل انتساب حدسی به فروشنده انتخابی نیست.</p>}
+     <div className="grid grid-cols-2 gap-2">
+      {buckets.map(([code,label])=><div key={code} className="rounded-xl bg-canvas p-2">
+       <p className="text-xs text-text-secondary">{label}</p>
+       <strong className="text-sm text-text-main">{fmt(report.journalBuckets?.[code])}</strong>
+      </div>)}
+     </div>
+     {!!report.missingMappings&&<p className="text-xs text-warning">{formatCount(report.missingMappings)} سطر سند بدون نگاشت حساب معتبر است.</p>}
+    </div>
+    <div className="space-y-3 rounded-2xl border border-border bg-surface p-4">
+     <strong className="text-sm text-text-main">۴ · مشتریان و جغرافیای حمل</strong>
+     <div className="flex flex-wrap gap-2 text-xs text-text-secondary">
+      <span>{formatCount(invoices.length)} فاکتور</span>
+      <span>{formatCount(new Set(invoices.map(i=>i.AccountId)).size)} مشتری</span>
+      <span>{formatCount(mapped.length)} فاکتور با مختصات معتبر</span>
+     </div>
+     {pins.length>0?<GeoZoneMapEditor coordinateText="" onChange={()=>{}} disabled markers={pins}/>:
+      <p className="rounded-xl border border-dashed border-border p-3 text-xs text-text-secondary">مختصات معتبر برای نقشه این حمل دریافت نشد.</p>}
+     <p className="text-xs text-text-secondary">لایه قرمز مطالبات و محدوده پیشنهادی وصول تا اتصال مانده قطعی و تطبیق زمان سند فعال نمی‌شود.</p>
+    </div>
+   </div>
+   <div className="rounded-xl border border-border bg-surface p-3">
+    <strong className="text-sm text-text-main">فاکتورهای حمل (فیلتر مرتبط)</strong>
+    <div className="mt-2 max-h-56 overflow-auto">
+     {invoices.map(i=><div key={i.InvoiceMirrorId} className="flex justify-between gap-3 border-b border-border py-2 text-xs">
+      <span>{i.InvoiceNumber} · {i.CustomerName}</span><span>{fmt(Number(i.GrossAmount))}</span>
+     </div>)}
+    </div>
+   </div>
+  </>}
+  {report?.status==='UNAVAILABLE'&&<p className="rounded-xl border border-warning/30 p-3 text-xs text-warning">منبع رسمی حمل در دسترس نیست: {report.reason}</p>}
+ </section>;
+}
