@@ -265,11 +265,11 @@ export function createRouteMapAnalytics({sql,run}) {
       .query(balanceSql)).recordset.map(x=>[String(x.RouteId).toLowerCase(),x]));
   }
   const permittedMetrics=['customerCount','visitCount','attentionPercent',
-     ...(financeAllowed?['activeCustomerCount','invoiceCount','invoicedSales']:[]),
+     ...(financeAllowed&&invoiceFeedReady?['activeCustomerCount','invoiceCount','invoicedSales']:[]),
      ...(financeAllowed&&invoiceFeedReady&&returnFeedReady?['netSales']:[]),
      ...(returnAllowed&&returnFeedReady?['returnAmount']:[]),
      ...(receivableAllowed?['receivableAmount']:[]),
-     ...(targetAllowed&&financeAllowed?['targetAchievedPercent']:[])];
+     ...(targetAllowed&&financeAllowed&&invoiceFeedReady&&returnFeedReady?['targetAchievedPercent']:[])];
   let approvedTargets=new Map();
   if(targetAllowed && financeAllowed && !filters.productIds.length && !filters.brandIds.length &&
       !filters.supplierIds.length && !filters.repIds.length){
@@ -302,11 +302,12 @@ export function createRouteMapAnalytics({sql,run}) {
       const verifiedNet=financeAllowed&&invoiceFeedReady&&returnFeedReady;
       // A return of an invoice from an earlier period may make this period's net negative.
       const computedNet=verifiedNet?Number(f?.NetSales||0)-Number(returned?.ReturnAmount||0):null;
-      return shapeRow(r,financeAllowed,count,r.VisitedCount,f?Number(f.InvoiceCount):null,
-       computedNet,f?Number(f.ActiveCustomerCount):null,
+      return shapeRow(r,financeAllowed&&invoiceFeedReady,count,r.VisitedCount,
+       invoiceFeedReady?Number(f?.InvoiceCount||0):null,
+       computedNet,invoiceFeedReady?Number(f?.ActiveCustomerCount||0):null,
        r.VisitCount,r.OrderOutcomes,r.MissingGps,
        count>0?Math.round((count-Number(r.MissingGps))*10000/count)/100:null,
-       {invoicedSales:financeAllowed&&f?f.NetSales:null,netSalesVerified:verifiedNet,
+       {invoicedSales:invoiceFeedReady?Number(f?.NetSales||0):null,netSalesVerified:verifiedNet,
         returnAmount:returnFeedReady?(returned?.ReturnAmount??0):null,receivableAmount:receivable?.ReceivableAmount??null,
         receivableDate:receivable?new Date().toISOString().slice(0,10):null,
         visitSourcePresent:visitFeed,
