@@ -31,7 +31,7 @@ export function FifoInventoryPanel({ userId, locale }: {
       </header>
       {loading ? <p role="status" className="text-sm text-text-secondary">در حال دریافت لایه‌های منتشرشده…</p>
         : data?.status === 'RESTRICTED' ? <p role="status" className="text-sm text-text-secondary">مجوز مشاهدهٔ ارزش‌گذاری سازمانی را ندارید.</p>
-        : error || !result || result.status === 'UNAVAILABLE' ? (
+        : error || !data || data.status === 'UNAVAILABLE' ? (
           <div role="alert" className="flex flex-wrap items-center gap-2 text-sm text-text-secondary">
             <span>منبع ارزش‌گذاری در دسترس نیست.</span>
             <Button type="button" variant="outline" size="sm" onClick={() => void refetch()}>بازخوانی ارزش‌گذاری</Button>
