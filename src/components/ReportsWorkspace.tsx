@@ -5,7 +5,11 @@ import { useCan } from '../hooks/useCan';
 import { portFromAppState, readReportCollections } from '../lib/dataPorts';
 import { resolveDataSourceStatus, DATA_SOURCE_STATUS_LABELS, sourceStatusNote } from '../lib/dataTrust';
 import { ReportsHub } from './ReportsHub';
-import { ReportEnginePanels } from './ReportEnginePanels';
+// Load the large analytical engine only for explicit analytical routes; the
+// ordinary ReportsHub stays small and works independently of this chunk.
+const ReportEnginePanels = React.lazy(() =>
+  import('./ReportEnginePanels').then(module => ({ default: module.ReportEnginePanels }))
+);
 import { getStateSyncEngine, isSqlProviderActive } from '../services/stateSyncRuntime';
 
 interface ReportScopeSource {
@@ -160,6 +164,7 @@ export function ReportsWorkspace({ state, updateState, setActiveTab }: ReportsWo
         </Link>
       </nav>
       {analyticalView ? (
+        <React.Suspense fallback={<section role="status" className="rounded-xl border border-border bg-surface p-4 text-sm text-text-secondary">در حال بارگذاری گزارش تحلیلی…</section>}>
         <ReportEnginePanels
           state={reportHubState}
           visibleInvoices={visibleInvoices}
@@ -168,6 +173,7 @@ export function ReportsWorkspace({ state, updateState, setActiveTab }: ReportsWo
           visibleExpenses={visibleExpenses}
           visibleAccounts={visibleAccounts}
         />
+        </React.Suspense>
       ) : (
         <ReportsHub
           canViewChurn={can('accounts','VIEW') && can('quotes','VIEW')}
