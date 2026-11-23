@@ -13,7 +13,7 @@ function unproject(x:number,y:number,z:number):GeoPoint{const size=TILE*2**z;con
 function toGeometry(points:GeoPoint[]):GeoPolygonGeometry|null{if(points.length<3)return null;const ring=points.map(p=>[p.longitude,p.latitude]);ring.push([...ring[0]]);return{type:'Polygon',coordinates:[ring]};}
 function fromGeometry(g?:GeoPolygonGeometry):GeoPoint[]{return g?.coordinates?.[0]?.slice(0,-1).map(p=>({longitude:p[0],latitude:p[1]}))||[];}
 type MapProviderConfig = { provider?: Provider; customTemplate?: string; customAttribution?: string };
-export interface GeoMapPin { id:string; name:string; point:GeoPoint; kind:'CUSTOMER'|'VISIT'|'GPS'|'ROUTE'; outside?:boolean; sequence?:number; detailPath?:string; bubbleLabel?:string; tone?:'good'|'warn'|'bad'|'unknown' }
+export interface GeoMapPin { id:string; name:string; point:GeoPoint; kind:'CUSTOMER'|'VISIT'|'GPS'|'ROUTE'|'DISPATCH'|'COLLECTION'; outside?:boolean; sequence?:number; detailPath?:string; bubbleLabel?:string; tone?:'good'|'warn'|'bad'|'unknown' }
 interface Props{geometry?:GeoPolygonGeometry;coordinateText:string;onChange:(geometry:GeoPolygonGeometry|null)=>void;onPointsChange?:(points:GeoPoint[])=>void;disabled?:boolean;mapConfig?:MapProviderConfig;onMapConfigChange?:(config:MapProviderConfig)=>void;markers?:GeoMapPin[];gpsTrack?:GeoPoint[];onMarkerSelect?:(marker:GeoMapPin)=>void;}
 export function GeoZoneMapEditor({geometry,coordinateText,onChange,onPointsChange,disabled=false,mapConfig={},onMapConfigChange,markers=[],gpsTrack=[],onMarkerSelect}:Props){
  const [center,setCenter]=useState<GeoPoint>(()=>{const ring=geometry?.coordinates?.[0]?.slice(0,-1)||[];if(ring.length)return ring.reduce((a,p)=>({longitude:a.longitude+p[0]/ring.length,latitude:a.latitude+p[1]/ring.length}),{longitude:0,latitude:0});
@@ -65,13 +65,13 @@ export function GeoZoneMapEditor({geometry,coordinateText,onChange,onPointsChang
    const selected=selectedPin===marker.id;
    return <div key={marker.kind+':'+marker.id} className="absolute" style={{left:p.x,top:p.y,transform:'translate(-50%,-50%)',zIndex:selected?30:8}}
      onPointerDown={event=>event.stopPropagation()} onPointerUp={event=>event.stopPropagation()}>
-     <button type="button" className={`grid min-h-8 place-items-center border-2 border-white text-xs font-black text-white shadow-lg ${marker.kind==='ROUTE'?'min-w-16 rounded-2xl px-2 py-1.5':'min-w-8 rounded-full'} ${marker.kind==='ROUTE'?(marker.tone==='good'?'bg-emerald-700':marker.tone==='warn'?'bg-amber-600':marker.tone==='bad'?'bg-rose-700':'bg-slate-600'):marker.outside?'bg-danger':marker.kind==='VISIT'?'bg-warning':marker.kind==='GPS'?'bg-slate-600':'bg-primary'}`}
+     <button type="button" className={`grid min-h-8 place-items-center border-2 border-white text-xs font-black text-white shadow-lg ${marker.kind==='ROUTE'?'min-w-16 rounded-2xl px-2 py-1.5':'min-w-8 rounded-full'} ${marker.kind==='ROUTE'?(marker.tone==='good'?'bg-emerald-700':marker.tone==='warn'?'bg-amber-600':marker.tone==='bad'?'bg-rose-700':'bg-slate-600'):marker.kind==='COLLECTION'?'bg-rose-700':marker.kind==='DISPATCH'?'bg-emerald-700':marker.outside?'bg-danger':marker.kind==='VISIT'?'bg-warning':marker.kind==='GPS'?'bg-slate-600':'bg-primary'}`}
        onClick={()=>{setSelectedPin(selected?null:marker.id);onMarkerSelect?.(marker);}} aria-label={marker.name}>
        {marker.kind==='ROUTE'?<span className="max-w-44 whitespace-pre-line text-center leading-4">{marker.bubbleLabel||marker.name}</span>:marker.sequence??(marker.kind==='VISIT'?'✓':marker.kind==='GPS'?'●':'•')}
      </button>
      {selected&&<div className="absolute bottom-10 right-1/2 min-w-48 translate-x-1/2 rounded-xl border border-border bg-white p-3 text-right shadow-xl">
        <strong className="block text-xs text-text-main">{marker.name}</strong>
-       <p className="mt-1 text-micro text-text-secondary">{marker.kind==='VISIT'?'محل ثبت ویزیت':marker.kind==='GPS'?'موقعیت ثبت‌شده فروشنده':'موقعیت مشتری'}{marker.outside?' · خارج از محدوده':''}</p>
+       <p className="mt-1 text-micro text-text-secondary">{marker.kind==='VISIT'?'محل ثبت ویزیت':marker.kind==='GPS'?'موقعیت ثبت‌شده فروشنده':marker.kind==='COLLECTION'?'مشتری دارای مطالبات قطعی':marker.kind==='DISPATCH'?'مشتری فاکتوردار حمل':'موقعیت مشتری'}{marker.outside?' · خارج از محدوده':''}</p>
        {marker.detailPath&&<Link to={marker.detailPath} className="mt-2 inline-block rounded-lg bg-primary px-3 py-2 text-xs font-bold text-white">مشاهده جزئیات</Link>}
      </div>}
    </div>;
