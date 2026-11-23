@@ -50,7 +50,7 @@ export function assessOrderRisk(input: {
   const zonePolicy = policies.find(p => p.enabled && p.type === 'ZONE' && p.value != null && appliesToOrder(p));
   if (zonePolicy && order?.zone && order.zone !== zonePolicy.value) signals.push({ code: 'ZONE_POLICY', level: 'HIGH', title: 'مغایرت محدوده توزیع', reason: `زون سفارش ${order.zone} با زون مجاز ${zonePolicy.value} مطابقت ندارد.`, blocking: true });
   const sameCustomer = orders.filter(o => o.id !== order.id && o.customerId === order.customerId && o.status !== 'CANCELLED');
-  const sameValueRecent = sameCustomer.find(o => Number(o.totalAmount) === Number(order.totalAmount) && Math.abs(new Date(o.createdAt || 0).getTime() - new Date(order.createdAt || 0).getTime()) < 24 * 60 * 60 * 1000);
+  const sameValueRecent = sameCustomer.find(o => Number(o.totalAmount) === Number(order.totalAmount) && Math.abs(Date.parse(String(o.createdAt || '')) - Date.parse(String(order.createdAt || ''))) < 24 * 60 * 60 * 1000);
   if (sameValueRecent) signals.push({ code: 'POSSIBLE_DUPLICATE', level: 'MEDIUM', title: 'احتمال سفارش تکراری', reason: `سفارش ${sameValueRecent.orderNumber || sameValueRecent.id} با مبلغ برابر برای همین مشتری در بازه نزدیک وجود دارد.` });
   const customerReturns = returns.filter(r => validFinancialRecord(r) && r.customerId === order.customerId);
   if (customerReturns.length >= 3) signals.push({ code: 'RETURN_PATTERN', level: 'MEDIUM', title: 'تکرار برگشتی مشتری', reason: `${customerReturns.length} برگشتی در داده‌های موجود ثبت شده؛ علت نهایی نیازمند بررسی انسانی است.` });
@@ -113,7 +113,7 @@ export function buildOperationsMetrics(input: { orders?: Array<Record<string, un
   const knownWeights = plans.filter(p => Number(p.capacityKg) > 0 && p.plannedWeightKg != null);
   return {
     orderCount: orders.length,
-    approvedOrders: orders.filter(o => ['APPROVED','RELEASED','IN_TRANSIT','DELIVERED'].includes(o.status)).length,
+    approvedOrders: orders.filter(o => ['APPROVED','RELEASED','IN_TRANSIT','DELIVERED'].includes(String(o.status||''))).length,
     cancelledOrders: orders.filter(o => o.status === 'CANCELLED').length,
     orderValue: orders.filter(o => o.status !== 'CANCELLED').reduce((s,o)=>s+Number(o.totalAmount||0),0),
     invoicedOrderCount: orders.filter(o => invoicedOrderIds.has(o.id)).length,
@@ -165,7 +165,7 @@ export function calculateCreditMetrics(input: { invoices?: Array<Record<string, 
     settlementSampleSize: settlementDays.length,
     overdueInvoiceCount: officialCoverage ? overdueRows.length : null,
     bouncedChequeCount: cheques.filter(cheque=>cheque.status==='BOUNCED').length,
-    unresolvedChequeCount: cheques.filter(cheque=>['PENDING','RECEIVED','DEPOSITED'].includes(cheque.status)).length,
+    unresolvedChequeCount: cheques.filter(cheque=>['PENDING','RECEIVED','DEPOSITED'].includes(String(cheque.status||''))).length,
     clearedAllocatedAmount: clearedAllocated,
     allocatedCollectionRatePercent: invoiceGross>0?clearedAllocated/invoiceGross*100:null,
     overdueBalance: officialCoverage ? overdueRows.reduce((sum,invoice)=>sum+Number(input.invoiceOutstandingById?.[String(invoice.id)]),0) : null,
@@ -175,7 +175,7 @@ export function calculateCreditMetrics(input: { invoices?: Array<Record<string, 
 export function analyzeReturns(returns: Array<Record<string, unknown>> = []) {
   const byCause = new Map<string,{reasonCode:string;count:number;amount:number;confirmedCount:number;unconfirmedAmount:number}>();
   for (const item of returns.filter(validFinancialRecord)) {
-    const reasonCode = item.reasonCode || 'UNKNOWN';
+    const reasonCode = String(item.reasonCode || 'UNKNOWN');
     const entry = byCause.get(reasonCode) || { reasonCode, count: 0, amount: 0, confirmedCount: 0, unconfirmedAmount: 0 };
     const amount = finiteAmount(item.amount) ?? 0;
     entry.count += 1; entry.amount += amount;
@@ -187,7 +187,7 @@ export function analyzeReturns(returns: Array<Record<string, unknown>> = []) {
 
 export function evaluateDispatchPlan(plan: Record<string, unknown>, orders: Array<Record<string, unknown>> = []) {
   const assignedIds: string[] = Array.isArray(plan?.orderIds) ? plan.orderIds : [];
-  const assigned = orders.filter(o=>assignedIds.includes(o.id));
+  const assigned = orders.filter(o=>assignedIds.includes(String(o.id||'')));
   const signals: RiskSignal[] = [];
   const capacity = Number(plan?.capacityKg), weight = plan?.plannedWeightKg == null ? NaN : Number(plan.plannedWeightKg);
   if (!Number.isFinite(capacity) || capacity <= 0 || !Number.isFinite(weight)) {
