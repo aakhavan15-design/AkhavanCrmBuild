@@ -158,7 +158,7 @@ export function RouteMapOverview(){
  const routeChoices=rows.map(r=>({id:r.routeId,name:r.routeCode+' · '+r.routeName}));
  const permitted=new Set<MetricId>(report?.permittedMetrics||['customerCount','visitCount','attentionPercent']);
  const currentPrimary=permitted.has(primary)?primary:'customerCount';
- const visibleMetricIds=metrics.filter(id=>id==='customerCount'||id===primary||id!=='customerCount');
+ const visibleMetricIds=metrics.filter(id=>id==='customerCount'||permitted.has(id));
  const color=(r:RouteSummary):Tone=>assessRouteMetric(r,rows,currentPrimary).tone;
  const colorBasis=rows.length?assessRouteMetric(rows[0],rows,currentPrimary).basis:'';
  const markers:GeoMapPin[]=rows.flatMap(r=>{
