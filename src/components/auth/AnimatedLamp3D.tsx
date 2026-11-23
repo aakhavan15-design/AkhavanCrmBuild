@@ -293,6 +293,10 @@ export function AnimatedLamp3D({
   const targetY = 278 + pullOffset.y;
   const controlX = anchorX + pullOffset.x * 0.35;
   const controlY = (anchorY + targetY) * 0.5;
+  const renderedTilt = Math.max(-30, Math.min(30, lampTilt + (isDragging || isBouncing ? 0 : deviceTilt)));
+  const tiltRadians = renderedTilt * Math.PI / 180;
+  const beadX = 160 + (targetX - 160) * Math.cos(tiltRadians) - (targetY - 2) * Math.sin(tiltRadians);
+  const beadY = 2 + (targetX - 160) * Math.sin(tiltRadians) + (targetY - 2) * Math.cos(tiltRadians);
 
   return (
     <div
@@ -306,7 +310,7 @@ export function AnimatedLamp3D({
           className="w-full h-full overflow-visible drop-shadow-2xl"
           xmlns="http://www.w3.org/2000/svg"
           style={{
-            transform: `rotate(${Math.max(-30, Math.min(30, lampTilt + (isDragging || isBouncing ? 0 : deviceTilt)))}deg)`,
+            transform: `rotate(${renderedTilt}deg)`,
             transformOrigin: '160px 2px',
             transition: isDragging ? 'none' : 'transform 0.15s ease-out',
           }}
@@ -609,8 +613,9 @@ export function AnimatedLamp3D({
           onClick={handleQuickClick}
           className="absolute z-30 cursor-grab active:cursor-grabbing touch-none rounded-full outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/80 focus-visible:ring-offset-4 focus-visible:ring-offset-black"
           style={{
-            left: `calc(50% + ${(targetX - 160) * 0.95}px - 38px)`,
-            top: `${(targetY / 620) * 100 - 8}%`,
+            left: `${(beadX / 320) * 100}%`,
+            top: `${(beadY / 620) * 100}%`,
+            transform: 'translate(-50%, -50%)',
             width: 'var(--size-76)',
             height: 'var(--size-92)',
           }}
