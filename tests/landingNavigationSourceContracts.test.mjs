@@ -53,3 +53,11 @@ test('analytical report source is not claimed LIVE simply because a provider is 
  assert.match(report,/sync\.phase !== 'error'/);
  assert.doesNotMatch(report,/hasLiveSql:\s*true\s*,/);
 });
+
+test('finance analytics and user administration shortcuts respect destination RBAC',()=>{
+ assert.match(catalog,/\/reports\?tab=finance', 'finance\.reports'/);
+ assert.match(catalog,/\/reports\?tab=receivables', 'finance\.reports'/);
+ assert.match(navigation,/'finance\.reports': r => r\.canAccessWorkspace\('finance'\) && r\.canAccessWorkspace\('reports'\)/);
+ assert.match(catalog,/\/settings\?tab=users', 'users'/);
+ assert.match(catalog,/\/settings\?tab=users&sub=permissions', 'users'/);
+});
