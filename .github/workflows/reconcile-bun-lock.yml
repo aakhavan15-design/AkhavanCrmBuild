@@ -1,0 +1,37 @@
+name: One-time Bun lockfile reconciliation
+on:
+  push:
+    branches:
+      - codex/unified-ux-quality-gate
+    paths:
+      - .github/workflows/reconcile-bun-lock.yml
+permissions:
+  contents: write
+jobs:
+  lockfile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: codex/unified-ux-quality-gate
+          persist-credentials: true
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.5
+      - name: Regenerate lockfile without installing full dependencies
+        run: bun install --lockfile-only
+      - name: Commit only bun.lock when changed
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- bun.lock; then
+            echo "Lockfile already synchronized"
+            exit 0
+          fi
+          git diff --name-only
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- bun.lock
+          git commit -m "chore(deps): reconcile bun.lock with current package.json"
+          git push origin HEAD:refs/heads/codex/unified-ux-quality-gate
