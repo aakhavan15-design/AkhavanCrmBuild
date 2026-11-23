@@ -264,6 +264,7 @@ export const MODULE_LANDINGS: ModuleLandingDefinition[] = [
           tile('expenses', 'هزینه‌ها', 'ثبت و بررسی اسناد هزینه', '/finance?tab=expenses', 'finance', Receipt),
           tile('profitability', 'سودآوری عملیات', 'تحلیل سودآوری فروش و هزینه‌های پخش', '/operations?tab=profitability', 'ops.profitability', TrendingUp),
           tile('finance-reports', 'گزارش‌های مالی', 'سود و زیان دفتری و جریان نقدینگی', '/reports?tab=finance', 'finance.reports', PieChart),
+          tile('finance-intelligence', 'هوش مالی و تحلیل نقدینگی', '۱۱ گزارش بینشی با سود و زیان دفتری و شواهد قابل پیگیری', '/reports?view=analytical&report=1', 'finance.reports', TrendingUp),
           tile('audit-finance', 'پایش مغایرت مالی', 'کنترل کدینگ، ماهیت حساب و توازن اسناد', '/audit?module=finance', 'finance', SearchCheck),
           tile('fin-budget', 'بودجه‌ریزی', 'بودجه دوره‌ای هر واحد', '/planned?item=fin-budget', 'finance', Target),
           tile('fin-cost-control', 'کنترل هزینه‌ها', 'هزینه در برابر بودجه', '/planned?item=fin-cost-control', 'finance', Sliders),
