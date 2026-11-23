@@ -77,7 +77,10 @@ export function LivePendantWebGL({
       vec2 scene(vec3 worldP) {
         vec3 p=pivot(worldP);
         // Spun-metal bell: thin-shell shade with open illuminated underside.
-        float shell=abs(capCone(p-vec3(0.,2.10,0.),.39,.84,.29))-.035;
+        // True open-bottom spun shade, not a filled cone blocking the glowing bulb.
+        float shadeY=p.y-2.10;
+        float shadeRadius=mix(.84,.29,clamp((shadeY+.39)/.78,0.,1.));
+        float shell=max(abs(length(p.xz)-shadeRadius)-.031,abs(shadeY)-.39);
         float lip=torus(p-vec3(0.,1.708,0.),vec2(.835,.045));
         float copper=min(shell,lip);
         float socket=capsule(p,vec3(0.,2.49,0.),vec3(0.,2.64,0.),.15);
@@ -88,7 +91,7 @@ export function LivePendantWebGL({
         float metal=min(copper,min(wire,ceiling));
         // Interior ceramic/glass globe, recessed into shade.
         float glass=length((p-vec3(0.,1.82,0.))*vec3(1.,1.16,1.))-.31;
-        glass=max(glass,-(p.y-2.11));
+        glass=max(glass,p.y-2.11); // hide only the part above the inner hood
         // Pull chain and bead, linked to the unchanged accessible drag handle.
         float chain=capsule(p,vec3(.72,1.94,.0),vec3(.72+pull.x,.97-pull.y,.0),.012);
         float bead=length(p-vec3(.72+pull.x,.97-pull.y,0.))-.077;
@@ -257,6 +260,13 @@ export function LivePendantWebGL({
       gl.clearColor(0,0,0,0);
       gl.clear(gl.COLOR_BUFFER_BIT);
       gl.drawArrays(gl.TRIANGLES,0,3);
+      if (!painted && gl.getError() !== gl.NO_ERROR) {
+        // Keep SVG visible on a driver that accepts but cannot render the shader.
+        lost=true;
+        cancelAnimationFrame(raf);
+        readyRef.current?.(false);
+        return;
+      }
       if(!painted) {
         painted=true;
         setReady(true);
