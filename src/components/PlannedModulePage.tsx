@@ -52,7 +52,7 @@ export function PlannedModulePage({ state }: PlannedModulePageProps) {
           </div>
         </div>
         <p role="status" className="mt-4 rounded-xl border border-warning/30 bg-warning/10 px-3 py-2 text-caption leading-6 text-text-main">
-          وضعیت: <strong>در دست تکمیل — ساخته‌نشده</strong>. ورودی منو برای جایگاه نهایی این بخش ثبت شده است؛ تا پیاده‌سازی و آزمون واقعی، داده یا عملکردی نمایش داده نمی‌شود.
+          وضعیت: <strong>{item.existing ? 'بخش مرتبط موجود — تکمیل و آزمون نهایی باز است' : 'در دست تکمیل — ساخته‌نشده'}</strong>. {item.existing ? 'برای امکاناتی که واقعاً موجودند از دکمه ورود به بخش مرتبط استفاده کنید؛ تکمیل همه نیازمندی‌ها هنوز تأیید نشده است.' : 'ورودی منو برای جایگاه نهایی این بخش ثبت شده و هیچ داده یا عملکرد نمایشی به‌جای اجرای واقعی نشان داده نمی‌شود.'}
         </p>
       </section>
 
@@ -74,7 +74,7 @@ export function PlannedModulePage({ state }: PlannedModulePageProps) {
           {PLANNED_DELIVERABLES.map(name => (
             <li key={name} className="flex items-center justify-between gap-3 py-2 text-xs text-text-main">
               <span>{name}</span>
-              <span className="rounded-full bg-sunken px-2 py-0.5 text-micro font-bold text-text-secondary">ساخته‌نشده</span>
+              <span className="rounded-full bg-sunken px-2 py-0.5 text-micro font-bold text-text-secondary">{item.existing ? "نیازمند تأیید" : "ساخته‌نشده"}</span>
             </li>
           ))}
         </ul>
