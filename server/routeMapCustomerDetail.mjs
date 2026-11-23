@@ -241,7 +241,7 @@ export function createRouteCustomerDetailReader({sql,run}){
       invoiceCount:hasInvoiceFeed?ci.length:null,
       invoicedSales:hasInvoiceFeed?sales:null,
       netSales:moneyResult.netSales,
-      returnAmount:hasReturnFeed?(returnMap.get(id)||0):null,
+      returnAmount:hasReturnFeed&&returnMap.has(id)?Number(returnMap.get(id)):null,
       receivableAmount:balanceMap.has(id)?balanceMap.get(id):null,
       receivableAsOf:balanceMap.has(id)?new Date().toISOString().slice(0,10):null,
       lastInvoice:lastInvoice?{number:lastInvoice.InvoiceNumber,date:lastInvoice.InvoiceDate,
@@ -261,7 +261,7 @@ export function createRouteCustomerDetailReader({sql,run}){
     warnings:['بازه زمانی بر اساس عضویت رسمی ERP محاسبه شده است.',
       'برای مشتری چندمسیره ممکن است یک فاکتور در هر مسیر مربوط نمایش داده شود.',
       'نداشتن ویزیت ثبت‌شده در داده قابل مشاهده، اثبات نمی‌کند که مراجعه حضوری انجام نشده است.',
-      'فروش خالص فقط در صورت تأیید فاکتور و مرجوعی، از مبلغ ریز فاکتور منهای برگشتی معتبر محاسبه می‌شود. مبلغ فاکتور قبل از برگشت جداست.',
+      'فروش خالص قطعی برای ریز مسیر نیازمند تطبیق با دفتر رسمی همان دامنه است و در نبود آن نامشخص نمایش داده می‌شود.',
       'مطالبات مانده فعلی حسابداری است؛ سود و هدف نیازمند منبع قابل اتکا هستند.']};
  });
 }
