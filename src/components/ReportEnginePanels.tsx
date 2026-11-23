@@ -199,7 +199,10 @@ function pctChange(current: number | null, previous: number | null): string | nu
 export function ReportEnginePanels({ state, visibleInvoices, visiblePayments, visibleExpenses, visibleAccounts }: Props) {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [selected, setSelected] = useState(1);
+  const [selected, setSelected] = useState(() => {
+    const report = Number(searchParams.get('report'));
+    return Number.isInteger(report) && report >= 1 && report <= REPORTS.length ? report : 1;
+  });
   const [period, setPeriod] = useState<'90d' | '12m' | 'all'>('12m');
   const [customerQuery, setCustomerQuery] = useState('');
   const [lifecycleFilter, setLifecycleFilter] = useState<string | null>(null);
@@ -603,7 +606,13 @@ export function ReportEnginePanels({ state, visibleInvoices, visiblePayments, vi
               type="button" 
               role="tab" 
               aria-selected={selected === i + 1} 
-              onClick={() => setSelected(i + 1)} 
+              onClick={() => {
+                setSelected(i + 1);
+                const next = new URLSearchParams(searchParams);
+                next.set('view', 'analytical');
+                next.set('report', String(i + 1));
+                setSearchParams(next, { replace: true });
+              }} 
               className={`shrink-0 rounded-xl border px-3 py-1.5 text-right cursor-pointer transition-all ${
                 selected === i + 1 
                   ? 'border-primary bg-primary text-on-primary shadow-xs font-bold' 
