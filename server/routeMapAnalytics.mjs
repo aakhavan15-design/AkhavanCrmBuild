@@ -1,3 +1,4 @@
+import {reconcileRouteNetSales} from './routeMapMoney.mjs';
 /**
  * Route-map analytics over ERP SQL mirrors. One source-of-truth per metric.
  * A customer can belong to multiple routes: aggregates are PER ROUTE and
@@ -303,9 +304,14 @@ export function createRouteMapAnalytics({sql,run}) {
       const count=Number(r.CustomerCount);
       const key=String(r.RouteId).toLowerCase();
       const returned=returns.get(key),receivable=receivables.get(key);
-      const verifiedNet=financeAllowed&&invoiceFeedReady&&returnFeedReady;
-      // A return of an invoice from an earlier period may make this period's net negative.
-      const computedNet=verifiedNet?Number(f?.NetSales||0)-Number(returned?.ReturnAmount||0):null;
+      const moneyResult=reconcileRouteNetSales({
+        invoicedAmount:f?.NetSales,
+        returnedAmount:returned?.ReturnAmount,
+        invoiceSourceReady:financeAllowed&&invoiceFeedReady,
+        returnSourceReady:returnAllowed&&returnFeedReady,
+      });
+      const verifiedNet=moneyResult.status==='VERIFIED';
+      const computedNet=moneyResult.netSales;
       return shapeRow(r,financeAllowed&&invoiceFeedReady,count,r.VisitedCount,
        invoiceFeedReady?Number(f?.InvoiceCount||0):null,
        computedNet,invoiceFeedReady?Number(f?.ActiveCustomerCount||0):null,
