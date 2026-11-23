@@ -10,7 +10,7 @@ test('cleared receipt total and method distribution use identical payment status
 });
 test('non-accounting delivery, visit, route and inventory tiles do not relabel sales charts',()=>{
   const ids=['routes','visit','delivery','discrepancy','catalog','proposals','team-activity'];
-  for(const id of ids) assert.match(src,new RegExp("'"+id+"': \\{path:"));
+  for(const id of ids) assert.match(src,new RegExp("(?:'"+id+"'|"+id+"): \\{path:"));
   assert.match(src,/specializedDestination \? \(/);
   assert.match(src,/navigate\(specializedDestination\.path\)/);
 });
