@@ -9,6 +9,8 @@ on:
       - src/components/ModuleLandingWorkspace.tsx
       - src/components/PlannedModulePage.tsx
       - src/components/ReportsWorkspace.tsx
+      - src/components/ReportsHub.tsx
+      - tests/analyticsEvidenceContracts.test.mjs
   workflow_dispatch:
 permissions:
   contents: read
