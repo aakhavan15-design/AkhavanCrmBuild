@@ -153,7 +153,7 @@ export function Customer360({ customer, state, onBack, updateState, setActiveTab
   ), [state, customer.id, rbac]);
 
   const accountPayments = useMemo(() => canViewFinance ? (state.payments || []).filter(p =>
-    (p.accountId === customer.id || p.customerId === customer.id) && rbac.canActOnRecord('payments', 'VIEW', recordScope(p)) && !p.deletedAt && !(p as Record<string, unknown>).isDeleted
+    (p.accountId === customer.id || p.customerId === customer.id) && rbac.canActOnRecord('payments', 'VIEW', recordScope(p)) && !p.deletedAt && !(p as unknown as Record<string, unknown>).isDeleted
   ) : [], [state.payments, customer.id, canViewFinance, rbac]);
 
   const accountOpportunities = useMemo(() => (state.opportunities || []).filter(o =>
@@ -175,8 +175,8 @@ export function Customer360({ customer, state, onBack, updateState, setActiveTab
   const customerInvoices = useMemo(() => canViewFinance ? (state.invoices || []).filter(i => {
     const status = String(i.status || '').toUpperCase();
     const isVoided = ['VOID', 'VOIDED', 'CANCELLED', 'CANCELED', 'DRAFT', 'DELETED'].includes(status);
-    return (i.accountId === customer.id || i.customerId === customer.id) && !isVoided && isErpSourcedRecord(i as Record<string, unknown>) &&
-      rbac.canActOnRecord('finance', 'VIEW', recordScope(i)) && !i.deletedAt && !(i as Record<string, unknown>).isDeleted;
+    return (i.accountId === customer.id || i.customerId === customer.id) && !isVoided && isErpSourcedRecord(i as unknown as Record<string, unknown>) &&
+      rbac.canActOnRecord('finance', 'VIEW', recordScope(i)) && !i.deletedAt && !(i as unknown as Record<string, unknown>).isDeleted;
   }) : [], [state.invoices, customer.id, canViewFinance, rbac]);
 
   // Only posted ledger detail can establish a customer balance.
@@ -272,7 +272,7 @@ export function Customer360({ customer, state, onBack, updateState, setActiveTab
       list.push({
         id: `pay_${p.id}`,
         title: `رسید پرداخت: ${formatCurrency(p.amount)} ریال`,
-        description: `شیوه پرداخت: ${p.method || 'واریز بانکی'} | وضعیت: ${receiptStatusLabel((p as Record<string, unknown>).receiptStatus || p.status)}`,
+        description: `شیوه پرداخت: ${p.method || 'واریز بانکی'} | وضعیت: ${receiptStatusLabel((p as unknown as Record<string, unknown>).receiptStatus || p.status)}`,
         date: p.date,
         type: 'PAYMENT',
         category: 'ACTIVITY',
@@ -879,7 +879,7 @@ export function Customer360({ customer, state, onBack, updateState, setActiveTab
                   const idx = target.contacts.findIndex(c => c.id === contactModal.initial?.id);
                   if (idx >= 0) target.contacts[idx] = { ...target.contacts[idx], ...values };
                 } else {
-                  target.contacts.push({ id: generateId(), accountId: customer.id, ...values });
+                  target.contacts.push({ id: generateId(), accountId: customer.id, ...values, name: String(values.name || '').trim() });
                 }
               });
               setContactModal(null);
