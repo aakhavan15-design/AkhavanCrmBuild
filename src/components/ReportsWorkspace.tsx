@@ -1,10 +1,11 @@
 import React, { useMemo } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { AppState, NavigationTab } from '../types';
 import { useCan } from '../hooks/useCan';
 import { portFromAppState, readReportCollections } from '../lib/dataPorts';
 import { resolveDataSourceStatus, DATA_SOURCE_STATUS_LABELS, sourceStatusNote } from '../lib/dataTrust';
 import { ReportsHub } from './ReportsHub';
+import { ReportEnginePanels } from './ReportEnginePanels';
 import { getStateSyncEngine, isSqlProviderActive } from '../services/stateSyncRuntime';
 
 interface ReportScopeSource {
@@ -38,6 +39,8 @@ interface ReportsWorkspaceProps {
 
 export function ReportsWorkspace({ state, updateState, setActiveTab }: ReportsWorkspaceProps) {
   const { canOn, can, rbac } = useCan(state);
+  const [reportParams] = useSearchParams();
+  const analyticalView = reportParams.get('view') === 'analytical';
   // The same DataPort used by analytics; the UI receives only permission-scoped collections.
   const reportPort = useMemo(() => portFromAppState(state as unknown as Record<string, unknown>), [state]);
   const reportCols = useMemo(() => readReportCollections(reportPort), [reportPort]);
@@ -133,18 +136,39 @@ export function ReportsWorkspace({ state, updateState, setActiveTab }: ReportsWo
         <span>گزارش هوشمند ویزیت، اولویت مشتریان و عملکرد تور ERP</span>
         <span aria-hidden="true">←</span>
       </Link>}
-      <ReportsHub
-        canViewChurn={can('accounts','VIEW') && can('quotes','VIEW')}
-        canCreateFollowUp={can('tasks','CREATE')}
-        state={reportHubState}
-        updateState={updateState}
-        setActiveTab={setActiveTab}
-        canViewFinance={can('finance', 'VIEW')}
-        canViewPayments={can('payments', 'VIEW')}
-        canOpenJournalCoverage={rbac.hasPermission('finance.view') && rbac.canSeeRecord()}
-        canFollowUpJournalCoverage={can('finance','EDIT') && can('tasks','CREATE')}
-        receivableAccounts={receivableAccounts}
-      />
+      <nav aria-label="نمای گزارش‌ها" className="flex items-center gap-2 rounded-xl border border-border bg-surface p-1">
+        <Link to="/reports?tab=sales" aria-current={!analyticalView ? 'page' : undefined}
+          className={`min-h-10 flex-1 rounded-lg px-3 py-2 text-center text-xs font-bold ${!analyticalView ? 'bg-primary text-on-primary' : 'text-text-secondary hover:bg-canvas'}`}>
+          گزارش‌های موضوعی
+        </Link>
+        <Link to="/reports?view=analytical" aria-current={analyticalView ? 'page' : undefined}
+          className={`min-h-10 flex-1 rounded-lg px-3 py-2 text-center text-xs font-bold ${analyticalView ? 'bg-primary text-on-primary' : 'text-text-secondary hover:bg-canvas'}`}>
+          تحلیل‌های عمیق و بینش‌ها
+        </Link>
+      </nav>
+      {analyticalView ? (
+        <ReportEnginePanels
+          state={reportHubState}
+          visibleInvoices={visibleInvoices}
+          visiblePayments={visiblePayments}
+          visibleCheques={visibleCheques}
+          visibleExpenses={visibleExpenses}
+          visibleAccounts={visibleAccounts}
+        />
+      ) : (
+        <ReportsHub
+          canViewChurn={can('accounts','VIEW') && can('quotes','VIEW')}
+          canCreateFollowUp={can('tasks','CREATE')}
+          state={reportHubState}
+          updateState={updateState}
+          setActiveTab={setActiveTab}
+          canViewFinance={can('finance', 'VIEW')}
+          canViewPayments={can('payments', 'VIEW')}
+          canOpenJournalCoverage={rbac.hasPermission('finance.view') && rbac.canSeeRecord()}
+          canFollowUpJournalCoverage={can('finance','EDIT') && can('tasks','CREATE')}
+          receivableAccounts={receivableAccounts}
+        />
+      )}
     </main>
   );
 }
