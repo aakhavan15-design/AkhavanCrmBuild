@@ -74,7 +74,8 @@ export function CinematicWebGLStage({ illuminated }: { illuminated: boolean }) {
       for(int i=0;i<5;i++) {
         float offset=(float(i)-2.)*width*2.7;
         float dx=abs(x.x-curve-offset);
-        bands+=exp(-dx*95.)*.95 + exp(-dx*9.)*.12;
+        float movingGlint=.68+.32*pow(.5+.5*cos(z*3.5-uTime*1.9+float(i)),5.);
+        bands+=(exp(-dx*95.)*.95 + exp(-dx*9.)*.12)*movingGlint;
       }
       return bands*exp(-max(0.,z-4.)*.15);
     }
@@ -85,27 +86,40 @@ export function CinematicWebGLStage({ illuminated }: { illuminated: boolean }) {
       return navy+vec3(.9,.37,.14)*warm*.17*uLight;
     }
     vec3 shadeMetal(vec3 p, vec3 n, vec3 rd) {
-      vec3 key=normalize(vec3(-.5,.85,1.0));
-      vec3 fill=normalize(vec3(.9,.55,-.25));
-      float diff=max(dot(n,key),0.);
-      float fres=pow(1.-max(dot(n,-rd),0.),4.);
-      vec3 reflected=env(reflect(rd,n));
-      float spec=pow(max(dot(reflect(-key,n),-rd),0.),80.);
-      float longSpec=pow(max(dot(reflect(-fill,n),-rd),0.),22.);
-      vec3 copper=vec3(.43,.17,.075);
-      return copper*(.13+.72*diff)+reflected*(.25+.7*fres)
-        +vec3(1.,.75,.49)*(spec*1.6+longSpec*.33)*uLight;
+      // Copper conductor with a Schlick Fresnel term, two broad softboxes,
+      // a tight metal highlight and a long reflection strip. This is stylized
+      // physically-informed shading, not a claim of offline path tracing.
+      vec3 v=normalize(-rd);
+      vec3 key=normalize(vec3(-.45,.88,1.));
+      vec3 fill=normalize(vec3(.95,.42,-.27));
+      vec3 f0=vec3(.91,.55,.32);
+      float ndv=max(dot(n,v),0.);
+      vec3 F=f0+(1.-f0)*pow(1.-ndv,5.);
+      float ndk=max(dot(n,key),0.);
+      float ndf=max(dot(n,fill),0.);
+      vec3 h=normalize(v+key), hf=normalize(v+fill);
+      float narrow=pow(max(dot(n,h),0.),105.);
+      float soft=pow(max(dot(n,h),0.),13.);
+      float strip=pow(max(dot(n,hf),0.),32.);
+      float micro=.96+.04*sin(p.y*91.+p.x*64.);
+      vec3 ambient=env(reflect(rd,n))*.62+vec3(.055,.024,.015);
+      vec3 lightCopper=vec3(1.,.74,.49);
+      return micro*(ambient*F+vec3(.22,.085,.04)*(.13+.24*ndk)
+        +lightCopper*(narrow*1.6+soft*.32)*ndk*uLight
+        +vec3(.72,.39,.22)*strip*.53*ndf*uLight);
     }
     void main() {
       vec2 uv=(gl_FragCoord.xy-.5*uResolution)/uResolution.y;
       float widescreen=uResolution.x/uResolution.y;
       // Negative perspective deliberately puts the sculpture behind the form.
       vec3 ro=vec3(.0,1.6,5.2);
+      // Slight camera drift brings a real parallax response to the sculpture.
       vec3 rd=normalize(vec3(uv.x*1.22,uv.y*1.22-.07,-1.7));
       vec3 color=env(rd);
       float d=0., material=0., hit=0.;
       vec3 p=ro;
-      for(int i=0;i<72;i++) {
+      for(int i=0;i<96;i++) {
+        if(i>63 && uQuality<.8) break;
         p=ro+rd*d;
         vec2 m=map(p);
         if(m.x<.007) {material=m.y;hit=1.;break;}
@@ -126,11 +140,16 @@ export function CinematicWebGLStage({ illuminated }: { illuminated: boolean }) {
         float glow=pathLight(vec2(x.x+.025,x.z))*.23;
         vec3 copper=vec3(1.0,.43,.18);
         float floorGrid=pow(max(sin(x.z*9.)*sin(x.x*4.),0.),18.)*.013;
-        color=vec3(.012,.018,.034)+reflection*.31
-          +copper*(lanes*1.2+glow)*uLight+vec3(floorGrid);
+        float grazing=pow(1.-max(dot(-rd,vec3(0.,1.,0.)),0.),4.);
+        float bloom=pathLight(vec2(x.x+.075,x.z))*.06;
+        color=vec3(.012,.018,.034)+reflection*(.25+grazing*.32)
+          +copper*(lanes*1.25+glow+bloom)*uLight+vec3(floorGrid);
         // A delicate reflection from the sculpture above the dark floor.
         float reflectA=exp(-length(x.xz-vec2(0.,0.))*1.3)*.09;
         color+=vec3(.46,.20,.08)*reflectA*uLight;
+        // Warm light from the pendant softly illuminates the reflective floor.
+        float pendantPool=exp(-length(x.xz-vec2(1.25,1.7))*.55);
+        color+=vec3(.22,.105,.042)*pendantPool*uLight;
       }
       float haze=exp(-length(uv-vec2(-.06,.07))*3.2)*.046*uLight;
       color+=vec3(.75,.29,.11)*haze;
@@ -185,15 +204,16 @@ export function CinematicWebGLStage({ illuminated }: { illuminated: boolean }) {
       if (!canvas.isConnected) return;
       // Cap internal resolution on phones to prevent a costly GPU login.
       const mobile = window.innerWidth < 768;
-      const scale = mobile ? .65 : .78;
-      const maxW = mobile ? 660 : 1400;
+      const dpr = Math.min(window.devicePixelRatio || 1, mobile ? 1.2 : 1.5);
+      const scale = dpr * (mobile ? .78 : .9);
+      const maxW = mobile ? 980 : 1900;
       canvas.width = Math.max(1, Math.min(maxW, Math.round(canvas.clientWidth * scale)));
       canvas.height = Math.max(1, Math.round(canvas.clientHeight * scale));
       gl.viewport(0, 0, canvas.width, canvas.height);
     };
     const render = (stamp: number) => {
       if (disposed || paused) return;
-      const cadence = reducedMotion.matches ? 1000 : (window.innerWidth < 768 ? 45 : 33);
+      const cadence = reducedMotion.matches ? 1000 : (window.innerWidth < 768 ? 33 : 24);
       if (stamp-last >= cadence) {
         last=stamp;
         brightness += ((lightRef.current ? 1 : .08)-brightness)*.13;
@@ -214,17 +234,24 @@ export function CinematicWebGLStage({ illuminated }: { illuminated: boolean }) {
     const onContextLost = (event: Event) => {
       event.preventDefault(); paused=true;cancelAnimationFrame(frame);
     };
+    const onContextRestored = () => {
+      // WebGL resources are invalid after a context reset; the static
+      // fallback remains visible rather than rendering a corrupt frame.
+      paused=true;
+    };
     resize();
     frame=requestAnimationFrame(render);
     window.addEventListener('resize',resize);
     document.addEventListener('visibilitychange',onVisibility);
     canvas.addEventListener('webglcontextlost',onContextLost);
+    canvas.addEventListener('webglcontextrestored',onContextRestored);
     return () => {
       disposed=true;
       cancelAnimationFrame(frame);
       window.removeEventListener('resize',resize);
       document.removeEventListener('visibilitychange',onVisibility);
       canvas.removeEventListener('webglcontextlost',onContextLost);
+      canvas.removeEventListener('webglcontextrestored',onContextRestored);
       gl.deleteProgram(program);
       gl.deleteShader(vs);
       gl.deleteShader(fs);
