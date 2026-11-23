@@ -97,8 +97,6 @@ export function AnimatedLamp3D({
   const [motionError, setMotionError] = useState('');
   const [deviceTilt, setDeviceTilt] = useState(0);
   const motionTargetRef = useRef(0);
-  const motionFrameRef = useRef<number | null>(null);
-  const sensorSeenRef = useRef(false);
 
   const [isDragging, setIsDragging] = useState(false);
   const [isBouncing, setIsBouncing] = useState(false);
@@ -183,7 +181,6 @@ export function AnimatedLamp3D({
         return;
       }
       setMotionError('');
-      sensorSeenRef.current = false;
       setMotionEnabled(true);
     } catch {
       setMotionError('حسگر حرکت در دسترس نیست؛ کنترل دستی چراغ فعال است.');
@@ -196,7 +193,6 @@ export function AnimatedLamp3D({
     let frame = 0;
     const onOrientation = (event: DeviceOrientationEvent) => {
       if (event.gamma == null || !Number.isFinite(event.gamma)) return;
-      sensorSeenRef.current = true;
       // A maximum 30-degree swing, independent of device orientation extremes.
       motionTargetRef.current = Math.max(-30, Math.min(30, event.gamma * 0.75));
     };
@@ -210,11 +206,9 @@ export function AnimatedLamp3D({
     };
     window.addEventListener('deviceorientation', onOrientation, { passive: true });
     frame = requestAnimationFrame(animate);
-    motionFrameRef.current = frame;
     return () => {
       window.removeEventListener('deviceorientation', onOrientation);
       cancelAnimationFrame(frame);
-      motionFrameRef.current = null;
       motionTargetRef.current = 0;
       setDeviceTilt(0);
     };
