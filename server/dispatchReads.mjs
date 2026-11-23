@@ -3,6 +3,8 @@
  * Never substitute invoice-based account balance for posted journal receivables.
  * Request executes inside withTenantContext and SQL row-level permissions.
  */
+import { buildDispatchCollectionZone } from '../src/lib/dispatchCollectionZone.mjs';
+
 export function createDispatchReader({sql,run}){
  return async(auth,planNumber)=>{
   if(!planNumber||planNumber.length>80)throw Object.assign(new Error('INVALID_DISPATCH_NUMBER'),{status:400});
@@ -81,6 +83,67 @@ export function createDispatchReader({sql,run}){
     const seller=bySeller.get(String(original.SalesRepExternalId||'UNASSIGNED'));
     seller.returnsRials+=Number(cr.Amount);seller.returnedInvoiceIds.add(String(original.InvoiceMirrorId));
    }
+   // The only admissible receivables source is the verified, posted ERP journal.
+   // The invoice/payment mirror view is deliberately NOT used here.
+   let receivables=[];
+   let receivableCoverage='UNAVAILABLE';
+   const approved=(await request().query(`
+     SELECT TOP (1) s.SourceSystemCode,s.OpeningDate,s.VerifiedThrough
+     FROM analytics.MoneyReportSource s
+     JOIN core.AppUser approver ON approver.TenantId=s.TenantId AND approver.UserId=s.ApprovedBy
+     WHERE s.TenantId=@tenant AND s.VerifiedThrough>=CONVERT(date,SYSUTCDATETIME())
+       AND approver.IsActive=1`)).recordset[0];
+   if(approved){
+    const scopeRequest=()=>request().input('source',sql.VarChar(40),approved.SourceSystemCode)
+      .input('opening',sql.Date,approved.OpeningDate).input('verified',sql.Date,approved.VerifiedThrough);
+    const audit=(await scopeRequest().query(`
+      SELECT CASE WHEN EXISTS(
+        SELECT 1 FROM analytics.vw_FinancialJournalState j
+        WHERE j.TenantId=@tenant AND j.SourceSystemCode=@source AND
+         j.AccountingDate BETWEEN @opening AND @verified AND
+         j.JournalQuality NOT IN ('VALID','VOID','PENDING')
+      ) OR EXISTS(
+        SELECT 1 FROM analytics.vw_FinancialJournalArticle l
+        WHERE l.TenantId=@tenant AND l.SourceSystemCode=@source AND l.CurrencyCode='IRR'
+         AND l.AccountingDate BETWEEN @opening AND @verified
+         AND l.ExternalDetailCode IS NOT NULL AND (l.LedgerAccountId IS NULL OR l.LinkedAccountId IS NULL)
+      ) THEN 0 ELSE 1 END AS IsComplete`)).recordset[0];
+    if(audit?.IsComplete===1){
+     const rows=(await scopeRequest().query(`
+      SELECT TOP (5001) a.AccountId,a.Name,a.Latitude,a.Longitude,a.GeoAccuracyMeters,
+       SUM(l.DebitAmount-l.CreditAmount) AS OutstandingRials
+      FROM analytics.vw_FinancialJournalArticle l
+      JOIN crm.Account a ON a.TenantId=l.TenantId AND a.AccountId=l.LinkedAccountId
+      WHERE l.TenantId=@tenant AND l.SourceSystemCode=@source AND l.CurrencyCode='IRR'
+       AND l.AccountingDate BETWEEN @opening AND @verified AND l.MoneyRoleCode='RECEIVABLE'
+       AND EXISTS(SELECT 1 FROM security.fn_RecordReadScope(
+        a.TenantId,N'accounts.view',a.OwnerUserId,a.BranchId,a.TerritoryId,a.TeamId))
+      GROUP BY a.AccountId,a.Name,a.Latitude,a.Longitude,a.GeoAccuracyMeters
+      HAVING SUM(l.DebitAmount-l.CreditAmount)>0
+      ORDER BY OutstandingRials DESC`)).recordset;
+     if(rows.length<=5000){
+       receivables=rows.map(row=>({
+        customerId:String(row.AccountId),name:String(row.Name),
+        officialBalanceRials:Number(row.OutstandingRials),
+        point:row.Latitude==null||row.Longitude==null?null:
+          {latitude:Number(row.Latitude),longitude:Number(row.Longitude)},
+        accuracyMeters:row.GeoAccuracyMeters==null?null:Number(row.GeoAccuracyMeters)
+       }));
+       receivableCoverage='VERIFIED_POSTED_LEDGER';
+     }else receivableCoverage='ROW_LIMIT_EXCEEDED';
+    }else receivableCoverage='JOURNAL_MAPPING_OR_STATUS_INCOMPLETE';
+   }
+   const stops=invoices.map(i=>({
+     customerId:String(i.AccountId),name:String(i.CustomerName),
+     point:i.Latitude==null||i.Longitude==null?null:
+       {latitude:Number(i.Latitude),longitude:Number(i.Longitude)},
+     accuracyMeters:i.GeoAccuracyMeters==null?null:Number(i.GeoAccuracyMeters)
+   }));
+   const collectionZone=buildDispatchCollectionZone({
+     dispatchNumber:plan.PlanNumber,invoiceStops:stops,receivableCustomers:receivables,
+     sourceComplete:receivableCoverage==='VERIFIED_POSTED_LEDGER',
+     showAllReceivables:true
+   });
    return {status:'PARTIAL',reason:'SOURCE_COVERAGE_AND_LEDGER_RECONCILIATION_REQUIRED',
     source:'SQLSERVER_ERP_MIRROR',plan,
     invoiceCount:invoices.length,invoices,
@@ -89,8 +152,8 @@ export function createDispatchReader({sql,run}){
     linkedReturnsRials:returns.filter(x=>invoiceLookup.has(String(x.InvoiceMirrorId||'').toLowerCase()))
        .reduce((n,i)=>n+Number(i.Amount),0),
     sellers:[...bySeller.values()].map(({returnedInvoiceIds,...s})=>({...s,returnedInvoiceCount:returnedInvoiceIds.size})),
-    journalBuckets,missingMappings,
-    coverage:{invoices:true,returns:'NOT_RECONCILED',journal:missingMappings?'UNMAPPED':'NOT_RECONCILED',receivables:'UNAVAILABLE'},
+    journalBuckets,missingMappings,collectionZone,receivableCoverage,
+    coverage:{invoices:true,returns:'NOT_RECONCILED',journal:missingMappings?'UNMAPPED':'NOT_RECONCILED',receivables:receivableCoverage},
     note:'هیچ مانده مطالبات یا سود قطعی تا تطبیق دفتر، FIFO و پوشش دوره منتشر نمی‌شود'};
   });
  };
