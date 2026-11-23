@@ -13,6 +13,9 @@ on:
       - tests/analyticsEvidenceContracts.test.mjs
       - tests/advancedReportsAccess.test.mjs
       - src/components/ReportEnginePanels.tsx
+      - src/components/LoginWorkspace.tsx
+      - src/components/auth/AnimatedLamp3D.tsx
+      - tests/authLampExperienceContracts.test.mjs
   workflow_dispatch:
 permissions:
   contents: read
