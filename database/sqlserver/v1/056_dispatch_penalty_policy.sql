@@ -25,11 +25,15 @@ BEGIN
  );
 END;
 GO
-IF NOT EXISTS(SELECT 1 FROM sys.security_predicates sp WHERE
-  sp.target_object_id=OBJECT_ID(N'crm.DispatchPenaltyPolicy')
-  AND sp.predicate_type_desc=N'FILTER')
+IF NOT EXISTS (SELECT 1 FROM sys.security_policies
+ WHERE schema_id=SCHEMA_ID(N'security') AND name=N'TenantIsolationPolicy' AND is_enabled=1)
+ THROW 51560, N'Penalty policy requires active tenant isolation policy.', 1;
+IF NOT EXISTS (SELECT 1 FROM sys.security_predicates
+ WHERE target_object_id=OBJECT_ID(N'crm.DispatchPenaltyPolicy') AND predicate_type_desc=N'FILTER')
  ALTER SECURITY POLICY security.TenantIsolationPolicy
- ADD FILTER PREDICATE security.fn_TenantAccessPredicate(TenantId) ON crm.DispatchPenaltyPolicy;
+  ADD FILTER PREDICATE security.fn_TenantAccessPredicate(TenantId) ON crm.DispatchPenaltyPolicy,
+  ADD BLOCK PREDICATE security.fn_TenantAccessPredicate(TenantId) ON crm.DispatchPenaltyPolicy AFTER INSERT,
+  ADD BLOCK PREDICATE security.fn_TenantAccessPredicate(TenantId) ON crm.DispatchPenaltyPolicy AFTER UPDATE;
 GO
 /* An effective-time overlap is rejected by the engine/configuration gate.
    Historical policy versions stay immutable and determine task idempotency.
