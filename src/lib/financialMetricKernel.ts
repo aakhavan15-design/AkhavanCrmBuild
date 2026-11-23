@@ -10,8 +10,8 @@ export type FinancialAmount = number | null;
 /** فروش خالص = فروش ناخالص - برگشت فروش (و تخفیفات ثبت شده در bucket متناظر).
  * Missing/untrusted operand is UNKNOWN (null), never silently zero. */
 export function calculateNetSales(gross: FinancialAmount, returns: FinancialAmount): FinancialAmount {
-  if (!Number.isFinite(gross) || !Number.isFinite(returns)
-    || gross === null || returns === null || gross < 0 || returns < 0) return null;
+  if (gross === null || returns === null || !Number.isFinite(gross)
+    || !Number.isFinite(returns) || gross < 0 || returns < 0) return null;
   return gross - returns;
 }
 
