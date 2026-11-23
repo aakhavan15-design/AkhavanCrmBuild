@@ -40,6 +40,7 @@ import { resolveDataSourceStatus, sourceStatusNote, DATA_SOURCE_STATUS_LABELS } 
 import type { AppState, Invoice, Payment, Cheque, Account, Quote, ExternalProduct } from '../types';
 import { KpiCard } from './charts/KpiCard';
 import { CashFlowPanel } from './finance/CashFlowPanel';
+import { FinancialDriversPanel } from './finance/FinancialDriversPanel';
 import { InputControl } from './ui/Input';
 import { Button } from './ui/Button';
 import { FilterChip } from './ui/Tabs';
@@ -839,6 +840,9 @@ export function ReportEnginePanels({ state, visibleInvoices, visiblePayments, vi
               )}
             </div>
 
+            {canSeeLedger && <FinancialDriversPanel lines={ledgerInputs.rawLines} accounts={ledgerInputs.accounts}
+              buckets={DEFAULT_REPORT_BUCKETS} from={cutoff || null} to={asOf}
+              trusted={effectivePnlData?.source==='SQLSERVER_BACKEND' && effectivePnlData?.status==='LIVE' && !pnlReport.unmappedLines && !previousPnlReport?.unmappedLines}/>}
             <div id="report-finance-trend" className="rounded-xl border border-border bg-surface p-3.5 space-y-2" data-tour-primary>
               <div className="flex items-center justify-between gap-2">
                 <h5 className="text-xs font-bold text-text-main">روند دفتری ۱۲ماهه فروش خالص، هزینه و سود عملیاتی</h5>
