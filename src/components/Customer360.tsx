@@ -29,6 +29,11 @@ import { getPersianStatusLabel } from '../lib/labels';
 import { CUSTOMER_PROPOSAL_STATUS_LABEL, proposalStatusOf } from '../lib/customerProposal';
 import { getActiveDataProvider } from '../services/dataProvider';
 import { isDemoContext } from '../lib/dataTrust';
+import { useDataQuery } from '../hooks/useDataProvider';
+import { useLedgerBookScope } from '../hooks/useLedgerBookScope';
+import { useDataSyncStatus } from '../services/dataSyncController';
+import { resolveCustomerBalanceView } from '../lib/receivableReconciliation';
+import { buildLedgerAgingInputs, estimateLedgerAging } from '../services/agingBuckets';
 import {
   ACTIVITY_FORM_SCHEMA,
   NOTE_FORM_SCHEMA,
@@ -93,6 +98,16 @@ export function Customer360({ customer, state, onBack, updateState, setActiveTab
 
   const canEditAccount = rbac.canActOnRecord('accounts', 'EDIT', customerScope);
   const canViewFinance = rbac.canActOnRecord('finance', 'VIEW', customerScope);
+  const { scope: ledgerScope } = useLedgerBookScope();
+  const { serverVersion } = useDataSyncStatus();
+  const { data: customerLedgerResult, loading: customerLedgerLoading, error: customerLedgerError } = useDataQuery(
+    async provider => canViewFinance ? provider.getDetailSubsidiaryBalances({ ...ledgerScope, role:'RECEIVABLE' }) : null,
+    [canViewFinance, state.currentUserId, serverVersion, ledgerScope?.source, ledgerScope?.currency]
+  );
+  const customerLedgerView = useMemo(() => resolveCustomerBalanceView(
+    customerLedgerError ? {status:'UNAVAILABLE', source:'SQLSERVER_BACKEND', balances:[], reason:customerLedgerError.message}
+      : customerLedgerResult, customer
+  ),[customerLedgerResult,customerLedgerError,customer]);
   const proposalStatus = proposalStatusOf(customer);
   const canSubmitProposal = proposalStatus === 'LOCAL_DRAFT' && customer.ownerId === state.currentUserId
     && !isDemoContext(state) && rbac.canActOnRecord('accounts', 'CREATE', customerScope);
@@ -164,22 +179,18 @@ export function Customer360({ customer, state, onBack, updateState, setActiveTab
       rbac.canActOnRecord('finance', 'VIEW', recordScope(i)) && !i.deletedAt && !(i as Record<string, unknown>).isDeleted;
   }) : [], [state.invoices, customer.id, canViewFinance, rbac]);
 
-  const knownInvoiceBalances = customerInvoices.map(invoice => Number(invoice.balance)).filter(value => Number.isFinite(value) && value >= 0);
-  const currentBalance = knownInvoiceBalances.length === customerInvoices.length && customerInvoices.length > 0
-    ? knownInvoiceBalances.reduce((sum, balance) => sum + balance, 0)
-    : null;
-
-  let customerOverdue = 0;
-  let maxOverdueDays = 0;
-  customerInvoices.forEach(inv => {
-    const days = calculateDaysOverdue(inv.dueDate);
-    const rawBalance = Number(inv.balance);
-    if (!Number.isFinite(rawBalance) || rawBalance < 0) return;
-    if (days > 0 && rawBalance > 0) {
-      customerOverdue += rawBalance;
-      if (days > maxOverdueDays) maxOverdueDays = days;
-    }
-  });
+  // Only posted ledger detail can establish a customer balance.
+  // Invoice.balance is an ERP presentation field, not the financial truth.
+  const ledgerReady = canViewFinance && !customerLedgerLoading &&
+    customerLedgerView.kind === 'OK' && !customerLedgerView.incomplete;
+  const currentBalance = ledgerReady && customerLedgerView.kind === 'OK' ? customerLedgerView.total : null;
+  const customerAging = useMemo(() => estimateLedgerAging(
+    ledgerReady && customerLedgerResult ? buildLedgerAgingInputs(customerLedgerResult, [customer], customerInvoices) : [],
+    new Date()
+  ), [ledgerReady, customerLedgerResult, customer, customerInvoices]);
+  const customerOverdue = customerAging.items.filter(row => row.days > 0)
+    .reduce((sum,row) => sum + row.amount,0);
+  const maxOverdueDays = customerAging.items.reduce((max,row) => row.days > max ? row.days : max,0);
 
   const bouncedChequesCount = canViewFinance ? (state.cheques || []).filter(c =>
     (c.accountId === customer.id || c.customerId === customer.id) && isErpSourcedRecord(c as Record<string, unknown>) && ['BOUNCED', 'RETURNED'].includes(String(c.status).toUpperCase()) &&
@@ -188,7 +199,7 @@ export function Customer360({ customer, state, onBack, updateState, setActiveTab
     rbac.canActOnRecord('finance', 'VIEW', recordScope(c)) && !c.deletedAt && !c.isDeleted
   ).length : 0;
 
-  const hasRiskEvidence = (customerInvoices.length > 0 && knownInvoiceBalances.length === customerInvoices.length) || bouncedChequesCount > 0;
+  const hasRiskEvidence = ledgerReady && currentBalance !== null && customerAging.unattributed === 0;
   const customerRisk = canViewFinance && hasRiskEvidence
     ? calculateCustomerRiskScore(customer, customerOverdue, maxOverdueDays, bouncedChequesCount, customer.creditLimit || getDefaultCreditLimit(state))
     : null;
@@ -472,7 +483,7 @@ export function Customer360({ customer, state, onBack, updateState, setActiveTab
           </div>
 
           <div className="p-3 rounded-xl border border-border bg-surface flex flex-col justify-between">
-            <span className="text-micro text-text-secondary block font-medium">مانده فاکتورهای رسمی</span>
+            <span className="text-micro text-text-secondary block font-medium">مانده دفتری تفصیلی (اسناد قطعی)</span>
             <div className="mt-1 flex items-baseline gap-1">
               <SecureField state={state} entityType="Account" field="balance">
                 {(mode) => (
@@ -483,7 +494,7 @@ export function Customer360({ customer, state, onBack, updateState, setActiveTab
               </SecureField>
               <span className="text-micro text-text-secondary">ریال</span>
             </div>
-            <span className="text-micro text-text-secondary mt-0.5 block">{formatCount(customerInvoices.length)} فاکتور معتبر</span>
+            <span className="text-micro text-text-secondary mt-0.5 block">{ledgerReady ? 'منبع: دفتر مالی قطعی' : 'پوشش مانده دفتر نامشخص است'}</span>
           </div>
 
           <div id="acc-churn-card" data-tour-primary className="p-3 rounded-xl border border-border bg-surface flex flex-col justify-between">
