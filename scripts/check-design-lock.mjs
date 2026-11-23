@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
-import * as ts from 'typescript';
+import * as ts from '@typescript/typescript6';
 
 const migrationBaseline = '4a2119e11e2ecddced8fb0817000741cf7d03cfe';
 const sourceRoots = ['src/components', 'src/workspaces', 'src/theme', 'src/index.css', 'index.html'];
