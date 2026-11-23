@@ -5,6 +5,7 @@ import { AuthService } from '../services/AuthService';
 import { useAppStore } from '../lib/storage';
 import { AnimatedLamp3D } from './auth/AnimatedLamp3D';
 import { AkhavanLuxuryLogo } from './auth/AkhavanLuxuryLogo';
+import { AuthLightRoad } from './auth/AuthLightRoad';
 import { playCinematicLoginGreeting, unlockAudioAndSpeech } from '../lib/cinematicVoiceGreeting';
 import type { AppState, UserAccount } from '../types';
 import { track, AnalyticsEvents } from '../lib/analytics';
@@ -174,6 +175,7 @@ export function LoginWorkspace({
     >
       {/* ================= پس‌زمینه سینمایی اتاق تاریک لوکس ================= */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden z-0">
+        <AuthLightRoad isLightOn={isLightOn} />
         {/* پنجره تاریک در دیوار سمت چپ پشت آباژور با نور مه‌آلود */}
         {isLightOn && (
           <div
