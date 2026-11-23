@@ -42,7 +42,7 @@ export function createDispatchReader({sql,run}){
      JOIN crm.Account a ON a.TenantId=i.TenantId AND a.AccountId=i.AccountId
      LEFT JOIN crm.ExternalProduct product ON product.TenantId=l.TenantId
       AND product.SourceSystemCode=l.SourceSystemCode AND product.ExternalProductId=l.ExternalProductId
-     WHERE l.TenantId=@tenant AND i.IsVoided=0
+     WHERE l.TenantId=@tenant AND i.IsVoided=0 AND i.StatusCode IN ('POSTED','CONFIRMED','CLOSED')
       AND (i.DispatchPlanNumber=@number OR EXISTS(
         SELECT 1 FROM crm.DispatchPlanLine d
         JOIN crm.DispatchPlan p ON p.DispatchPlanId=d.DispatchPlanId AND p.TenantId=d.TenantId
@@ -83,10 +83,12 @@ export function createDispatchReader({sql,run}){
            WHERE d.TenantId=i.TenantId AND d.InvoiceMirrorId=i.InvoiceMirrorId AND p.PlanNumber=@number))))
    `)).recordset;
    const mapped=journal.filter(x=>x.BucketCode);
-   const missingMappings=journal.length-mapped.length;
+   const uniqueLines=new Set(journal.map(row=>String(row.JournalLineMirrorId)));
+   const ambiguousMappings=journal.length-uniqueLines.size;
+   const missingMappings=journal.filter(x=>!x.BucketCode).length;
    const journalBuckets=Object.fromEntries(
      ['CASH','CASH_DISCOUNT','INVOICE_SURCHARGE','CHEQUE','TRANSFER','CASH_REFUND']
-       .map(code=>[code,missingMappings?null:mapped.filter(x=>x.BucketCode===code)
+       .map(code=>[code,(missingMappings||ambiguousMappings)?null:mapped.filter(x=>x.BucketCode===code)
          .reduce((sum,row)=>sum+Number(row.BalanceSide==='DEBIT'?row.DebitAmount:row.CreditAmount),0)]));
    const invoiceLookup=new Map(invoices.map(i=>[String(i.InvoiceMirrorId).toLowerCase(),i]));
    const bySeller=new Map();
@@ -98,7 +100,10 @@ export function createDispatchReader({sql,run}){
    const unbased=[];
    for(const cr of returns){
     const original=invoiceLookup.get(String(cr.InvoiceMirrorId||'').toLowerCase());
-    if(!original){unbased.push({id:cr.CreditNoteMirrorId,amountRials:Number(cr.Amount),accountId:cr.AccountId});continue}
+    if(!original){
+      if(cr.InvoiceMirrorId)continue; // linked to a different dispatch: not an unbased return
+      unbased.push({id:cr.CreditNoteMirrorId,amountRials:Number(cr.Amount),accountId:cr.AccountId});continue
+    }
     const seller=bySeller.get(String(original.SalesRepExternalId||'UNASSIGNED'));
     seller.returnsRials+=Number(cr.Amount);seller.returnedInvoiceIds.add(String(original.InvoiceMirrorId));
    }
@@ -171,8 +176,8 @@ export function createDispatchReader({sql,run}){
     linkedReturnsRials:returns.filter(x=>invoiceLookup.has(String(x.InvoiceMirrorId||'').toLowerCase()))
        .reduce((n,i)=>n+Number(i.Amount),0),
     sellers:[...bySeller.values()].map(({returnedInvoiceIds,...s})=>({...s,returnedInvoiceCount:returnedInvoiceIds.size})),
-    journalBuckets,missingMappings,collectionZone,receivableCoverage,
-    coverage:{invoices:true,returns:'NOT_RECONCILED',journal:missingMappings?'UNMAPPED':'NOT_RECONCILED',receivables:receivableCoverage},
+    journalBuckets,missingMappings,ambiguousMappings,collectionZone,receivableCoverage,
+    coverage:{invoices:true,returns:'NOT_RECONCILED',journal:missingMappings||ambiguousMappings?'UNMAPPED_OR_AMBIGUOUS':'NOT_RECONCILED',receivables:receivableCoverage},
     note:'هیچ مانده مطالبات یا سود قطعی تا تطبیق دفتر، FIFO و پوشش دوره منتشر نمی‌شود'};
   });
  };
