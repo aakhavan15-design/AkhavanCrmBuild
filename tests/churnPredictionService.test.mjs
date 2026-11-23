@@ -54,6 +54,8 @@ test('Customer Churn Prediction Engine: order inactivity > 90 days pushes tier t
   assert.ok(result.reasons.some(r => r.includes('روز')));
   assert.ok(result.reasons.some(r => r.includes('چک')));
   assert.equal(result.suggestedAction.priority, 'CRITICAL');
+  assert.equal(result.unpaidOverdueAmount, null, 'unverified invoice.balance is never a ledger receivable');
+  assert.equal(result.revenueDropPercent, null, 'invoice gross is not canonical net-sales change');
 });
 
 test('Customer Churn Prediction Engine: portfolio evaluation groups and sorts at-risk accounts', () => {
@@ -104,4 +106,18 @@ test('Customer Churn Prediction Engine: generateChurnMitigationTask creates vali
   assert.equal(task.slaStatus, 'WARNING');
   assert.ok(task.description.includes('بحرانی'));
   assert.ok(task.description.includes('هایپرمارکت باران') || task.title.includes('هایپرمارکت باران'));
+});
+
+test('verified financial net-sales periods influence churn, unverified gross invoice sums do not',()=>{
+ const account={id:'a100',name:'مشتری فعال',status:'ACTIVE'};
+ const base=new Date('2026-11-24T00:00:00Z');
+ const state={accounts:[account],invoices:[{id:'i',accountId:'a100',date:'2026-11-22',status:'POSTED',totalAmount:100000000,balance:90000000}],activities:[{id:'a',accountId:'a100',dateTime:'2026-11-22'}],cheques:[],cases:[]};
+ const unknown=predictAccountChurn(account,state,base);
+ assert.equal(unknown.revenueDropPercent,null);
+ assert.equal(unknown.unpaidOverdueAmount,null);
+ const verified=predictAccountChurn(account,state,base,{verifiedNetSalesByPeriod:{previous:100000000,recent:10000000,ledgerReconciled:true}});
+ assert.equal(verified.revenueDropPercent,90);
+ assert.ok(verified.churnScore>=unknown.churnScore);
+ const untrusted=predictAccountChurn(account,state,base,{verifiedNetSalesByPeriod:{previous:100000000,recent:10000000,ledgerReconciled:false}});
+ assert.equal(untrusted.revenueDropPercent,null);
 });
