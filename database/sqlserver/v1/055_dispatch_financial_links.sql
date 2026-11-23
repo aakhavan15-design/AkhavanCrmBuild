@@ -18,6 +18,10 @@ IF COL_LENGTH(N'crm.ExternalProduct',N'SupplierExternalId') IS NULL
  ALTER TABLE crm.ExternalProduct ADD SupplierExternalId nvarchar(200) NULL;
 IF COL_LENGTH(N'crm.ExternalProduct',N'BrandExternalId') IS NULL
  ALTER TABLE crm.ExternalProduct ADD BrandExternalId nvarchar(200) NULL;
+/* Keep accuracy nullable until ERP/customer geocoding has an audited source.
+   Null accuracy must be identified as estimated/unverified in geo outputs. */
+IF COL_LENGTH(N'crm.Account',N'GeoAccuracyMeters') IS NULL
+ ALTER TABLE crm.Account ADD GeoAccuracyMeters float NULL;
 GO
 IF NOT EXISTS(SELECT 1 FROM sys.indexes WHERE object_id=OBJECT_ID(N'crm.InvoiceMirror') AND name=N'IX_Invoice_DispatchNumber')
  CREATE INDEX IX_Invoice_DispatchNumber ON crm.InvoiceMirror(TenantId,DispatchPlanNumber,InvoiceDate) INCLUDE(InvoiceMirrorId,AccountId,SalesRepExternalId);
