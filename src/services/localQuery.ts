@@ -17,10 +17,10 @@ export function queryLocalRecords<T extends object>(
       const searchable=['name','title','invoiceNumber','quoteNumber','chequeNumber','reference','id'];
       return searchable.some(field=>String(rec[field]??'').toLocaleLowerCase().includes(want));
     }
-    if (key === 'fromDate') return String(row.date || row.createdAt || '').slice(0,10) >= want;
-    if (key === 'toDate') return String(row.date || row.createdAt || '').slice(0,10) <= want;
+    if (key === 'fromDate') return String(rec.date || rec.createdAt || '').slice(0,10) >= want;
+    if (key === 'toDate') return String(rec.date || rec.createdAt || '').slice(0,10) <= want;
     if (key === 'accountId' || key === 'customerId')
-      return String(row.accountId || row.customerId || '').toLocaleLowerCase()===want;
+      return String(rec.accountId || rec.customerId || '').toLocaleLowerCase()===want;
     // Unknown filters fail closed instead of incorrectly returning every row.
     if (!(key in rec)) return false;
     return String(rec[key]??'').toLocaleLowerCase()===want;
