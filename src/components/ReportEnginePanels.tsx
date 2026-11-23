@@ -43,7 +43,7 @@ import { InputControl } from './ui/Input';
 import { Button } from './ui/Button';
 import { FilterChip } from './ui/Tabs';
 import { resolveSellerKey } from '../services/receivableReports';
-import { buildNetSalesEvidence } from '../lib/financialMetricKernel';
+import { buildNetSalesEvidence, reconcileNetSales } from '../lib/financialMetricKernel';
 
 type ExpenseLike = {
   id?: string;
@@ -318,8 +318,7 @@ export function ReportEnginePanels({ state, visibleInvoices, visiblePayments, vi
       returnsVerified:state.creditNoteSourceStatus === 'CONNECTED'
     });
   }, [reportInvoices, state.creditNotes, state.creditNoteSourceStatus, cutoff, asOf]);
-  const facts = netSalesEvidence.facts;
-  const customerSales = netSalesEvidence.byCustomer;
+  // Financial totals are reconciled with the posted ERP ledger below.
   
   const ledgerInputs = useMemo(() => {
     if (!effectivePnlData || pnlUnavailable) return { rawLines: [], accounts: [] };
@@ -327,6 +326,16 @@ export function ReportEnginePanels({ state, visibleInvoices, visiblePayments, vi
   }, [effectivePnlData, pnlUnavailable]);
 
   const pnlReport = useMemo(() => computeLedgerPnl(ledgerInputs.rawLines, ledgerInputs.accounts, DEFAULT_REPORT_BUCKETS, { from: cutoff || undefined, to: asOf }), [ledgerInputs, cutoff, asOf]);
+  const salesReconciliation = useMemo(() => reconcileNetSales(
+    netSalesEvidence,
+    pnlReport.values.GROSS_SALES,
+    pnlReport.values.SALES_RETURNS,
+    effectivePnlData?.source === 'SQLSERVER_BACKEND' && effectivePnlData?.status === 'LIVE'
+  ), [netSalesEvidence,pnlReport,effectivePnlData?.source,effectivePnlData?.status]);
+  const salesReconciled = salesReconciliation.status === 'RECONCILED';
+  const facts = salesReconciled ? netSalesEvidence.facts : [];
+  const customerSales = salesReconciled ? netSalesEvidence.byCustomer : [];
+
   
   const previousPnlReport = useMemo(() => {
     if (!cutoff || period === 'all') return null;
@@ -391,27 +400,27 @@ export function ReportEnginePanels({ state, visibleInvoices, visiblePayments, vi
   }), [state.externalProducts, state.salesOrders, state.geoZones, state.zoneAssignments]);
 
   const salesKpi = useMemo(() => {
-    const totalSales = netSalesEvidence.net;
+    const totalSales = salesReconciled ? netSalesEvidence.net : null;
     const fromMonth = cutoff ? cutoff.slice(0, 7) : '0000-00';
     const toMonth = asOf.slice(0, 7);
     const target = (state.salesTargets || [])
       .filter(item => item.periodMonth >= fromMonth && item.periodMonth <= toMonth)
       .reduce((sum, item) => sum + Math.max(0, Number(item.revenueTargetRials) || 0), 0);
     return targetAchievement(totalSales, target > 0 ? target : null);
-  }, [netSalesEvidence.net, state.salesTargets, cutoff, asOf]);
+  }, [netSalesEvidence.net, salesReconciled, state.salesTargets, cutoff, asOf]);
 
   const observedSalesTrend=useMemo(()=>{
     // Return dates need a dated accounting series; never label an invoice-only
     // gross daily series as net sales if any returns are present.
     if (localTest || getActiveDataProvider().name!=='SQLSERVER_BACKEND'
-      || netSalesEvidence.status !== 'AVAILABLE' || netSalesEvidence.returns !== 0) return undefined;
+      || !salesReconciled || netSalesEvidence.returns !== 0) return undefined;
     const byDay=new Map<string,number>();
     for (const invoice of invoices) {
       const date=invoice.date.slice(0,10);
       byDay.set(date,(byDay.get(date) ?? 0)+Number(invoice.totalAmount));
     }
     return [...byDay].sort(([a],[b])=>a.localeCompare(b)).slice(-12).map(([,amount])=>amount);
-  },[invoices,localTest,netSalesEvidence.status,netSalesEvidence.returns]);
+  },[invoices,localTest,salesReconciled,netSalesEvidence.returns]);
 
   const productShareRows = useMemo(() => {
     const map = new Map<string, number>();
@@ -652,9 +661,9 @@ export function ReportEnginePanels({ state, visibleInvoices, visiblePayments, vi
         </div>
         )}
 
-        {[2,4,5].includes(selected) && netSalesEvidence.status !== 'AVAILABLE' && (
+        {[2,4,5].includes(selected) && !salesReconciled && (
         <p role="status" className="rounded-lg border border-(--c-warning-soft)/50 p-3 text-sm text-(--c-text-main)">
-          فروش خالص تأیید نشده: {netSalesEvidence.reason}
+          فروش خالص قابل تأیید نیست: {salesReconciliation.reason}
         </p>
       )}
       {selected!==8 && <Button variant="outline" size="sm" className="shrink-0" type="button" onClick={handleExportCurrentReportCsv} >
