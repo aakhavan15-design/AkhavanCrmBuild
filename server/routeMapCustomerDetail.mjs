@@ -194,6 +194,27 @@ export function createRouteCustomerDetailReader({sql,run}){
   const hasReturnFeed=returnAllowed && (await scopedRequest().query(`
      SELECT CASE WHEN EXISTS(SELECT 1 FROM crm.SalesReturnMirror WHERE TenantId=@tenant)
        THEN 1 ELSE 0 END AS HasReturnFeed`)).recordset[0]?.HasReturnFeed===1;
+  // Historical "never visited" means no official visit recorded in this route's
+  // authorized feed up to the selected date, not proof that nobody ever visited.
+  const visitHistory=hasVisitFeed?(await scopedRequest().query(`
+    SELECT DISTINCT v.AccountId FROM crm.ErpVisitEventMirror v
+    JOIN crm.VisitTourMirror t ON t.TenantId=v.TenantId AND t.TourId=v.TourId AND t.RouteId=@routeId
+    JOIN crm.Account a ON a.TenantId=v.TenantId AND a.AccountId=v.AccountId
+    WHERE v.TenantId=@tenant AND v.SourceSystemCode=@source AND v.IsDeleted=0
+      AND v.VisitedAtUtc<DATEADD(day,1,@dateTo)
+      AND (NOT EXISTS(SELECT 1 FROM OPENJSON(@repJson))
+           OR v.ExternalSalesRepId IN (SELECT value FROM OPENJSON(@repJson)))
+      AND (NOT EXISTS(SELECT 1 FROM OPENJSON(@categoryJson))
+           OR a.BusinessCategoryCode IN (SELECT value FROM OPENJSON(@categoryJson)))
+      AND EXISTS(SELECT 1 FROM security.fn_RecordReadScope(a.TenantId,N'accounts.view',
+         a.OwnerUserId,a.BranchId,a.TerritoryId,a.TeamId))
+      AND (@organizationWide=1 OR v.SalesRepUserId=@actor OR EXISTS(
+        SELECT 1 FROM crm.VisitRouteStaffMirror manager WHERE manager.TenantId=@tenant
+          AND manager.RouteId=@routeId AND manager.StaffRoleCode='SUPERVISOR'
+          AND manager.StaffUserId=@actor AND manager.EffectiveFrom<=@dateTo
+          AND (manager.EffectiveTo IS NULL OR manager.EffectiveTo>=@dateFrom)))
+  `)).recordset:[];
+  const everVisitedIds=new Set(visitHistory.map(x=>String(x.AccountId).toLowerCase()));
   const visitByAccount=new Map();
   for(const v of visits){const k=String(v.AccountId).toLowerCase();const a=visitByAccount.get(k)||[];a.push(v);visitByAccount.set(k,a);}
   const invoiceByAccount=new Map();
@@ -208,7 +229,9 @@ export function createRouteCustomerDetailReader({sql,run}){
     const bought=financeAllowed&&ci.length>0,visited=cv.length>0;
     return {id:m.AccountId,name:m.Name,code:m.AccountCode,statusCode:m.StatusCode,businessCategoryCode:m.BusinessCategoryCode,
       subRouteCode:m.SubRouteCode,latitude:numberOrNull(m.Latitude),longitude:numberOrNull(m.Longitude),
-      visitCount:hasVisitFeed?cv.length:null,lastVisitAt:lastVisit?.VisitedAtUtc||null,
+      visitCount:hasVisitFeed?cv.length:null,
+      noVisitRecordedEver:hasVisitFeed?!everVisitedIds.has(id):null,
+      lastVisitAt:lastVisit?.VisitedAtUtc||null,
       lastVisitOutcome:lastVisit?.OutcomeCode||null,noOrderReason:lastVisit?.ReasonTitleFa||lastVisit?.NoOrderReasonCode||null,
       invoiceCount:hasInvoiceFeed?ci.length:null,
       invoicedSales:hasInvoiceFeed?sales:null,
@@ -219,7 +242,7 @@ export function createRouteCustomerDetailReader({sql,run}){
       lastInvoice:lastInvoice?{number:lastInvoice.InvoiceNumber,date:lastInvoice.InvoiceDate,
         items:(linesByInvoice.get(String(lastInvoice.InvoiceMirrorId).toLowerCase())||[])
           .slice(0,25).map(l=>({name:l.ProductNameSnapshot,quantity:Number(l.Quantity),unitPrice:Number(l.NetUnitPrice)}))}:null,
-      status:!hasInvoiceFeed?(hasVisitFeed&&visited?'VISITED':'UNKNOWN'):(bought?'BOUGHT':hasVisitFeed&&visited?'VISITED_NO_ORDER':hasVisitFeed?'NOT_BOUGHT':'UNKNOWN'),
+      status:!hasInvoiceFeed?(hasVisitFeed&&visited?'VISITED':hasVisitFeed?'UNVISITED':'UNKNOWN'):(bought?'BOUGHT':hasVisitFeed&&visited?'VISITED_NO_ORDER':hasVisitFeed?'UNVISITED':'UNKNOWN'),
       evidence:{visitIds:cv.slice(0,5).map(v=>v.ExternalVisitId),
         invoiceIds:financeAllowed?ci.slice(0,5).map(i=>i.InvoiceMirrorId):[]}};
   });
@@ -232,6 +255,7 @@ export function createRouteCustomerDetailReader({sql,run}){
     source:'ERP_SQL',moneyUnit:'IRR',financeVisible:financeAllowed,coverage:{hasVisitFeed,hasInvoiceFeed,hasReturnFeed},
     warnings:['بازه زمانی بر اساس عضویت رسمی ERP محاسبه شده است.',
       'برای مشتری چندمسیره ممکن است یک فاکتور در هر مسیر مربوط نمایش داده شود.',
+      'نداشتن ویزیت ثبت‌شده در داده قابل مشاهده، اثبات نمی‌کند که مراجعه حضوری انجام نشده است.',
       'فروش خالص فقط در صورت تأیید فاکتور و مرجوعی، از مبلغ ریز فاکتور منهای برگشتی معتبر محاسبه می‌شود. مبلغ فاکتور قبل از برگشت جداست.',
       'مطالبات مانده فعلی حسابداری است؛ سود و هدف نیازمند منبع قابل اتکا هستند.']};
  });
