@@ -16,6 +16,7 @@ on:
       - src/components/LoginWorkspace.tsx
       - src/components/auth/AnimatedLamp3D.tsx
       - src/components/auth/CinematicWebGLStage.tsx
+      - tests/cinematicWebGLStageContracts.test.mjs
       - tests/authLampExperienceContracts.test.mjs
       - tests/personnelLoginPresentation.test.mjs
       - src/components/auth/loginCinematic.css
