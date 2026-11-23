@@ -4,6 +4,8 @@ import {AuthService} from '../services/AuthService';
 import {GeoZoneMapEditor} from './GeoZoneMapEditor';
 import type {GeoMapPin} from './GeoZoneMapEditor';
 import {Card} from './ui/Card';
+import {Select} from './ui/Input';
+import {formatNumber,formatMoneyCompact} from '../lib/format';
 import {assessRouteMetric} from '../lib/routeMetricHealth';
 
 type MetricId='customerCount'|'activeCustomerCount'|'invoiceCount'|'invoicedSales'|'netSales'|'visitCount'|'attentionPercent'|'returnAmount'|'receivableAmount'|'profitAmount'|'targetAchievedPercent';
@@ -48,8 +50,8 @@ const metricCatalog:Record<MetricId,{name:string;unit:string;finance:boolean}>={
  profitAmount:{name:'سود',unit:'ریال',finance:true},
  targetAchievedPercent:{name:'تحقق هدف',unit:'٪',finance:true},
 };
-const fa=(v:number)=>v.toLocaleString('fa-IR',{maximumFractionDigits:1});
-const compact=(v:number)=>new Intl.NumberFormat('fa-IR',{notation:'compact',maximumFractionDigits:1}).format(v);
+const fa=(v:number)=>formatNumber(v,{maximumFractionDigits:1});
+const compact=(v:number)=>formatMoneyCompact(v,'').trim();
 const displayMetric=(id:MetricId,v:number|null|undefined)=>v==null?'نامشخص':id==='invoicedSales'||id==='netSales'||id==='returnAmount'||id==='receivableAmount'||id==='profitAmount'?compact(v)+' ریال':id==='attentionPercent'||id==='targetAchievedPercent'?fa(v)+'٪':fa(v);
 const defaultDate=()=>new Date().toISOString().slice(0,10);
 function monthAgo(d:string){const x=new Date(d+'T00:00:00Z');x.setUTCDate(x.getUTCDate()-30);return x.toISOString().slice(0,10);}
@@ -227,10 +229,10 @@ export function RouteMapOverview(){
       {metricCatalog[id].name}</button>)}
     </div>
     <label className="flex items-center gap-2 text-xs text-text-secondary">عدد اصلی روی نقشه
-     <select value={primary} onChange={e=>{const id=e.target.value as MetricId;setPrimary(id);if(!metrics.includes(id))setMetrics([...metrics,id]);}}
+     <Select value={primary} onChange={e=>{const id=e.target.value as MetricId;setPrimary(id);if(!metrics.includes(id))setMetrics([...metrics,id]);}}
        className="min-h-9 flex-1 rounded-xl border border-border bg-canvas px-2 text-text-main">
       {metrics.filter(id=>permitted.has(id)).map(id=><option key={id} value={id}>{metricCatalog[id].name}</option>)}
-     </select>
+     </Select>
     </label>
    </div>
   </Card>
