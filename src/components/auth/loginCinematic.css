@@ -161,7 +161,6 @@
   border-top-color: #d9aa7430;
   background: linear-gradient(to top, #060d1dee, #060d1d80);
 }
-.akhavan-login-apply-outer { display: none; }
 .akhavan-login-stage .akhavan-login-form-shell:focus-within { z-index: 22; }
 
 /* Tablet & phones: the scene becomes a single locked composition.
@@ -171,11 +170,11 @@
   .akhavan-login-stage { padding: 0 !important; }
   .akhavan-login-hero { display: none; }
   .akhavan-login-lamp {
-    top: -43%;
-    left: 44%;
+    top: -24px;
+    left: 47%;
     width: 145px;
-    height: 67%;
-    transform: scale(.76);
+    height: 235px;
+    transform: scale(.7);
     transform-origin: center top;
     opacity: .95;
     z-index: 12;
@@ -191,6 +190,7 @@
     max-height: calc(100% - 34px);
   }
   .akhavan-login-inline-brand { display: flex; margin-bottom: 4px; }
+  .akhavan-login-form-shell { padding-top: min(17dvh, 115px); }
   .akhavan-login-inline-brand svg { max-height: 73px; width: auto; }
   .akhavan-login-card { padding: 12px 14px !important; border-radius: 21px !important; }
   .akhavan-login-card input { min-height: 36px; height: 36px; }
@@ -214,7 +214,7 @@
   .akhavan-login-footer { display: none; }
   .akhavan-login-inline-brand { display: none; }
   .akhavan-login-lamp { opacity: .18; pointer-events: none; }
-  .akhavan-login-form-shell { top: 50%; bottom: auto; transform: translate(-50%, -50%); max-height: 100%; }
+  .akhavan-login-form-shell { top: 50%; bottom: auto; transform: translate(-50%, -50%); max-height: 100%; padding-top: 0; }
   .akhavan-login-card { padding: 7px 11px !important; }
   .akhavan-login-card form { margin-top: 3px; gap: 2px; }
   .akhavan-login-card label { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
