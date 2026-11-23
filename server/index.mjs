@@ -13,6 +13,7 @@ import { createAccountDirectory } from './accountDirectory.mjs';
 import { createErpVisitRouteReader } from './erpVisitRouteReads.mjs';
 import { createRouteMapAnalytics, parseRouteMapFilters } from './routeMapAnalytics.mjs';
 import { createRouteCustomerDetailReader } from './routeMapCustomerDetail.mjs';
+import { createDispatchReader } from './dispatchReads.mjs';
 import { createQuoteDecisions, quoteDecisionInput } from './quoteDecisions.mjs';
 import { createInvoiceFifoEvidence } from './invoiceFifoEvidence.mjs';
 import { createCollectionReceiptEvidence } from './collectionReceiptEvidence.mjs';
@@ -553,6 +554,19 @@ app.get('/api/v1/erp/route-map/filter-options',authenticate,requirePermission('g
  if(!/^\d{4}-\d{2}-\d{2}$/.test(date))
   return res.status(400).json({error:{code:'INVALID_DATE',message:'تاریخ معتبر نیست.'}});
  res.json(await routeMapAnalytics.filterOptions(req.auth,{organizationWide,financeAllowed,date}));
+}));
+const dispatchRead = createDispatchReader({sql,run:withTenantContext});
+app.get('/api/v1/erp/dispatch/:number/analysis',authenticate,requirePermission('finance.view'),wrap(async(req,res)=>{
+ if(!isUuid(req.auth.tenantId)||!isUuid(req.auth.userId))
+  return res.status(503).json({error:{code:'AUTH_CONTEXT_INVALID',message:'نشست معتبر نیست.'}});
+ if(entityDriverKind!=='mssql')
+  return res.status(503).json({status:'UNAVAILABLE',reason:'SQL_NOT_CONNECTED'});
+ if(!await hasSqlPermission(req.auth,'finance.view'))
+  return res.status(403).json({error:{code:'FORBIDDEN',message:'مجوز داده مالی ندارید.'}});
+ const number=String(req.params.number||'').trim();
+ if(!number||number.length>80)
+  return res.status(400).json({error:{code:'INVALID_DISPATCH_NUMBER'}});
+ res.json(await dispatchRead(req.auth,number));
 }));
 app.get('/api/v1/erp/route-map/summary',authenticate,requirePermission('geo.view'),wrap(async(req,res)=>{
  if(!isUuid(req.auth.tenantId)||!isUuid(req.auth.userId))
