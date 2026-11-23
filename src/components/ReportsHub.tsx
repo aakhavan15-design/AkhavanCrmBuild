@@ -146,7 +146,7 @@ export function ReportsHub({ state, canViewFinance, canViewPayments, canOpenJour
     const activities = rawActivities.filter(a => matchDate(a.dateTime));
 
     const totalSales = invoices.reduce((s, i) => s + (Number(i.totalAmount) || 0), 0);
-    const totalPaid = payments.filter(p => p.status === 'CLEARED').reduce((s, p) => s + (Number(p.amount) || 0), 0);
+    const totalPaid = payments.filter(p => p.status === 'CLEARED').reduce((sum, p) => { const amount=Number(p.amount); return sum + (p.amount != null && Number.isFinite(amount) && amount >= 0 ? amount : 0); }, 0);
 
     const fromMonth = cutoffIso ? cutoffIso.slice(0, 7) : '0000-00';
     const toMonth = now.toISOString().slice(0, 7);
@@ -169,9 +169,13 @@ export function ReportsHub({ state, canViewFinance, canViewPayments, canOpenJour
     const buckets = [...byMonth.values()];
 
     const payByMethod = new Map<string, number>();
-    payments.forEach(p => {
-      const m = p.method === 'TRANSFER' ? 'حواله بانکی' : p.method === 'CHEQUE' ? 'چک صیادی' : p.method === 'CASH' ? 'نقدی' : (p.method || 'سایر');
-      payByMethod.set(m, (payByMethod.get(m) || 0) + (Number(p.amount) || 0));
+    // Reconcile the donut against the very same CLEARED subset used by totalPaid.
+    // A pending or deposited cheque is not a settled receipt.
+    payments.filter(p => p.status === 'CLEARED').forEach(p => {
+      const amount = Number(p.amount);
+      if (p.amount == null || !Number.isFinite(amount) || amount < 0) return;
+      const m = p.method === 'TRANSFER' ? 'حواله بانکی' : p.method === 'CHEQUE' ? 'چک وصول‌شده' : p.method === 'CASH' ? 'نقدی' : (p.method || 'سایر');
+      payByMethod.set(m, (payByMethod.get(m) || 0) + amount);
     });
     const paySegments = Array.from(payByMethod.entries()).map(([name, value]) => ({ name, value }));
 
@@ -224,7 +228,7 @@ export function ReportsHub({ state, canViewFinance, canViewPayments, canOpenJour
       paySegments,
       leaderboard,
       hasInvoiceData: invoices.length > 0,
-      hasPaymentData: payments.length > 0,
+      hasPaymentData: payments.some(p => p.status === 'CLEARED' && p.amount != null && Number.isFinite(Number(p.amount)) && Number(p.amount) >= 0),
       heatX,
       heatY,
       heatCells,
