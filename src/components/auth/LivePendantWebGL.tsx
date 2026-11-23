@@ -21,6 +21,7 @@ export function LivePendantWebGL({
   const propsRef = useRef({ illuminated, tiltDegrees, pullOffset });
   const readyRef = useRef(onRendererReady);
   const [ready, setReady] = useState(false);
+  const [contextGeneration, setContextGeneration] = useState(0);
   propsRef.current = { illuminated, tiltDegrees, pullOffset };
   readyRef.current = onRendererReady;
 
@@ -127,7 +128,7 @@ export function LivePendantWebGL({
             +reflected*.22;
         }
         vec3 copper=material==3.?vec3(.71,.38,.15):vec3(.47,.21,.082);
-        float brushed=.97+.03*sin(p.y*130.+sin(p.x*14.));
+        float brushed=.96+.025*sin(p.y*130.+sin(p.x*14.))+.015*sin(elapsed*.86+p.x*7.);
         return copper*brushed*(.24+.56*diffuse)
           +reflected*(.40+.68*fresnel)
           +vec3(1.,.76,.49)*(specular*1.7+glint*.4)*(.36+intensity*.64);
@@ -271,7 +272,10 @@ export function LivePendantWebGL({
     };
     const onVisibility=()=>{visible=!document.hidden;if(!visible)cancelAnimationFrame(raf);else {last=0;raf=requestAnimationFrame(render);}};
     const onLost=(e:Event)=>{e.preventDefault();lost=true;cancelAnimationFrame(raf);setReady(false);readyRef.current?.(false);};
-    const onRestore=()=>{lost=false;/* A restored WebGL context needs rebuilt resources; fall back to SVG. */};
+    const onRestore=()=>{
+      // Restored contexts lose their GPU programs; recreate the whole effect.
+      setContextGeneration(generation => generation + 1);
+    };
     const onResize=()=>resize();
     resize();
     raf=requestAnimationFrame(render);
@@ -290,7 +294,7 @@ export function LivePendantWebGL({
       shaders.forEach(sh=>gl.deleteShader(sh));
       readyRef.current?.(false);
     };
-  },[]);
+  },[contextGeneration]);
 
   return (
     <canvas ref={canvasRef} role="presentation" aria-hidden="true"
