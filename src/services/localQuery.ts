@@ -19,8 +19,13 @@ export function queryLocalRecords<T extends object>(
     }
     if (key === 'fromDate') return String(rec.date || rec.createdAt || '').slice(0,10) >= want;
     if (key === 'toDate') return String(rec.date || rec.createdAt || '').slice(0,10) <= want;
-    if (key === 'accountId' || key === 'customerId')
-      return String(rec.accountId || rec.customerId || '').toLocaleLowerCase()===want;
+    if (key === 'accountId' || key === 'customerId') {
+      // Prefer the requested identifier. ERP records may contain both keys,
+      // with different values; falling back is only valid when absent.
+      const direct = rec[key];
+      const alternate = rec[key === 'accountId' ? 'customerId' : 'accountId'];
+      return String(direct ?? alternate ?? '').toLocaleLowerCase() === want;
+    }
     // Unknown filters fail closed instead of incorrectly returning every row.
     if (!(key in rec)) return false;
     return String(rec[key]??'').toLocaleLowerCase()===want;
