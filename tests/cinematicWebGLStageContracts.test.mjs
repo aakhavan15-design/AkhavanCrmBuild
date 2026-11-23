@@ -8,7 +8,8 @@ test('GPU stage remains independent from the login session and has a fallback',(
   assert.match(login,/CinematicWebGLStage illuminated=\{isLightOn\}/);
   assert.match(login,/AuthLightRoad isLightOn=\{isLightOn\}/);
   assert.doesNotMatch(source,/AuthService|setSession|onAuthenticated/);
-  assert.match(source,/if \(!gl\) return/);
+  assert.match(source,/if \(!context\) return/);
+  assert.match(source,/const gl: WebGL2RenderingContext = context/);
   assert.match(source,/webglcontextlost/);
   assert.match(source,/visibilitychange/);
 });
