@@ -39,7 +39,9 @@ const shapeRow=(row,financial,customerCount,visited,invoiceCount,netSales,custom
   customerCount:counts,activeCustomerCount:financial&&customerActiveCount!=null?Number(customerActiveCount):null,
   visitCount:supplement.visitSourcePresent?Number(visitCount||0):null,visitedCustomerCount:supplement.visitSourcePresent?Number(visited||0):null,
   orderOutcomeCount:Number(orderOutcomes||0),
-  invoiceCount:financial&&invoiceCount!=null?Number(invoiceCount):null,netSales:financial?money(netSales):null,
+  invoiceCount:financial&&invoiceCount!=null?Number(invoiceCount):null,
+  invoicedSales:financial?money(supplement.invoicedSales):null,
+  netSales:financial&&supplement.netSalesVerified?money(netSales):null,
   missingCoordinateCount:Number(missingCoords||0),coordinateCoveragePercent:coverage,
   returnAmount:money(supplement.returnAmount),profitAmount:null,receivableAmount:money(supplement.receivableAmount),targetAchievedPercent:money(supplement.targetAchievedPercent),
   receivableDate:supplement.receivableDate||null,
@@ -47,7 +49,7 @@ const shapeRow=(row,financial,customerCount,visited,invoiceCount,netSales,custom
   health:'UNKNOWN',metricAvailability:{
    customerCount:'ERP_ROUTE_MEMBERSHIP',activeCustomerCount:financial?'ERP_INVOICE':'DENIED',
    visitCount:supplement.visitSourcePresent?'ERP_VISIT_EVENT':'SOURCE_UNCONFIRMED',invoiceCount:financial?'ERP_INVOICE':'DENIED',
-   netSales:financial?'ERP_INVOICE_LINE':'DENIED',
+   netSales:supplement.netSalesVerified?'ERP_INVOICE_MINUS_RETURNS':'SOURCE_UNVERIFIED',
    returnAmount:supplement.returnAmount!=null?'ERP_SALES_RETURN':'UNAVAILABLE',profitAmount:'UNAVAILABLE',
    receivableAmount:supplement.receivableAmount!=null?'ACCOUNT_RECEIVABLE_CURRENT':'UNAVAILABLE',targetAchievedPercent:supplement.targetAchievedPercent!=null?'APPROVED_SALES_TARGET':'UNAVAILABLE',
   },source:'ERP_SQL',sourceStatus:'PARTIAL'
@@ -237,6 +239,11 @@ export function createRouteMapAnalytics({sql,run}) {
       .query(returnSql)).recordset.map(x=>[String(x.RouteId).toLowerCase(),x]));
   }
   // This is a CURRENT receivable snapshot; never mislabel as historical period balance.
+  // A missing return feed is not evidence that returns are zero.
+  const returnFeedReady=returnAllowed && (await new sql.Request(tx)
+    .input('tenant',sql.UniqueIdentifier,auth.tenantId)
+    .query(`SELECT CASE WHEN EXISTS(SELECT 1 FROM crm.SalesReturnMirror WHERE TenantId=@tenant)
+      THEN 1 ELSE 0 END AS HasOfficialReturnRows`)).recordset[0]?.HasOfficialReturnRows===1;
   let receivables=new Map();
   if(receivableAllowed && filters.repIds.length===0 && filters.productIds.length===0 &&
      filters.supplierIds.length===0 && filters.brandIds.length===0){
@@ -253,8 +260,9 @@ export function createRouteMapAnalytics({sql,run}) {
       .query(balanceSql)).recordset.map(x=>[String(x.RouteId).toLowerCase(),x]));
   }
   const permittedMetrics=['customerCount','visitCount','attentionPercent',
-     ...(financeAllowed?['activeCustomerCount','invoiceCount','netSales']:[]),
-     ...(returnAllowed?['returnAmount']:[]),
+     ...(financeAllowed?['activeCustomerCount','invoiceCount']:[]),
+     ...(financeAllowed&&returnFeedReady?['netSales']:[]),
+     ...(returnAllowed&&returnFeedReady?['returnAmount']:[]),
      ...(receivableAllowed?['receivableAmount']:[]),
      ...(targetAllowed&&financeAllowed?['targetAchievedPercent']:[])];
   let approvedTargets=new Map();
@@ -286,15 +294,18 @@ export function createRouteMapAnalytics({sql,run}) {
       const count=Number(r.CustomerCount);
       const key=String(r.RouteId).toLowerCase();
       const returned=returns.get(key),receivable=receivables.get(key);
+      const verifiedNet=financeAllowed&&returnFeedReady&&f?.NetSales!=null;
+      const computedNet=verifiedNet?Number(f.NetSales)-Number(returned?.ReturnAmount||0):null;
       return shapeRow(r,financeAllowed,count,r.VisitedCount,f?Number(f.InvoiceCount):null,
-       financeAllowed&&f?f.NetSales:null,f?Number(f.ActiveCustomerCount):null,
+       computedNet,f?Number(f.ActiveCustomerCount):null,
        r.VisitCount,r.OrderOutcomes,r.MissingGps,
        count>0?Math.round((count-Number(r.MissingGps))*10000/count)/100:null,
-       {returnAmount:returned?.ReturnAmount??null,receivableAmount:receivable?.ReceivableAmount??null,
+       {invoicedSales:financeAllowed&&f?f.NetSales:null,netSalesVerified:verifiedNet,
+        returnAmount:returnFeedReady?(returned?.ReturnAmount??0):null,receivableAmount:receivable?.ReceivableAmount??null,
         receivableDate:receivable?new Date().toISOString().slice(0,10):null,
         visitSourcePresent:visitFeed,
-        targetAchievedPercent:approvedTargets.get(key)?.TargetValue>0 && f?.NetSales!=null
-          ? Math.round(Number(f.NetSales)*10000/Number(approvedTargets.get(key).TargetValue))/100 : null});
+        targetAchievedPercent:approvedTargets.get(key)?.TargetValue>0 && computedNet!=null
+          ? Math.round(computedNet*10000/Number(approvedTargets.get(key).TargetValue))/100 : null});
     })};
  });
  const filterOptions=async(auth,{organizationWide=false,financeAllowed=false,date}={})=>run(auth,async tx=>{
