@@ -43,6 +43,7 @@
     "echarts-for-react": "^3.0.2"
   },
   "devDependencies": {
+    "@typescript/typescript6": "^6.0.2",
     "@tailwindcss/vite": "^4.3.3",
     "@types/express": "^4.17.21",
     "@types/jalaali-js": "^1.2.0",
