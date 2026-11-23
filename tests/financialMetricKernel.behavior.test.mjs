@@ -51,7 +51,7 @@ test('posted balance excludes provisional journal; all-non-void includes it',()=
   ];
   assert.equal(calculateLedgerBalance(lines,'POSTED_ONLY'),80);
   assert.equal(calculateLedgerBalance(lines,'ALL_NON_VOID'),50);
-  assert.equal(calculateLedgerBalance([{debitAmount:null,creditAmount:0,status:'POSTED'}],'POSTED_ONLY'),0);
+  assert.equal(calculateLedgerBalance([{debitAmount:null,creditAmount:0,status:'POSTED'}],'POSTED_ONLY'),null);
   assert.equal(calculateLedgerBalance([{debitAmount:'bad',creditAmount:0,status:'POSTED'}],'POSTED_ONLY'),null);
 });
 test('local query applies strict filters before paging and does not silently ignore unknown fields',()=>{
