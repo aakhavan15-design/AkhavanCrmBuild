@@ -225,6 +225,43 @@
 @media (max-width: 767px) and (max-height: 520px) {
   .akhavan-login-form-shell { width: min(88vw, 390px); }
 }
+/* Software keyboard on iOS: VisualViewport gets smaller while layout viewport
+   may remain the same. Keep all interactive fields inside the visible area. */
+.akhavan-login-scene[data-keyboard-open="true"] .akhavan-login-header,
+.akhavan-login-scene[data-keyboard-open="true"] .akhavan-login-footer,
+.akhavan-login-scene[data-keyboard-open="true"] .akhavan-login-hero,
+.akhavan-login-scene[data-keyboard-open="true"] .akhavan-login-inline-brand,
+.akhavan-login-scene[data-keyboard-open="true"] .akhavan-login-lamp { display: none !important; }
+.akhavan-login-scene[data-keyboard-open="true"] .akhavan-login-form-shell {
+  top: 50%;
+  bottom: auto;
+  left: 50%;
+  right: auto;
+  width: min(92vw, 410px);
+  max-height: 100%;
+  padding: 0;
+  transform: translate(-50%, -50%);
+}
+.akhavan-login-scene[data-keyboard-open="true"] .akhavan-login-card {
+  padding: 6px 11px !important;
+}
+.akhavan-login-scene[data-keyboard-open="true"] .akhavan-login-card form {
+  margin-top: 3px;
+  gap: 3px;
+}
+.akhavan-login-scene[data-keyboard-open="true"] .akhavan-login-card label {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap;
+}
+.akhavan-login-scene[data-keyboard-open="true"] .akhavan-login-card input {
+  min-height: 30px; height: 30px;
+}
+.akhavan-login-scene[data-keyboard-open="true"] .akhavan-login-card .akhavan-login-submit {
+  min-height: 32px; height: 32px;
+}
+.akhavan-login-scene[data-keyboard-open="true"] .akhavan-login-apply {
+  min-height: 28px;
+}
 @media (prefers-reduced-motion: reduce) {
   .akhavan-login-scene *, .akhavan-login-scene *::before,
   .akhavan-login-scene *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
