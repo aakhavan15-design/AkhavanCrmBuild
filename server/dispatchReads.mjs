@@ -90,7 +90,7 @@ export function createDispatchReader({sql,run}){
    const missingMappings=journal.filter(x=>!x.BucketCode).length;
    const journalBuckets=Object.fromEntries(
      ['CASH','CASH_DISCOUNT','INVOICE_SURCHARGE','CHEQUE','TRANSFER','CASH_REFUND']
-       .map(code=>[code,(missingMappings||ambiguousMappings)?null:mapped.filter(x=>x.BucketCode===code)
+       .map(code=>[code,(!journal.length||missingMappings||ambiguousMappings)?null:mapped.filter(x=>x.BucketCode===code)
          .reduce((sum,row)=>sum+Number(row.BalanceSide==='DEBIT'?row.DebitAmount:row.CreditAmount),0)]));
    const invoiceLookup=new Map(invoices.map(i=>[String(i.InvoiceMirrorId).toLowerCase(),i]));
    const bySeller=new Map();
