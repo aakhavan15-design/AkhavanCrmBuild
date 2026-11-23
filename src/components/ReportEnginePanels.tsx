@@ -44,7 +44,7 @@ import { InputControl } from './ui/Input';
 import { Button } from './ui/Button';
 import { FilterChip } from './ui/Tabs';
 import { resolveSellerKey } from '../services/receivableReports';
-import { buildNetSalesEvidence, reconcileNetSales } from '../lib/financialMetricKernel';
+import { buildNetSalesEvidence, reconcileNetSales, attributeReconciledSalesBySeller } from '../lib/financialMetricKernel';
 
 type ExpenseLike = {
   id?: string;
@@ -336,6 +336,10 @@ export function ReportEnginePanels({ state, visibleInvoices, visiblePayments, vi
   const salesReconciled = salesReconciliation.status === 'RECONCILED';
   const facts = salesReconciled ? netSalesEvidence.facts : [];
   const customerSales = salesReconciled ? netSalesEvidence.byCustomer : [];
+  const sellerNetSales = useMemo(() => attributeReconciledSalesBySeller(
+    netSalesEvidence, salesReconciliation, reportInvoices,
+    (invoice: Invoice) => resolveSellerKey(invoice as {ownerId?:string;sellerId?:string;salesRepId?:string;sellerCode?:string})
+  ), [netSalesEvidence, salesReconciliation, reportInvoices]);
 
   
   const previousPnlReport = useMemo(() => {
@@ -1058,22 +1062,16 @@ export function ReportEnginePanels({ state, visibleInvoices, visiblePayments, vi
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div className="p-3.5 bg-surface rounded-xl border border-border space-y-2">
-                <h5 className="text-xs font-bold text-text-main">سهم فروشندگان از فروش کل</h5>
-                <Bars 
-                  money 
-                  rows={(() => {
-                    const byKey = new Map<string, number>();
-                    for (const inv of invoices) {
-                      const k = resolveSellerKey(inv as { ownerId?: string; sellerId?: string; salesRepId?: string; sellerCode?: string });
-                      byKey.set(k, (byKey.get(k) || 0) + Number((inv as { totalAmount?: number }).totalAmount || 0));
-                    }
-                    const userById = new Map((state.users || []).map(u => [u.id, u.name]));
-                    return [...byKey.entries()].map(([key, value]) => ({
-                      key: key === 'UNASSIGNED' ? 'فروشنده نامشخص' : (userById.get(key) || key),
-                      value
-                    })).filter(x => x.value > 0);
-                  })()} 
-                />
+                <h5 className="text-xs font-bold text-text-main">فروش خالص فروشندگان — تطبیق‌شده با دفتر</h5>
+                {sellerNetSales.status === 'AVAILABLE'
+                  ? <Bars money rows={sellerNetSales.rows.map(row => ({
+                      key: row.key === 'UNASSIGNED' ? 'فروشنده نامشخص' :
+                        ((state.users || []).find(user => user.id === row.key)?.name || row.key),
+                      value: row.value
+                    })).filter(row => row.value > 0)}/>
+                  : <p role="status" className="text-xs leading-6 text-text-secondary">
+                      سهم فروشنده نامشخص است: {sellerNetSales.reason}
+                    </p>}
               </div>
 
               <div className="rounded-xl border border-warning/25 bg-warning-soft/50 p-3.5 space-y-1">
@@ -1088,8 +1086,8 @@ export function ReportEnginePanels({ state, visibleInvoices, visiblePayments, vi
           <div className="space-y-4">
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               <Metric label="تعداد اقلام کاتالوگ" value={state.externalProducts?.length || 0} note="کالاهای تعریف‌شده در سامانه مالی" />
-              <Metric label="پرفروش‌ترین محصول" value={productShareRows[0]?.key || '—'} note="بیشترین سهم ریالی" />
-              <Metric label="پوشش بهای تمام‌شده" value={(() => { const lines = (state.quotes || []).flatMap(q => q.lines || []).filter(l => Number(l.quantity) > 0); const complete = lines.filter(l => Number.isFinite(Number(l.costPrice)) && Number(l.costPrice) > 0).length; return lines.length ? pf(complete / lines.length) : 'نامشخص'; })()} note="اقلام با بهای معتبر" />
+              <Metric label="بیشترین سهم پیش‌فاکتور" value={productShareRows[0]?.key || '—'} note="بر اساس اقلام پیش‌فاکتور؛ نه فروش قطعی ERP" />
+              <Metric label="پوشش بهای اقلام پیش‌فاکتور" value={(() => { const lines = (state.quotes || []).flatMap(q => q.lines || []).filter(l => Number(l.quantity) > 0); const complete = lines.filter(l => Number.isFinite(Number(l.costPrice)) && Number(l.costPrice) > 0).length; return lines.length ? pf(complete / lines.length) : 'نامشخص'; })()} note="اقلام پیش‌فاکتور؛ نه پوشش بهای فروش قطعی" />
               <Metric label="میانگین حاشیه سود سبد" value="نامشخص" note="برای محاسبه، بهای معتبر اقلام لازم است" />
             </div>
 
