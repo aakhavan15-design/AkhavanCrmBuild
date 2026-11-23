@@ -1,3 +1,4 @@
+import {reconcileRouteNetSales} from './routeMapMoney.mjs';
 /**
  * Drilldown of ERP route membership, scoped to account and rep permissions.
  * Supports official date/product/rep filters. Never turn absent official
@@ -225,6 +226,10 @@ export function createRouteCustomerDetailReader({sql,run}){
     const id=String(m.AccountId).toLowerCase(),cv=visitByAccount.get(id)||[],ci=invoiceByAccount.get(id)||[];
     const sales=ci.reduce((sum,i)=>sum+(linesByInvoice.get(String(i.InvoiceMirrorId).toLowerCase())||[])
        .reduce((sub,l)=>sub+Number(l.NetLineAmount||0),0),0);
+    const moneyResult=reconcileRouteNetSales({
+      invoicedAmount:sales,returnedAmount:returnMap.get(id),
+      invoiceSourceReady:hasInvoiceFeed,returnSourceReady:hasReturnFeed,
+    });
     const lastVisit=cv[0],lastInvoice=ci.sort((a,b)=>String(b.InvoiceDate).localeCompare(String(a.InvoiceDate)))[0];
     const bought=financeAllowed&&ci.length>0,visited=cv.length>0;
     return {id:m.AccountId,name:m.Name,code:m.AccountCode,statusCode:m.StatusCode,businessCategoryCode:m.BusinessCategoryCode,
@@ -235,7 +240,7 @@ export function createRouteCustomerDetailReader({sql,run}){
       lastVisitOutcome:lastVisit?.OutcomeCode||null,noOrderReason:lastVisit?.ReasonTitleFa||lastVisit?.NoOrderReasonCode||null,
       invoiceCount:hasInvoiceFeed?ci.length:null,
       invoicedSales:hasInvoiceFeed?sales:null,
-      netSales:hasInvoiceFeed&&hasReturnFeed?sales-(returnMap.get(id)||0):null,
+      netSales:moneyResult.netSales,
       returnAmount:hasReturnFeed?(returnMap.get(id)||0):null,
       receivableAmount:balanceMap.has(id)?balanceMap.get(id):null,
       receivableAsOf:balanceMap.has(id)?new Date().toISOString().slice(0,10):null,
