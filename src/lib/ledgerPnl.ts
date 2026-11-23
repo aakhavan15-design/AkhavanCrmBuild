@@ -4,17 +4,17 @@
  * Bucket keys/expressions are the existing DEFAULT_REPORT_BUCKETS (accountingMapping.ts) — no second definition.
  */
 import type { LedgerAccountDef } from './etlPipeline.ts';
-import { calculateNetSales } from './financialMetricKernel.ts';
+import { calculateNetSales, isLedgerArticleIncluded } from './financialMetricKernel.ts';
 
 export interface PnlJournalLine { ledgerAccountId: string | null; debitAmount: number; creditAmount: number; documentDate: string; isVoided?: boolean; status?: string }
 export interface BucketDef { key: string; calculationExpression?: string }
-const POSTED = ['POSTED', 'CONFIRMED', 'FINAL'];
+// The posted-status policy is owned by financialMetricKernel.
 
 export function computeLedgerPnl(lines: PnlJournalLine[], accounts: LedgerAccountDef[], buckets: BucketDef[], period?: { from?: string; to?: string }) {
   const byId = new Map(accounts.map(a => [a.id, a]));
   const raw = new Map<string, number>(); let unmappedLines = 0, used = 0;
   for (const l of lines) {
-    if (l.isVoided || (l.status && !POSTED.includes(l.status.toUpperCase()))) continue;
+    if (!isLedgerArticleIncluded(l, 'POSTED_ONLY')) continue;
     const d = l.documentDate.slice(0, 10);
     if ((period?.from && d < period.from) || (period?.to && d > period.to)) continue;
     const acc = l.ledgerAccountId ? byId.get(l.ledgerAccountId) : undefined;
