@@ -1,5 +1,5 @@
 import type { CreditNote, Invoice, Payment, PaymentAllocation } from '../types';
-import { calculateDebitCreditBalance, isLedgerArticleIncluded } from './financialMetricKernel';
+import { calculateDebitCreditBalance, isLedgerArticleIncluded } from './financialMetricKernel.ts';
 
 export type ReceivableIssueCode =
   | 'INVALID_ALLOCATION_AMOUNT' | 'DUPLICATE_ALLOCATION_ID' | 'PAYMENT_NOT_FOUND' | 'PAYMENT_NOT_CLEARED'
