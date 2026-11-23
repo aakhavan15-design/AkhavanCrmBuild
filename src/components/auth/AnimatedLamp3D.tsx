@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { LivePendantWebGL } from './LivePendantWebGL';
 
 interface AnimatedLamp3DProps {
   isLightOn: boolean;
@@ -91,6 +92,7 @@ export function AnimatedLamp3D({
 }: AnimatedLamp3DProps) {
   const [pullOffset, setPullOffset] = useState({ x: 0, y: 0 });
   const [lampTilt, setLampTilt] = useState(0);
+  const [gpuPendantReady, setGpuPendantReady] = useState(false);
   // Motion only enhances the hanging lamp. Authentication never depends on a sensor.
   const [motionEnabled, setMotionEnabled] = useState(false);
   const [motionSupported, setMotionSupported] = useState(false);
@@ -308,11 +310,13 @@ export function AnimatedLamp3D({
         <svg
           viewBox="0 0 320 620"
           className="w-full h-full overflow-visible drop-shadow-2xl"
+          aria-hidden="true"
           xmlns="http://www.w3.org/2000/svg"
           style={{
+            opacity: gpuPendantReady ? 0 : 1,
             transform: `rotate(${renderedTilt}deg)`,
             transformOrigin: '160px 2px',
-            transition: isDragging ? 'none' : 'transform 0.15s ease-out',
+            transition: isDragging ? 'none' : 'transform 0.15s ease-out, opacity 550ms ease',
           }}
         >
           <defs>
@@ -602,6 +606,12 @@ export function AnimatedLamp3D({
             )}
           </g>
         </svg>
+        <LivePendantWebGL
+          illuminated={isLightOn}
+          tiltDegrees={renderedTilt}
+          pullOffset={pullOffset}
+          onRendererReady={setGpuPendantReady}
+        />
 
         {/* Generous Multidirectional Pull Interaction Zone (Centered directly over the bead at targetX) */}
         <div
