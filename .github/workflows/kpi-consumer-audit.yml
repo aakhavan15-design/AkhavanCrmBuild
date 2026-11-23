@@ -1,0 +1,28 @@
+name: KPI consumer source audit
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'server/**'
+      - 'shared/**'
+      - 'scripts/audit_kpi_consumers.mjs'
+      - '.github/workflows/kpi-consumer-audit.yml'
+  workflow_dispatch:
+jobs:
+  inventory:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Source scan summary
+        run: node scripts/audit_kpi_consumers.mjs
+      - name: Save full machine-readable audit
+        run: node scripts/audit_kpi_consumers.mjs --json > kpi-consumers-audit.json
+      - name: Publish audit artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: kpi-consumers-audit
+          path: kpi-consumers-audit.json
