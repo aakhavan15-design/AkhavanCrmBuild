@@ -1,0 +1,53 @@
+/* Public recruitment uses the existing form engine and endpoint.
+   This skin intentionally allows vertical scrolling for a long questionnaire;
+   the no-scroll requirement applies only to the personnel login screen. */
+.akhavan-public-recruitment {
+  min-height: 100dvh;
+  position: relative;
+  isolation: isolate;
+  color: var(--c-auth-on-ambient);
+  background: radial-gradient(ellipse at 12% 15%, color-mix(in srgb, var(--c-copper) 22%, transparent), transparent 48%),
+    linear-gradient(155deg, var(--c-navy-dark), var(--c-auth-ambient));
+}
+.akhavan-public-recruitment::before {
+  content: "";
+  position: fixed;
+  z-index: -1;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(ellipse at 80% 100%, color-mix(in srgb, var(--c-copper) 15%, transparent), transparent 50%);
+}
+.akhavan-public-recruitment .akhavan-application-back {
+  color: var(--c-warning-soft);
+  border: 1px solid color-mix(in srgb, var(--c-copper) 38%, transparent);
+  border-radius: 999px;
+  padding: 8px 14px;
+  background: color-mix(in srgb, var(--c-auth-ambient) 55%, transparent);
+  width: fit-content;
+}
+.akhavan-public-recruitment .akhavan-application-head {
+  padding: 12px 4px;
+  color: var(--c-auth-on-ambient);
+}
+.akhavan-public-recruitment .akhavan-application-head h1 {
+  color: var(--c-warning-soft);
+}
+.akhavan-public-recruitment .akhavan-application-head p {
+  color: color-mix(in srgb, var(--c-auth-on-ambient) 75%, transparent);
+}
+.akhavan-public-recruitment .akhavan-application-card {
+  background: var(--c-ivory, var(--c-surface));
+  color: var(--c-text-main);
+  border: 1px solid color-mix(in srgb, var(--c-copper) 50%, transparent);
+  border-radius: 22px;
+  box-shadow: 0 22px 60px color-mix(in srgb, black 40%, transparent), inset 0 1px 0 color-mix(in srgb, white 55%, transparent);
+}
+.akhavan-public-recruitment .akhavan-application-mark {
+  color: var(--c-auth-ambient);
+  background: linear-gradient(135deg, var(--c-warning-soft), var(--c-copper));
+  box-shadow: 0 6px 19px color-mix(in srgb, var(--c-copper) 30%, transparent);
+}
+.akhavan-public-recruitment :focus-visible {
+  outline: 2px solid var(--c-copper);
+  outline-offset: 2px;
+}
