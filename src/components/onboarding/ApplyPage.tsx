@@ -10,6 +10,7 @@ import { ErrorState, LoadingState } from '../ui';
 import { getTenantName } from '../../lib/orgPolicy';
 import { Button } from '../ui/Button';
 import { ArrowRight, CheckCircle2 } from 'lucide-react';
+import './recruitmentCinematic.css';
 
 /** صفحه عمومی ثبت‌نام و درخواست همکاری (بدون ورود). لینک این صفحه هیچ دسترسی‌ای به CRM نمی‌دهد. */
 export function ApplyPage({ state }: { state: AppState }) {
@@ -92,11 +93,11 @@ export function ApplyPage({ state }: { state: AppState }) {
 
 function Shell({ company, logo, onBack, children }: { company: string; logo?: string; onBack: () => void; children: React.ReactNode }) {
   return (
-    <main dir="rtl" className="min-h-dvh bg-canvas px-4 py-6 font-premium">
+    <main dir="rtl" className="akhavan-public-recruitment min-h-dvh px-4 py-6 font-premium">
       <div className="mx-auto max-w-lg space-y-4">
-        <button onClick={onBack} className="se-interactive flex min-h-touch cursor-pointer items-center gap-1 text-xs font-bold text-text-secondary"><ArrowRight size={15} />بازگشت به ورود</button>
-        <header className="flex items-center gap-3">{logo ? <img src={logo} alt={company} className="h-12 w-12 rounded-2xl object-cover" /> : <span className="grid h-12 w-12 place-items-center rounded-2xl bg-primary text-lg font-black text-white shadow-lux">{company.slice(0, 1)}</span>}<div><h1 className="se-title">درخواست همکاری</h1><p className="se-caption">{company}</p></div></header>
-        <section className="se-card se-panel-enter p-4 sm:p-5">{children}</section>
+        <button onClick={onBack} className="akhavan-application-back se-interactive flex min-h-touch cursor-pointer items-center gap-1 text-xs font-bold"><ArrowRight size={15} />بازگشت به ورود</button>
+        <header className="akhavan-application-head flex items-center gap-3">{logo ? <img src={logo} alt={company} className="h-12 w-12 rounded-2xl object-cover" /> : <span className="akhavan-application-mark grid h-12 w-12 place-items-center rounded-2xl text-lg font-black shadow-lux">{company.slice(0, 1)}</span>}<div><h1 className="se-title">درخواست همکاری</h1><p className="se-caption">{company}</p></div></header>
+        <section className="akhavan-application-card se-card se-panel-enter p-4 sm:p-5">{children}</section>
       </div>
     </main>
   );
