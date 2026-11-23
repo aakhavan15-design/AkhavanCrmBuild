@@ -65,6 +65,7 @@ export function createRouteCustomerDetailReader({sql,run}){
    LEFT JOIN crm.VisitNoOrderReasonMirror reason ON reason.TenantId=v.TenantId
       AND reason.SourceSystemCode=v.SourceSystemCode AND reason.ExternalReasonCode=v.NoOrderReasonCode
    WHERE v.TenantId=@tenant AND v.IsDeleted=0
+     AND (NOT EXISTS(SELECT 1 FROM OPENJSON(@categoryJson)) OR a.BusinessCategoryCode IN (SELECT value FROM OPENJSON(@categoryJson)))
      AND v.VisitedAtUtc>=@dateFrom AND v.VisitedAtUtc<DATEADD(day,1,@dateTo)
      AND EXISTS(SELECT 1 FROM security.fn_RecordReadScope(a.TenantId,N'accounts.view',a.OwnerUserId,a.BranchId,a.TerritoryId,a.TeamId))
      AND (NOT EXISTS(SELECT 1 FROM OPENJSON(@repJson)) OR v.ExternalSalesRepId IN(SELECT value FROM OPENJSON(@repJson)))
@@ -83,6 +84,7 @@ export function createRouteCustomerDetailReader({sql,run}){
      FROM crm.InvoiceMirror i
      JOIN crm.Account a ON a.TenantId=i.TenantId AND a.AccountId=i.AccountId
      WHERE i.TenantId=@tenant AND i.IsVoided=0 AND i.CurrencyCode='IRR'
+      AND (NOT EXISTS(SELECT 1 FROM OPENJSON(@categoryJson)) OR a.BusinessCategoryCode IN (SELECT value FROM OPENJSON(@categoryJson)))
       AND i.StatusCode IN ('POSTED','CONFIRMED','CLOSED')
       AND i.InvoiceDate BETWEEN @dateFrom AND @dateTo
       AND EXISTS(SELECT 1 FROM crm.VisitRouteCustomerMirror m WHERE m.TenantId=i.TenantId
@@ -104,6 +106,7 @@ export function createRouteCustomerDetailReader({sql,run}){
      JOIN crm.InvoiceMirror i ON i.TenantId=l.TenantId AND i.InvoiceMirrorId=l.InvoiceMirrorId
      JOIN crm.Account a ON a.TenantId=i.TenantId AND a.AccountId=i.AccountId
      WHERE i.TenantId=@tenant AND i.IsVoided=0 AND i.CurrencyCode='IRR'
+      AND (NOT EXISTS(SELECT 1 FROM OPENJSON(@categoryJson)) OR a.BusinessCategoryCode IN (SELECT value FROM OPENJSON(@categoryJson)))
       AND i.StatusCode IN ('POSTED','CONFIRMED','CLOSED')
       AND i.InvoiceDate BETWEEN @dateFrom AND @dateTo
       AND EXISTS(SELECT 1 FROM crm.VisitRouteCustomerMirror m WHERE m.TenantId=i.TenantId
@@ -132,7 +135,8 @@ export function createRouteCustomerDetailReader({sql,run}){
       JOIN crm.Account a ON a.TenantId=ret.TenantId AND a.AccountId=ret.AccountId
       LEFT JOIN crm.ExternalProduct product ON product.TenantId=ret.TenantId
         AND product.SourceSystemCode=sr.SourceSystemCode AND product.ExternalProductId=ret.ExternalProductId
-      WHERE ret.TenantId=@tenant AND ret.IsEffective=1 AND ret.DateKey BETWEEN @dateFrom AND @dateTo
+      WHERE ret.TenantId=@tenant AND ret.IsEffective=1
+        AND (NOT EXISTS(SELECT 1 FROM OPENJSON(@categoryJson)) OR a.BusinessCategoryCode IN (SELECT value FROM OPENJSON(@categoryJson))) AND ret.DateKey BETWEEN @dateFrom AND @dateTo
         AND EXISTS(SELECT 1 FROM crm.VisitRouteCustomerMirror member WHERE member.TenantId=ret.TenantId
           AND member.RouteId=@routeId AND member.AccountId=ret.AccountId
           AND member.EffectiveFrom<=ret.DateKey AND (member.EffectiveTo IS NULL OR member.EffectiveTo>=ret.DateKey))
@@ -160,6 +164,7 @@ export function createRouteCustomerDetailReader({sql,run}){
       FROM analytics.vw_AccountReceivable b
       JOIN crm.Account a ON a.TenantId=b.TenantId AND a.AccountId=b.AccountId
       WHERE b.TenantId=@tenant AND b.CurrencyCode='IRR'
+       AND (NOT EXISTS(SELECT 1 FROM OPENJSON(@categoryJson)) OR a.BusinessCategoryCode IN (SELECT value FROM OPENJSON(@categoryJson)))
        AND EXISTS(SELECT 1 FROM crm.VisitRouteCustomerMirror m WHERE m.TenantId=b.TenantId
          AND m.RouteId=@routeId AND m.AccountId=b.AccountId AND m.EffectiveFrom<=@dateTo
          AND (m.EffectiveTo IS NULL OR m.EffectiveTo>=@dateFrom))
@@ -183,6 +188,9 @@ export function createRouteCustomerDetailReader({sql,run}){
   `)).recordset[0]||{};
   const hasVisitFeed=sourceCoverage.HasVisitFeed===1;
   const hasInvoiceFeed=financeAllowed && sourceCoverage.HasInvoiceFeed===1;
+  const hasReturnFeed=returnAllowed && (await request().query(`
+     SELECT CASE WHEN EXISTS(SELECT 1 FROM crm.SalesReturnMirror WHERE TenantId=@tenant)
+       THEN 1 ELSE 0 END AS HasReturnFeed`)).recordset[0]?.HasReturnFeed===1;
   const visitByAccount=new Map();
   for(const v of visits){const k=String(v.AccountId).toLowerCase();const a=visitByAccount.get(k)||[];a.push(v);visitByAccount.set(k,a);}
   const invoiceByAccount=new Map();
@@ -199,8 +207,10 @@ export function createRouteCustomerDetailReader({sql,run}){
       subRouteCode:m.SubRouteCode,latitude:numberOrNull(m.Latitude),longitude:numberOrNull(m.Longitude),
       visitCount:hasVisitFeed?cv.length:null,lastVisitAt:lastVisit?.VisitedAtUtc||null,
       lastVisitOutcome:lastVisit?.OutcomeCode||null,noOrderReason:lastVisit?.ReasonTitleFa||lastVisit?.NoOrderReasonCode||null,
-      invoiceCount:hasInvoiceFeed?ci.length:null,netSales:hasInvoiceFeed&&ci.length?sales:null,
-      returnAmount:returnMap.has(id)?returnMap.get(id):null,
+      invoiceCount:hasInvoiceFeed?ci.length:null,
+      invoicedSales:hasInvoiceFeed?sales:null,
+      netSales:hasInvoiceFeed&&hasReturnFeed?sales-(returnMap.get(id)||0):null,
+      returnAmount:hasReturnFeed?(returnMap.get(id)||0):null,
       receivableAmount:balanceMap.has(id)?balanceMap.get(id):null,
       receivableAsOf:balanceMap.has(id)?new Date().toISOString().slice(0,10):null,
       lastInvoice:lastInvoice?{number:lastInvoice.InvoiceNumber,date:lastInvoice.InvoiceDate,
@@ -216,10 +226,11 @@ export function createRouteCustomerDetailReader({sql,run}){
     item.amount+=Number(l.NetLineAmount||0);item.quantity+=Number(l.Quantity||0);map.set(key,item);return map;
   },new Map()).values()].sort((a,b)=>b.amount-a.amount).slice(0,20):[];
   return {route,period:{dateFrom:filters.from,dateTo:filters.to},customers,topProducts,
-    source:'ERP_SQL',moneyUnit:'IRR',financeVisible:financeAllowed,coverage:{hasVisitFeed,hasInvoiceFeed},
+    source:'ERP_SQL',moneyUnit:'IRR',financeVisible:financeAllowed,coverage:{hasVisitFeed,hasInvoiceFeed,hasReturnFeed},
     warnings:['بازه زمانی بر اساس عضویت رسمی ERP محاسبه شده است.',
       'برای مشتری چندمسیره ممکن است یک فاکتور در هر مسیر مربوط نمایش داده شود.',
-      'برگشتی از ریز اسناد برگشت و مطالبات از مانده فعلی حسابداری فقط با مجوز همان شاخص قابل مشاهده است. سود و هدف هنوز به منبع قطعی متصل نیستند.']};
+      'فروش خالص فقط در صورت تأیید فاکتور و مرجوعی، از مبلغ ریز فاکتور منهای برگشتی معتبر محاسبه می‌شود. مبلغ فاکتور قبل از برگشت جداست.',
+      'مطالبات مانده فعلی حسابداری است؛ سود و هدف نیازمند منبع قابل اتکا هستند.']};
  });
 }
 const numberOrNull=x=>x==null?null:Number(x);
