@@ -1,3 +1,4 @@
+import { calculateNetSales } from './financialMetricKernel.ts';
 export type RiskLevel = 'LOW' | 'MEDIUM' | 'HIGH' | 'UNKNOWN';
 export interface RiskSignal { code: string; level: RiskLevel; title: string; reason: string; blocking?: boolean }
 const finite = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
@@ -14,11 +15,12 @@ const validFinancialRecord = (record: { isVoided?: boolean; isDeleted?: boolean;
 /** محاسبات تحلیلی خالص؛ بدون ایجاد سند مالی یا تغییر خودکار مانده مشتری. */
 export function assessOrderRisk(input: {
   order: Record<string, unknown> & { totalAmount?: unknown; costAmount?: unknown; costKnown?: boolean; customerId?: string; zone?: string; lines?: Array<Record<string, unknown>> }; customer?: Record<string, unknown> & { id?: string; balance?: unknown; creditLimit?: unknown }; orders?: Array<Record<string, unknown>>; policies?: Array<Record<string, unknown> & { enabled?: boolean; type?: string; scope?: string; value?: unknown; enforcement?: string }>; invoices?: Array<Record<string, unknown> & { customerId?: string; balance?: unknown }>; returns?: Array<Record<string, unknown>>;
+  officialReceivableBalance?: number | null; ledgerVerified?: boolean;
 }): RiskSignal[] {
   const { order, customer, orders = [], policies = [], invoices = [], returns = [] } = input;
   const signals: RiskSignal[] = [];
   const appliesToOrder = (policy: { scope?: string; value?: unknown }) => !policy.scope || policy.scope === 'COMPANY' || policy.scope === 'CUSTOMER' && policy.value === customer?.id || policy.scope === 'PRODUCT' && (order?.lines || []).some((line) => line.productId === policy.value) || policy.scope === 'PRODUCT_GROUP' && (order?.lines || []).some((line) => line.productGroupId === policy.value) || policy.scope === 'ZONE' && order?.zone === policy.value;
-  const balance = finiteAmount(customer?.balance);
+  const balance = input.ledgerVerified === true ? finiteAmount(input.officialReceivableBalance) : null;
   const limit = finiteAmount(customer?.creditLimit);
   const orderAmount = finiteAmount(order?.totalAmount);
   if (!customer) signals.push({ code: 'CUSTOMER_UNKNOWN', level: 'UNKNOWN', title: 'پروفایل مشتری ناقص', reason: 'مشتری به سفارش متصل نیست یا در داده محلی یافت نشد.' });
@@ -35,11 +37,14 @@ export function assessOrderRisk(input: {
   } else signals.push({ code: 'COST_UNKNOWN', level: 'UNKNOWN', title: 'بهای تمام‌شده نامشخص', reason: 'تا دریافت بهای معتبر، سود و حاشیه سود قابل تأیید نیست.' });
 
   const noCredit = policies.find(p => p.enabled && p.type === 'NO_CREDIT' && appliesToOrder(p));
-  const invoiceBalance = invoices.filter(i => validFinancialRecord(i) && i.customerId === order.customerId)
-    .reduce((sum, i) => sum + Math.max(0, finiteAmount(i.balance) ?? 0), 0);
-  const customerBalance = finiteAmount(customer?.balance);
-  const knownCustomerBalance = Math.max(invoiceBalance, customerBalance !== null ? Math.max(0, customerBalance) : 0);
-  if (noCredit && knownCustomerBalance > 0) signals.push({ code: 'NO_CREDIT_POLICY', level: 'HIGH', title: 'مشتری دارای مانده تحت سیاست محدودکننده', reason: `مانده قابل مشاهده ${knownCustomerBalance} است؛ این سیگنال محلی است و جایگزین کنترل سمت سرور نیست.`, blocking: true });
+  if (noCredit && balance !== null && balance > 0) signals.push({
+    code: 'NO_CREDIT_POLICY', level: 'HIGH', title: 'مشتری دارای مانده تحت سیاست محدودکننده',
+    reason: `مانده دفتری قطعی ${balance} است؛ اجرای منع اعتبار باید سمت سرور هم بررسی شود.`, blocking: true
+  });
+  else if (noCredit && balance === null) signals.push({
+    code: 'NO_CREDIT_EVIDENCE_MISSING', level: 'UNKNOWN', title: 'مانده قطعی برای سیاست فروش اعتباری در دسترس نیست',
+    reason: 'جمع مانده فاکتور یا فیلد مشتری جایگزین دفتر مالی نمی‌شود.'
+  });
   const maxDiscount = policies.find(p => p.enabled && p.type === 'MAX_DISCOUNT' && p.value != null && appliesToOrder(p));
   if (maxDiscount && Number.isFinite(Number(maxDiscount.value)) && Number(order?.discountPercent || 0) > Number(maxDiscount.value)) signals.push({ code: 'MAX_DISCOUNT', level: 'HIGH', title: 'تخفیف بالاتر از سیاست مجاز', reason: `تخفیف سفارش ${Number(order.discountPercent)}٪ است و از سقف ${Number(maxDiscount.value)}٪ بیشتر است.`, blocking: true });
   const zonePolicy = policies.find(p => p.enabled && p.type === 'ZONE' && p.value != null && appliesToOrder(p));
@@ -52,7 +57,10 @@ export function assessOrderRisk(input: {
   return signals;
 }
 
-export function calculateProfitability(input: { invoices?: Array<Record<string, unknown>>; returns?: Array<Record<string, unknown>>; payments?: Array<Record<string, unknown>>; orders?: Array<Record<string, unknown>>; dispatchPlans?: Array<Record<string, unknown>>; expenses?: Array<Record<string, unknown>>; actualCogs?: number }) {
+export function calculateProfitability(input: { invoices?: Array<Record<string, unknown>>; returns?: Array<Record<string, unknown>>; payments?: Array<Record<string, unknown>>; orders?: Array<Record<string, unknown>>; dispatchPlans?: Array<Record<string, unknown>>; expenses?: Array<Record<string, unknown>>; actualCogs?: number;
+  officialLedgerGross?: number | null; officialLedgerReturns?: number | null;
+  verifiedLedgerScope?: boolean; returnSourceComplete?: boolean;
+  officialReceivableBalance?: number | null; receivableLedgerVerified?: boolean; }) {
   const invoices = (input.invoices || []).filter(validFinancialRecord);
   const returns = (input.returns || []).filter(validFinancialRecord);
   const payments = (input.payments || []).filter(validFinancialRecord);
@@ -66,7 +74,10 @@ export function calculateProfitability(input: { invoices?: Array<Record<string, 
   const invoiceGross = amountSum(invoices, invoice => invoice.totalAmount);
   const confirmedReturns = amountSum(returns.filter(record => record.financialDocumentConfirmed === true), record => record.amount);
   const unconfirmedReturns = amountSum(returns.filter(record => record.financialDocumentConfirmed !== true), record => record.amount);
-  const netSales = invoiceGross - confirmedReturns;
+  const netSales = input.verifiedLedgerScope === true && input.returnSourceComplete === true
+    && finiteAmount(input.officialLedgerGross) === invoiceGross
+    && finiteAmount(input.officialLedgerReturns) === confirmedReturns
+    ? calculateNetSales(invoiceGross, confirmedReturns) : null;
   const clearedPayments = amountSum(payments.filter(payment => payment.status === 'CLEARED'), payment => payment.amount);
   const knownCostOrders = orders.filter(order => order.status !== 'CANCELLED' && order.costKnown === true &&
     finiteAmount(order.costAmount) !== null && finiteAmount(order.totalAmount) !== null);
@@ -75,8 +86,9 @@ export function calculateProfitability(input: { invoices?: Array<Record<string, 
     sum + (finiteAmount(order.totalAmount) ?? 0) - (finiteAmount(order.costAmount) ?? 0), 0);
   const knownDispatchCosts = amountSum(plans.filter(plan => finiteAmount(plan.distributionCost) !== null), plan => plan.distributionCost);
   const knownExpenses = amountSum(expenses.filter(expense => expense.status === 'PAID'), expense => expense.amount);
-  const receivableBalance = invoices.reduce((sum, invoice) => sum + Math.max(0, finiteAmount(invoice.balance) ?? 0), 0);
-  const operationalProfitAvailable = finite(actualCogs) && knownDispatchCosts > 0;
+  const receivableBalance = input.receivableLedgerVerified === true
+    ? finiteAmount(input.officialReceivableBalance) : null;
+  const operationalProfitAvailable = netSales !== null && finite(actualCogs) && knownDispatchCosts > 0;
   return {
     invoiceGross, confirmedReturns, unconfirmedReturns, netSales, clearedPayments,
     receivableBalance,
@@ -84,9 +96,10 @@ export function calculateProfitability(input: { invoices?: Array<Record<string, 
     estimatedGrossMarginPercent: estimatedOrderRevenue > 0 ? estimatedGrossProfit / estimatedOrderRevenue * 100 : null,
     costCoveragePercent: orders.length ? knownCostOrders.length / orders.length * 100 : null,
     knownDispatchCosts, knownExpenses,
-    operationalProfit: operationalProfitAvailable ? netSales - actualCogs - knownExpenses - knownDispatchCosts : null,
+    operationalProfit: operationalProfitAvailable && netSales !== null && actualCogs !== undefined ? netSales - actualCogs - knownExpenses - knownDispatchCosts : null,
     operationalProfitStatus: operationalProfitAvailable ? 'CALCULATED_WITH_INPUTS' : 'UNAVAILABLE',
-    returnReconciliationStatus: unconfirmedReturns > 0 ? 'PENDING_DOCUMENTS' : 'RECONCILED',
+    returnReconciliationStatus: input.returnSourceComplete !== true ? 'SOURCE_UNAVAILABLE' :
+      unconfirmedReturns > 0 ? 'PENDING_DOCUMENTS' : netSales === null ? 'LEDGER_UNRECONCILED' : 'RECONCILED',
   };
 }
 
@@ -113,7 +126,8 @@ export function buildOperationsMetrics(input: { orders?: Array<Record<string, un
   };
 }
 
-export function calculateCreditMetrics(input: { invoices?: Array<Record<string, unknown>>; payments?: Array<Record<string, unknown>>; allocations?: Array<Record<string, unknown>>; cheques?: Array<Record<string, unknown>>; asOf?: Date }) {
+export function calculateCreditMetrics(input: { invoices?: Array<Record<string, unknown>>; payments?: Array<Record<string, unknown>>; allocations?: Array<Record<string, unknown>>; cheques?: Array<Record<string, unknown>>; asOf?: Date;
+   invoiceOutstandingById?: Record<string, number>; ledgerVerified?: boolean; }) {
   const invoices = (input.invoices || []).filter(validFinancialRecord);
   const payments = (input.payments || []).filter(validFinancialRecord);
   const allocations = (input.allocations || []).filter(allocation =>
@@ -137,24 +151,24 @@ export function calculateCreditMetrics(input: { invoices?: Array<Record<string, 
   const clearedAllocated = validAllocations.reduce((sum, item) => sum + item.amount, 0);
   const invoiceGross = invoices.reduce((sum, invoice) => sum + Math.max(0, finiteAmount(invoice.totalAmount) ?? 0), 0);
   const now = (input.asOf || new Date()).getTime();
-  const overdueRows = invoices.filter(invoice => {
-    const balance = finiteAmount(invoice.balance);
-    if (balance === null || balance <= 0) return false;
-    if (invoice.status === 'OVERDUE') return true;
-    if (!invoice.dueDate) return false;
+  const officialCoverage = input.ledgerVerified === true &&
+    invoices.every(inv => typeof inv.id === 'string' && finiteAmount(input.invoiceOutstandingById?.[String(inv.id)]) !== null);
+  const overdueRows = officialCoverage ? invoices.filter(invoice => {
+    const balance = finiteAmount(input.invoiceOutstandingById?.[String(invoice.id)]);
+    if (balance === null || balance <= 0 || !invoice.dueDate) return false;
     const due = Date.parse(String(invoice.dueDate));
     return Number.isFinite(due) && due < now;
-  });
+  }) : [];
   return {
     averageSettlementDays: settlementDays.length ? settlementDays.reduce((a,b)=>a+b,0)/settlementDays.length : null,
     medianSettlementDays: median,
     settlementSampleSize: settlementDays.length,
-    overdueInvoiceCount: overdueRows.length,
+    overdueInvoiceCount: officialCoverage ? overdueRows.length : null,
     bouncedChequeCount: cheques.filter(cheque=>cheque.status==='BOUNCED').length,
     unresolvedChequeCount: cheques.filter(cheque=>['PENDING','RECEIVED','DEPOSITED'].includes(cheque.status)).length,
     clearedAllocatedAmount: clearedAllocated,
     allocatedCollectionRatePercent: invoiceGross>0?clearedAllocated/invoiceGross*100:null,
-    overdueBalance: overdueRows.reduce((sum,invoice)=>sum+(finiteAmount(invoice.balance) ?? 0),0),
+    overdueBalance: officialCoverage ? overdueRows.reduce((sum,invoice)=>sum+Number(input.invoiceOutstandingById?.[String(invoice.id)]),0) : null,
   };
 }
 
