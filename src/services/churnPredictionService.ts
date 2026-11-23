@@ -62,7 +62,7 @@ export function predictAccountChurn(
   let daysSinceLastOrder: number | null = null;
   if (accountInvoices.length > 0) {
     const orderDates = accountInvoices
-      .map(inv => new Date(inv.date || (inv as Record<string, unknown>).issueDate as string || 0).getTime())
+      .map(inv => new Date(inv.date || (inv as unknown as Record<string, unknown>).issueDate as string || 0).getTime())
       .filter(ts => !isNaN(ts) && ts > 0);
     if (orderDates.length > 0) {
       const latestOrderMs = Math.max(...orderDates);
