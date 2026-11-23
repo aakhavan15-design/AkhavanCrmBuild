@@ -93,6 +93,7 @@ const PERIOD_OPTIONS = [
 ];
 
 export function ReportsHub({ state, canViewFinance, canViewPayments, canOpenJournalCoverage, canFollowUpJournalCoverage, canViewChurn, canCreateFollowUp, receivableAccounts }: ReportsHubProps) {
+  const navigate = useNavigate();
   const [params] = useSearchParams();
   const churn = params.get('churn');
   const audience = churn === 'owner' || churn === 'supervisor' || churn === 'manager' ? churn : undefined;
@@ -238,6 +239,17 @@ export function ReportsHub({ state, canViewFinance, canViewPayments, canOpenJour
   const periodLabel = periodMeta.label;
   const activeDef = domainReports.find((r) => r.id === activeReport);
   const returnReport = activeDef?.id === 'returns';
+  // Domain-specific reports must not reuse generic invoice charts as purported evidence.
+  const specializedDestinations: Record<string, {path: string; description: string}> = {
+    routes: {path:'/geo-intelligence',description:'تحلیل مسیر و فروش منتسب به تور و مشتری'},
+    visit: {path:'/geo-intelligence',description:'شواهد ویزیت و علت ثبت‌نشدن سفارش'},
+    delivery: {path:'/operations',description:'رویدادهای تحویل؛ درصد تحقق فروش شاخص کیفیت تحویل نیست'},
+    discrepancy: {path:'/audit',description:'یافته‌های مغایرت همراه با شواهد و گردش رسیدگی'},
+    catalog: {path:'/operations',description:'کالاها و اطلاعات عملیاتی؛ نمودار فروش عمومی تحلیل موجودی نیست'},
+    proposals: {path:'/quotes',description:'مذاکرات و سفارش‌های پیشنهادی معتبر'},
+    'team-activity': {path:'/activities',description:'فعالیت‌ها و پیگیری‌های واقعی تیم'},
+  };
+  const specializedDestination = activeDef ? specializedDestinations[activeDef.id] : undefined;
   const officialReturnReport = returnReport && canOpenJournalCoverage && getActiveDataProvider().name === 'SQLSERVER_BACKEND';
 
   const exportCurrentReport = () => {
@@ -385,6 +397,16 @@ export function ReportsHub({ state, canViewFinance, canViewPayments, canOpenJour
             officialReturnReport && cutoffIso ? <JournalCoveragePanel key={state.currentUserId}
               period={{from:cutoffIso,to:today,dimension:'category'}} focusReturns canFollowUp={canFollowUpJournalCoverage} />
               : <p role="status" className="text-xs text-text-secondary">گزارش مرجوعی به دسترسی سازمانی مالی و اسناد SQL Server نیاز دارد.</p>
+          ) : specializedDestination ? (
+            <section className="rounded-2xl border border-border bg-surface p-4 space-y-3" role="status">
+              <h3 className="text-sm font-bold text-text-main">{activeDef.label}</h3>
+              <p className="text-xs text-text-secondary">{specializedDestination.description}</p>
+              <p className="text-xs text-text-secondary">به‌جای نمودار عمومی و بدون شواهد این شاخص، گزارش مرتبط و قابل پیگیری را باز کنید.</p>
+              <button type="button" onClick={() => navigate(specializedDestination.path)}
+                className="inline-flex min-h-11 items-center rounded-xl bg-primary px-4 text-xs font-bold text-on-primary">
+                مشاهده داده و جزئیات مرتبط
+              </button>
+            </section>
           ) : <>
           <div className="grid grid-cols-2 gap-2.5">
             <KpiCard
