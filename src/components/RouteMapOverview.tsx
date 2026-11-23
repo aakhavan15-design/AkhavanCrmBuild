@@ -4,7 +4,7 @@ import {AuthService} from '../services/AuthService';
 import {GeoZoneMapEditor} from './GeoZoneMapEditor';
 import type {GeoMapPin} from './GeoZoneMapEditor';
 import {Card} from './ui/Card';
-import {Select} from './ui/Input';
+import {SearchableSelect} from './ui/SearchableSelect';
 import {formatNumber,formatMoneyCompact} from '../lib/format';
 import {assessRouteMetric} from '../lib/routeMetricHealth';
 
@@ -229,10 +229,10 @@ export function RouteMapOverview(){
       {metricCatalog[id].name}</button>)}
     </div>
     <label className="flex items-center gap-2 text-xs text-text-secondary">عدد اصلی روی نقشه
-     <Select value={primary} onChange={e=>{const id=e.target.value as MetricId;setPrimary(id);if(!metrics.includes(id))setMetrics([...metrics,id]);}}
-       className="min-h-9 flex-1 rounded-xl border border-border bg-canvas px-2 text-text-main">
-      {metrics.filter(id=>permitted.has(id)).map(id=><option key={id} value={id}>{metricCatalog[id].name}</option>)}
-     </Select>
+     <SearchableSelect value={currentPrimary}
+        onChange={value=>{const id=value as MetricId;setPrimary(id);if(!metrics.includes(id))setMetrics([...metrics,id]);}}
+        options={metrics.filter(id=>permitted.has(id)).map(id=>({value:id,label:metricCatalog[id].name}))}
+        placeholder="انتخاب شاخص اصلی"/>
     </label>
    </div>
   </Card>
