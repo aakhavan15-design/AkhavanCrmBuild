@@ -1,4 +1,5 @@
 import type { CreditNote, Invoice, Payment, PaymentAllocation } from '../types';
+import { calculateDebitCreditBalance, isLedgerArticleIncluded } from './financialMetricKernel';
 
 export type ReceivableIssueCode =
   | 'INVALID_ALLOCATION_AMOUNT' | 'DUPLICATE_ALLOCATION_ID' | 'PAYMENT_NOT_FOUND' | 'PAYMENT_NOT_CLEARED'
@@ -89,7 +90,6 @@ export function reconcileReceivables(invoices:Invoice[]=[],payments:Payment[]=[]
 
 /* ───────── مانده طرف‌حساب از دفتر کل: Σ بدهکار − Σ بستانکار (F0-05؛ مرجع یگانهٔ مانده مشتری) ───────── */
 export interface CustomerLedgerBalance { customerId: string; debit: number; credit: number; /** بدهکار − بستانکار؛ مثبت = بدهکار، منفی = بستانکار */ balance: number; lineCount: number }
-const LEDGER_POSTED = ['POSTED', 'CONFIRMED', 'FINAL'];
 
 /**
  * سطرهای سند باطل/حذف‌شده/غیرقطعی کنار گذاشته می‌شوند. سطر با `accountId` (یا `customerId`) به مشتری نسبت داده می‌شود؛
@@ -100,13 +100,12 @@ export function computeCustomerLedgerBalances(journalLines: unknown): Map<string
   if (!Array.isArray(journalLines)) return out;
   for (const raw of journalLines as Array<Record<string, unknown>>) {
     if (!raw || raw.isVoided === true || raw.isDeleted === true || raw.deletedAt) continue;
-    const status = raw.status ? String(raw.status).toUpperCase() : '';
-    if (status && !LEDGER_POSTED.includes(status)) continue;
+    if (!isLedgerArticleIncluded(raw,'POSTED_ONLY')) continue;
     const customerId = String(raw.accountId || raw.customerId || '');
     if (!customerId) continue;
     const debit = Number(raw.debitAmount) || 0, credit = Number(raw.creditAmount) || 0;
     const cur = out.get(customerId) ?? { customerId, debit: 0, credit: 0, balance: 0, lineCount: 0 };
-    cur.debit += debit; cur.credit += credit; cur.balance = cur.debit - cur.credit; cur.lineCount++;
+    cur.debit += debit; cur.credit += credit; cur.balance = calculateDebitCreditBalance(cur.debit,cur.credit) ?? 0; cur.lineCount++;
     out.set(customerId, cur);
   }
   return out;
@@ -136,8 +135,7 @@ export function computeDetailSubsidiaryBalances(journalLines: unknown, options: 
   const cells = new Map<string, SubsidiaryBalance>();
   for (const raw of journalLines as Array<Record<string, unknown>>) {
     if (!raw || raw.isVoided === true || raw.isDeleted === true || raw.deletedAt) continue;
-    const status = raw.status ? String(raw.status).toUpperCase() : '';
-    if (status && !LEDGER_POSTED.includes(status)) continue;
+    if (!isLedgerArticleIncluded(raw,'POSTED_ONLY')) continue;
     const detailKey = pick(raw, ['detailAccountId', 'externalDetailCode', 'detailCode', 'accountId', 'customerId']);
     if (!detailKey) continue;
     const subsidiaryCode = pick(raw, ['subsidiaryCode', 'externalAccountCode', 'ledgerAccountCode']) || null;
@@ -145,7 +143,7 @@ export function computeDetailSubsidiaryBalances(journalLines: unknown, options: 
     const key = `${detailKey}\u0000${subsidiaryCode ?? ''}\u0000${periodCode ?? ''}`;
     const cell = cells.get(key) ?? { subsidiaryCode, periodCode, debit: 0, credit: 0, balance: 0, nature: 'SETTLED' as BalanceNature, lineCount: 0, ...{ _d: detailKey } } as SubsidiaryBalance & { _d: string };
     cell.debit += Number(raw.debitAmount) || 0; cell.credit += Number(raw.creditAmount) || 0; cell.lineCount++;
-    cell.balance = cell.debit - cell.credit; cell.nature = balanceNature(cell.balance);
+    cell.balance = calculateDebitCreditBalance(cell.debit,cell.credit) ?? 0; cell.nature = balanceNature(cell.balance);
     cells.set(key, cell);
   }
   for (const c of cells.values()) {
@@ -153,7 +151,7 @@ export function computeDetailSubsidiaryBalances(journalLines: unknown, options: 
     const cur = out.get(_d) ?? { detailKey: _d, subsidiaries: [], total: { debit: 0, credit: 0, balance: 0, nature: 'SETTLED' as BalanceNature, lineCount: 0 }, status: 'COMPLETE' as const };
     cur.subsidiaries.push(cell);
     cur.total.debit += cell.debit; cur.total.credit += cell.credit; cur.total.lineCount += cell.lineCount;
-    cur.total.balance = cur.total.debit - cur.total.credit; cur.total.nature = balanceNature(cur.total.balance);
+    cur.total.balance = calculateDebitCreditBalance(cur.total.debit,cur.total.credit) ?? 0; cur.total.nature = balanceNature(cur.total.balance);
     if (cell.subsidiaryCode === null) cur.status = 'HAS_UNMAPPED';
     out.set(_d, cur);
   }
