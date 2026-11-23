@@ -10,7 +10,7 @@ import { getOfflineQueue, retryFailedOfflineOperations } from './offline';
 
 const STORAGE_VERSION = 19;
 const demoSeedPreference = import.meta.env?.VITE_ENABLE_DEMO_DATA;
-const INCLUDE_DEMO_SEED = import.meta.env.DEV && demoSeedPreference !== 'false';
+const INCLUDE_DEMO_SEED = import.meta.env?.DEV === true && demoSeedPreference !== 'false';
 const STORAGE_NAME = 'akhavan_app_state';
 const SYNC_CHANNEL_NAME = 'akhavan_state_sync_channel';
 
@@ -25,7 +25,7 @@ export function withoutPrivateSnapshot(state: AppState, stripPersonnel = true): 
 }
 
 function sanitizePersistedSnapshot(value: string): string {
-  if (import.meta.env.DEV) return value;
+  if (import.meta.env?.DEV === true) return value;
   const persisted = JSON.parse(value);
   if (persisted.state?.state) persisted.state.state = withoutPrivateSnapshot(persisted.state.state);
   return JSON.stringify(persisted);
@@ -166,7 +166,7 @@ const ensureStateIntegrity = (incomingState: AppState): AppState => {
   };
 };
 
-const broadcastChannel = import.meta.env.DEV && typeof window !== 'undefined' && typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel(SYNC_CHANNEL_NAME) : null;
+const broadcastChannel = import.meta.env?.DEV === true && typeof window !== 'undefined' && typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel(SYNC_CHANNEL_NAME) : null;
 
 export const useAppStore = create<AppStore>()(
   persist(
