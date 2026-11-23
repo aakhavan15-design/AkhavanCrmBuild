@@ -5,14 +5,13 @@
  * This module does not read state, SQL or HTTP. Consumers may not substitute
  * invoice.paymentStatus for official ledger balances.
  */
+import { calculateNetSalesCore } from '../../shared/financialArithmetic.mjs';
+
 export type FinancialAmount = number | null;
 
-/** فروش خالص = فروش ناخالص - برگشت فروش (و تخفیفات ثبت شده در bucket متناظر).
- * Missing/untrusted operand is UNKNOWN (null), never silently zero. */
+/** Canonical cross-runtime calculation; missing/untrusted operand is UNKNOWN. */
 export function calculateNetSales(gross: FinancialAmount, returns: FinancialAmount): FinancialAmount {
-  if (gross === null || returns === null || !Number.isFinite(gross)
-    || !Number.isFinite(returns) || gross < 0 || returns < 0) return null;
-  return gross - returns;
+  return calculateNetSalesCore(gross, returns);
 }
 
 export type FinanceDocumentStatus = 'POSTED' | 'CONFIRMED' | 'FINAL' | 'DRAFT' | 'PENDING' | 'APPROVED' | 'VOID' | 'CANCELLED' | string;
