@@ -13,6 +13,8 @@ on:
       - 'src/components/ReportEnginePanels.tsx'
       - 'src/components/Customer360.tsx'
       - 'src/lib/financialMetricKernel.ts'
+      - 'src/lib/receivableReconciliation.ts'
+      - 'src/services/agingBuckets.ts'
       - 'tests/financialMetricKernel.behavior.test.mjs'
       - 'tests/dispatchIntelligence.behavior.test.mjs'
       - 'tests/dispatchCollectionZone.behavior.test.mjs'
