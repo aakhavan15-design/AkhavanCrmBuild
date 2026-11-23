@@ -20,6 +20,12 @@ on:
       - 'tests/routeMetricHealth.test.mjs'
       - 'tests/routeMapAnalytics.test.mjs'
       - 'tests/routeMapMoney.test.mjs'
+      - 'tests/landingNavigationSourceContracts.test.mjs'
+      - 'src/lib/moduleLanding.ts'
+      - 'src/lib/navigation.ts'
+      - 'src/components/ModuleLandingWorkspace.tsx'
+      - 'src/components/ReportsWorkspace.tsx'
+      - 'src/App.tsx'
       - 'src/components/GeoIntelligenceWorkspace.tsx'
       - 'src/lib/routeMetricHealth.ts'
       - '.github/workflows/route-map-focused.yml'
@@ -48,4 +54,4 @@ jobs:
             src/components/GeoZoneMapEditor.tsx \
             src/components/GeoIntelligenceWorkspace.tsx
       - name: Visit and geographical calculation tests
-        run: bun test tests/geoRouteAnalysis.test.mjs tests/visitIntelligence.test.mjs tests/erpVisitToursContracts.test.mjs tests/routeMetricHealth.test.mjs tests/routeMapAnalytics.test.mjs tests/routeMapMoney.test.mjs
+        run: bun test tests/geoRouteAnalysis.test.mjs tests/visitIntelligence.test.mjs tests/erpVisitToursContracts.test.mjs tests/routeMetricHealth.test.mjs tests/routeMapAnalytics.test.mjs tests/routeMapMoney.test.mjs tests/landingNavigationSourceContracts.test.mjs
