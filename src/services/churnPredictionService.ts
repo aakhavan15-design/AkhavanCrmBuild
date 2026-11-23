@@ -18,9 +18,9 @@ export interface ChurnPredictionResult {
   riskTierLabel: string;
   daysSinceLastOrder: number | null;
   daysSinceLastActivity: number | null;
-  unpaidOverdueAmount: number;
+  unpaidOverdueAmount: number | null;
   bouncedChequesCount: number;
-  revenueDropPercent: number;
+  revenueDropPercent: number | null;
   reasons: string[];
   recommendations: string[];
   suggestedAction: {
@@ -46,7 +46,7 @@ export function predictAccountChurn(
   account: Account,
   state: AppState,
   referenceDate: Date = new Date(),
-  options: { ledgerBalances?: DetailBalancesResult | null } = {}
+  options: { ledgerBalances?: DetailBalancesResult | null; verifiedNetSalesByPeriod?: {recent:number;previous:number;ledgerReconciled:boolean} } = {}
 ): ChurnPredictionResult {
   const refMs = referenceDate.getTime();
   const t = getMetricThresholds(state.settings as Record<string, unknown> | undefined).churnThresholds;
@@ -98,30 +98,23 @@ export function predictAccountChurn(
   const invoiceTime = (inv: { date?: string; issueDate?: string }) =>
     new Date(inv.date || inv.issueDate || 0).getTime();
 
-  const recentRevenue = accountInvoices
-    .filter(inv => {
-      const ts = invoiceTime(inv as { date?: string; issueDate?: string });
-      return ts >= recent60Ms && ts <= refMs;
-    })
-    .reduce((s, inv) => s + (Number(inv.totalAmount) || 0), 0);
-
-  const prevRevenue = accountInvoices
-    .filter(inv => {
-      const ts = invoiceTime(inv as { date?: string; issueDate?: string });
-      return ts >= prev120Ms && ts < recent60Ms;
-    })
-    .reduce((s, inv) => s + (Number(inv.totalAmount) || 0), 0);
-
-  let revenueDropPercent = 0;
-  if (prevRevenue > 0 && recentRevenue < prevRevenue) {
+  // Revenue is net of posted returns and must come from the reconciled
+  // metric provider; gross invoice sums are NOT a substitute.
+  const netSalesWindow = options.verifiedNetSalesByPeriod;
+  const reliableWindow = netSalesWindow?.ledgerReconciled === true
+    && Number.isFinite(netSalesWindow.recent) && Number.isFinite(netSalesWindow.previous);
+  const recentRevenue = reliableWindow ? netSalesWindow!.recent : null;
+  const prevRevenue = reliableWindow ? netSalesWindow!.previous : null;
+  let revenueDropPercent: number | null = null;
+  if (prevRevenue !== null && recentRevenue !== null && prevRevenue > 0 && recentRevenue < prevRevenue) {
     revenueDropPercent = Math.round(((prevRevenue - recentRevenue) / prevRevenue) * 100);
     if (revenueDropPercent >= t.revenueDropHighPercent) {
       score += 25;
-      reasons.push(`کاهش ${revenueDropPercent.toLocaleString('fa-IR')} درصدی در حجم خرید نسبت به دوره قبل`);
+      reasons.push(`کاهش ${revenueDropPercent.toLocaleString('fa-IR')} درصدی فروش خالص قطعی نسبت به دوره قبل`);
       recommendations.push('بررسی قیمت رقبا یا تغییر تأمین‌کننده توسط مشتری');
     } else if (revenueDropPercent >= t.revenueDropMediumPercent) {
       score += 15;
-      reasons.push(`کاهش ${revenueDropPercent.toLocaleString('fa-IR')} درصدی در خریدهای اخیر`);
+      reasons.push(`کاهش ${revenueDropPercent.toLocaleString('fa-IR')} درصدی فروش خالص اخیر`);
     }
   }
 
@@ -150,21 +143,18 @@ export function predictAccountChurn(
     reasons.push('هیچ سابقه ارتباط یا فعالیتی در پرونده ثبت نشده است');
   }
 
-  // مانده معوق: اگر مانده دفتری در دسترس باشد از LIFO خوانده می‌شود؛ در غیر این صورت فقط فاکتورهای دارای مانده عددی معتبر و تاریخ سررسید.
+  // An invoice balance is NOT a financial ledger receivable.
   const remainingMap = options.ledgerBalances
     ? estimateInvoiceRemaining(options.ledgerBalances, [account], accountInvoices)
     : null;
-
-  let overdueAmount = 0;
+  let overdueAmount: number | null = remainingMap ? 0 : null;
   let maxOverdueDays = 0;
-  accountInvoices.forEach(inv => {
+  if (remainingMap) accountInvoices.forEach(inv => {
     const days = calculateDaysOverdue(inv.dueDate, referenceDate);
     if (days <= 0) return;
-    const rem = remainingMap
-      ? remainingMap.get(inv.id)
-      : (typeof inv.balance === 'number' && Number.isFinite(inv.balance) ? inv.balance : null);
+    const rem = remainingMap.get(inv.id);
     if (rem !== null && rem !== undefined && rem > 0) {
-      overdueAmount += rem;
+      overdueAmount = (overdueAmount || 0) + rem;
       if (days > maxOverdueDays) maxOverdueDays = days;
     }
   });
@@ -266,7 +256,7 @@ export function predictAccountChurn(
 export function evaluatePortfolioChurn(
   state: AppState,
   referenceDate: Date = new Date(),
-  options: { ledgerBalances?: DetailBalancesResult | null } = {}
+  options: { ledgerBalances?: DetailBalancesResult | null; verifiedNetSalesByPeriod?: {recent:number;previous:number;ledgerReconciled:boolean} } = {}
 ): ChurnPortfolioSummary {
   const accounts = (state.accounts || []).filter(a => !a.deletedAt && !a.isDeleted);
   const results = accounts.map(acc => predictAccountChurn(acc, state, referenceDate, options));
