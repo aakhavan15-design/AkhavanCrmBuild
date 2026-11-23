@@ -99,7 +99,7 @@ export const MODULE_LANDINGS: ModuleLandingDefinition[] = [
       {
         title: 'هویت و سازمان',
         tiles: [
-          tile('master-users', 'کاربران و نقش‌ها', 'مدیریت کاربران، نقش‌ها و زنجیره گزارش‌دهی', '/settings?tab=users', 'settings', Users),
+          tile('master-users', 'کاربران و نقش‌ها', 'مدیریت کاربران، نقش‌ها و زنجیره گزارش‌دهی', '/settings?tab=users', 'users', Users),
           tile('master-teams', 'تیم‌ها و گروه‌های کاری', 'ساختار تیمی و شعب سازمان', '/settings?tab=groups', 'settings', Building2),
           tile('master-personnel', 'پرسنل و پرونده‌ها', 'مدیریت پرونده کارکنان و کدهای پرسنلی', '/onboarding', 'onboarding', UserCheck),
         ],
@@ -253,7 +253,7 @@ export const MODULE_LANDINGS: ModuleLandingDefinition[] = [
         tiles: [
           tile('collection', 'مطالبات و وصول', 'مانده دفتری، سنی تخمینی و پیگیری وصول', '/finance?tab=collection', 'finance', ArrowDownLeft),
           tile('credit-risk', 'ریسک اعتباری مشتریان', 'پایش اعتبار، چک برگشتی و نرخ تسویه', '/operations?tab=credit', 'ops.credit', ShieldCheck),
-          tile('receivables-reports', 'گزارش‌های مطالبات', 'تحلیل سنی و تمرکز مطالبات', '/reports?tab=receivables', 'finance', BarChart2),
+          tile('receivables-reports', 'گزارش‌های مطالبات', 'تحلیل سنی و تمرکز مطالبات', '/reports?tab=receivables', 'finance.reports', BarChart2),
         ],
       },
       {
@@ -262,7 +262,7 @@ export const MODULE_LANDINGS: ModuleLandingDefinition[] = [
           tile('credits', 'اسناد بستانکاری', 'اعلامیه‌ها و درخواست‌های بستانکاری', '/finance?tab=credits', 'finance', FileCheck),
           tile('expenses', 'هزینه‌ها', 'ثبت و بررسی اسناد هزینه', '/finance?tab=expenses', 'finance', Receipt),
           tile('profitability', 'سودآوری عملیات', 'تحلیل سودآوری فروش و هزینه‌های پخش', '/operations?tab=profitability', 'ops.profitability', TrendingUp),
-          tile('finance-reports', 'گزارش‌های مالی', 'سود و زیان دفتری و جریان نقدینگی', '/reports?tab=finance', 'finance', PieChart),
+          tile('finance-reports', 'گزارش‌های مالی', 'سود و زیان دفتری و جریان نقدینگی', '/reports?tab=finance', 'finance.reports', PieChart),
           tile('audit-finance', 'پایش مغایرت مالی', 'کنترل کدینگ، ماهیت حساب و توازن اسناد', '/audit?module=finance', 'finance', SearchCheck),
           tile('fin-budget', 'بودجه‌ریزی', 'بودجه دوره‌ای هر واحد', '/planned?item=fin-budget', 'finance', Target),
           tile('fin-cost-control', 'کنترل هزینه‌ها', 'هزینه در برابر بودجه', '/planned?item=fin-cost-control', 'finance', Sliders),
@@ -323,7 +323,7 @@ export const MODULE_LANDINGS: ModuleLandingDefinition[] = [
         title: 'سازمان و دسترسی',
         tiles: [
           tile('settings', 'تنظیمات سازمان', 'اطلاعات پایه و سیاست‌های کلان سازمان', '/settings', 'settings', Settings2),
-          tile('permissions', 'پروفایل دسترسی و مجوزها', 'مدیریت مجموعه مجوزها و سطح دسترسی', '/settings?tab=users&sub=permissions', 'settings', Shield),
+          tile('permissions', 'پروفایل دسترسی و مجوزها', 'مدیریت مجموعه مجوزها و سطح دسترسی', '/settings?tab=users&sub=permissions', 'users', Shield),
           tile('teams', 'تیم‌ها و گروه‌های کاری', 'تنظیم ساختار تیمی و عضویت', '/settings?tab=groups', 'settings', Building2),
         ],
       },
