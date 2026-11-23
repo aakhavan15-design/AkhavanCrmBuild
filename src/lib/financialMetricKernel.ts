@@ -24,6 +24,19 @@ export interface LedgerArticle {
   isDeleted?: boolean;
 }
 
+/** Shared debit/credit arithmetic for finance-only journal aggregates. */
+export function calculateDebitCreditBalance(debit: number | null, credit: number | null): FinancialAmount {
+  if (debit === null || credit === null || !Number.isFinite(debit) || !Number.isFinite(credit)
+    || debit < 0 || credit < 0) return null;
+  return debit - credit;
+}
+export function isLedgerArticleIncluded(article: LedgerArticle, scope: 'POSTED_ONLY' | 'ALL_NON_VOID'): boolean {
+  if (article.isVoided || article.isDeleted
+    || ['VOID','VOIDED','CANCELLED','CANCELED','REJECTED'].includes(String(article.status||'').toUpperCase())) return false;
+  return scope === 'ALL_NON_VOID'
+    || ['POSTED','CONFIRMED','FINAL'].includes(String(article.status||'').toUpperCase());
+}
+
 /** ماندهٔ دفتری فقط اسناد قطعی؛ ماندهٔ کلی شامل اسناد غیرقطعی معتبر هم می‌شود.
  * Null means an invalid article was encountered, NOT 0. */
 export function calculateLedgerBalance(
@@ -33,15 +46,14 @@ export function calculateLedgerBalance(
   let debit = 0;
   let credit = 0;
   for (const a of articles) {
-    if (a.isDeleted || a.isVoided || ['VOID','VOIDED','CANCELLED','CANCELED','REJECTED'].includes(String(a.status || '').toUpperCase())) continue;
-    if (scope === 'POSTED_ONLY' && !['POSTED','CONFIRMED','FINAL'].includes(String(a.status || '').toUpperCase())) continue;
+    if (!isLedgerArticleIncluded(a,scope)) continue;
     if (a.debitAmount === null || a.debitAmount === undefined || a.creditAmount === null || a.creditAmount === undefined) return null;
     const d = Number(a.debitAmount), c = Number(a.creditAmount);
     if (!Number.isFinite(d) || !Number.isFinite(c) || d < 0 || c < 0) return null;
     debit += d;
     credit += c;
   }
-  return debit - credit;
+  return calculateDebitCreditBalance(debit,credit);
 }
 
 export interface SalesEvidenceInvoice { id: string; customerId?: string; accountId?: string; date: string; totalAmount: number }
