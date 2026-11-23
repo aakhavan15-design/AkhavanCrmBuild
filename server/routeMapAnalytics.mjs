@@ -238,6 +238,11 @@ export function createRouteMapAnalytics({sql,run}) {
     returns=new Map((await filtersRequest(tx,auth,filters,organizationWide,financeOrganizationWide)
       .query(returnSql)).recordset.map(x=>[String(x.RouteId).toLowerCase(),x]));
   }
+  const invoiceFeedReady=financeAllowed && (await new sql.Request(tx)
+    .input('tenant',sql.UniqueIdentifier,auth.tenantId)
+    .query(`SELECT CASE WHEN EXISTS(SELECT 1 FROM crm.InvoiceMirror
+      WHERE TenantId=@tenant AND IsVoided=0 AND CurrencyCode='IRR') THEN 1 ELSE 0 END AS HasOfficialInvoices`))
+    .recordset[0]?.HasOfficialInvoices===1;
   // This is a CURRENT receivable snapshot; never mislabel as historical period balance.
   // A missing return feed is not evidence that returns are zero.
   const returnFeedReady=returnAllowed && (await new sql.Request(tx)
@@ -260,8 +265,8 @@ export function createRouteMapAnalytics({sql,run}) {
       .query(balanceSql)).recordset.map(x=>[String(x.RouteId).toLowerCase(),x]));
   }
   const permittedMetrics=['customerCount','visitCount','attentionPercent',
-     ...(financeAllowed?['activeCustomerCount','invoiceCount']:[]),
-     ...(financeAllowed&&returnFeedReady?['netSales']:[]),
+     ...(financeAllowed?['activeCustomerCount','invoiceCount','invoicedSales']:[]),
+     ...(financeAllowed&&invoiceFeedReady&&returnFeedReady?['netSales']:[]),
      ...(returnAllowed&&returnFeedReady?['returnAmount']:[]),
      ...(receivableAllowed?['receivableAmount']:[]),
      ...(targetAllowed&&financeAllowed?['targetAchievedPercent']:[])];
@@ -286,7 +291,7 @@ export function createRouteMapAnalytics({sql,run}) {
   }
   return {source:'ERP_SQL',period:{dateFrom:filters.from,dateTo:filters.to},permittedMetrics,
     caveats:['مشتری چندمسیره در هر مسیر مستقل شمرده می‌شود؛ مجموع مسیرها لزوماً جمع سازمان نیست.',
-      'فروش از ریز فاکتور و برگشتی از ریز سند برگشت رسمی محاسبه می‌شود. ارقام فقط در صورت مجوز مربوط نمایش داده می‌شوند.',
+      'فروش فاکتور قبل از برگشت جداست. فروش خالص فقط در حضور هر دو منبع رسمی فاکتور و مرجوعی و با مجوز مالی محاسبه می‌شود.',
       'مطالبات، در صورت وجود منبع معتبر و مجوز، مانده فعلی است نه مانده تاریخی بازه. سود تنها با بهای تمام‌شده مستند قابل گزارش خواهد بود.',
       ...(!visitFeed?['پوشش دیتای ویزیت ERP تأیید نشده و نرخ توجه به مسیر قابل محاسبه نیست.']:[])],
     rows:reportRows.map(r=>{
@@ -294,8 +299,9 @@ export function createRouteMapAnalytics({sql,run}) {
       const count=Number(r.CustomerCount);
       const key=String(r.RouteId).toLowerCase();
       const returned=returns.get(key),receivable=receivables.get(key);
-      const verifiedNet=financeAllowed&&returnFeedReady&&f?.NetSales!=null;
-      const computedNet=verifiedNet?Number(f.NetSales)-Number(returned?.ReturnAmount||0):null;
+      const verifiedNet=financeAllowed&&invoiceFeedReady&&returnFeedReady;
+      // A return of an invoice from an earlier period may make this period's net negative.
+      const computedNet=verifiedNet?Number(f?.NetSales||0)-Number(returned?.ReturnAmount||0):null;
       return shapeRow(r,financeAllowed,count,r.VisitedCount,f?Number(f.InvoiceCount):null,
        computedNet,f?Number(f.ActiveCustomerCount):null,
        r.VisitCount,r.OrderOutcomes,r.MissingGps,
