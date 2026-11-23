@@ -98,14 +98,14 @@ export function ReportsWorkspace({ state, updateState, setActiveTab }: ReportsWo
       tasks: visibleTasks,
       users: portUsers.filter(user => ownerIds.has(user.id)),
       journalLines: canViewFinance ? (reportCols.journalLines || []).filter(row => canOn('finance', 'VIEW', scopeOf(row as ReportScopeSource))) : [],
-      coaMirror: canViewFinance ? (reportCols.coaMirror || []) as NonNullable<AppState['coaMirror']> : [],
+      coaMirror: canViewFinance ? ((reportCols.coaMirror || []) as NonNullable<AppState['coaMirror']>).filter(row => canOn('finance','VIEW',scopeOf(row))) : [],
       externalProducts: canViewInventory ? (reportCols.externalProducts || []) as NonNullable<AppState['externalProducts']> : [],
       salesOrders: canViewOperations ? (state.salesOrders || []).filter(row => canOn('quotes', 'VIEW', scopeOf(row as ReportScopeSource)) || canOn('finance', 'VIEW', scopeOf(row as ReportScopeSource))) : [],
       visits: (state.visits || []).filter(row => canOn('activities', 'VIEW', scopeOf(row as ReportScopeSource))),
       deliveryEvents: canViewOperations ? (state.deliveryEvents || []).filter(row => canOn('finance', 'VIEW', scopeOf(row as ReportScopeSource)) || canOn('activities', 'VIEW', scopeOf(row as ReportScopeSource))) : [],
       salesReturns: canViewFinance ? (state.salesReturns || []).filter(row => canOn('finance', 'VIEW', scopeOf(row as ReportScopeSource))) : [],
       paymentAllocations: (reportCols.paymentAllocations || []).filter(row => { const allocation = row as { invoiceId?: string; paymentId?: string }; return visibleInvoiceIds.has(allocation.invoiceId || '') && visiblePaymentIds.has(allocation.paymentId || ''); }),
-      salesTargets: (state.salesTargets || []).filter(row => ownerIds.has(String((row as Record<string, unknown>).ownerId || (row as Record<string, unknown>).userId || ''))),
+      salesTargets: (state.salesTargets || []).filter(row => canOn('reports', 'VIEW', scopeOf(row))),
     } as AppState;
   }, [state, visibleAccounts, visibleInvoices, visiblePayments, visibleCheques, visibleExpenses, visibleQuotes, visibleActivities, visibleTasks, portUsers, reportCols, can, canOn]);
 
