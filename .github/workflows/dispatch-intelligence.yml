@@ -14,6 +14,8 @@ on:
       - 'src/components/Customer360.tsx'
       - 'src/lib/financialMetricKernel.ts'
       - 'src/lib/operationsEngine.ts'
+      - 'src/services/churnPredictionService.ts'
+      - 'tests/churnPredictionService.test.mjs'
       - 'tests/operationsEngine.test.mjs'
       - 'src/lib/receivableReconciliation.ts'
       - 'shared/financialArithmetic.mjs'
@@ -43,7 +45,7 @@ jobs:
           node --check server/dispatchReads.mjs
       - name: Behavioral verification
         run: |
-          node --test tests/dispatchIntelligence.behavior.test.mjs tests/dispatchCollectionZone.behavior.test.mjs tests/financialMetricKernel.behavior.test.mjs tests/routeMapMoney.test.mjs tests/operationsEngine.test.mjs
+          node --test tests/dispatchIntelligence.behavior.test.mjs tests/dispatchCollectionZone.behavior.test.mjs tests/financialMetricKernel.behavior.test.mjs tests/routeMapMoney.test.mjs tests/operationsEngine.test.mjs tests/churnPredictionService.test.mjs
 
   ui-build:
     runs-on: ubuntu-latest
