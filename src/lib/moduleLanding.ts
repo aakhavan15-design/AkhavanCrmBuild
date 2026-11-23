@@ -244,7 +244,7 @@ export const MODULE_LANDINGS: ModuleLandingDefinition[] = [
         tiles: [
           tile('payments', 'دریافتی‌ها و رسیدها', 'ثبت، تطبیق و تخصیص دریافتی‌ها', '/finance?tab=payments', 'finance', Banknote),
           tile('cheques', 'چک‌ها', 'چک‌های دریافتی و پرداختی صیادی', '/finance?tab=cheques', 'finance', FileText),
-          tile('requests', 'دستورهای پرداخت و تسویه', 'درخواست‌های پرداخت و تأیید حسابداری', '/finance?tab=requests', 'finance', ClipboardList),
+          tile('finance-payment-requests', 'دستورهای پرداخت و تسویه', 'درخواست‌های پرداخت و تأیید حسابداری', '/finance?tab=requests', 'finance', ClipboardList),
           tile('fin-payments', 'مدیریت پرداخت‌ها', 'دستور پرداخت قطعی و غیرقطعی', '/planned?item=fin-payments', 'finance', CreditCard),
         ],
       },
