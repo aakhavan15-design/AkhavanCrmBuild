@@ -271,10 +271,10 @@ export function createRouteMapAnalytics({sql,run}) {
   }
   const permittedMetrics=['customerCount','visitCount','attentionPercent',
      ...(financeAllowed&&invoiceFeedReady?['activeCustomerCount','invoiceCount','invoicedSales']:[]),
-     ...(financeAllowed&&invoiceFeedReady&&returnFeedReady?['netSales']:[]),
+     // Route-level ledger matching is not yet available: do not offer "verified" net sales here.
      ...(returnAllowed&&returnFeedReady?['returnAmount']:[]),
      ...(receivableAllowed?['receivableAmount']:[]),
-     ...(targetAllowed&&financeAllowed&&invoiceFeedReady&&returnFeedReady?['targetAchievedPercent']:[])];
+     // Target achievement depends on the same verified net sales and remains unavailable.];
   let approvedTargets=new Map();
   if(targetAllowed && financeAllowed && !filters.productIds.length && !filters.brandIds.length &&
       !filters.supplierIds.length && !filters.repIds.length){
@@ -296,7 +296,7 @@ export function createRouteMapAnalytics({sql,run}) {
   }
   return {source:'ERP_SQL',period:{dateFrom:filters.from,dateTo:filters.to},permittedMetrics,
     caveats:['مشتری چندمسیره در هر مسیر مستقل شمرده می‌شود؛ مجموع مسیرها لزوماً جمع سازمان نیست.',
-      'فروش فاکتور قبل از برگشت جداست. فروش خالص فقط در حضور هر دو منبع رسمی فاکتور و مرجوعی و با مجوز مالی محاسبه می‌شود.',
+      'فروش فاکتور قبل از برگشت جداست. فروش خالص نقشه تا تطبیق مبالغ هر مسیر با دفتر مالی همان دامنه، نامشخص است؛ صرف وجود فاکتور/برگشتی کافی نیست.',
       'مطالبات، در صورت وجود منبع معتبر و مجوز، مانده فعلی است نه مانده تاریخی بازه. سود تنها با بهای تمام‌شده مستند قابل گزارش خواهد بود.',
       ...(!visitFeed?['پوشش دیتای ویزیت ERP تأیید نشده و نرخ توجه به مسیر قابل محاسبه نیست.']:[])],
     rows:reportRows.map(r=>{
@@ -318,7 +318,7 @@ export function createRouteMapAnalytics({sql,run}) {
        r.VisitCount,r.OrderOutcomes,r.MissingGps,
        count>0?Math.round((count-Number(r.MissingGps))*10000/count)/100:null,
        {invoicedSales:invoiceFeedReady?Number(f?.NetSales||0):null,netSalesVerified:verifiedNet,
-        returnAmount:returnFeedReady?(returned?.ReturnAmount??0):null,receivableAmount:receivable?.ReceivableAmount??null,
+        returnAmount:returnFeedReady&&returned?Number(returned.ReturnAmount):null,receivableAmount:receivable?.ReceivableAmount??null,
         receivableDate:receivable?new Date().toISOString().slice(0,10):null,
         visitSourcePresent:visitFeed,
         targetAchievedPercent:approvedTargets.get(key)?.TargetValue>0 && computedNet!=null
