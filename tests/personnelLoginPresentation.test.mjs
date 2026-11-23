@@ -15,6 +15,13 @@ test('personnel login scene stays viewport-locked on desktop and mobile',()=>{
   assert.match(css,/@media \(max-height: 520px\)/);
   assert.match(css,/\.akhavan-login-form-shell:focus-within/);
   assert.match(login,/className="akhavan-login-stage /);
+  assert.match(login,/window\.visualViewport/);
+  assert.match(login,/viewport\.addEventListener\('resize', sync\)/);
+  assert.match(login,/viewport\.removeEventListener\('resize', sync\)/);
+  assert.match(login,/data-keyboard-open=\{visualViewport\?\.keyboardOpen/);
+  assert.match(css,/data-keyboard-open="true"/);
+  assert.match(login,/html\.style\.overflow = 'hidden'/);
+  assert.match(login,/html\.style\.overflow = oldHtml/);
 });
 test('real existing applicant questionnaire is accessible with lamp both on and off',()=>{
   assert.match(login,/\{applyEnabled && \(/);
