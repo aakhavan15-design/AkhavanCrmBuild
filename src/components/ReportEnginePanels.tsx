@@ -756,6 +756,13 @@ export function ReportEnginePanels({ state, visibleInvoices, visiblePayments, vi
           <div className="space-y-4">
             {canSeeLedger && <LedgerBookSourceSelect viewer={state.currentUserId} />}
             {effectivePnlData?.status==='PARTIAL' && <p role="status" className="text-caption text-warning">بخشی از پوشش دوره یا نگاشت کدینگ گواهی نشده است.</p>}
+            {pnlReport.unmappedLines > 0 && (
+              <div role="alert" className="rounded-xl border border-warning/50 bg-warning-soft/20 p-3 text-xs text-text-main">
+                <strong>مغایرت نگاشت مالی:</strong> {pnlReport.unmappedLines.toLocaleString('fa-IR')} آرتیکل قطعی دفترکل
+                به حساب یا سرفصل گزارش متصل نشده است. سود و زیان تا اصلاح کدینگ و دریافت مجدد اسناد، قطعی نیست.
+                لطفاً نگاشت حساب‌ها و دوره مالی را در بخش مالی بررسی کنید.
+              </div>
+            )}
             {effectivePnlData?.status === 'RESTRICTED' && (
               <div role="status" className="rounded-xl border border-border bg-canvas px-3 py-3 text-xs text-text-secondary flex items-center gap-2">
                 <ShieldAlert size={15} className="text-warning shrink-0" />
