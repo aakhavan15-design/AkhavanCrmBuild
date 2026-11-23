@@ -109,6 +109,19 @@ export function ReportsWorkspace({ state, updateState, setActiveTab }: ReportsWo
       salesReturns: canViewFinance ? (state.salesReturns || []).filter(row => canOn('finance', 'VIEW', scopeOf(row as ReportScopeSource))) : [],
       paymentAllocations: (reportCols.paymentAllocations || []).filter(row => { const allocation = row as { invoiceId?: string; paymentId?: string }; return visibleInvoiceIds.has(allocation.invoiceId || '') && visiblePaymentIds.has(allocation.paymentId || ''); }),
       salesTargets: (state.salesTargets || []).filter(row => canOn('reports', 'VIEW', scopeOf(row))),
+      // Advanced reports run on the same permission-scoped facts as the regular hub.
+      // Do not leak out-of-scope geometry or customer-to-zone relationships.
+      geoZones: can('geo', 'VIEW')
+        ? (state.geoZones || []).filter(row => canOn('geo', 'VIEW', scopeOf(row as ReportScopeSource)))
+        : [],
+      zoneAssignments: can('geo', 'VIEW')
+        ? (state.zoneAssignments || []).filter(row => {
+            const assignment = row as ReportScopeSource & { accountId?: string; customerId?: string };
+            const accountId = assignment.accountId || assignment.customerId;
+            return !!accountId && visibleAccounts.some(a => a.id === accountId)
+              && canOn('geo', 'VIEW', scopeOf(assignment));
+          })
+        : [],
     } as AppState;
   }, [state, visibleAccounts, visibleInvoices, visiblePayments, visibleCheques, visibleExpenses, visibleQuotes, visibleActivities, visibleTasks, portUsers, reportCols, can, canOn]);
 
