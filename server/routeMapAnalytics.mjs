@@ -274,7 +274,8 @@ export function createRouteMapAnalytics({sql,run}) {
      // Route-level ledger matching is not yet available: do not offer "verified" net sales here.
      ...(returnAllowed&&returnFeedReady?['returnAmount']:[]),
      ...(receivableAllowed?['receivableAmount']:[]),
-     // Target achievement depends on the same verified net sales and remains unavailable.];
+     // Target achievement depends on the same verified net sales and remains unavailable.
+  ];
   let approvedTargets=new Map();
   if(targetAllowed && financeAllowed && !filters.productIds.length && !filters.brandIds.length &&
       !filters.supplierIds.length && !filters.repIds.length){
