@@ -11,7 +11,7 @@ export type AuthenticationResult =
  * Authentication is server-authoritative. Local IndexedDB users are profile/permission
  * projections only and must never be treated as password credentials.
  */
-const DEMO_AUTH_ENABLED = import.meta.env.DEV;
+const DEMO_AUTH_ENABLED = import.meta.env?.DEV === true;
 let accessToken: string | null = null;
 let accessTokenExpiresAt = 0;
 
