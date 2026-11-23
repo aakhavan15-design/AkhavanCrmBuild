@@ -26,6 +26,21 @@ export function LoginWorkspace({
   state
 }: LoginWorkspaceProps) {
   const navigate = useNavigate();
+  // Lock the document as well as the fixed login surface. Restore the host
+  // document's previous overflow when navigating to the scrollable hiring form.
+  useEffect(() => {
+    const html = document.documentElement;
+    const body = document.body;
+    const oldHtml = html.style.overflow;
+    const oldBody = body.style.overflow;
+    html.style.overflow = 'hidden';
+    body.style.overflow = 'hidden';
+    return () => {
+      html.style.overflow = oldHtml;
+      body.style.overflow = oldBody;
+    };
+  }, []);
+
   const updateState = useAppStore(s => s.updateState);
 
   // فرم ورود اطلاعات
@@ -168,10 +183,10 @@ export function LoginWorkspace({
       data-lit={isLightOn}
       dir="rtl"
       style={{
-        backgroundColor: 'black',
+        backgroundColor: 'var(--c-auth-ambient)',
         backgroundImage: isLightOn
-          ? 'radial-gradient(ellipse at 50% 40%, color-mix(in srgb, var(--c-primary) 22%, transparent) 0%, color-mix(in srgb, var(--c-forest-dark) 20%, var(--c-auth-ambient)) 40%, var(--c-auth-ambient) 80%)'
-          : 'radial-gradient(ellipse at 50% 45%, color-mix(in srgb, var(--c-copper) 5%, var(--c-auth-ambient)) 0%, var(--c-auth-ambient) 65%)',
+          ? 'radial-gradient(ellipse at 56% 18%, color-mix(in srgb, var(--c-copper) 25%, transparent), transparent 56%), linear-gradient(150deg, var(--c-navy-dark), var(--c-auth-ambient))'
+          : 'radial-gradient(ellipse at 55% 45%, color-mix(in srgb, var(--c-copper) 5%, transparent), transparent 65%), linear-gradient(150deg, var(--c-navy-dark), var(--c-auth-ambient))',
         transition: 'background-color 1.1s ease, background-image 1.1s ease',
       }}
     >
@@ -369,7 +384,7 @@ export function LoginWorkspace({
               {/* تب‌های بالای کارت کاملاً محصور در کادر بدون هیچ‌گونه بیرون‌زدگی */}
               <div className="flex flex-col xs:flex-row xs:items-center justify-between pb-2 sm:pb-2.5 border-b border-(--c-auth-on-ambient)/10 gap-1.5 sm:gap-2">
                 <span className="text-caption sm:text-compact font-bold text-(--c-auth-on-ambient) tracking-wide">
-                  ورود به حساب کاربری
+                  ورود پرسنل · AKHAVAN CRM
                 </span>
 
                 {import.meta.env.DEV && (                <div className="flex items-center gap-0.5 sm:gap-1 p-0.5 sm:p-1 rounded-lg border border-(--c-auth-on-ambient)/15 bg-(--c-auth-on-ambient)/5 backdrop-blur-md self-start xs:self-auto shrink-0 max-w-full">
