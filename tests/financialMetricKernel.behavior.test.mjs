@@ -145,3 +145,23 @@ test('seller shares block duplicate invoice IDs and missing records',()=>{
   assert.equal(attributeReconciledSalesBySeller(evidence,reconciliation,[...invoices,...invoices],i=>i.sellerId).status,'UNAVAILABLE');
   assert.equal(attributeReconciledSalesBySeller(evidence,reconciliation,[],i=>i.sellerId).status,'UNAVAILABLE');
 });
+
+test('official unbased ERP return reduces net company and customer sales without false seller link',()=>{
+ const sales=[{id:'i1',customerId:'C1',date:'2026-11-01',totalAmount:200,sellerId:'S1'}];
+ const unbased={id:'R-unbased',customerId:'C1',amount:50,postedAt:'2026-11-08',status:'POSTED',sourceType:'ERP_MIRROR'};
+ const evidence=buildNetSalesEvidence(sales,[unbased],{from:'2026-11-01',to:'2026-11-30',returnsVerified:true});
+ assert.equal(evidence.status,'AVAILABLE');
+ assert.equal(evidence.net,150);
+ assert.deepEqual(evidence.byCustomer,[{key:'C1',value:150}]);
+ assert.equal(evidence.facts[0].amount,200,'unbased return must not be attached to invoice');
+ const reconciled=reconcileNetSales(evidence,200,50,true);
+ assert.equal(reconciled.status,'RECONCILED');
+ assert.equal(attributeReconciledSalesBySeller(evidence,reconciled,sales,i=>i.sellerId).status,'UNAVAILABLE');
+});
+test('a dangling explicit invoice reference is not an unbased return',()=>{
+ const invalid={id:'r-missing',invoiceId:'NOT_FOUND',customerId:'C1',
+  amount:25,postedAt:'2026-11-08',status:'POSTED',sourceType:'ERP_MIRROR'};
+ const data=buildNetSalesEvidence([inv('i1','2026-11-01',100)],[invalid],
+  {from:'2026-11-01',to:'2026-11-30',returnsVerified:true});
+ assert.equal(data.status,'UNAVAILABLE');
+});
