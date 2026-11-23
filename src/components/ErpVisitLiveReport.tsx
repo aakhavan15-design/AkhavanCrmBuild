@@ -4,6 +4,8 @@ import {AuthService} from '../services/AuthService';
 import {GeoZoneMapEditor} from './GeoZoneMapEditor';
 import type {GeoMapPin} from './GeoZoneMapEditor';
 import {Card} from './ui/Card';
+import {Select} from './ui/Input';
+import {formatNumber,formatMoneyCompact} from '../lib/format';
 import type {GeoPolygonGeometry} from '../types';
 import {inspectRouteCoordinates,suggestRoutePolygonFromCustomers} from '../lib/geoRouteAnalysis';
 import {readCustomerGeoPoint,isPointInsideZone} from '../lib/geoIntelligence';
@@ -22,7 +24,7 @@ interface RouteOverview{
  analysisBoundary?:{version:number;status:string;method:string;coveragePercent?:number|null;sourceCount?:number|null;geometry:GeoPolygonGeometry}|null;
  limits:{mayBeTruncated:boolean};
 }
-const fa=(n:number)=>n.toLocaleString('fa-IR');
+const fa=(n:number)=>formatNumber(n);
 const toStringGeometry=(geometry?:GeoPolygonGeometry|null)=>geometry?.coordinates?.[0]?.slice(0,-1).map(p=>p[0]+', '+p[1]).join('\n')||'';
 const day=()=>new Date().toISOString().slice(0,10);
 async function authorizedGet<T>(url:string,signal:AbortSignal):Promise<T>{
@@ -127,9 +129,9 @@ export function ErpVisitLiveReport({canManage=false}:{canManage?:boolean}){
   <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)]">
    <label className="text-xs font-bold text-text-secondary">تاریخ تور<input type="date" value={date} onChange={e=>setDate(e.target.value)} className="mt-1 min-h-11 w-full rounded-xl border border-border bg-canvas px-3"/></label>
    <label className="text-xs font-bold text-text-secondary">مسیر قابل مشاهده در دسترسی فعلی
-    <select value={routeId} onChange={e=>setRouteId(e.target.value)} className="mt-1 min-h-11 w-full rounded-xl border border-border bg-canvas px-3">
+    <Select value={routeId} onChange={e=>setRouteId(e.target.value)} className="mt-1 min-h-11 w-full rounded-xl border border-border bg-canvas px-3">
      <option value="">انتخاب مسیر</option>{routes.map(r=><option key={r.RouteId} value={r.RouteId}>{r.RouteCode} — {r.RouteName} ({fa(r.VisibleCustomerCount||0)} مشتری مجاز)</option>)}
-    </select>
+    </Select>
    </label>
   </div>
   {loading&&<p role="status" className="text-xs text-text-secondary">در حال دریافت اطلاعات مجاز از SQL...</p>}
@@ -179,16 +181,16 @@ export function ErpVisitLiveReport({canManage=false}:{canManage?:boolean}){
    </div>
    <div className="grid gap-2 sm:grid-cols-2">
     <label className="text-xs font-bold text-text-secondary">تور ویزیت مشخص
-      <select className="mt-1 min-h-10 w-full rounded-xl border border-border bg-canvas p-2" value={selectedTourId} onChange={e=>setSelectedTourId(e.target.value)}>
+      <Select className="mt-1 min-h-10 w-full rounded-xl border border-border bg-canvas p-2" value={selectedTourId} onChange={e=>setSelectedTourId(e.target.value)}>
        <option value="">انتخاب تور برای شماره‌گذاری</option>
        {availableTours.map(tour=><option key={tour.TourId} value={tour.TourId}>{tour.TourDate} · {tour.TourCode||tour.ExternalTourId} · فروشنده {tour.ExternalSalesRepId}</option>)}
-      </select>
+      </Select>
     </label>
     <label className="text-xs font-bold text-text-secondary">فروشنده برای مسیر حرکت GPS
-      <select className="mt-1 min-h-10 w-full rounded-xl border border-border bg-canvas p-2" value={selectedGpsRepId} onChange={e=>setSelectedGpsRepId(e.target.value)}>
+      <Select className="mt-1 min-h-10 w-full rounded-xl border border-border bg-canvas p-2" value={selectedGpsRepId} onChange={e=>setSelectedGpsRepId(e.target.value)}>
        <option value="">انتخاب فروشنده</option>
        {[...new Set(gps.map(item=>item.ExternalSalesRepId))].map(id=><option key={id} value={id}>{id}</option>)}
-      </select>
+      </Select>
     </label>
    </div>
    <div className="flex flex-wrap gap-3 text-xs">
