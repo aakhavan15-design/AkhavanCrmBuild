@@ -818,5 +818,13 @@
     "flags": [
       "--experimental-strip-types"
     ]
+  },
+  {
+    "file": "tests/dispatchIntelligence.behavior.test.mjs",
+    "flags": []
+  },
+  {
+    "file": "tests/dispatchCollectionZone.behavior.test.mjs",
+    "flags": []
   }
 ]
