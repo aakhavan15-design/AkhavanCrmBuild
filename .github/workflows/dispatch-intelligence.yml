@@ -24,6 +24,9 @@ on:
       - 'server/routeMapCustomerDetail.mjs'
       - 'src/components/RouteMapOverview.tsx'
       - 'tests/routeMapMoney.test.mjs'
+      - 'src/services/payrollEngine.ts'
+      - 'tests/payrollNoHardcodes.test.mjs'
+      - 'src/components/ReportsHub.tsx'
       - 'src/services/agingBuckets.ts'
       - 'tests/financialMetricKernel.behavior.test.mjs'
       - 'tests/dispatchIntelligence.behavior.test.mjs'
@@ -45,7 +48,7 @@ jobs:
           node --check server/dispatchReads.mjs
       - name: Behavioral verification
         run: |
-          node --test tests/dispatchIntelligence.behavior.test.mjs tests/dispatchCollectionZone.behavior.test.mjs tests/financialMetricKernel.behavior.test.mjs tests/routeMapMoney.test.mjs tests/operationsEngine.test.mjs tests/churnPredictionService.test.mjs
+          node --test tests/dispatchIntelligence.behavior.test.mjs tests/dispatchCollectionZone.behavior.test.mjs tests/financialMetricKernel.behavior.test.mjs tests/routeMapMoney.test.mjs tests/payrollNoHardcodes.test.mjs tests/operationsEngine.test.mjs tests/churnPredictionService.test.mjs
 
   ui-build:
     runs-on: ubuntu-latest
