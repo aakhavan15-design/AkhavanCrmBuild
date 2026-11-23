@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { Card } from './ui/Card';
 import { calculateProfitability, buildOperationsMetrics, analyzeReturns } from '../lib/operationsEngine';
+import { DispatchIntelligenceReports } from './dispatch/DispatchIntelligenceReports';
 import { guard, requireActiveUser, useCan } from '../hooks/useCan';
 import { InventoryTab, PurchasingTab, CreditTab, OperationsReportsTab } from './OperationsSupplementalTabs';
 import { Button } from './ui/Button';
@@ -672,7 +673,7 @@ export function OperationsControlWorkspace({ state, updateState }: Props) {
       {tab==='inventory' && <InventoryTab state={state} />}
       {tab==='purchasing' && <PurchasingTab state={state} updateState={updateState} />}
       {tab==='credit' && <CreditTab state={state} />}
-      {tab==='reports' && <OperationsReportsTab state={state} />}
+      {tab==='reports' && <><OperationsReportsTab state={state} /><DispatchIntelligenceReports plans={dispatchPlans} /></>}
 
       {createdTaskNotice && (
         <div role="status" className="fixed inset-x-4 top-4 z-(--z-sticky) mx-auto max-w-md rounded-2xl border border-border bg-surface p-3 text-xs font-bold text-text-main shadow-lg">
