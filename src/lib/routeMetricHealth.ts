@@ -6,6 +6,7 @@ export type RouteTone='good'|'warn'|'bad'|'unknown';
 export interface MetricRoute {
  customerCount:number|null;
  activeCustomerCount:number|null;
+ invoicedSales:number|null;
  netSales:number|null;
  invoiceCount:number|null;
  returnAmount:number|null;
@@ -15,7 +16,7 @@ export interface MetricRoute {
  attentionPercent:number|null;
  visitCount:number|null;
 }
-export type RouteMetricId=keyof Pick<MetricRoute,'customerCount'|'activeCustomerCount'|'netSales'|'invoiceCount'|'returnAmount'|'receivableAmount'|'profitAmount'|'targetAchievedPercent'|'attentionPercent'|'visitCount'>;
+export type RouteMetricId=keyof Pick<MetricRoute,'customerCount'|'activeCustomerCount'|'invoicedSales'|'netSales'|'invoiceCount'|'returnAmount'|'receivableAmount'|'profitAmount'|'targetAchievedPercent'|'attentionPercent'|'visitCount'>;
 const finite=(n:unknown):n is number=>typeof n==='number'&&Number.isFinite(n);
 const asRate=(a:number|null,b:number|null)=>finite(a)&&finite(b)&&b>0?a/b:null;
 function quartile(values:number[],fraction:number){
