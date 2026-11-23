@@ -61,6 +61,7 @@ export interface SalesEvidenceReturn {
   invoiceId?: string;
   customerId?: string;
   accountId?: string;
+  sellerId?: string;
   amount: number;
   postedAt?: string;
   issuedAt?: string;
@@ -76,6 +77,7 @@ export interface NetSalesEvidence {
   returns: number | null;
   net: number | null;
   facts: NetSalesFact[];
+  returnsOutsideFacts: Array<{returnId:string;invoiceId:string|null;customerId:string;sellerId:string|null;amount:number}>;
   byCustomer: { key: string; value: number }[];
   invalidReturnIds: string[];
 }
@@ -92,7 +94,7 @@ export function buildNetSalesEvidence(
   options: { from?: string | null; to: string; returnsVerified: boolean }
 ): NetSalesEvidence {
   const bad = (reason: string, invalidReturnIds: string[] = []): NetSalesEvidence =>
-    ({ status:'UNAVAILABLE', reason, gross:null, returns:null, net:null, facts:[], byCustomer:[], invalidReturnIds });
+    ({ status:'UNAVAILABLE', reason, gross:null, returns:null, net:null, facts:[], returnsOutsideFacts:[], byCustomer:[], invalidReturnIds });
   if (!options.returnsVerified) return bad('پوشش قطعی برگشت فروش از ماژول مالی تأیید نشده است.');
   const from = options.from || '0000-00-00';
   const to = options.to;
@@ -101,6 +103,7 @@ export function buildNetSalesEvidence(
   const byInvoice = new Map(invoices.map(i => [i.id, i]));
   const returnsByInvoice = new Map<string,number>();
   const returnsByCustomer = new Map<string,number>();
+  const returnsOutsideFacts: NetSalesEvidence['returnsOutsideFacts'] = [];
   const invalid: string[] = [];
   let sumReturns = 0;
   const seen = new Set<string>();
@@ -127,6 +130,10 @@ export function buildNetSalesEvidence(
     returnsByCustomer.set(customer,(returnsByCustomer.get(customer)||0)+amount);
     if (invoice && invoice.date.slice(0,10) >= from && invoice.date.slice(0,10) <= to)
       returnsByInvoice.set(invoice.id,(returnsByInvoice.get(invoice.id)||0)+amount);
+    else returnsOutsideFacts.push({
+      returnId:note.id,invoiceId:invoice?invoice.id:null,customerId:customer,
+      sellerId:note.sellerId?String(note.sellerId):null,amount
+    });
   }
   if (invalid.length) return bad('برگشتی قطعی نامعتبر یا فاقد اتصال به فاکتور وجود دارد؛ فروش خالص قابل اتکا نیست.', invalid);
   const gross = validInvoices.reduce((sum,i)=>sum+i.totalAmount,0);
@@ -146,7 +153,7 @@ export function buildNetSalesEvidence(
     byCustomer.set(key,(byCustomer.get(key)||0)+invoice.totalAmount);
   }
   for (const [key,returns] of returnsByCustomer) byCustomer.set(key,(byCustomer.get(key)||0)-returns);
-  return { status:'AVAILABLE',gross,returns:sumReturns,net,facts,
+  return { status:'AVAILABLE',gross,returns:sumReturns,net,facts,returnsOutsideFacts,
     byCustomer:[...byCustomer].map(([key,value])=>({key,value})),invalidReturnIds:[] };
 }
 
@@ -211,6 +218,17 @@ export function attributeReconciledSalesBySeller<T extends {id:string}>(
       return unavailable('فاکتور یا مبلغ تفصیلی از منبع واحد فروش خالص ناقص است.');
     const seller=String(sellerOf(invoice)||'').trim()||'UNASSIGNED';
     rows.set(seller,(rows.get(seller)||0)+fact.amount);
+  }
+  // A return for an older invoice (or an ERP return without basis)
+  // is not part of current invoice facts. Allocate to a seller only when
+  // the original invoice or explicit verified return seller is available.
+  for(const returned of evidence.returnsOutsideFacts){
+    const original=returned.invoiceId?index.get(returned.invoiceId):undefined;
+    const seller=original?String(sellerOf(original)||'').trim():
+      String(returned.sellerId||'').trim();
+    if(!seller || seller==='UNASSIGNED')
+      return unavailable('برگشتی خارج‌دوره یا بدون مبنا فاقد کد فروشنده معتبر است.');
+    rows.set(seller,(rows.get(seller)||0)-returned.amount);
   }
   const total=[...rows.values()].reduce((sum,amount)=>sum+amount,0);
   if(Math.abs(total-evidence.net)>0.01)
