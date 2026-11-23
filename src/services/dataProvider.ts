@@ -785,7 +785,10 @@ export class ClientStorageDataProvider implements DataProvider {
   }
 
   async getAnalyticsReport(reportId: number): Promise<any> {
-    return { reportId, status: 'READY', source: 'CLIENT_CACHE', asOf: new Date().toISOString() };
+    // A status-only placeholder is not a report. Never claim READY without
+    // source rows, scoped calculations, and explicit coverage.
+    return { reportId, status: 'UNAVAILABLE', source: 'CLIENT_INDEXEDDB',
+      reason: 'گزارش تحلیلی رسمی به داده و محاسبه معتبر سمت سرور نیاز دارد.', items: [] };
   }
 
   // --- SQL-first state layer (local provider: the store IS the data, so these are read-only/no-op) ---
