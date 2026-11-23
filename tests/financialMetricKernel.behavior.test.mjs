@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { calculateNetSales, calculateLedgerBalance, buildNetSalesEvidence } from '../src/lib/financialMetricKernel.ts';
+import { calculateNetSales, calculateLedgerBalance, buildNetSalesEvidence, reconcileNetSales } from '../src/lib/financialMetricKernel.ts';
 import { queryLocalRecords } from '../src/services/localQuery.ts';
 
 const doc=(id,invoiceId,amount,postedAt='2026-11-15')=>({
@@ -66,4 +66,13 @@ test('local query applies strict filters before paging and does not silently ign
   assert.equal(result.items[0].id,'3');
   assert.equal(queryLocalRecords(list,{unknownField:'x'},undefined,25).total,0);
   assert.equal(queryLocalRecords(list,{fromDate:'2026-11-02'},undefined,25).total,2);
+});
+
+test('official ledger and customer detail must reconcile before net-sales claims',()=>{
+  const data=buildNetSalesEvidence([inv('i1','2026-11-12',200)],[doc('r1','i1',40)],
+    {from:'2026-11-01',to:'2026-11-30',returnsVerified:true});
+  assert.equal(reconcileNetSales(data,200,40,true).status,'RECONCILED');
+  assert.equal(reconcileNetSales(data,200,10,true).status,'MISMATCH');
+  assert.equal(reconcileNetSales(data,null,40,true).status,'UNAVAILABLE');
+  assert.equal(reconcileNetSales(data,200,40,false).status,'UNAVAILABLE');
 });
