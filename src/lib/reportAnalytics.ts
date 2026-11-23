@@ -70,9 +70,15 @@ export function lifecycleSegments(invoices: SalesInvoice[], asOf: string, cfg = 
   return { segments: seg, counts };
 }
 /** RFM with rank-based quintiles (R: fewer days = better). Customers with no purchase are absent. */
-export function rfm(invoices: SalesInvoice[], asOf: string) {
+/** Monetary amount may be externally normalized by the canonical net-sales
+ * calculator, while purchase frequency/recency remain invoice-based. */
+export function rfm(invoices: SalesInvoice[], asOf: string, netCustomerAmounts?: Map<string, number>) {
   const t = day(asOf), rows = new Map<string, { r: number; f: number; m: number }>();
   for (const i of realized(invoices)) { const c = rows.get(i.customerId) ?? { r: Infinity, f: 0, m: 0 }; c.r = Math.min(c.r, t - day(i.date)); c.f++; c.m += i.amount; rows.set(i.customerId, c); }
+  if (netCustomerAmounts) {
+    for (const [customerId, value] of netCustomerAmounts)
+      if (rows.has(customerId)) rows.get(customerId)!.m = value;
+  }
   const ids = [...rows.keys()], n = ids.length;
   const score = (sel: (x: { r: number; f: number; m: number }) => number, higherBetter: boolean) => {
     const ord = [...ids].sort((a, b) => (higherBetter ? 1 : -1) * (sel(rows.get(a)!) - sel(rows.get(b)!)) || a.localeCompare(b));
