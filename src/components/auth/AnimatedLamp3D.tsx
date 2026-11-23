@@ -307,7 +307,7 @@ export function AnimatedLamp3D({
           xmlns="http://www.w3.org/2000/svg"
           style={{
             transform: `rotate(${Math.max(-30, Math.min(30, lampTilt + (isDragging || isBouncing ? 0 : deviceTilt)))}deg)`,
-            transformOrigin: '160px 565px',
+            transformOrigin: '160px 2px',
             transition: isDragging ? 'none' : 'transform 0.15s ease-out',
           }}
         >
@@ -495,34 +495,17 @@ export function AnimatedLamp3D({
             </g>
           )}
 
-          {/* ================= TALL 3D ARCHITECTURAL LAMP HARDWARE ================= */}
-          {/* Ground shadow beneath base */}
-          <ellipse cx="160" cy="578" rx="80" ry="13" fill="color-mix(in srgb, black 88%, transparent)" />
-
-          {/* Multi-tiered weighted architectural base plinth */}
-          <ellipse cx="160" cy="570" rx="72" ry="14" fill="url(#basePedestalLuxury)" stroke="color-mix(in srgb, white 12%, transparent)" strokeWidth="0.8" />
-          <ellipse cx="160" cy="568" rx="66" ry="11" fill="none" stroke="url(#goldHorizontalSheen)" strokeWidth="1.2" opacity="0.8" />
-
-          {/* Tier 2 */}
-          <ellipse cx="160" cy="564" rx="54" ry="9" fill="url(#basePedestalLuxury)" />
-          <ellipse cx="160" cy="562" rx="46" ry="7" fill="url(#basePedestalLuxury)" />
-
-          {/* Tier 3 Turned Gold Collar */}
-          <ellipse cx="160" cy="557" rx="22" ry="5" fill="url(#goldLuxuryBrushed)" stroke="var(--c-copper)" strokeWidth="0.6" />
-          <rect x="153" y="550" width="14" height="8" rx="2" fill="url(#goldHorizontalSheen)" />
-
-          {/* Elongated slender vertical matte obsidian pole with brushed specular highlight */}
-          <rect x="157" y="124" width="6" height="428" fill="url(#standRodLuxury)" rx="2" />
-          <line x1="159" y1="126" x2="159" y2="550" stroke="color-mix(in srgb, white 35%, transparent)" strokeWidth="0.8" />
-
-          {/* Upper turned brass collar accent beneath shade */}
-          <rect x="153" y="124" width="14" height="7" rx="2" fill="url(#goldHorizontalSheen)" />
-
-          {/* Top Brass Finial Knob & Crown */}
-          <rect x="156" y="48" width="8" height="6" fill="url(#goldLuxuryBrushed)" rx="1.5" />
-          <circle cx="160" cy="42" r="9" fill="url(#goldLuxuryBrushed)" stroke="var(--c-copper)" strokeWidth="0.8" />
-          <ellipse cx="157.5" cy="39" rx="3.5" ry="2" fill="color-mix(in srgb, white 85%, transparent)" />
-          <circle cx="160" cy="32" r="3" fill="url(#goldLuxuryBrushed)" />
+          {/* ================= SUSPENDED PENDANT — no floor stand ================= */}
+          {/* Ceiling rosette and the slim metal suspension wire. The entire scene
+              pivots from this attachment when the phone is tilted. */}
+          <ellipse cx="160" cy="2" rx="24" ry="4.5" fill="url(#basePedestalLuxury)"
+            stroke="var(--c-copper)" strokeWidth="0.8" />
+          <path d="M160 4 L160 50" stroke="url(#goldHorizontalSheen)"
+            strokeWidth="2.2" strokeLinecap="round" />
+          <path d="M158.8 4 L158.8 49" stroke="color-mix(in srgb, white 38%, transparent)"
+            strokeWidth="0.55" />
+          <rect x="155.5" y="46" width="9" height="7" rx="2" fill="url(#goldLuxuryBrushed)" />
+          <ellipse cx="160" cy="52" rx="8" ry="3" fill="url(#goldHorizontalSheen)" />
 
           {/* Large Architectural Dome Canopy (Shade Hood) */}
           <path
