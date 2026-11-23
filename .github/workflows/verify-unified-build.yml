@@ -17,6 +17,12 @@ on:
       - src/components/auth/AnimatedLamp3D.tsx
       - src/components/auth/CinematicWebGLStage.tsx
       - src/components/auth/LivePendantWebGL.tsx
+      - src/lib/financialMetricKernel.ts
+      - src/lib/reportAnalytics.ts
+      - src/lib/ledgerPnl.ts
+      - src/services/localQuery.ts
+      - src/services/dataProvider.ts
+      - tests/financialMetricKernel.behavior.test.mjs
       - tests/livePendantWebGLContracts.test.mjs
       - tests/cinematicWebGLStageContracts.test.mjs
       - tests/authLampExperienceContracts.test.mjs
