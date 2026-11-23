@@ -26,6 +26,30 @@ export function LoginWorkspace({
   state
 }: LoginWorkspaceProps) {
   const navigate = useNavigate();
+  const [visualViewport, setVisualViewport] = useState<{ height: number; offsetTop: number; keyboardOpen: boolean } | null>(null);
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    if (!viewport) return;
+    const sync = () => {
+      // iOS changes the visual viewport when the software keyboard opens.
+      // Never scroll or move the document; resize only the isolated login scene.
+      const keyboardOpen = window.innerHeight - viewport.height > 140;
+      setVisualViewport(current => {
+        const next = { height: viewport.height, offsetTop: viewport.offsetTop, keyboardOpen };
+        if (current && Math.abs(current.height - next.height) < 1
+          && Math.abs(current.offsetTop - next.offsetTop) < 1
+          && current.keyboardOpen === next.keyboardOpen) return current;
+        return next;
+      });
+    };
+    sync();
+    viewport.addEventListener('resize', sync);
+    viewport.addEventListener('scroll', sync);
+    return () => {
+      viewport.removeEventListener('resize', sync);
+      viewport.removeEventListener('scroll', sync);
+    };
+  }, []);
   // Lock the document as well as the fixed login surface. Restore the host
   // document's previous overflow when navigating to the scrollable hiring form.
   useEffect(() => {
@@ -181,8 +205,12 @@ export function LoginWorkspace({
     <main
       className="akhavan-login-scene fixed inset-0 h-dvh max-h-dvh w-full overflow-hidden select-none flex flex-col justify-between text-(--c-auth-on-ambient)"
       data-lit={isLightOn}
+      data-keyboard-open={visualViewport?.keyboardOpen ? 'true' : 'false'}
       dir="rtl"
       style={{
+        ...(visualViewport?.keyboardOpen
+          ? { height: visualViewport.height, maxHeight: visualViewport.height, top: visualViewport.offsetTop }
+          : {}),
         backgroundColor: 'var(--c-auth-ambient)',
         backgroundImage: isLightOn
           ? 'radial-gradient(ellipse at 56% 18%, color-mix(in srgb, var(--c-copper) 25%, transparent), transparent 56%), linear-gradient(150deg, var(--c-navy-dark), var(--c-auth-ambient))'
