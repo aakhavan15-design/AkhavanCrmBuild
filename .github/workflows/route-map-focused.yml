@@ -21,6 +21,8 @@ on:
       - 'tests/routeMapAnalytics.test.mjs'
       - 'tests/routeMapMoney.test.mjs'
       - 'tests/landingNavigationSourceContracts.test.mjs'
+      - 'tests/analyticsEvidenceContracts.test.mjs'
+      - 'src/components/ReportsHub.tsx'
       - 'src/lib/moduleLanding.ts'
       - 'src/lib/navigation.ts'
       - 'src/components/ModuleLandingWorkspace.tsx'
@@ -52,6 +54,7 @@ jobs:
             src/components/RouteMapOverview.tsx \
             src/components/ErpVisitLiveReport.tsx \
             src/components/GeoZoneMapEditor.tsx \
-            src/components/GeoIntelligenceWorkspace.tsx
+            src/components/GeoIntelligenceWorkspace.tsx \
+            src/components/ReportsHub.tsx
       - name: Visit and geographical calculation tests
-        run: bun test tests/geoRouteAnalysis.test.mjs tests/visitIntelligence.test.mjs tests/erpVisitToursContracts.test.mjs tests/routeMetricHealth.test.mjs tests/routeMapAnalytics.test.mjs tests/routeMapMoney.test.mjs tests/landingNavigationSourceContracts.test.mjs
+        run: bun test tests/geoRouteAnalysis.test.mjs tests/visitIntelligence.test.mjs tests/erpVisitToursContracts.test.mjs tests/routeMetricHealth.test.mjs tests/routeMapAnalytics.test.mjs tests/routeMapMoney.test.mjs tests/landingNavigationSourceContracts.test.mjs tests/analyticsEvidenceContracts.test.mjs
