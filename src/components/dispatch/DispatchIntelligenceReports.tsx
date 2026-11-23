@@ -1,5 +1,6 @@
 import React,{useEffect,useMemo,useState} from 'react';
 import {AuthService} from '../../services/AuthService';
+import {SearchableSelect} from '../ui/SearchableSelect';
 import {GeoZoneMapEditor,type GeoMapPin} from '../GeoZoneMapEditor';
 import type {GeoPolygonGeometry} from '../../types';
 import {formatMoneyCompact,formatCount} from '../../lib/format';
@@ -65,20 +66,16 @@ export function DispatchIntelligenceReports({plans}: {plans:Array<Record<string,
  const current=report?.status==='PARTIAL';
  return <section className="space-y-3" dir="rtl" aria-label="تحلیل پیوسته حمل">
   <div className="flex flex-wrap items-end gap-2 rounded-2xl border border-border bg-surface p-3">
-   <label className="min-w-48 flex-1 text-xs font-bold text-text-secondary">برنامه حمل
-    <select value={plan} onChange={e=>{setPlan(e.target.value);setSeller('ALL');setManualOutsideIds([]);setShowAllReceivables(false);}}
-     className="mt-1 h-11 w-full rounded-xl border border-border bg-canvas px-3 text-text-main">
-     {!options.length&&<option value="">برنامه حمل در داده مجاز موجود نیست</option>}
-     {options.map(x=><option key={x} value={x}>{x}</option>)}
-    </select>
-   </label>
-   <label className="min-w-40 flex-1 text-xs font-bold text-text-secondary">فیلتر مشترک فروشنده
-    <select value={seller} onChange={e=>setSeller(e.target.value)}
-     className="mt-1 h-11 w-full rounded-xl border border-border bg-canvas px-3 text-text-main">
-     <option value="ALL">همه فروشندگان</option>
-     {sellers.map(x=><option key={x.sellerId} value={x.sellerId}>{x.sellerId}</option>)}
-    </select>
-   </label>
+   <div className="min-w-48 flex-1">
+    <SearchableSelect label="برنامه حمل" value={plan}
+     onChange={value=>{setPlan(value);setSeller('ALL');setManualOutsideIds([]);setShowAllReceivables(false);}}
+     options={options.map(x=>({value:x,label:x}))} placeholder="انتخاب برنامه حمل"/>
+   </div>
+   <div className="min-w-40 flex-1">
+    <SearchableSelect label="فیلتر مشترک فروشنده" value={seller}
+     onChange={value=>setSeller(value||'ALL')}
+     options={[{value:'ALL',label:'همه فروشندگان'},...sellers.map(x=>({value:x.sellerId,label:x.sellerId}))]}/>
+   </div>
   </div>
   {loading&&<p role="status" className="text-xs text-text-secondary">در حال دریافت اسناد حمل از سرور…</p>}
   {error&&<p role="alert" className="rounded-xl border border-warning/40 p-3 text-xs text-warning">{error}</p>}
