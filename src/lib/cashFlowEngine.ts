@@ -256,14 +256,20 @@ export function buildCashFlowProjection(input: CashFlowInput): CashFlowProjectio
     scheduledByDay.set(item.dueDate,daily);
   }
   let running: number | null = opening.status === 'KNOWN' ? opening.balance : null;
-  // سناریوی محافظه‌کارانه برای مانده: تعهدات پرداختنی سررسیدگذشته روز اول پرداخت می‌شود؛ مطالبات سررسیدگذشته وصول‌شده فرض نمی‌شود.
-  if (running !== null && !firstDayMode) running -= overdue.outflow;
+  // Past-due outgoing obligations always remain liabilities, even in an optimistic
+  // receipt scenario. Count them on day one in BOTH daily totals and projected balance,
+  // instead of silently subtracting them from opening (which breaks reconciliation).
+  // Overdue incoming cheques are never assumed collected except in the explicitly
+  // optimistic FIRST_DAY scenario.
   for (let i = 0; i < horizon; i++) {
     const date = addDaysIso(asOf, i);
     const today = scheduledByDay.get(date);
     let inflow = today?.inflow ?? 0;
     let outflow = today?.outflow ?? 0;
-    if (i === 0 && firstDayMode) { inflow += overdue.inflow; outflow += overdue.outflow; }
+    if (i === 0) {
+      outflow += overdue.outflow;
+      if (firstDayMode) inflow += overdue.inflow;
+    }
     const net = inflow - outflow;
     if (running !== null) running += net;
     days.push({ date, inflow, outflow, net, projectedBalance: running });
