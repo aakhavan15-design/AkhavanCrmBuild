@@ -36,3 +36,20 @@ test('F0-10: simulator without penalty rate is UNAVAILABLE; unknown compliance e
   assert.equal(ok.simulatedAffectedCount, 1);
   assert.equal(ok.affectedEmployees[0].simulatedPenaltyRials, Math.round(100_000_000 * 0.02 * 1.5));
 });
+
+test('commissions require verified ledger net-sales facts even with positive invoice gross',()=>{
+ const state={...base, users:[{id:'u1',name:'الف',monthlySalaryRials:120_000_000,isActive:true}],
+  invoices:[{id:'i1',ownerId:'u1',date:'2026-11-03',status:'POSTED',totalAmount:1_000_000_000}],
+  salesTargets:[{userId:'u1',periodMonth:'2026-11',revenueTargetRials:800_000_000}],
+  commissionPlans:[{isActive:true,routeDifficultyMultiplier:1,tiers:[{minAchievementPercent:100,commissionRatePercent:2}]}]};
+ const noLedger=executePayrollRun(state,'2026-11','admin',30);
+ assert.equal(noLedger.payslips[0].commissionRials??0,0);
+ const verified=executePayrollRun(state,'2026-11','admin',30,{
+  ledgerReconciled:true,periodMonth:'2026-11',netSalesBySeller:{u1:1_000_000_000}
+ });
+ assert.ok((verified.payslips[0].commissionRials??0)>0);
+ const wrongMonth=executePayrollRun(state,'2026-11','admin',30,{
+  ledgerReconciled:true,periodMonth:'2026-10',netSalesBySeller:{u1:1_000_000_000}
+ });
+ assert.equal(wrongMonth.payslips[0].commissionRials??0,0);
+});
