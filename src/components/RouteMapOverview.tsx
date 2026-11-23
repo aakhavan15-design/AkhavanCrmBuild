@@ -6,12 +6,12 @@ import type {GeoMapPin} from './GeoZoneMapEditor';
 import {Card} from './ui/Card';
 import {assessRouteMetric} from '../lib/routeMetricHealth';
 
-type MetricId='customerCount'|'activeCustomerCount'|'invoiceCount'|'netSales'|'visitCount'|'attentionPercent'|'returnAmount'|'receivableAmount'|'profitAmount'|'targetAchievedPercent';
+type MetricId='customerCount'|'activeCustomerCount'|'invoiceCount'|'invoicedSales'|'netSales'|'visitCount'|'attentionPercent'|'returnAmount'|'receivableAmount'|'profitAmount'|'targetAchievedPercent';
 type Tone='good'|'warn'|'bad'|'unknown';
 interface RouteSummary {
  routeId:string;routeCode:string;routeName:string;
  location:{latitude:number|null;longitude:number|null};
- customerCount:number|null;activeCustomerCount:number|null;invoiceCount:number|null;netSales:number|null;
+ customerCount:number|null;activeCustomerCount:number|null;invoiceCount:number|null;invoicedSales:number|null;netSales:number|null;
  visitCount:number|null;attentionPercent:number|null;returnAmount:number|null;receivableAmount:number|null;
  profitAmount:number|null;targetAchievedPercent:number|null;
  missingCoordinateCount:number;coordinateCoveragePercent:number|null;
@@ -25,12 +25,12 @@ interface DetailCustomer {
  latitude:number|null;longitude:number|null;visitCount:number|null;lastVisitAt:string|null;
  lastVisitOutcome:string|null;noOrderReason:string|null;invoiceCount:number|null;netSales:number|null;
  lastInvoice:{number:string;date:string;items:Array<{name:string;quantity:number;unitPrice:number}>}|null;
- returnAmount?:number|null;receivableAmount?:number|null;receivableAsOf?:string|null;
+ invoicedSales?:number|null;returnAmount?:number|null;receivableAmount?:number|null;receivableAsOf?:string|null;
  status:'BOUGHT'|'VISITED_NO_ORDER'|'NOT_BOUGHT'|'VISITED'|'UNKNOWN';
 }
 interface Detail {
  source:string;route:{RouteId:string;RouteCode:string;RouteName:string};
- customers:DetailCustomer[];financeVisible:boolean;coverage?:{hasVisitFeed:boolean;hasInvoiceFeed:boolean};period:{dateFrom:string;dateTo:string};
+ customers:DetailCustomer[];financeVisible:boolean;coverage?:{hasVisitFeed:boolean;hasInvoiceFeed:boolean;hasReturnFeed:boolean};period:{dateFrom:string;dateTo:string};
  topProducts:Array<{id:string;name:string;amount:number;quantity:number}>;
  warnings:string[];
 }
@@ -38,6 +38,7 @@ const metricCatalog:Record<MetricId,{name:string;unit:string;finance:boolean}>={
  customerCount:{name:'مشتریان',unit:'نفر',finance:false},
  activeCustomerCount:{name:'خریدار فعال',unit:'نفر',finance:true},
  invoiceCount:{name:'تعداد فاکتور',unit:'عدد',finance:true},
+ invoicedSales:{name:'فروش فاکتور قبل از برگشت',unit:'ریال',finance:true},
  netSales:{name:'فروش خالص',unit:'ریال',finance:true},
  visitCount:{name:'ویزیت انجام‌شده',unit:'بار',finance:false},
  attentionPercent:{name:'پوشش مراجعه',unit:'٪',finance:false},
@@ -48,7 +49,7 @@ const metricCatalog:Record<MetricId,{name:string;unit:string;finance:boolean}>={
 };
 const fa=(v:number)=>v.toLocaleString('fa-IR',{maximumFractionDigits:1});
 const compact=(v:number)=>new Intl.NumberFormat('fa-IR',{notation:'compact',maximumFractionDigits:1}).format(v);
-const displayMetric=(id:MetricId,v:number|null|undefined)=>v==null?'نامشخص':id==='netSales'||id==='returnAmount'||id==='receivableAmount'||id==='profitAmount'?compact(v)+' ریال':id==='attentionPercent'||id==='targetAchievedPercent'?fa(v)+'٪':fa(v);
+const displayMetric=(id:MetricId,v:number|null|undefined)=>v==null?'نامشخص':id==='invoicedSales'||id==='netSales'||id==='returnAmount'||id==='receivableAmount'||id==='profitAmount'?compact(v)+' ریال':id==='attentionPercent'||id==='targetAchievedPercent'?fa(v)+'٪':fa(v);
 const defaultDate=()=>new Date().toISOString().slice(0,10);
 function monthAgo(d:string){const x=new Date(d+'T00:00:00Z');x.setUTCDate(x.getUTCDate()-30);return x.toISOString().slice(0,10);}
 async function getJson<T>(url:string,signal:AbortSignal):Promise<T>{
@@ -283,7 +284,7 @@ export function RouteMapOverview(){
      <div className="grid grid-cols-2 gap-2">
       {[['کل مشتری',detail.customers.length],['دارای ویزیت',detail.coverage?.hasVisitFeed?detail.customers.filter(c=>(c.visitCount||0)>0).length:null],
         ['دارای فاکتور',detail.coverage?.hasInvoiceFeed?detail.customers.filter(c=>(c.invoiceCount||0)>0).length:null],
-        ['فروش ریالی',detail.coverage?.hasInvoiceFeed?detail.customers.reduce((sum,c)=>sum+(c.netSales||0),0):null]].map(([name,value],index)=>
+        ['فروش خالص',detail.coverage?.hasInvoiceFeed&&detail.coverage?.hasReturnFeed?detail.customers.reduce((sum,c)=>sum+(c.netSales||0),0):null]].map(([name,value],index)=>
        <div key={String(name)} className="rounded-xl border border-border bg-canvas p-3">
         <p className="text-xs text-text-secondary">{name}</p>
         <strong className="mt-1 block text-lg text-text-main">{value==null?'نامشخص':index===3?compact(Number(value))+' ریال':fa(Number(value))}</strong>
@@ -312,7 +313,8 @@ export function RouteMapOverview(){
        <div className="mt-2 grid grid-cols-2 gap-1 text-xs text-text-secondary">
         <span>ویزیت: {c.visitCount==null?'نامشخص':fa(c.visitCount)+' بار'}</span>
         <span>فاکتور: {c.invoiceCount==null?'محدود':fa(c.invoiceCount)}</span>
-        <span>فروش: {c.netSales==null?'نامشخص':compact(c.netSales)+' ریال'}</span>
+        <span>فاکتور: {c.invoicedSales==null?'نامشخص':compact(c.invoicedSales)+' ریال'}</span>
+        <span>خالص پس از برگشت: {c.netSales==null?'نامشخص':compact(c.netSales)+' ریال'}</span>
         <span>آخرین ویزیت: {c.lastVisitAt?String(c.lastVisitAt).slice(0,10):'ثبت نشده'}</span>
         <span>برگشتی: {c.returnAmount==null?'نامشخص':compact(c.returnAmount)+' ریال'}</span>
         <span>مطالبات فعلی: {c.receivableAmount==null?'نامشخص':compact(c.receivableAmount)+' ریال'}</span>
@@ -334,7 +336,7 @@ export function RouteMapOverview(){
       {visibleCustomers.length>200&&<p className="text-xs text-warning">۲۰۰ مشتری نخست نمایش داده شده‌اند؛ برای محدودکردن نتایج جست‌وجو کنید.</p>}
      </div>
      {detail.topProducts.length>0&&<div className="mt-4 rounded-xl border border-border p-3">
-      <h4 className="text-sm font-black text-text-main">کالاهای پرفروش همین مسیر و بازه</h4>
+      <h4 className="text-sm font-black text-text-main">کالاهای پرفروش براساس مبلغ فاکتور پیش از برگشت</h4>
       <div className="mt-2 space-y-2">{detail.topProducts.slice(0,10).map(item=>
        <div key={item.id} className="flex justify-between gap-2 text-xs"><span className="truncate">{item.name}</span>
         <strong>{compact(item.amount)} ریال</strong></div>)}</div>
