@@ -242,10 +242,10 @@ export function ReportsHub({ state, canViewFinance, canViewPayments, canOpenJour
   // Domain-specific reports must not reuse generic invoice charts as purported evidence.
   const specializedDestinations: Record<string, {path: string; description: string}> = {
     routes: {path:'/geo-intelligence',description:'تحلیل مسیر و فروش منتسب به تور و مشتری'},
-    visit: {path:'/geo-intelligence',description:'شواهد ویزیت و علت ثبت‌نشدن سفارش'},
-    delivery: {path:'/operations',description:'رویدادهای تحویل؛ درصد تحقق فروش شاخص کیفیت تحویل نیست'},
+    visit: {path:'/reports?view=analytical&report=6',description:'شواهد ویزیت و علت ثبت‌نشدن سفارش'},
+    delivery: {path:'/reports?view=analytical&report=10',description:'رویدادهای تحویل؛ درصد تحقق فروش شاخص کیفیت تحویل نیست'},
     discrepancy: {path:'/audit',description:'یافته‌های مغایرت همراه با شواهد و گردش رسیدگی'},
-    catalog: {path:'/operations',description:'کالاها و اطلاعات عملیاتی؛ نمودار فروش عمومی تحلیل موجودی نیست'},
+    catalog: {path:'/reports?view=analytical&report=3',description:'کالاها و اطلاعات عملیاتی؛ نمودار فروش عمومی تحلیل موجودی نیست'},
     proposals: {path:'/quotes',description:'مذاکرات و سفارش‌های پیشنهادی معتبر'},
     'team-activity': {path:'/activities',description:'فعالیت‌ها و پیگیری‌های واقعی تیم'},
   };
