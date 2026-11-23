@@ -36,6 +36,13 @@ on:
       - 'src/components/onboarding/ApplyPage.tsx'
       - 'src/components/onboarding/recruitmentCinematic.css'
       - 'src/lib/cashFlowEngine.ts'
+      - 'src/lib/financialMetricKernel.ts'
+      - 'src/lib/reportAnalytics.ts'
+      - 'src/services/localQuery.ts'
+      - 'src/services/dataProvider.ts'
+      - 'src/lib/ledgerPnl.ts'
+      - 'tests/financialMetricKernel.behavior.test.mjs'
+      - 'scripts/checklist_status.mjs'
       - 'src/components/LoginWorkspace.tsx'
       - 'src/components/auth/AnimatedLamp3D.tsx'
       - 'src/lib/erpRouteGeoView.ts'
@@ -83,5 +90,9 @@ jobs:
             src/components/onboarding/ApplyPage.tsx
       - name: WebGL2 login shader compile and draw (headless Chrome)
         run: node scripts/check-login-webgl.mjs
+      - name: Closure checklist count and finance behavior
+        run: |
+          node scripts/checklist_status.mjs --check
+          bun test tests/financialMetricKernel.behavior.test.mjs
       - name: Visit and geographical calculation tests
         run: bun test tests/geoRouteAnalysis.test.mjs tests/visitIntelligence.test.mjs tests/erpVisitToursContracts.test.mjs tests/routeMetricHealth.test.mjs tests/routeMapAnalytics.test.mjs tests/routeMapMoney.test.mjs tests/landingNavigationSourceContracts.test.mjs tests/analyticsEvidenceContracts.test.mjs tests/advancedReportsAccess.test.mjs tests/criticalGeoFifoContracts.test.mjs tests/cashFlowScenarioReconciliation.test.mjs tests/authLampExperienceContracts.test.mjs tests/personnelLoginPresentation.test.mjs tests/cinematicWebGLStageContracts.test.mjs tests/livePendantWebGLContracts.test.mjs
