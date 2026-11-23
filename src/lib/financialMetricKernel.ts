@@ -132,3 +132,36 @@ export function buildNetSalesEvidence(
   return { status:'AVAILABLE',gross,returns:sumReturns,net,facts,
     byCustomer:[...byCustomer].map(([key,value])=>({key,value})),invalidReturnIds:[] };
 }
+
+export interface NetSalesReconciliation {
+  status: 'RECONCILED' | 'MISMATCH' | 'UNAVAILABLE';
+  reason?: string;
+  grossDifference: number | null;
+  returnsDifference: number | null;
+}
+
+/** Financial journal controls the official company-wide total. Segmented
+ * mirror facts may be called "net" only when both underlying operands match.
+ * No silent fallback to invoice gross sales on missing/unequal evidence. */
+export function reconcileNetSales(
+  evidence: NetSalesEvidence,
+  ledgerGross: number | null | undefined,
+  ledgerReturns: number | null | undefined,
+  ledgerTrusted: boolean
+): NetSalesReconciliation {
+  const unknown = (reason: string): NetSalesReconciliation =>
+    ({status:'UNAVAILABLE',reason,grossDifference:null,returnsDifference:null});
+  if (!ledgerTrusted) return unknown('منبع دفترکل مالی قطعی/کامل تأیید نشده است.');
+  if (evidence.status !== 'AVAILABLE' || evidence.gross === null || evidence.returns === null)
+    return unknown(evidence.reason || 'پوشش تفصیلی فروش/مرجوعی نامعتبر است.');
+  if (ledgerGross === null || ledgerReturns === null
+    || ledgerGross === undefined || ledgerReturns === undefined
+    || !Number.isFinite(ledgerGross) || !Number.isFinite(ledgerReturns))
+    return unknown('نگاشت یا پوشش حساب‌های فروش و برگشتی دفترکل کامل نیست.');
+  const grossDifference=evidence.gross-ledgerGross;
+  const returnsDifference=evidence.returns-ledgerReturns;
+  if (Math.abs(grossDifference)>0.01 || Math.abs(returnsDifference)>0.01)
+    return {status:'MISMATCH',reason:'جمع تفصیلی فروش/مرجوعی با دفترکل مالی یکسان نیست؛ تا رفع اختلاف، گزارش قطعی مجاز نیست.',
+      grossDifference,returnsDifference};
+  return {status:'RECONCILED',grossDifference,returnsDifference};
+}
