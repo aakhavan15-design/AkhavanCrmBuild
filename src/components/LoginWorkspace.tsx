@@ -6,6 +6,7 @@ import { useAppStore } from '../lib/storage';
 import { AnimatedLamp3D } from './auth/AnimatedLamp3D';
 import { AkhavanLuxuryLogo } from './auth/AkhavanLuxuryLogo';
 import { AuthLightRoad } from './auth/AuthLightRoad';
+import './auth/loginCinematic.css';
 import { playCinematicLoginGreeting, unlockAudioAndSpeech } from '../lib/cinematicVoiceGreeting';
 import type { AppState, UserAccount } from '../types';
 import { track, AnalyticsEvents } from '../lib/analytics';
@@ -163,7 +164,8 @@ export function LoginWorkspace({
 
   return (
     <main
-      className="fixed inset-0 h-dvh max-h-dvh w-full overflow-hidden select-none flex flex-col justify-between text-(--c-auth-on-ambient)"
+      className="akhavan-login-scene fixed inset-0 h-dvh max-h-dvh w-full overflow-hidden select-none flex flex-col justify-between text-(--c-auth-on-ambient)"
+      data-lit={isLightOn}
       dir="rtl"
       style={{
         backgroundColor: 'black',
@@ -207,7 +209,7 @@ export function LoginWorkspace({
       </div>
 
       {/* ================= بخش ۴: نوار هدر فوق‌العاده مینیمال و شیشه‌ای ================= */}
-      <header className="relative z-30 shrink-0 h-14 w-full px-4 sm:px-8 flex items-center justify-between border-b border-(--c-auth-on-ambient)/5 bg-(--c-auth-ambient)/40 backdrop-blur-2xl">
+      <header className="akhavan-login-header relative z-30 shrink-0 h-14 w-full px-4 sm:px-8 flex items-center justify-between border-b border-(--c-auth-on-ambient)/5 bg-(--c-auth-ambient)/40 backdrop-blur-2xl">
         {/* برند اخوان */}
         <div className="flex items-center gap-3">
           <div
@@ -280,7 +282,7 @@ export function LoginWorkspace({
       </header>
 
       {/* ================= صحنه مرکزی: طراحی متقارن و ارگونومیک کلاس جهانی بدون هرگونه اسکرول ================= */}
-      <div className="relative z-20 flex-1 min-h-0 w-full max-w-5xl mx-auto px-2 xs:px-3 sm:px-6 flex flex-row items-center justify-center gap-2 xs:gap-3 sm:gap-6 md:gap-12 overflow-hidden">
+      <div className="akhavan-login-stage relative z-20 flex-1 min-h-0 w-full overflow-hidden">
         {/* هاله نور پس‌زمینه */}
         <div
           aria-hidden="true"
@@ -291,8 +293,26 @@ export function LoginWorkspace({
           }}
         />
 
+        {/* Official brand & signature occupy the left half of the cinematic scene on desktop. */}
+        <div className="akhavan-login-hero" aria-hidden="true">
+          <AkhavanLuxuryLogo isLightOn={isLightOn} className="akhavan-login-hero-logo" />
+          <svg className="akhavan-login-hero-mark" viewBox="0 0 380 270" fill="none" role="presentation">
+            <defs>
+              <linearGradient id="akhavanHeroCopper" x1="0" y1="0" x2=".9" y2="1">
+                <stop offset="0%" stopColor="var(--c-warning-soft)" />
+                <stop offset="47%" stopColor="var(--c-accent)" />
+                <stop offset="100%" stopColor="var(--c-copper)" />
+              </linearGradient>
+            </defs>
+            <path d="M48 203 C25 154 68 113 130 125 C196 137 266 183 353 196 C275 155 213 88 143 96 C63 84 1 146 35 207 C74 268 161 191 224 90 L300 12 L243 161 L210 258"
+              stroke="url(#akhavanHeroCopper)" strokeWidth="10" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M48 203 C25 154 68 113 130 125 C196 137 266 183 353 196 C275 155 213 88 143 96 C63 84 1 146 35 207 C74 268 161 191 224 90 L300 12 L243 161 L210 258"
+              stroke="#ffe7be" strokeOpacity=".8" strokeWidth="1.8" strokeLinecap="round" />
+          </svg>
+        </div>
+
         {/* المان آباژور مدرن در سمت راست */}
-        <div className="shrink-0 flex flex-col items-center justify-center">
+        <div className="akhavan-login-lamp shrink-0 flex flex-col items-center justify-center">
           <AnimatedLamp3D
             isLightOn={isLightOn}
             onToggle={handleLampToggle}
@@ -302,10 +322,10 @@ export function LoginWorkspace({
         </div>
 
         {/* المان کارت ورود و هویت بصری لوکس در سمت چپ */}
-        <div className="w-full max-w-(--size-260) xs:max-w-(--size-290) sm:max-w-(--size-380) md:max-w-(--size-430) shrink flex flex-col justify-center">
+        <div className="akhavan-login-form-shell w-full shrink flex flex-col justify-center">
           
           {/* لوگوی رسمی AKHAVAN GROUP */}
-          <div className="relative mb-2 sm:mb-3 flex flex-col items-center">
+          <div className="akhavan-login-inline-brand relative mb-2 sm:mb-3 flex flex-col items-center">
             <div className="relative w-full flex justify-center transition-transform duration-500 hover:scale-(--scale-lift-subtle)">
               <AkhavanLuxuryLogo isLightOn={isLightOn} className="w-(--size-160) xs:w-(--size-190) sm:w-(--size-250) md:w-(--size-300)" />
             </div>
@@ -329,7 +349,7 @@ export function LoginWorkspace({
             /* فرم ورود گلسمورفیسم فوق‌العاده باکیفیت و شفاف هماهنگ با Indigo */
             <div
               key="auth-card-lit"
-              className="relative w-full rounded-2xl border border-(--c-auth-on-ambient)/10 p-2.5 xs:p-3 sm:p-5 backdrop-blur-2xl overflow-hidden transition-all duration-500"
+              className="akhavan-login-card relative w-full rounded-2xl border border-(--c-auth-on-ambient)/10 p-2.5 xs:p-3 sm:p-5 backdrop-blur-2xl overflow-hidden transition-all duration-500"
               style={{
                 background: 'linear-gradient(145deg, color-mix(in srgb, var(--c-navy-dark) 85%, var(--c-auth-ambient)) 0%, var(--c-auth-ambient) 100%)',
                 borderTop: '1px solid color-mix(in srgb, var(--c-copper) 45%, transparent)',
@@ -456,7 +476,7 @@ export function LoginWorkspace({
                     type="submit"
                     onClick={() => unlockAudioAndSpeech()}
                     disabled={warpActive || isSubmitting}
-                    className="w-full h-9.5 xs:h-10 sm:h-12 rounded-lg sm:rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-1.5 sm:gap-2 shadow-xl transition-all duration-200 cursor-pointer disabled:opacity-50 text-(--c-auth-on-ambient) mt-1 sm:mt-2 hover:scale-(--scale-lift-subtle) active:scale-(--scale-press-subtle)"
+                    className="akhavan-login-submit w-full h-9.5 xs:h-10 sm:h-12 rounded-lg sm:rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-1.5 sm:gap-2 shadow-xl transition-all duration-200 cursor-pointer disabled:opacity-50 text-(--c-auth-on-ambient) mt-1 sm:mt-2 hover:scale-(--scale-lift-subtle) active:scale-(--scale-press-subtle)"
                     style={{
                       background: 'linear-gradient(135deg, var(--c-cobalt) 0%, var(--c-cobalt-dark) 100%)',
                       border: '1px solid color-mix(in srgb, var(--c-copper) 45%, transparent)',
@@ -524,12 +544,9 @@ export function LoginWorkspace({
               {/* لینک ثبت‌نام پرسنل */}
               {applyEnabled && (
                 <div className="mt-2 pt-1.5 border-t border-(--c-auth-on-ambient)/10 text-center">
-                  <button
-                    type="button"
-                    onClick={() => navigate('/apply')}
-                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-micro sm:text-caption font-bold text-emerald-300 hover:text-(--c-auth-on-ambient) hover:bg-emerald-500/15 transition-all cursor-pointer border border-emerald-400/25 hover:border-emerald-400/50 shadow-sm"
-                  >
-                    <span>فرم استخدام پرسنل جدید</span>
+                  <button type="button" onClick={() => navigate('/apply')}
+                    className="akhavan-login-apply">
+                    <span>ثبت‌نام و تکمیل پرسشنامه استخدامی</span>
                     <span aria-hidden="true">←</span>
                   </button>
                 </div>
@@ -622,12 +639,18 @@ export function LoginWorkspace({
 
       </div>
 
+      {!isLightOn && applyEnabled && (
+        <button type="button" onClick={() => navigate('/apply')}
+          className="akhavan-login-apply akhavan-login-apply-outer fixed bottom-12 left-1/2 z-40 -translate-x-1/2 whitespace-nowrap">
+          ثبت‌نام و تکمیل پرسشنامه استخدامی
+        </button>
+      )}
       {/* ================= بخش ۳: فوتر مینیمال با متن دقیق ================= */}
-      <footer className="relative z-20 shrink-0 py-2 sm:py-2.5 w-full px-4 border-t border-(--c-auth-on-ambient)/5 bg-(--c-auth-ambient)/80 backdrop-blur-md text-center flex flex-col items-center justify-center gap-0.5 select-none">
-        <span className="font-bold text-mini sm:text-small tracking-[0.26em] text-(--c-auth-on-ambient)/90 font-sans uppercase">
+      <footer className="akhavan-login-footer relative z-20 shrink-0 py-2 sm:py-2.5 w-full px-4 border-t border-(--c-auth-on-ambient)/5 bg-(--c-auth-ambient)/80 backdrop-blur-md text-center flex flex-col items-center justify-center gap-0.5 select-none">
+        <span className="akhavan-footer-brand font-bold text-mini sm:text-small tracking-[0.26em] text-(--c-auth-on-ambient)/90 font-sans uppercase">
           AKHAVAN GROUP
         </span>
-        <span className="text-pico sm:text-tiny tracking-[0.22em] text-(--c-auth-on-ambient)/60 font-mono uppercase">
+        <span className="akhavan-footer-tagline text-pico sm:text-tiny tracking-[0.22em] text-(--c-auth-on-ambient)/60 font-mono uppercase">
           INTELLIGENCE IN EVERY CONNECTION · EXCELLENCE IN EVERY DECISION
         </span>
       </footer>
