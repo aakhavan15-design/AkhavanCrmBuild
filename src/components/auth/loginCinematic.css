@@ -1,9 +1,9 @@
 /* AKHAVAN CRM — isolated, viewport-locked login scene.
    Uses the approved brand tokens; no shared Layout / navigation rules change. */
 .akhavan-login-scene {
-  --login-copper: var(--c-copper, #b8744b);
-  --login-gold: var(--c-warning-soft, #f9cd92);
-  --login-midnight: var(--c-auth-ambient, #070e1d);
+  --login-copper: var(--c-copper);
+  --login-gold: var(--c-warning-soft);
+  --login-midnight: var(--c-auth-ambient);
   position: fixed;
   inset: 0;
   height: 100dvh;
@@ -12,10 +12,10 @@
   overflow: hidden !important;
   overscroll-behavior: none;
   isolation: isolate;
-  color: #faeee1;
+  color: var(--c-auth-on-ambient);
   background:
     radial-gradient(ellipse at 65% 8%, color-mix(in srgb, var(--login-copper) 12%, transparent), transparent 52%),
-    radial-gradient(ellipse at 26% 70%, #182039, #070d1c 74%);
+    radial-gradient(ellipse at 26% 70%, var(--c-navy-dark), var(--c-auth-ambient) 74%);
 }
 .akhavan-login-scene::before {
   content: "";
@@ -31,7 +31,7 @@
 .akhavan-login-scene .akhavan-login-header {
   border: 0;
   height: clamp(40px, 6.5dvh, 64px);
-  background: linear-gradient(to bottom, #091021d9, #09102129);
+  background: linear-gradient(to bottom, color-mix(in srgb, var(--c-auth-ambient) 85%, transparent), color-mix(in srgb, var(--c-auth-ambient) 17%, transparent));
   backdrop-filter: blur(14px);
 }
 .akhavan-login-stage {
@@ -59,7 +59,7 @@
 .akhavan-login-hero .akhavan-login-hero-logo {
   width: clamp(230px, 30vw, 520px);
   max-width: 100%;
-  filter: drop-shadow(0 14px 20px #0007);
+  filter: drop-shadow(0 14px 20px color-mix(in srgb, black 45%, transparent));
 }
 .akhavan-login-hero-mark {
   display: block;
@@ -107,8 +107,8 @@
   position: relative;
   border-radius: clamp(20px, 2.4vw, 32px) !important;
   border: 1px solid color-mix(in srgb, var(--login-copper) 52%, transparent) !important;
-  background: linear-gradient(145deg, #182338ec 0%, #101828e8 56%, #0a1325f3 100%) !important;
-  box-shadow: 0 32px 85px #000a, 0 0 35px #c68a5530, inset 0 1px 0 #ffebce3d, inset 0 -1px 0 #d2936433 !important;
+  background: linear-gradient(145deg, color-mix(in srgb, var(--c-navy-dark) 93%, transparent) 0%, color-mix(in srgb, var(--c-navy-dark) 90%, var(--c-auth-ambient)) 56%, color-mix(in srgb, var(--c-auth-ambient) 95%, var(--c-navy-dark)) 100%) !important;
+  box-shadow: 0 32px 85px color-mix(in srgb, black 65%, transparent), 0 0 35px color-mix(in srgb, var(--c-copper) 20%, transparent), inset 0 1px 0 color-mix(in srgb, var(--c-warning-soft) 24%, transparent), inset 0 -1px 0 color-mix(in srgb, var(--c-copper) 20%, transparent) !important;
   padding: clamp(14px, 2vw, 24px) !important;
   overflow: hidden;
   backdrop-filter: blur(26px);
@@ -119,27 +119,27 @@
   inset: 0;
   pointer-events: none;
   border-radius: inherit;
-  background: linear-gradient(118deg, #fff5df1a, transparent 39%, transparent 80%, #e3ab7720);
+  background: linear-gradient(118deg, color-mix(in srgb, white 10%, transparent), transparent 39%, transparent 80%, color-mix(in srgb, var(--c-copper) 12%, transparent));
   mix-blend-mode: screen;
 }
 .akhavan-login-card input {
   border-color: color-mix(in srgb, var(--login-copper) 37%, transparent) !important;
-  background-color: #091323d9 !important;
-  box-shadow: inset 0 2px 8px #0007, 0 1px 0 #eac69a0f;
-  color: #fff4e9 !important;
+  background-color: color-mix(in srgb, var(--c-auth-ambient) 85%, transparent) !important;
+  box-shadow: inset 0 2px 8px color-mix(in srgb, black 45%, transparent), 0 1px 0 color-mix(in srgb, var(--c-warning-soft) 6%, transparent);
+  color: var(--c-auth-on-ambient) !important;
   min-height: 40px;
 }
 .akhavan-login-card input:focus-visible { outline: 2px solid var(--login-gold); outline-offset: 1px; }
 .akhavan-login-card .akhavan-login-submit {
-  color: #201309 !important;
-  background: linear-gradient(140deg, #ffe2ae 0%, #eab278 35%, #b87645 100%) !important;
-  border: 1px solid #f5cb94 !important;
-  box-shadow: inset 0 1px 0 #fff9e18a, 0 7px 24px #d88b5238, 0 2px 2px #0006 !important;
+  color: var(--c-ink-main) !important;
+  background: linear-gradient(140deg, var(--c-warning-soft) 0%, var(--c-accent) 35%, var(--c-copper) 100%) !important;
+  border: 1px solid var(--c-warning-soft) !important;
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--c-warning-soft) 54%, transparent), 0 7px 24px color-mix(in srgb, var(--c-copper) 22%, transparent), 0 2px 2px color-mix(in srgb, black 40%, transparent) !important;
   min-height: 45px;
 }
 .akhavan-login-card .akhavan-login-submit:hover { filter: brightness(1.08); }
 .akhavan-login-apply {
-  color: #ffd9ad;
+  color: var(--c-warning-soft);
   display: inline-flex;
   min-height: 40px;
   align-items: center;
@@ -148,18 +148,18 @@
   gap: .35rem;
   padding: 6px 12px;
   border-radius: 12px;
-  border: 1px solid #b8744b75;
-  background: #c98b4914;
+  border: 1px solid color-mix(in srgb, var(--c-copper) 45%, transparent);
+  background: color-mix(in srgb, var(--c-copper) 8%, transparent);
   font-size: 12px;
   font-weight: 700;
   transition: background 180ms ease, border-color 180ms ease;
 }
-.akhavan-login-apply:hover, .akhavan-login-apply:focus-visible { background: #b8744b32; border-color: #ffcf96; }
+.akhavan-login-apply:hover, .akhavan-login-apply:focus-visible { background: color-mix(in srgb, var(--c-copper) 20%, transparent); border-color: var(--c-warning-soft); }
 .akhavan-login-footer {
   min-height: 38px;
   padding-block: 4px;
-  border-top-color: #d9aa7430;
-  background: linear-gradient(to top, #060d1dee, #060d1d80);
+  border-top-color: color-mix(in srgb, var(--c-copper) 19%, transparent);
+  background: linear-gradient(to top, color-mix(in srgb, var(--c-auth-ambient) 93%, transparent), color-mix(in srgb, var(--c-auth-ambient) 50%, transparent));
 }
 .akhavan-login-stage .akhavan-login-form-shell:focus-within { z-index: 22; }
 
