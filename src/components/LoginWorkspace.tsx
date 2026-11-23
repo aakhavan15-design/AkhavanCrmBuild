@@ -307,7 +307,7 @@ export function LoginWorkspace({
             <path d="M48 203 C25 154 68 113 130 125 C196 137 266 183 353 196 C275 155 213 88 143 96 C63 84 1 146 35 207 C74 268 161 191 224 90 L300 12 L243 161 L210 258"
               stroke="url(#akhavanHeroCopper)" strokeWidth="10" strokeLinecap="round" strokeLinejoin="round" />
             <path d="M48 203 C25 154 68 113 130 125 C196 137 266 183 353 196 C275 155 213 88 143 96 C63 84 1 146 35 207 C74 268 161 191 224 90 L300 12 L243 161 L210 258"
-              stroke="#ffe7be" strokeOpacity=".8" strokeWidth="1.8" strokeLinecap="round" />
+              stroke="var(--c-warning-soft)" strokeOpacity=".8" strokeWidth="1.8" strokeLinecap="round" />
           </svg>
         </div>
 
