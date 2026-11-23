@@ -12,6 +12,12 @@ IF COL_LENGTH(N'crm.CreditNoteMirror',N'DispatchPlanNumber') IS NULL
  ALTER TABLE crm.CreditNoteMirror ADD DispatchPlanNumber nvarchar(80) NULL;
 IF COL_LENGTH(N'crm.JournalEntryMirror',N'DispatchPlanNumber') IS NULL
  ALTER TABLE crm.JournalEntryMirror ADD DispatchPlanNumber nvarchar(80) NULL;
+/* Product master mirrors must expose explicit ERP supplier/brand dimensions;
+   never infer a supplier from a product name. Values remain NULL until source mapping. */
+IF COL_LENGTH(N'crm.ExternalProduct',N'SupplierExternalId') IS NULL
+ ALTER TABLE crm.ExternalProduct ADD SupplierExternalId nvarchar(200) NULL;
+IF COL_LENGTH(N'crm.ExternalProduct',N'BrandExternalId') IS NULL
+ ALTER TABLE crm.ExternalProduct ADD BrandExternalId nvarchar(200) NULL;
 GO
 IF NOT EXISTS(SELECT 1 FROM sys.indexes WHERE object_id=OBJECT_ID(N'crm.InvoiceMirror') AND name=N'IX_Invoice_DispatchNumber')
  CREATE INDEX IX_Invoice_DispatchNumber ON crm.InvoiceMirror(TenantId,DispatchPlanNumber,InvoiceDate) INCLUDE(InvoiceMirrorId,AccountId,SalesRepExternalId);
@@ -42,15 +48,15 @@ BEGIN
  );
 END;
 GO
-IF OBJECT_ID(N'security.TenantIsolationPolicy',N'SP') IS NOT NULL
- AND NOT EXISTS(
-  SELECT 1 FROM sys.security_predicates sp
-  JOIN sys.tables t ON t.object_id=sp.target_object_id
-  JOIN sys.schemas s ON s.schema_id=t.schema_id
-  WHERE sp.object_id=OBJECT_ID(N'security.TenantIsolationPolicy')
-    AND s.name=N'crm' AND t.name=N'DispatchFinancialBucketMap')
+IF NOT EXISTS (SELECT 1 FROM sys.security_policies
+ WHERE schema_id=SCHEMA_ID(N'security') AND name=N'TenantIsolationPolicy' AND is_enabled=1)
+ THROW 51550, N'Dispatch financial coding requires active tenant isolation policy.', 1;
+IF NOT EXISTS (SELECT 1 FROM sys.security_predicates
+ WHERE target_object_id=OBJECT_ID(N'crm.DispatchFinancialBucketMap') AND predicate_type_desc=N'FILTER')
  ALTER SECURITY POLICY security.TenantIsolationPolicy
-  ADD FILTER PREDICATE security.fn_TenantAccessPredicate(TenantId) ON crm.DispatchFinancialBucketMap;
+  ADD FILTER PREDICATE security.fn_TenantAccessPredicate(TenantId) ON crm.DispatchFinancialBucketMap,
+  ADD BLOCK PREDICATE security.fn_TenantAccessPredicate(TenantId) ON crm.DispatchFinancialBucketMap AFTER INSERT,
+  ADD BLOCK PREDICATE security.fn_TenantAccessPredicate(TenantId) ON crm.DispatchFinancialBucketMap AFTER UPDATE;
 GO
 /* Keep the existing DispatchPlanLine authoritative when present.
    Explicit invoice number remains a secondary ERP link; disagreement is a
