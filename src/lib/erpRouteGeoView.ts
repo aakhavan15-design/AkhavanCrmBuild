@@ -2,7 +2,7 @@ import type { Customer } from '../types';
 /** Source-scoped crosswalk: never match customers across ERP systems by display name/code. */
 export interface RouteMembership {
  externalId:string;tenantId:string;sourceSystemCode:string;routeExternalId:string;
- externalCustomerId:string;subRouteCode?:string;effectiveFrom?:string;effectiveTo?:string|null;isDeleted?:boolean;
+ externalCustomerId:string;subRouteCode?:string|null;effectiveFrom?:string;effectiveTo?:string|null;isDeleted?:boolean;
 }
 export interface RouteEmployee {
  externalId:string;tenantId:string;sourceSystemCode:string;routeExternalId:string;
