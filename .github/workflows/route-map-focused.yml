@@ -3,8 +3,11 @@ on:
   push:
     branches:
       - chatgpt/parallel-checklist-20261122
+      - codex/unified-ux-quality-gate
     paths:
       - 'server/routeMap*.mjs'
+      - 'src/lib/routeMetricHealth.ts'
+      - 'docs/CHECKLIST_FA.md'
       - 'server/erpVisitRouteReads.mjs'
       - 'server/index.mjs'
       - 'src/components/RouteMapOverview.tsx'
