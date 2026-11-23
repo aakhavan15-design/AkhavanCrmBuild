@@ -1,19 +1,28 @@
 import React,{useEffect,useMemo,useState} from 'react';
 import {AuthService} from '../../services/AuthService';
 import {GeoZoneMapEditor,type GeoMapPin} from '../GeoZoneMapEditor';
+import type {GeoPolygonGeometry} from '../../types';
 import {formatMoneyCompact,formatCount} from '../../lib/format';
 type Invoice={InvoiceMirrorId:string;InvoiceNumber:string;SalesRepExternalId:string|null;CustomerName:string;
  AccountId:string;GrossAmount:number;Latitude:number|null;Longitude:number|null;GeoAccuracyMeters:number|null};
 type Seller={sellerId:string;invoiceCount:number;grossRials:number;returnsRials:number;returnedInvoiceCount:number};
 type Report={status:'PARTIAL'|'UNAVAILABLE';reason?:string;plan?:{PlanNumber:string;PlanDate:string;DriverExternalId:string;DistributorExternalId:string|null};
  invoices?:Invoice[];sellers?:Seller[];invoiceCount?:number;grossRials?:number;linkedReturnsRials?:number;
- journalBuckets?:Record<string,number|null>;missingMappings?:number;coverage?:Record<string,string>;note?:string};
+ journalBuckets?:Record<string,number|null>;missingMappings?:number;coverage?:Record<string,string>;note?:string;
+ receivableCoverage?:string;collectionZone?:{
+  status:'AVAILABLE'|'UNAVAILABLE';reason?:string;geometry?:GeoPolygonGeometry|null;
+  rows?:Array<{customerId:string;name:string;officialBalanceRials:number;point:{latitude:number;longitude:number}|null;inZone:boolean;manualOutside:boolean;included:boolean}>;
+  markers?:Array<{id:string;customerId:string;name:string;point:{latitude:number;longitude:number};kind:'DISPATCH'|'COLLECTION';outside?:boolean}>;
+  suggestedCount?:number;missingGeoStopCount?:number;mappedStopCount?:number;
+ }};
 const buckets=[['CASH','وجه نقد'],['CASH_DISCOUNT','تخفیف نقدی'],['INVOICE_SURCHARGE','اضافه فاکتور'],
  ['CHEQUE','چک'],['TRANSFER','حواله بانکی'],['CASH_REFUND','وجه برگشتی']];
 const fmt=(n:number|null|undefined)=>n==null?'نامشخص':formatMoneyCompact(n);
 export function DispatchIntelligenceReports({plans}: {plans:Array<Record<string,unknown>>}){
  const [plan,setPlan]=useState('');
  const [seller,setSeller]=useState('ALL');
+ const [showAllReceivables,setShowAllReceivables]=useState(false);
+ const [manualOutsideIds,setManualOutsideIds]=useState<string[]>([]);
  const [report,setReport]=useState<Report|null>(null);
  const [loading,setLoading]=useState(false);
  const [error,setError]=useState('');
@@ -45,11 +54,19 @@ export function DispatchIntelligenceReports({plans}: {plans:Array<Record<string,
   id:String(i.InvoiceMirrorId),name:i.CustomerName,kind:'CUSTOMER',
   point:{latitude:Number(i.Latitude),longitude:Number(i.Longitude)},tone:'good'
  }));
+ const zone=report?.collectionZone;
+ const candidateRows=zone?.status==='AVAILABLE'?zone.rows||[]:[];
+ const eligibleCandidates=candidateRows.filter(c=>c.inZone||manualOutsideIds.includes(c.customerId)||showAllReceivables);
+ const redPins:GeoMapPin[]=eligibleCandidates.filter(c=>c.point).map(c=>({
+  id:'receivable:'+c.customerId,name:c.name,kind:'COLLECTION',
+  point:c.point!,tone:'bad',outside:!c.inZone
+ }));
+ const mapPins:GeoMapPin[]=[...pins.map(pin=>({...pin,kind:'DISPATCH' as const})),...redPins];
  const current=report?.status==='PARTIAL';
  return <section className="space-y-3" dir="rtl" aria-label="تحلیل پیوسته حمل">
   <div className="flex flex-wrap items-end gap-2 rounded-2xl border border-border bg-surface p-3">
    <label className="min-w-48 flex-1 text-xs font-bold text-text-secondary">برنامه حمل
-    <select value={plan} onChange={e=>{setPlan(e.target.value);setSeller('ALL');}}
+    <select value={plan} onChange={e=>{setPlan(e.target.value);setSeller('ALL');setManualOutsideIds([]);setShowAllReceivables(false);}}
      className="mt-1 h-11 w-full rounded-xl border border-border bg-canvas px-3 text-text-main">
      {!options.length&&<option value="">برنامه حمل در داده مجاز موجود نیست</option>}
      {options.map(x=><option key={x} value={x}>{x}</option>)}
@@ -111,9 +128,30 @@ export function DispatchIntelligenceReports({plans}: {plans:Array<Record<string,
       <span>{formatCount(new Set(invoices.map(i=>i.AccountId)).size)} مشتری</span>
       <span>{formatCount(mapped.length)} فاکتور با مختصات معتبر</span>
      </div>
-     {pins.length>0?<GeoZoneMapEditor coordinateText="" onChange={()=>{}} disabled markers={pins}/>:
+     <div className="flex flex-wrap items-center gap-3 text-xs">
+      <span className="font-bold text-emerald-700">● فاکتور حمل</span>
+      <span className="font-bold text-rose-700">● مطالبات قطعی</span>
+      <label className="flex items-center gap-1"><input type="checkbox" checked={showAllReceivables}
+        disabled={zone?.status!=='AVAILABLE'}
+        onChange={e=>setShowAllReceivables(e.target.checked)}/>نمایش همه مطالبات روی نقشه</label>
+     </div>
+     {mapPins.length>0?<GeoZoneMapEditor key={'dispatch:'+plan} coordinateText="" onChange={()=>{}}
+       disabled geometry={zone?.status==='AVAILABLE'?zone.geometry||undefined:undefined} markers={mapPins}/>:
       <p className="rounded-xl border border-dashed border-border p-3 text-xs text-text-secondary">مختصات معتبر برای نقشه این حمل دریافت نشد.</p>}
-     <p className="text-xs text-text-secondary">لایه قرمز مطالبات و محدوده پیشنهادی وصول تا اتصال مانده قطعی و تطبیق زمان سند فعال نمی‌شود.</p>
+     {zone?.status==='AVAILABLE'?<div className="max-h-52 space-y-1 overflow-y-auto">
+      <p className="text-xs font-bold text-text-main">پیشنهاد وصول داخل محدوده: {formatCount(zone.suggestedCount||0)} مشتری ·
+       تعداد مشتریان فاکتوردار بدون GPS: {formatCount(zone.missingGeoStopCount||0)}</p>
+      {candidateRows.map(c=><label key={c.customerId} className="flex items-center gap-2 rounded-lg border border-border p-2 text-xs">
+       <input type="checkbox" checked={c.inZone||manualOutsideIds.includes(c.customerId)}
+        disabled={c.inZone||!c.point}
+        onChange={e=>setManualOutsideIds(prev=>e.target.checked?[...prev,c.customerId]:prev.filter(x=>x!==c.customerId))}/>
+       <span className="min-w-0 flex-1 truncate">{c.name}{c.inZone?' · در محدوده':' · خارج محدوده'}</span>
+       <strong>{fmt(c.officialBalanceRials)}</strong>
+      </label>)}
+     </div>:<p className="text-xs text-warning">
+       لایه مطالبات تا تأیید کامل دفتر مالی فعال نیست: {zone?.reason||report.receivableCoverage||'منبع نامشخص'}
+      </p>}
+     <p className="text-xs text-text-secondary">زون پیشنهادی تقریبی است؛ مشتری باید از نظر دسترسی خیابانی و امکان وصول توسط مسئول بررسی شود.</p>
     </div>
    </div>
    <div className="rounded-xl border border-border bg-surface p-3">
