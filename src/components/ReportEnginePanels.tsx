@@ -43,6 +43,7 @@ import { InputControl } from './ui/Input';
 import { Button } from './ui/Button';
 import { FilterChip } from './ui/Tabs';
 import { resolveSellerKey } from '../services/receivableReports';
+import { buildNetSalesEvidence } from '../lib/financialMetricKernel';
 
 type ExpenseLike = {
   id?: string;
@@ -299,8 +300,26 @@ export function ReportEnginePanels({ state, visibleInvoices, visiblePayments, vi
   });
 
   const invoices = useMemo(() => reportInvoices.filter(i => !i.deletedAt && !i.isDeleted && !['DRAFT','PENDING','CANCELLED','CANCELED','VOID','VOIDED','REJECTED'].includes(String(i.status || '').toUpperCase()) && Number(i.totalAmount) > 0 && Number.isFinite(Number(i.totalAmount)) && Boolean(i.date) && Boolean(i.customerId || i.accountId) && (!cutoff || String(i.date).slice(0,10) >= cutoff) && String(i.date).slice(0,10) <= asOf), [reportInvoices, cutoff, asOf]);
-  const facts = useMemo(() => invoices.map(i => ({ customerId: String(i.customerId || i.accountId), date: String(i.date).slice(0,10), amount: Number(i.totalAmount), isFinal: true })), [invoices]);
-  const customerSales = useMemo(() => { const m = new Map<string,number>(); facts.forEach(i => m.set(i.customerId, (m.get(i.customerId)||0)+i.amount)); return [...m].map(([key,value])=>({key,value})); }, [facts]);
+  // Single calculation across customer sales, RFM monetary, Pareto and target
+  // achievement. Only financial ERP-mirror credit notes may reduce a sale.
+  // Never pretend unverified return coverage is equal to zero returns.
+  const netSalesEvidence = useMemo(() => {
+    const ids = new Set(reportInvoices.map(i=>String(i.id)));
+    const customers = new Set(reportInvoices.map(i=>String(i.customerId || i.accountId || '')));
+    const creditNotes = (state.creditNotes || []).filter(note =>
+      ids.has(String(note.invoiceId || '')) || customers.has(String(note.customerId || note.accountId || '')));
+    return buildNetSalesEvidence(reportInvoices.filter(i =>
+      !i.deletedAt && !i.isDeleted && !['DRAFT','PENDING','CANCELLED','CANCELED','VOID','VOIDED','REJECTED'].includes(String(i.status||'').toUpperCase())
+    ).map(i=>({
+      id:String(i.id),customerId:String(i.customerId||i.accountId||''),
+      date:String(i.date||''),totalAmount:Number(i.totalAmount)
+    })),creditNotes, {
+      from:cutoff,to:asOf,
+      returnsVerified:state.creditNoteSourceStatus === 'CONNECTED'
+    });
+  }, [reportInvoices, state.creditNotes, state.creditNoteSourceStatus, cutoff, asOf]);
+  const facts = netSalesEvidence.facts;
+  const customerSales = netSalesEvidence.byCustomer;
   
   const ledgerInputs = useMemo(() => {
     if (!effectivePnlData || pnlUnavailable) return { rawLines: [], accounts: [] };
@@ -372,24 +391,27 @@ export function ReportEnginePanels({ state, visibleInvoices, visiblePayments, vi
   }), [state.externalProducts, state.salesOrders, state.geoZones, state.zoneAssignments]);
 
   const salesKpi = useMemo(() => {
-    const totalSales = invoices.length ? invoices.reduce((sum,invoice)=>sum+Number(invoice.totalAmount),0) : null;
+    const totalSales = netSalesEvidence.net;
     const fromMonth = cutoff ? cutoff.slice(0, 7) : '0000-00';
     const toMonth = asOf.slice(0, 7);
     const target = (state.salesTargets || [])
       .filter(item => item.periodMonth >= fromMonth && item.periodMonth <= toMonth)
       .reduce((sum, item) => sum + Math.max(0, Number(item.revenueTargetRials) || 0), 0);
     return targetAchievement(totalSales, target > 0 ? target : null);
-  }, [invoices, state.salesTargets, cutoff, asOf]);
+  }, [netSalesEvidence.net, state.salesTargets, cutoff, asOf]);
 
   const observedSalesTrend=useMemo(()=>{
-    if (localTest || getActiveDataProvider().name!=='SQLSERVER_BACKEND') return undefined;
+    // Return dates need a dated accounting series; never label an invoice-only
+    // gross daily series as net sales if any returns are present.
+    if (localTest || getActiveDataProvider().name!=='SQLSERVER_BACKEND'
+      || netSalesEvidence.status !== 'AVAILABLE' || netSalesEvidence.returns !== 0) return undefined;
     const byDay=new Map<string,number>();
     for (const invoice of invoices) {
       const date=invoice.date.slice(0,10);
       byDay.set(date,(byDay.get(date) ?? 0)+Number(invoice.totalAmount));
     }
     return [...byDay].sort(([a],[b])=>a.localeCompare(b)).slice(-12).map(([,amount])=>amount);
-  },[invoices,localTest]);
+  },[invoices,localTest,netSalesEvidence.status,netSalesEvidence.returns]);
 
   const productShareRows = useMemo(() => {
     const map = new Map<string, number>();
@@ -426,7 +448,10 @@ export function ReportEnginePanels({ state, visibleInvoices, visiblePayments, vi
   }, [state.quotes]);
 
   const lifecycle = useMemo(() => lifecycleSegments(facts, asOf), [facts, asOf]);
-  const rfmRows = useMemo(() => rfm(facts, asOf), [facts, asOf]);
+  const rfmRows = useMemo(() => rfm(facts, asOf,
+    new Map(customerSales.map(row=>[row.key,row.value]))), [facts, asOf, customerSales]);
+  // When official returns are unavailable, the dependent figures stay empty
+  // instead of showing inflated gross numbers under a net-sales label.
   const paretoRows = useMemo(() => pareto(customerSales), [customerSales]);
   const topShare = useMemo(() => topPercentShare(customerSales, 20), [customerSales]);
   const customerHhi = useMemo(() => paretoRows.total > 0 ? paretoRows.rows.reduce((sum, row) => sum + Math.pow(row.value / paretoRows.total, 2), 0) * 10000 : null, [paretoRows]);
@@ -627,7 +652,12 @@ export function ReportEnginePanels({ state, visibleInvoices, visiblePayments, vi
         </div>
         )}
 
-        {selected!==8 && <Button variant="outline" size="sm" className="shrink-0" type="button" onClick={handleExportCurrentReportCsv} >
+        {[2,4,5].includes(selected) && netSalesEvidence.status !== 'AVAILABLE' && (
+        <p role="status" className="rounded-lg border border-(--c-warning-soft)/50 p-3 text-sm text-(--c-text-main)">
+          فروش خالص تأیید نشده: {netSalesEvidence.reason}
+        </p>
+      )}
+      {selected!==8 && <Button variant="outline" size="sm" className="shrink-0" type="button" onClick={handleExportCurrentReportCsv} >
           <Download size={13} className="text-primary" />
           <span>خروجی اکسل</span>
         </Button>}
