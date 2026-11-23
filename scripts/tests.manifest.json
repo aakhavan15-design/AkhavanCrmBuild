@@ -9,7 +9,9 @@
   },
   {
     "file": "tests/taskRequestWorkflowContracts.test.mjs",
-    "flags": ["--experimental-strip-types"]
+    "flags": [
+      "--experimental-strip-types"
+    ]
   },
   {
     "file": "tests/conversationScope.test.mjs",
@@ -804,5 +806,17 @@
   {
     "file": "tests/fifoInventoryHonestyContracts.test.mjs",
     "flags": []
+  },
+  {
+    "file": "tests/localQuery.behavior.test.mjs",
+    "flags": [
+      "--experimental-strip-types"
+    ]
+  },
+  {
+    "file": "tests/cashDiscountMonitoring.behavior.test.mjs",
+    "flags": [
+      "--experimental-strip-types"
+    ]
   }
 ]
