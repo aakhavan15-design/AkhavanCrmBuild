@@ -26,3 +26,11 @@ test('light-off transition fades the form before unmount and never grants access
  assert.match(login,/if \(!isLightOn\) \{/);
  assert.match(login,/AuthService\.authenticate/);
 });
+
+test('pull-string target tracks the rotated pendant at every SVG viewport size',()=>{
+ assert.match(lamp,/const beadX = 160 \+ \(targetX - 160\) \* Math\.cos\(tiltRadians\)/);
+ assert.match(lamp,/const beadY = 2 \+ \(targetX - 160\) \* Math\.sin\(tiltRadians\)/);
+ assert.match(lamp,/left: `\$\{\(beadX \/ 320\) \* 100\}%`/);
+ assert.match(lamp,/top: `\$\{\(beadY \/ 620\) \* 100\}%`/);
+ assert.doesNotMatch(lamp,/\(targetX - 160\) \* 0\.95/);
+});
