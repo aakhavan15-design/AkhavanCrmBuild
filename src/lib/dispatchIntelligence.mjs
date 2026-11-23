@@ -95,7 +95,7 @@ export function buildDispatchEvidence({
    invoiceCount:selected.length,customerCount:new Set(selected.map(i=>key(i.customerId))).size,
    grossRials:gross,linkedReturnsRials:linkedReturns,
    unbasedReturnsRials:safeSum(unbased.map(r=>r.amountRials)),
-   netLinkedSalesRials:gross-linkedReturns,
+   netLinkedSalesRials:null,netSalesStatus:'NOT_RECONCILED_WITH_POSTED_LEDGER',
    invoiceReceivableRials:receivableComplete?safeSum([...remainingByInvoice].filter(([id])=>invoiceMap.has(id)).map(([,amount])=>amount)):null,
    receivableAsOf:receivableComplete?asOf||null:null,
    unbasedReturns:unbased, excludedReturnIds:excluded,
