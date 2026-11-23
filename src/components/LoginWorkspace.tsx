@@ -632,6 +632,13 @@ export function LoginWorkspace({
                 <ArrowDownLeft size={14} className="text-amber-300 transition-transform duration-300 group-hover:-translate-x-0.5 group-hover:translate-y-0.5" />
                 <span>کلیک کنید یا نخ آباژور را بکشید</span>
               </div>
+              {applyEnabled && (
+                <button type="button" className="akhavan-login-apply relative z-30"
+                  onClick={event => { event.stopPropagation(); navigate('/apply'); }}
+                  onKeyDown={event => event.stopPropagation()}>
+                  ثبت‌نام و تکمیل پرسشنامه استخدامی
+                </button>
+              )}
             </div>
           )}
 
@@ -639,12 +646,6 @@ export function LoginWorkspace({
 
       </div>
 
-      {!isLightOn && applyEnabled && (
-        <button type="button" onClick={() => navigate('/apply')}
-          className="akhavan-login-apply akhavan-login-apply-outer fixed bottom-12 left-1/2 z-40 -translate-x-1/2 whitespace-nowrap">
-          ثبت‌نام و تکمیل پرسشنامه استخدامی
-        </button>
-      )}
       {/* ================= بخش ۳: فوتر مینیمال با متن دقیق ================= */}
       <footer className="akhavan-login-footer relative z-20 shrink-0 py-2 sm:py-2.5 w-full px-4 border-t border-(--c-auth-on-ambient)/5 bg-(--c-auth-ambient)/80 backdrop-blur-md text-center flex flex-col items-center justify-center gap-0.5 select-none">
         <span className="akhavan-footer-brand font-bold text-mini sm:text-small tracking-[0.26em] text-(--c-auth-on-ambient)/90 font-sans uppercase">
