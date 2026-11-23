@@ -86,8 +86,9 @@ export function buildNetSalesEvidence(
   const to = options.to;
   const validInvoices = invoices.filter(i => Number.isFinite(i.totalAmount)
     && i.totalAmount >= 0 && i.date.slice(0,10) >= from && i.date.slice(0,10) <= to);
-  const byInvoice = new Map(validInvoices.map(i => [i.id, i]));
+  const byInvoice = new Map(invoices.map(i => [i.id, i]));
   const returnsByInvoice = new Map<string,number>();
+  const returnsByCustomer = new Map<string,number>();
   const invalid: string[] = [];
   let sumReturns = 0;
   const seen = new Set<string>();
@@ -105,7 +106,9 @@ export function buildNetSalesEvidence(
     }
     seen.add(note.id);
     sumReturns += amount;
-    returnsByInvoice.set(invoice.id,(returnsByInvoice.get(invoice.id)||0)+amount);
+    returnsByCustomer.set(String(invoice.customerId||invoice.accountId), (returnsByCustomer.get(String(invoice.customerId||invoice.accountId))||0)+amount);
+    if (invoice.date.slice(0,10) >= from && invoice.date.slice(0,10) <= to)
+      returnsByInvoice.set(invoice.id,(returnsByInvoice.get(invoice.id)||0)+amount);
   }
   if (invalid.length) return bad('برگشتی قطعی نامعتبر یا فاقد اتصال به فاکتور وجود دارد؛ فروش خالص قابل اتکا نیست.', invalid);
   const gross = validInvoices.reduce((sum,i)=>sum+i.totalAmount,0);
@@ -120,7 +123,11 @@ export function buildNetSalesEvidence(
   }));
   if (facts.some(f=>!f.customerId || f.amount < 0)) return bad('سند فروش بدون مشتری یا برگشتی بزرگ‌تر از فاکتور نیازمند تطبیق مالی است.');
   const byCustomer = new Map<string,number>();
-  for (const f of facts) byCustomer.set(f.customerId,(byCustomer.get(f.customerId)||0)+f.amount);
+  for (const invoice of validInvoices) {
+    const key=String(invoice.customerId||invoice.accountId||'');
+    byCustomer.set(key,(byCustomer.get(key)||0)+invoice.totalAmount);
+  }
+  for (const [key,returns] of returnsByCustomer) byCustomer.set(key,(byCustomer.get(key)||0)-returns);
   return { status:'AVAILABLE',gross,returns:sumReturns,net,facts,
     byCustomer:[...byCustomer].map(([key,value])=>({key,value})),invalidReturnIds:[] };
 }
