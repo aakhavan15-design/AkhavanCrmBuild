@@ -1,0 +1,28 @@
+name: Dispatch intelligence focused
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/lib/dispatchIntelligence.mjs'
+      - 'src/lib/dispatchCollectionZone.mjs'
+      - 'server/dispatchReads.mjs'
+      - 'tests/dispatchIntelligence.behavior.test.mjs'
+      - 'tests/dispatchCollectionZone.behavior.test.mjs'
+      - '.github/workflows/dispatch-intelligence.yml'
+  workflow_dispatch:
+jobs:
+  behavior:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax verification
+        run: |
+          node --check src/lib/dispatchIntelligence.mjs
+          node --check src/lib/dispatchCollectionZone.mjs
+          node --check server/dispatchReads.mjs
+      - name: Behavioral verification
+        run: |
+          node --test tests/dispatchIntelligence.behavior.test.mjs tests/dispatchCollectionZone.behavior.test.mjs
