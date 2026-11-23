@@ -52,6 +52,9 @@ test('analytical report source is not claimed LIVE simply because a provider is 
  assert.match(report,/engine\?\.hasSnapshot\(\) === true/);
  assert.match(report,/sync\.phase !== 'error'/);
  assert.doesNotMatch(report,/hasLiveSql:\s*true\s*,/);
+ assert.match(report,/coaMirror: canViewFinance \?/);
+ assert.match(report,/filter\(row => canOn\('finance','VIEW',scopeOf\(row\)\)\)/);
+ assert.match(report,/salesTargets: \(state\.salesTargets \|\| \[\]\)\.filter\(row => canOn\('reports', 'VIEW', scopeOf\(row\)\)\)/);
 });
 
 test('finance analytics and user administration shortcuts respect destination RBAC',()=>{
