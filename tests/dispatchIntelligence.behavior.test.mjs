@@ -11,7 +11,7 @@ test('dispatch: linked return follows original invoice; unbased is separately vi
    {id:'J2',dispatchNumber:null,bucket:'CASH',amountRials:100_000_000,status:'POSTED'}]});
  assert.equal(data.status,'AVAILABLE');assert.equal(data.grossRials,140_000_000);
  assert.equal(data.linkedReturnsRials,20_000_000);assert.equal(data.unbasedReturnsRials,5_000_000);
- assert.equal(data.netLinkedSalesRials,120_000_000);assert.equal(data.journal.CASH,30_000_000);
+ assert.equal(data.netLinkedSalesRials,null);assert.equal(data.netSalesStatus,'NOT_RECONCILED_WITH_POSTED_LEDGER');assert.equal(data.journal.CASH,30_000_000);
  assert.equal(data.sellers.find(x=>x.sellerId==='X').returnInvoiceRate,1);
  const tasks=proposeDispatchPenaltyReviews(data,[{code:'RETURN_RATE',version:'v1',metric:'RETURN_INVOICE_RATE',maxRate:.5,enabled:true}]);
  assert.equal(tasks.length,1);assert.equal(tasks[0].sellerId,'X');
