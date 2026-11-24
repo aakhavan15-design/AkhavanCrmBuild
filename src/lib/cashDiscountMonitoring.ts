@@ -9,18 +9,20 @@ export interface CashDiscountInvoice {
   status: string;
   distributionNoteId?: string | null;
   cashDiscountRials?: number | null;
+  invoiceNumber?: string | null;
+  discountBaseRials?: number | null;
   isVoided?: boolean;
 }
 export type CashDiscountResult =
   | { status:'UNAVAILABLE'; reason:string; source:'ERP_INVOICE'; }
   | { status:'AVAILABLE'; source:'ERP_INVOICE'; invoiceCount:number; invoiceDiscountRials:number;
       distributionNoteCount:number; unassignedInvoiceCount:number;
-      byInvoice:Array<{invoiceId:string;distributionNoteId:string|null;amountRials:number}>;
+      byInvoice:Array<{invoiceId:string;distributionNoteId:string|null;amountRials:number;invoiceNumber:string|null;discountPercent:number|null;limitExceeded:boolean|null}>;
       byDistribution:Array<{distributionNoteId:string;invoiceCount:number;amountRials:number}> };
 const finalStatuses = new Set(['POSTED','CONFIRMED','FINAL']);
 export function monitorCashDiscounts(
   invoices: CashDiscountInvoice[],
-  options: { from:string; to:string; sourceComplete:boolean }
+  options: { from:string; to:string; sourceComplete:boolean; maxDiscountPercent?:number }
 ): CashDiscountResult {
   const unavailable = (reason:string):CashDiscountResult=>({status:'UNAVAILABLE',reason,source:'ERP_INVOICE'});
   if (!options.sourceComplete) return unavailable('پوشش رسمی فاکتور، حواله و فیلد تخفیف نقدی ERP تأیید نشده است.');
@@ -37,7 +39,7 @@ export function monitorCashDiscounts(
     if (prior) {
       if (prior.cashDiscountRials!==invoice.cashDiscountRials ||
           prior.distributionNoteId!==invoice.distributionNoteId ||
-          prior.issuedOn!==invoice.issuedOn)
+          prior.issuedOn!==invoice.issuedOn || prior.discountBaseRials!==invoice.discountBaseRials || prior.invoiceNumber!==invoice.invoiceNumber)
         return unavailable('داده متعارض برای شناسه تکراری فاکتور وجود دارد.');
       continue;
     }
@@ -46,11 +48,17 @@ export function monitorCashDiscounts(
       return unavailable('مبلغ تخفیف نقدی فاکتور قطعی وجود ندارد یا معتبر نیست؛ صفر فرض نشد.');
     seen.set(invoice.id,invoice);
   }
-  const byInvoice=[...seen.values()].map(invoice=>({
+  const limit=options.maxDiscountPercent;
+  const validLimit=typeof limit==='number'&&Number.isFinite(limit)&&limit>=0&&limit<=100;
+  const byInvoice=[...seen.values()].map(invoice=>{
+    const base=invoice.discountBaseRials;
+    const percent=typeof base==='number'&&Number.isFinite(base)&&base>0?(invoice.cashDiscountRials as number)/base*100:null;
+    return ({
     invoiceId:invoice.id,
     distributionNoteId:invoice.distributionNoteId||null,
-    amountRials:invoice.cashDiscountRials as number
-  }));
+    amountRials:invoice.cashDiscountRials as number,
+    invoiceNumber:invoice.invoiceNumber||null,discountPercent:percent,limitExceeded:validLimit&&percent!==null?percent>limit!:null
+  });});
   const grouped=new Map<string,{distributionNoteId:string;invoiceCount:number;amountRials:number}>();
   for(const row of byInvoice) {
     if (!row.distributionNoteId) continue;
