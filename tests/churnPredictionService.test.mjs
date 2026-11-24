@@ -121,3 +121,24 @@ test('verified financial net-sales periods influence churn, unverified gross inv
  const untrusted=predictAccountChurn(account,state,base,{verifiedNetSalesByPeriod:{previous:100000000,recent:10000000,ledgerReconciled:false}});
  assert.equal(untrusted.revenueDropPercent,null);
 });
+
+
+test('portfolio never assigns organization-wide revenue decline to every customer', () => {
+ const accounts=[{id:'a',name:'A'},{id:'b',name:'B'}];
+ const ref=new Date('2026-11-24T12:00:00Z');
+ const state={accounts,invoices:accounts.map(a=>({id:'i'+a.id,accountId:a.id,status:'PAID',date:'2026-11-23',totalAmount:100})),activities:[],cheques:[],cases:[]};
+ const decline={previous:100,recent:1,ledgerReconciled:true};
+ const baseline=evaluatePortfolioChurn(state,ref);
+ assert.deepEqual(evaluatePortfolioChurn(state,ref,{verifiedNetSalesByPeriod:decline}),baseline);
+ const scoped=evaluatePortfolioChurn(state,ref,{verifiedNetSalesByAccount:{a:decline}});
+ assert.ok(scoped.averageChurnScore>baseline.averageChurnScore);
+ assert.equal(scoped.atRiskAccounts.some(a=>a.accountId==='b'&&a.revenueDropPercent!==null),false);
+});
+
+test('future invoices and activities do not establish historical recency',()=>{
+ const account={id:'a',name:'A'};
+ const state={accounts:[account],invoices:[{id:'i',accountId:'a',status:'PAID',date:'2026-12-01',totalAmount:100}],activities:[{accountId:'a',dateTime:'2026-12-01'}],cheques:[],cases:[]};
+ const result=predictAccountChurn(account,state,new Date('2026-11-24T12:00:00Z'));
+ assert.equal(result.daysSinceLastOrder,null);
+ assert.equal(result.daysSinceLastActivity,null);
+});
