@@ -292,6 +292,7 @@ export const MODULE_LANDINGS: ModuleLandingDefinition[] = [
         title: 'حقوق و دستمزد',
         tiles: [
           tile('hr-payroll', 'حقوق و دستمزد', 'کارکرد، اضافه‌کاری، مساعده و خالص پرداختی', '/planned?item=hr-payroll', 'onboarding', Banknote),
+          tile('hr-finance-analytics', 'تحلیل مالی و سودآوری پرسنل', 'مانده معین و تفصیلی، حقوق ماه جاری و سودآوری', '/reports?view=personnel-finance', 'hr.financeAnalytics', ChartNoAxesCombined),
           tile('hr-payslip', 'فیش حقوقی، مزایا و کسورات', 'صدور فیش ماهانه و تاریخچه فیش‌ها', '/planned?item=hr-payslip', 'onboarding', Receipt),
         ],
       },
