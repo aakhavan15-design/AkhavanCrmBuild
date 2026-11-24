@@ -44,10 +44,11 @@ WHERE l.TenantId=@tenantId AND l.SourceSystemCode=@source AND l.CurrencyCode=@cu
   AND EXISTS(SELECT 1 FROM security.fn_RecordReadScope(l.TenantId,N'finance.view',NULL,NULL,NULL,NULL));
 
 SELECT TOP (12001) ReportBucketCode AS reportBucketCode,NatureCode AS nature,
+  ExternalAccountCode AS accountCode,MAX(ExternalAccountTitle) AS accountTitle,
   CONVERT(char(10),AccountingDate,126) AS documentDate,
   CONVERT(varchar(48),SUM(DebitAmount)) AS debitAmount,CONVERT(varchar(48),SUM(CreditAmount)) AS creditAmount
 FROM #classified WHERE isClosingOrOpening=0 AND ReportBucketCode IN ('GROSS_SALES','SALES_RETURNS','COGS','OPERATING_EXPENSES')
-GROUP BY ReportBucketCode,NatureCode,AccountingDate ORDER BY AccountingDate DESC,ReportBucketCode,NatureCode;
+GROUP BY ReportBucketCode,NatureCode,ExternalAccountCode,AccountingDate ORDER BY AccountingDate DESC,ReportBucketCode,NatureCode,ExternalAccountCode;
 
 SELECT CASE WHEN EXISTS(SELECT 1 FROM #approved p WHERE @from IS NOT NULL AND @to IS NOT NULL
     AND @from>=p.OpeningDate AND @to<=p.VerifiedThrough)
