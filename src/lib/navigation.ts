@@ -173,6 +173,7 @@ const EXTENDED_PERMS: Record<string, (r: RBACService) => boolean> = {
   'audit': r => (['accounts', 'finance', 'operations_control', 'reports', 'settings', 'tasks', 'dashboard', 'leads'] as const)
     .some(tab => r.canAccessWorkspace(tab)),
   'users': r => r.canAccessWorkspace('settings') && (r.hasPermission('users.manage') || r.hasPermission('roles.manage') || r.hasPermission('settings.manage')),
+  'hr.financeAnalytics': r => r.canAccessWorkspace('reports') && r.canAccessWorkspace('onboarding') && r.hasPermission('finance.view') && r.hasPermission('payroll.view') && r.hasPermission('users.manage') && r.canSeeRecord(),
   'finance.reports': r => r.canAccessWorkspace('finance') && r.canAccessWorkspace('reports') && r.canSeeRecord(),
   'hr.learningCatalog': r => r.canAccessWorkspace('onboarding') && r.hasPermission('users.manage') && r.canSeeRecord(),
   'finance.invoiceMargin': r => r.canAccessWorkspace('finance') && r.canSeeRecord(),
