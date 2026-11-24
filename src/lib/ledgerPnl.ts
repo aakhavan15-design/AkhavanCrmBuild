@@ -4,7 +4,7 @@
  * Bucket keys/expressions are the existing DEFAULT_REPORT_BUCKETS (accountingMapping.ts) — no second definition.
  */
 import type { LedgerAccountDef } from './etlPipeline.ts';
-import { calculateNetSales, isLedgerArticleIncluded } from './financialMetricKernel.ts';
+import { calculateNetSales, calculateDebitCreditBalance, isLedgerArticleIncluded } from './financialMetricKernel.ts';
 
 export interface PnlJournalLine { ledgerAccountId: string | null; debitAmount: number; creditAmount: number; documentDate: string; isVoided?: boolean; status?: string }
 export interface BucketDef { key: string; calculationExpression?: string }
@@ -12,7 +12,7 @@ export interface BucketDef { key: string; calculationExpression?: string }
 
 export function computeLedgerPnl(lines: PnlJournalLine[], accounts: LedgerAccountDef[], buckets: BucketDef[], period?: { from?: string; to?: string }) {
   const byId = new Map(accounts.map(a => [a.id, a]));
-  const raw = new Map<string, number>(); let unmappedLines = 0, used = 0;
+  const raw = new Map<string, number>(); const invalidBuckets = new Set<string>(); let unmappedLines = 0, used = 0;
   for (const l of lines) {
     if (!isLedgerArticleIncluded(l, 'POSTED_ONLY')) continue;
     const d = l.documentDate.slice(0, 10);
@@ -20,7 +20,9 @@ export function computeLedgerPnl(lines: PnlJournalLine[], accounts: LedgerAccoun
     const acc = l.ledgerAccountId ? byId.get(l.ledgerAccountId) : undefined;
     if (!acc) { unmappedLines++; continue; }
     if (!acc.reportBucketCode) continue;
-    const signed = acc.natureCode === 'CREDIT' ? l.creditAmount - l.debitAmount : l.debitAmount - l.creditAmount;
+    const balance = calculateDebitCreditBalance(l.debitAmount,l.creditAmount);
+    if (balance === null || !['DEBIT','CREDIT'].includes(acc.natureCode)) { invalidBuckets.add(acc.reportBucketCode); unmappedLines++; continue; }
+    const signed = acc.natureCode === 'CREDIT' ? -balance : balance;
     raw.set(acc.reportBucketCode, (raw.get(acc.reportBucketCode) ?? 0) + signed); used++;
   }
   const values: Record<string, number | null> = {};
@@ -36,13 +38,14 @@ export function computeLedgerPnl(lines: PnlJournalLine[], accounts: LedgerAccoun
         return (values[key] = calculateNetSales(a, b));
       return (values[key] = a === null || b === null ? null : m[2] === '+' ? a + b : a - b);
     }
-    return (values[key] = raw.has(key) ? raw.get(key)! : null);
+    return (values[key] = !invalidBuckets.has(key) && raw.has(key) ? raw.get(key)! : null);
   };
   for (const b of buckets) evalBucket(b.key);
   return { values, unmappedLines, usedLines: used, complete: unmappedLines === 0 && Object.values(values).every(v => v !== null) };
 }
 
 /* ───────── ورودی‌های P&L از state و سری‌های جلالی (F0-09) — مرجع یگانه؛ هیچ عدد نمونه‌ای وجود ندارد ───────── */
+const readAmount = (value: unknown): number => typeof value === 'number' || (typeof value === 'string' && value.trim() !== '') ? Number(value) : NaN;
 interface JournalLineInput { ledgerAccountId?: string | null; debitAmount?: unknown; creditAmount?: unknown; documentDate?: string; status?: unknown; isVoided?: boolean; isDeleted?: boolean }
 interface CoaInput { id: string; code?: string; name?: string; level?: number; nature?: string }
 
@@ -71,10 +74,10 @@ export function normalizeSqlPnlRows(
     if (!documentDate) continue;
     out.push({
       ledgerAccountId,
-      debitAmount: Number(r.debitAmount ?? r.TotalDebit ?? r.debit ?? 0) || 0,
-      creditAmount: Number(r.creditAmount ?? r.TotalCredit ?? r.credit ?? 0) || 0,
+      debitAmount: readAmount(r.debitAmount ?? r.TotalDebit ?? r.debit),
+      creditAmount: readAmount(r.creditAmount ?? r.TotalCredit ?? r.credit),
       documentDate,
-      status: String(r.status || r.StatusCode || 'POSTED'),
+      status: String(r.status || r.StatusCode || 'UNVERIFIED'),
       isVoided: r.isVoided === true || r.IsVoided === true
     });
   }
@@ -98,8 +101,7 @@ export function buildLedgerPnlInputs(journalLines: unknown, coaMirror: unknown):
           || typeof row.documentDate !== 'string') continue;
       const accountCode = typeof row.accountCode === 'string' ? row.accountCode.trim() : '';
       const id = JSON.stringify([row.reportBucketCode,row.nature,accountCode]);
-      const debit = Number(row.debitAmount), credit = Number(row.creditAmount);
-      if (!Number.isFinite(debit) || !Number.isFinite(credit)) continue;
+      const debit = readAmount(row.debitAmount), credit = readAmount(row.creditAmount);
       ledger.set(id,{ id,accountCode:accountCode || row.reportBucketCode,titleFa:typeof row.accountTitle === 'string' ? row.accountTitle : '',levelCode:accountCode ? 'DETAIL' : 'GROUP',levelNo:accountCode ? 4 : 1,
         natureCode:row.nature,reportBucketCode:row.reportBucketCode });
       lines.push({ ledgerAccountId:id,debitAmount:debit,creditAmount:credit,documentDate:row.documentDate,status:'POSTED' });
@@ -113,8 +115,8 @@ export function buildLedgerPnlInputs(journalLines: unknown, coaMirror: unknown):
   } else {
     rawLines = (arr as JournalLineInput[]).map(line => ({
       ledgerAccountId: line.ledgerAccountId || null,
-      debitAmount: Number(line.debitAmount) || 0,
-      creditAmount: Number(line.creditAmount) || 0,
+      debitAmount: readAmount(line.debitAmount),
+      creditAmount: readAmount(line.creditAmount),
       documentDate: line.documentDate || '',
       status: String(line.status || 'UNVERIFIED'),
       isVoided: line.isVoided === true || line.isDeleted === true
