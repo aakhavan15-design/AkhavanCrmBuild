@@ -20,3 +20,15 @@ test('untrusted or missing periods never create zero comparisons',()=>{
  assert.equal(a.profitDelta,null);
  assert.equal(a.reconciled,false);
 });
+
+test('expense Pareto retains account identity, positive shares and missing baseline',()=>{
+ const detailed=[...accounts.filter(a=>a.id!=='OPERATING_EXPENSES'),{id:'rent',accountCode:'5201',titleFa:'اجاره',levelCode:'DETAIL',reportBucketCode:'OPERATING_EXPENSES',natureCode:'DEBIT'},{id:'fuel',accountCode:'5202',titleFa:'سوخت',levelCode:'DETAIL',reportBucketCode:'OPERATING_EXPENSES',natureCode:'DEBIT'}];
+ const expense=(id,date,value)=>({ledgerAccountId:id,documentDate:date,status:'POSTED',debitAmount:value,creditAmount:0});
+ const a=analyzeFinancialDrivers([expense('rent','2026-10-15',100),expense('rent','2026-11-15',150),expense('fuel','2026-11-15',50)],detailed,buckets,period,true);
+ assert.deepEqual(a.expensePareto.map(r=>r.code),['5201','5202']);
+ assert.equal(a.expensePareto[0].share,75);
+ assert.equal(a.expensePareto[0].warning,true);
+ assert.equal(a.expensePareto[1].cumulativeShare,100);
+ assert.equal(a.expensePareto[1].baseline,null);
+ assert.equal(a.expensePareto[1].warning,false);
+});
