@@ -96,10 +96,11 @@ export function buildLedgerPnlInputs(journalLines: unknown, coaMirror: unknown):
     for (const row of arr) {
       if (typeof row?.reportBucketCode !== 'string' || !['DEBIT','CREDIT'].includes(row.nature)
           || typeof row.documentDate !== 'string') continue;
-      const id = JSON.stringify([row.reportBucketCode,row.nature]);
+      const accountCode = typeof row.accountCode === 'string' ? row.accountCode.trim() : '';
+      const id = JSON.stringify([row.reportBucketCode,row.nature,accountCode]);
       const debit = Number(row.debitAmount), credit = Number(row.creditAmount);
       if (!Number.isFinite(debit) || !Number.isFinite(credit)) continue;
-      ledger.set(id,{ id,accountCode:row.reportBucketCode,titleFa:'',levelCode:'GROUP',levelNo:1,
+      ledger.set(id,{ id,accountCode:accountCode || row.reportBucketCode,titleFa:typeof row.accountTitle === 'string' ? row.accountTitle : '',levelCode:accountCode ? 'DETAIL' : 'GROUP',levelNo:accountCode ? 4 : 1,
         natureCode:row.nature,reportBucketCode:row.reportBucketCode });
       lines.push({ ledgerAccountId:id,debitAmount:debit,creditAmount:credit,documentDate:row.documentDate,status:'POSTED' });
     }
