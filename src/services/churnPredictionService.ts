@@ -5,6 +5,8 @@ import { isReceivableInvoice, estimateInvoiceRemaining } from './agingBuckets.ts
 import { getMetricThresholds } from '../lib/metricConfig.ts';
 import type { DetailBalancesResult } from '../lib/receivableReconciliation.ts';
 
+type VerifiedNetSalesWindow = {recent:number;previous:number;ledgerReconciled:boolean};
+
 export const generateId = (prefix = 'id'): string => generateSecureId(prefix);
 export { generateSecureId, calculateDaysOverdue };
 
@@ -46,7 +48,7 @@ export function predictAccountChurn(
   account: Account,
   state: AppState,
   referenceDate: Date = new Date(),
-  options: { ledgerBalances?: DetailBalancesResult | null; verifiedNetSalesByPeriod?: {recent:number;previous:number;ledgerReconciled:boolean} } = {}
+  options: { ledgerBalances?: DetailBalancesResult | null; verifiedNetSalesByPeriod?: VerifiedNetSalesWindow } = {}
 ): ChurnPredictionResult {
   const refMs = referenceDate.getTime();
   const t = getMetricThresholds(state.settings as Record<string, unknown> | undefined).churnThresholds;
@@ -63,7 +65,7 @@ export function predictAccountChurn(
   if (accountInvoices.length > 0) {
     const orderDates = accountInvoices
       .map(inv => new Date(inv.date || (inv as unknown as Record<string, unknown>).issueDate as string || 0).getTime())
-      .filter(ts => !isNaN(ts) && ts > 0);
+      .filter(ts => Number.isFinite(ts) && ts > 0 && ts <= refMs);
     if (orderDates.length > 0) {
       const latestOrderMs = Math.max(...orderDates);
       daysSinceLastOrder = Math.max(0, Math.floor((refMs - latestOrderMs) / DAY_MS));
@@ -92,12 +94,6 @@ export function predictAccountChurn(
     }
   }
 
-  const recent60Ms = refMs - 60 * DAY_MS;
-  const prev120Ms = refMs - 120 * DAY_MS;
-
-  const invoiceTime = (inv: { date?: string; issueDate?: string }) =>
-    new Date(inv.date || inv.issueDate || 0).getTime();
-
   // Revenue is net of posted returns and must come from the reconciled
   // metric provider; gross invoice sums are NOT a substitute.
   const netSalesWindow = options.verifiedNetSalesByPeriod;
@@ -125,7 +121,7 @@ export function predictAccountChurn(
   if (accountActivities.length > 0) {
     const actDates = accountActivities
       .map(a => new Date(a.dateTime || 0).getTime())
-      .filter(ts => !isNaN(ts) && ts > 0);
+      .filter(ts => Number.isFinite(ts) && ts > 0 && ts <= refMs);
     if (actDates.length > 0) {
       const latestActMs = Math.max(...actDates);
       daysSinceLastActivity = Math.max(0, Math.floor((refMs - latestActMs) / DAY_MS));
@@ -147,14 +143,14 @@ export function predictAccountChurn(
   const remainingMap = options.ledgerBalances
     ? estimateInvoiceRemaining(options.ledgerBalances, [account], accountInvoices)
     : null;
-  let overdueAmount: number | null = remainingMap ? 0 : null;
+  let overdueAmount: number | null = remainingMap && accountInvoices.length > 0 && accountInvoices.every(inv => { const remaining = remainingMap.get(inv.id); return typeof remaining === 'number' && Number.isFinite(remaining) && remaining >= 0 && (remaining === 0 || (typeof inv.dueDate === 'string' && Number.isFinite(Date.parse(inv.dueDate)))); }) ? 0 : null;
   let maxOverdueDays = 0;
   if (remainingMap) accountInvoices.forEach(inv => {
     const days = calculateDaysOverdue(inv.dueDate, referenceDate);
     if (days <= 0) return;
     const rem = remainingMap.get(inv.id);
     if (rem !== null && rem !== undefined && rem > 0) {
-      overdueAmount = (overdueAmount || 0) + rem;
+      if (overdueAmount !== null) overdueAmount += rem;
       if (days > maxOverdueDays) maxOverdueDays = days;
     }
   });
@@ -247,7 +243,7 @@ export function predictAccountChurn(
     unpaidOverdueAmount: overdueAmount,
     bouncedChequesCount: bouncedCheques.length,
     revenueDropPercent,
-    reasons: reasons.length > 0 ? reasons : ['مشتری فعال و دارای تعامل منظم تجاری'],
+    reasons: reasons.length > 0 ? reasons : [daysSinceLastOrder === null ? 'سابقه خرید معتبر برای ارزیابی کامل در دسترس نیست' : 'در شواهد موجود نشانه هشدار ثبت نشده است'],
     recommendations: recommendations.length > 0 ? recommendations : ['ادامه پایش و ارسال کاتالوگ محصولات جدید'],
     suggestedAction,
   };
@@ -256,10 +252,13 @@ export function predictAccountChurn(
 export function evaluatePortfolioChurn(
   state: AppState,
   referenceDate: Date = new Date(),
-  options: { ledgerBalances?: DetailBalancesResult | null; verifiedNetSalesByPeriod?: {recent:number;previous:number;ledgerReconciled:boolean} } = {}
+  options: { ledgerBalances?: DetailBalancesResult | null; verifiedNetSalesByPeriod?: VerifiedNetSalesWindow; verifiedNetSalesByAccount?: Readonly<Record<string, VerifiedNetSalesWindow>> } = {}
 ): ChurnPortfolioSummary {
   const accounts = (state.accounts || []).filter(a => !a.deletedAt && !a.isDeleted);
-  const results = accounts.map(acc => predictAccountChurn(acc, state, referenceDate, options));
+  const results = accounts.map(acc => predictAccountChurn(acc, state, referenceDate, {
+    ledgerBalances: options.ledgerBalances,
+    verifiedNetSalesByPeriod: options.verifiedNetSalesByAccount?.[acc.id] ?? (accounts.length === 1 ? options.verifiedNetSalesByPeriod : undefined),
+  }));
 
   const critical = results.filter(r => r.riskTier === 'CRITICAL');
   const high = results.filter(r => r.riskTier === 'HIGH');
