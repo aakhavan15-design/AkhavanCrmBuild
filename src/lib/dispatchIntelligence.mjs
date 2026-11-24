@@ -34,14 +34,15 @@ export function buildDispatchEvidence({
  const seenReturns=new Set();
  for(const ret of returns||[]){
   if(!settled.has(key(ret.status).toUpperCase())||ret.isVoided)continue;
-  if(!key(ret.id)||!valid(ret.amountRials))return unavailable('سند برگشتی معتبر نیست');
   const original=invoiceMap.get(key(ret.invoiceId));
   if(original && key(ret.customerId)!==key(original.customerId))
    return unavailable('برگشتی متصل به فاکتور با مشتری ناسازگار');
   const explicitDispatch=key(ret.dispatchNumber);
   // Linked returns can belong to the dispatch even if return processed later.
   const belongs=!!original || (!ret.invoiceId && explicitDispatch===number);
-  if(!belongs){excluded.push(key(ret.id));continue}
+  if(!belongs){if(key(ret.id))excluded.push(key(ret.id));continue}
+  if(!key(ret.id)||!valid(ret.amountRials))return unavailable('سند برگشتی مرتبط با حمل معتبر نیست');
+  if(original && explicitDispatch && explicitDispatch!==number)return unavailable('شماره حمل برگشتی با فاکتور اولیه ناسازگار است');
   if(seenReturns.has(key(ret.id)))return unavailable('برگشتی تکراری');
   seenReturns.add(key(ret.id));
   if(!original){
