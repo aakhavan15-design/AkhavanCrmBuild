@@ -91,6 +91,11 @@ const hasAny = (text: string, keys: string[]) => keys.some(k => text.includes(no
 /* ───────── قواعد شرح سند ↔ حساب (کلیدواژه‌ای؛ هیوریستیک) ───────── */
 export interface DescriptionRule { topic: string; descAny: string[]; accountAny: string[] }
 export const DEFAULT_DESCRIPTION_RULES: DescriptionRule[] = [
+  { topic: 'مساعده کارکنان', descAny: ['مساعده', 'علی الحساب حقوق'], accountAny: ['مساعده', 'علی الحساب', 'جاری کارکنان', 'مطالبات کارکنان', 'پیش پرداخت کارکنان'] },
+  { topic: 'جریمه کارکنان', descAny: ['جریمه پرسنل', 'جریمه کارکنان', 'جریمه کارمند'], accountAny: ['جریمه', 'جاری کارکنان', 'مطالبات کارکنان', 'کسورات'] },
+  { topic: 'سوخت خودرو', descAny: ['گازوئیل', 'گازوییل', 'بنزین', 'سوخت خودرو'], accountAny: ['سوخت', 'خودرو', 'حمل', 'توزیع', 'نقلیه'] },
+  { topic: 'تعمیر خودرو', descAny: ['تعمیر خودرو', 'تعمیر نیسان', 'تعمیر کامیون', 'لاستیک خودرو'], accountAny: ['تعمیر', 'خودرو', 'نقلیه', 'نگهداری'] },
+  { topic: 'تخفیف نقدی', descAny: ['تخفیف نقدی', 'تخفیف تسویه'], accountAny: ['تخفیف', 'کسورات فروش'] },
   { topic: 'حقوق و دستمزد', descAny: ['حقوق', 'دستمزد', 'مزایا'], accountAny: ['حقوق', 'دستمزد', 'مزایا', 'پرسنل', 'کارکنان', 'پرداختنی'] },
   { topic: 'اجاره', descAny: ['اجاره', 'اجارهٔ', 'رهن'], accountAny: ['اجاره', 'رهن', 'پرداختنی', 'پیش پرداخت'] },
   { topic: 'بیمه', descAny: ['بیمه'], accountAny: ['بیمه', 'تامین اجتماعی', 'تأمین اجتماعی', 'پرداختنی'] },
@@ -309,6 +314,7 @@ export function auditErpDataQuality(state: Rec, options: QualityOptions = {}): Q
       const dr = Number(l.debitAmount) || 0, cr = Number(l.creditAmount) || 0;
       const acc = acctById.get(String(l.ledgerAccountId)) || acctByCode.get(String(l.ledgerAccountCode ?? l.externalAccountCode ?? ''));
       const lid = String(l.id ?? `${doc}:${l.lineNo ?? ''}`);
+      if ([l.debitAmount,l.creditAmount].some(v=>v===null||v===undefined||String(v).trim()===''||!Number.isFinite(Number(v)))) add({ruleCode:'JRN_LINE_AMOUNT_INVALID',domain:'JOURNAL',severity:'HIGH',confidence:'DETERMINISTIC',entityType:'journalLine',entityId:lid,entityLabel:doc||lid,message:'مبلغ بدهکار یا بستانکار نامعتبر یا ناموجود است.',evidence:{documentId:doc,lineId:lid,debit:l.debitAmount,credit:l.creditAmount}});
       if (dr > 0 && cr > 0) add({ ruleCode: 'JRN_LINE_BOTH_SIDES', domain: 'JOURNAL', severity: 'MEDIUM', confidence: 'DETERMINISTIC', entityType: 'journalLine', entityId: lid, entityLabel: doc || lid, message: 'سطر هم بدهکار دارد هم بستانکار.', evidence: { debit: dr, credit: cr } });
       if (dr < 0 || cr < 0) add({ ruleCode: 'JRN_LINE_NEGATIVE', domain: 'JOURNAL', severity: 'MEDIUM', confidence: 'DETERMINISTIC', entityType: 'journalLine', entityId: lid, entityLabel: doc || lid, message: 'مبلغ منفی در سطر سند.', evidence: { debit: dr, credit: cr } });
       if (coa.length) {
@@ -316,11 +322,11 @@ export function auditErpDataQuality(state: Rec, options: QualityOptions = {}): Q
         else {
           if (acc.isActive === false) add({ ruleCode: 'JRN_LINE_ACCOUNT_INACTIVE', domain: 'JOURNAL', severity: 'LOW', confidence: 'DETERMINISTIC', entityType: 'journalLine', entityId: lid, entityLabel: doc || lid, message: `سند روی حساب غیرفعال «${acc.name}» خورده است.` });
           if (Number(acc.level) && Number(acc.level) < 4 && coa.some(x => x.parentCode === acc.code)) add({ ruleCode: 'JRN_LINE_ON_PARENT_ACCOUNT', domain: 'JOURNAL', severity: 'MEDIUM', confidence: 'DETERMINISTIC', entityType: 'journalLine', entityId: lid, entityLabel: doc || lid, message: `سند روی حساب گروه/کل «${acc.name}» که زیرمجموعه دارد خورده است.` });
-          const desc = norm(l.description ?? l.memo ?? l.remarks ?? '');
+          const desc = norm(l.description || l.memo || l.remarks || '');
           if (desc) for (const r of o.descriptionRules || DEFAULT_DESCRIPTION_RULES) {
             if (hasAny(desc, r.descAny) && !hasAny(norm(acc.name), r.accountAny)) {
               add({ ruleCode: 'JRN_DESC_ACCOUNT_MISMATCH', domain: 'JOURNAL', severity: 'MEDIUM', confidence: 'HEURISTIC', entityType: 'journalLine', entityId: lid, entityLabel: doc || lid,
-                message: `شرح سطر به «${r.topic}» اشاره دارد ولی حساب «${acc.name}» با آن هم‌خوان به نظر نمی‌رسد.`, evidence: { description: String(l.description ?? l.memo ?? l.remarks), accountCode: acc.code, accountName: acc.name, topic: r.topic }, suggestion: 'بازبینی حساب سند.' });
+                message: `شرح سطر به «${r.topic}» اشاره دارد ولی حساب «${acc.name}» با آن هم‌خوان به نظر نمی‌رسد.`, evidence: { description: desc, documentId: doc, lineId: lid, accountCode: acc.code, accountName: acc.name, topic: r.topic, expectedAccountKeywords: r.accountAny, debit: dr, credit: cr }, suggestion: 'بازبینی حساب سند.' });
               break;
             }
           }
@@ -353,5 +359,5 @@ export const QUALITY_RULE_LABELS: Record<string, string> = {
   CUST_NO_ROUTE: 'مشتری بدون مسیر', CUST_NO_COORDS: 'مشتری بدون مختصات', CUST_COORDS_SUSPECT: 'مختصات مشکوک', CUST_OUTSIDE_ROUTE_ZONE: 'مشتری خارج از محدودهٔ مسیر', CUST_FAR_FROM_ROUTE_PEERS: 'مشتری دورافتاده از مسیر',
   PROD_NO_GROUP: 'کالا بدون گروه', PROD_DUPLICATE_CODE: 'کد کالا تکراری', PROD_PRICE_NONPOSITIVE: 'قیمت غیرمثبت', PROD_COST_ABOVE_PRICE: 'بها بیشتر از قیمت', PROD_GROUP_SUSPECT: 'گروه‌بندی مشکوک کالا',
   COA_DUPLICATE_CODE: 'کد حساب تکراری', COA_ORPHAN_PARENT: 'حساب بدون والد', COA_LEVEL_MISMATCH: 'سطح حساب ناسازگار', COA_NATURE_MISMATCH: 'ماهیت حساب نادرست', COA_NATURE_PARENT_CONFLICT: 'ماهیت مغایر والد', COA_ABNORMAL_BALANCE: 'مانده خلاف ماهیت',
-  JRN_DOC_UNBALANCED: 'سند نامتوازن', JRN_LINE_BOTH_SIDES: 'سطر دوطرفه', JRN_LINE_NEGATIVE: 'مبلغ منفی', JRN_LINE_ACCOUNT_UNKNOWN: 'حساب سطر ناشناخته', JRN_LINE_ACCOUNT_INACTIVE: 'حساب غیرفعال', JRN_LINE_ON_PARENT_ACCOUNT: 'سند روی حساب کل', JRN_DESC_ACCOUNT_MISMATCH: 'شرح و حساب ناهم‌خوان'
+  JRN_LINE_AMOUNT_INVALID: 'مبلغ نامعتبر سند', JRN_DOC_UNBALANCED: 'سند نامتوازن', JRN_LINE_BOTH_SIDES: 'سطر دوطرفه', JRN_LINE_NEGATIVE: 'مبلغ منفی', JRN_LINE_ACCOUNT_UNKNOWN: 'حساب سطر ناشناخته', JRN_LINE_ACCOUNT_INACTIVE: 'حساب غیرفعال', JRN_LINE_ON_PARENT_ACCOUNT: 'سند روی حساب کل', JRN_DESC_ACCOUNT_MISMATCH: 'شرح و حساب ناهم‌خوان'
 };
