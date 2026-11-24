@@ -43,10 +43,14 @@ export function PersonnelFinanceReport({ state }: {state:AppState}) {
   const selected=rows.find(r=>r.userId===person);
   const visible=person?rows.filter(r=>r.userId===person):rows;
   const accountTotals=new Map<string,number>();
-  for(const row of visible)if(row.balance!==null)for(const a of row.accounts)if(a.subsidiaryCode)accountTotals.set(a.subsidiaryCode,(accountTotals.get(a.subsidiaryCode)||0)+a.balance);
+  const debitTotals=new Map<string,number>();
+  for(const row of visible)if(row.balance!==null)for(const a of row.accounts)if(a.subsidiaryCode){
+    accountTotals.set(a.subsidiaryCode,(accountTotals.get(a.subsidiaryCode)||0)+a.balance);
+    if(a.balance>0)debitTotals.set(a.subsidiaryCode,(debitTotals.get(a.subsidiaryCode)||0)+a.balance);
+  }
   const label=(code:string)=>data?.coa.find(a=>a.code===code)?.name||code;
-  const segments=[...accountTotals].filter(([,v])=>v>0).sort((a,b)=>b[1]-a[1]).map(([code,value],i)=>({code,label:label(code)+' · '+code,value,color:palette[i%palette.length]}));
-  const max=Math.max(1,...rows.map(r=>Math.abs(selectedPersonnelBalance(r,account)??0)));
+  const segments=[...debitTotals].filter(([,v])=>v>0).sort((a,b)=>b[1]-a[1]).map(([code,value],i)=>({code,label:label(code)+' · '+code,value,color:palette[i%palette.length]}));
+  const max=Math.max(1,...rows.flatMap(r=>[Math.abs(r.balance??0),...r.accounts.map(a=>Math.abs(a.balance))]));
   const sum=visible.length&&visible.every(r=>r.balance!==null)?visible.reduce((n,r)=>n+(selectedPersonnelBalance(r,account)??0),0):null;
   return <section dir="rtl" className="space-y-3" aria-label="تحلیل مالی پرسنل">
     <div className="flex flex-wrap justify-between gap-2"><h2 className="text-lg font-bold">تحلیل مالی و سودآوری پرسنل</h2><Link className="text-sm text-primary" to="/reports?tab=sales">بازگشت به گزارش‌ها</Link></div>
@@ -75,7 +79,7 @@ export function PersonnelFinanceReport({ state }: {state:AppState}) {
         {!rows.length&&<p className="text-xs text-text-secondary p-3">پرونده پرسنلی در داده قابل مشاهده یافت نشد.</p>}
       </div>
       <div className="rounded-2xl border border-border bg-surface p-3 min-w-0">
-        <h3 className="text-sm font-bold">تمرکز مانده‌های بدهکار معین</h3><p className="text-xs text-text-secondary">{selected?.name||'تمام کارکنان'} · مانده‌های مثبت؛ بستانکارها در جدول جدا دیده می‌شوند.</p>
+        <h3 className="text-sm font-bold">تمرکز مانده‌های بدهکار معین</h3><p className="text-xs text-text-secondary">{selected?.name||'تمام کارکنان'} · جمع مانده‌های بدهکار بدون تهاتر با بستانکار سایر کارکنان؛ جدول، خالص هر معین را نشان می‌دهد.</p>
         {segments.length?<DonutChart segments={segments} centerLabel="مانده بدهکار" formatValue={money} activeSegment={segments.find(s=>s.code===account)?.label||null} onSegmentClick={s=>{const code=segments.find(x=>x.label===s.label)?.code;if(code)setAccount(old=>old===code?null:code)}}/>:<p className="text-xs text-text-secondary py-4">مانده بدهکار معتبر در گروه انتخابی موجود نیست.</p>}
         {[...accountTotals].map(([code,value])=><button key={code} type="button" aria-pressed={account===code} onClick={()=>setAccount(old=>old===code?null:code)} className="flex w-full justify-between gap-2 border-b border-border py-2 text-xs"><span>{label(code)} · {code}</span><strong>{money(value)}</strong></button>)}
       </div>
