@@ -5,6 +5,8 @@ import { useCan } from '../hooks/useCan';
 import { portFromAppState, readReportCollections } from '../lib/dataPorts';
 import { resolveDataSourceStatus, DATA_SOURCE_STATUS_LABELS, sourceStatusNote } from '../lib/dataTrust';
 import { ReportsHub } from './ReportsHub';
+import { PersonnelFinanceReport } from './reports/PersonnelFinanceReport';
+import { makeCanAccess } from '../lib/navigation';
 // Load the large analytical engine only for explicit analytical routes; the
 // ordinary ReportsHub stays small and works independently of this chunk.
 const ReportEnginePanels = React.lazy(() =>
@@ -143,6 +145,7 @@ export function ReportsWorkspace({ state, updateState, setActiveTab }: ReportsWo
     requiredSourcesPresent: visibleInvoices.length > 0 || ((reportHubState.journalLines as unknown[] | undefined)?.length || 0) > 0,
   });
 
+  if (reportParams.get('view') === 'personnel-finance') return <main dir="rtl" className="crm-page mx-auto w-full max-w-6xl px-2 py-3 pb-24 sm:px-4">{makeCanAccess(rbac)('hr.financeAnalytics') ? <PersonnelFinanceReport key={state.currentUserId} state={state}/> : <p role="alert" className="rounded-xl border border-border p-4">مجوز مشاهده گزارش مالی پرسنل را ندارید.</p>}</main>;
   return (
     <main className="crm-page crm-page-reports mx-auto flex w-full min-w-0 max-w-6xl flex-col gap-3 px-2 py-2 pb-24 sm:px-4 sm:py-3" dir="rtl" aria-label="مرکز گزارشات و هوش تجاری" data-tour-heading>
       <div className="rounded-xl border border-border bg-surface px-3 py-2 text-caption text-text-secondary" role="status">
@@ -153,6 +156,7 @@ export function ReportsWorkspace({ state, updateState, setActiveTab }: ReportsWo
         <span>گزارش هوشمند ویزیت، اولویت مشتریان و عملکرد تور ERP</span>
         <span aria-hidden="true">←</span>
       </Link>}
+      {makeCanAccess(rbac)('hr.financeAnalytics') && <Link to="/reports?view=personnel-finance" className="inline-flex min-h-11 items-center justify-between rounded-xl border border-border bg-surface px-3 py-2 text-sm font-bold text-primary">تحلیل مالی و سودآوری پرسنل <span aria-hidden="true">←</span></Link>}
       {!((analyticalView) && reportParams.has('report')) && (
       <nav aria-label="نمای گزارش‌ها" className="flex items-center gap-2 rounded-xl border border-border bg-surface p-1">
         <Link to="/reports?tab=sales" aria-current={!analyticalView ? 'page' : undefined}
