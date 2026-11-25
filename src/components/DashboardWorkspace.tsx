@@ -172,7 +172,7 @@ export function DashboardWorkspace({ state }: { state: AppState }) {
     ? (state.invoices || []).filter(
         invoice =>
           isReceivableInvoice(invoice) &&
-          (!invoice.accountId && !invoice.customerId ? true : visibleAccountIds.has(String(invoice.accountId || invoice.customerId)))
+          visibleAccountIds.has(String(invoice.accountId || invoice.customerId || ''))
       )
     : [];
 
@@ -187,6 +187,13 @@ export function DashboardWorkspace({ state }: { state: AppState }) {
     opportunities: visibleOpportunities,
     quotes: canViewQuotes ? (state.quotes || []).filter(quote => visibleAccountIds.has(String(quote.accountId || quote.customerId || ''))) : [],
     invoices: visibleInvoices,
+    cases: canViewCases ? (state.cases || []).filter(record => {
+      const scope = record as Record<string, unknown>;
+      return visibleAccountIds.has(String(scope.accountId || scope.customerId || '')) && rbac.canActOnRecord('cases', 'VIEW', {
+        ownerId: scope.ownerId, branchId: scope.branchId, territoryId: scope.territoryId, teamId: scope.teamId, tenantId: scope.tenantId,
+        deletedAt: scope.deletedAt, isDeleted: scope.isDeleted,
+      });
+    }) : [],
     payments: canViewFinance ? (state.payments || []).filter(payment => visibleAccountIds.has(String(payment.accountId || payment.customerId || ''))) : [],
     cheques: canViewFinance ? (state.cheques || []).filter(cheque => visibleAccountIds.has(String((cheque as Record<string, unknown>).accountId || (cheque as Record<string, unknown>).customerId || ''))) : [],
   } as AppState;
