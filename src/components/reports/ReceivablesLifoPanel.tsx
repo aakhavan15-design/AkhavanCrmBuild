@@ -18,19 +18,28 @@ interface Props {
   agingBounds?: unknown;
   sellerName?: (sellerKey: string) => string;
   sellerAvatar?: (sellerKey: string) => string | undefined;
+  sellerSales?: readonly {key:string;value:number}[];
+  salesPeriodLabel?: string;
   onOpenCustomer?: (customerId: string) => void;
   locale?: string;
 }
 
 const fa = (n: number) => formatNumber(n);
 
-export function ReceivablesLifoPanel({ ledgerBalances, accounts, invoices, allowedDays, agingBounds, sellerName, sellerAvatar, onOpenCustomer, locale }: Props) {
+export function ReceivablesLifoPanel({ ledgerBalances, accounts, invoices, allowedDays, agingBounds, sellerName, sellerAvatar, sellerSales, salesPeriodLabel, onOpenCustomer, locale }: Props) {
   const report = useMemo(
     () => buildReceivableLifoReport(ledgerBalances, accounts, invoices, { asOf: new Date(), allowedDays, agingBounds }),
     [ledgerBalances, accounts, invoices, allowedDays, agingBounds]
   );
   const [selectedSeller,setSelectedSeller]=useState<string|null>(null);
   const activeSeller=report.bySeller.some(s=>s.sellerKey===selectedSeller)?selectedSeller:null;
+  const knownSellers=report.bySeller.filter(s=>s.sellerKey!=='UNASSIGNED'&&Boolean(sellerName?.(s.sellerKey)));
+  const rankRows=knownSellers.map(s=>({
+    id:s.sellerKey,label:sellerName?.(s.sellerKey)||s.sellerCode||s.sellerKey,avatar:sellerAvatar?.(s.sellerKey),
+    value:s.outstanding,formattedValue:formatMoneyCompact(s.outstanding),
+    description:formatCount(s.invoiceCount)+' فاکتور باز',
+    tone:(s.overAllowedAmount!=null&&s.overAllowedAmount>0?'danger':'neutral') as 'danger'|'neutral'
+  }));
   const hasData = report.invoiceCount > 0;
   const allowed = report.allowedDays;
   const overAmount = allowed === null ? null : report.overAllowed.reduce((s, r) => s + r.outstanding, 0);
@@ -60,12 +69,34 @@ export function ReceivablesLifoPanel({ ledgerBalances, accounts, invoices, allow
       <div className="p-3 bg-surface rounded-xl border border-border space-y-2">
         <h5 className="text-xs font-bold text-text-main">مانده منتسب به فروشندگان (تخمینی)</h5>
         <p className="text-caption text-text-secondary">مبلغ و تعداد فاکتورهای باز؛ مانده بالا به‌تنهایی نشانه عملکرد ضعیف نیست. فقط خارج از مهلت مصوب با رنگ خطر مشخص می‌شود.</p>
-        <RankList showAvatars limit={3} label="سه مانده بالاتر" items={report.bySeller.filter(s=>s.sellerKey!=='UNASSIGNED').map(s=>({
-          id:s.sellerKey,label:sellerName?.(s.sellerKey)||s.sellerCode||s.sellerKey,avatar:sellerAvatar?.(s.sellerKey),
-          value:s.outstanding,formattedValue:formatMoneyCompact(s.outstanding),
-          description:formatCount(s.invoiceCount)+' فاکتور باز',
-          tone:s.overAllowedAmount!=null&&s.overAllowedAmount>0?'danger':'neutral'
-        }))}/>
+        <RankList showAvatars limit={3} label="سه مانده بالاتر" items={rankRows}/>
+        {rankRows.length>0&&<details className="border-t border-border pt-2">
+          <summary className="min-h-11 py-2 cursor-pointer text-xs font-semibold text-primary">مقایسه مانده‌های کمتر و مطالبات خارج از مهلت</summary>
+          <div className="grid grid-cols-1 min-[390px]:grid-cols-2 gap-2">
+            <div className="min-w-0 rounded-lg bg-canvas p-2"><h6 className="text-caption font-semibold mb-2">کمترین مانده مثبت قابل انتساب</h6>
+              <RankList showAvatars limit={3} order="asc" items={rankRows} label="کمترین مانده مثبت"/>
+            </div>
+            <div className="min-w-0 rounded-lg bg-canvas p-2"><h6 className="text-caption font-semibold mb-2">بیشترین مبلغ خارج از مهلت</h6>
+              {allowed===null?<p className="text-micro text-text-secondary">مهلت مجاز تعریف نشده است.</p>:<RankList showAvatars limit={3} label="مطالبات خارج از مهلت" items={knownSellers.filter(s=>(s.overAllowedAmount??0)>0).map(s=>({
+                id:s.sellerKey,label:sellerName?.(s.sellerKey)||s.sellerKey,avatar:sellerAvatar?.(s.sellerKey),
+                value:s.overAllowedAmount,formattedValue:formatMoneyCompact(s.overAllowedAmount),tone:'danger'
+              }))}/>}
+            </div>
+          </div>
+          <p className="text-micro text-text-secondary">افراد فاقد مانده یا فاقد انتساب قابل اعتماد رتبه نگرفته‌اند؛ نبود در فهرست به معنی تسویه کامل نیست.</p>
+        </details>}
+        {sellerSales&&<div className="border-t border-border pt-2 space-y-1">
+          <h6 className="text-caption font-semibold">فروش خالص در مقابل مانده و تعداد فاکتور باز</h6>
+          <p className="text-micro text-text-secondary">فروش خالص {salesPeriodLabel}؛ مانده فعلی تخمینی LIFO. این دو بازه متفاوت‌اند و نسبت آن‌ها نرخ وصول نیست.</p>
+          {knownSellers.map(s=>{
+            const sale=sellerSales.find(row=>row.key===s.sellerKey)?.value;
+            return <div key={s.sellerKey} className="grid grid-cols-3 items-center gap-1 border-b border-border py-1.5 text-micro">
+              <span className="min-w-0 break-words">{sellerName?.(s.sellerKey)||s.sellerKey}</span>
+              <bdi>{typeof sale==='number'&&Number.isFinite(sale)?formatMoneyCompact(sale):'نامشخص'}</bdi>
+              <span><bdi>{formatMoneyCompact(s.outstanding)}</bdi><span className="block text-text-secondary">{formatCount(s.invoiceCount)} فاکتور باز</span></span>
+            </div>;
+          })}
+        </div>}
         <details className="border-t border-border pt-2">
           <summary className="min-h-11 py-2 cursor-pointer text-xs font-semibold text-primary">تمام فروشندگان و ریز مطالبات</summary>
           <RankList showAvatars label="مانده همه فروشندگان" selectedId={activeSeller} onSelect={setSelectedSeller}
