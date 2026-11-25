@@ -7,7 +7,7 @@ import { getMetricThresholds, type CollectionRiskThresholds } from '../lib/metri
 
 import type { AppState, Invoice, Account, Task } from '../types.ts';
 import { generateId } from '../lib/utils.ts';
-import { calculateDaysOverdue } from './collectionDateUtils.ts';
+import { calendarDayKey, calculateDaysOverdue } from './collectionDateUtils.ts';
 import { buildAgingBuckets, isReceivableInvoice, estimateInvoiceRemaining } from './agingBuckets.ts';
 import type { DynamicAgingBucket } from './agingBuckets.ts';
 import { resolveCustomerBalanceView } from '../lib/receivableReconciliation.ts';
@@ -75,7 +75,7 @@ export interface CollectionDashboardSummary {
   agingDynamic?: DynamicAgingBucket[];
   /** وضعیت اتکاپذیری منبع واحد مطالبات (reconcileReceivables) — اگر authoritative=false اعداد باید با هشدار نمایش داده شوند. */
   receivableSource?: { authoritative: boolean; issueCount: number; blockedReason?: string; /** مانده هر فاکتور تخمینی LIFO است، نه تخصیص واقعی */ estimated?: boolean };
-  agingReconciliation?: { totalOutstanding: number; bucketSum: number; balanced: boolean; bounds: number[] };
+  agingReconciliation?: { totalOutstanding: number; bucketSum: number; balanced: boolean; bounds: number[]; unattributed?: number; ledgerOutstanding?: number };
 }
 
 export { DEFAULT_AGING_BOUNDS, normalizeAgingBounds, buildAgingBuckets, NON_RECEIVABLE_INVOICE_STATUSES, isReceivableInvoice } from './agingBuckets.ts';
@@ -187,7 +187,14 @@ export function evaluateAllCustomerCollections(
   };
   const agingItems: { days: number; amount: number }[] = [];
 
+  let ledgerOutstanding = 0;
+  let missingCoverageCount = 0;
   accounts.forEach(acc => {
+    const balanceView = resolveCustomerBalanceView(ledgerBalances, acc);
+    const validBalance = balanceView.kind === 'OK' && !balanceView.incomplete && Number.isFinite(balanceView.total);
+    const ledgerAmount = validBalance ? Math.max(0, balanceView.total) : 0;
+    ledgerOutstanding += ledgerAmount;
+    let datedCoverage = 0;
     // استخراج فاکتورهای پرداخت‌نشده این مشتری
     const customerInvoices = invoices.filter(
       inv => (inv.accountId === acc.id || inv.customerId === acc.id) && isReceivableInvoice(inv)
@@ -202,7 +209,10 @@ export function evaluateAllCustomerCollections(
       if (remaining === null || remaining === undefined || remaining <= 0) return;
 
       summary.totalUnpaidInvoicesCount++;
-      const days = inv.dueDate ? calculateDaysOverdue(inv.dueDate, referenceDate) : 0;
+      const due = inv.dueDate ? calendarDayKey(inv.dueDate) : null;
+      if (!due || !Number.isFinite(Date.parse(`${due}T00:00:00.000Z`)) || new Date(`${due}T00:00:00.000Z`).toISOString().slice(0, 10) !== due) return;
+      datedCoverage += remaining;
+      const days = calculateDaysOverdue(due, referenceDate);
       const bucket = getAgingBucket(days);
       agingItems.push({ days, amount: remaining });
 
@@ -229,6 +239,8 @@ export function evaluateAllCustomerCollections(
       }
     });
 
+    const incompleteAging = validBalance && ledgerAmount - datedCoverage >= 0.5;
+    if (incompleteAging) missingCoverageCount++;
     if (overdueBalance > 0) {
       summary.totalOverdueAmount += overdueBalance;
     }
@@ -272,8 +284,7 @@ export function evaluateAllCustomerCollections(
       recommendedAction = 'ارسال یادآوری محترمانه سررسید + هماهنگی با ویزیتور منطقه';
     }
 
-    const balanceView = ledgerBalances ? resolveCustomerBalanceView(ledgerBalances, acc) : null;
-    if (!balanceView || balanceView.kind !== 'OK' || balanceView.incomplete || !Number.isFinite(balanceView.total)) {
+    if (!validBalance || incompleteAging) {
       recommendedAction = 'ابتدا تکمیل و تطبیق مانده دفتری مشتری؛ ریسک مطالبات هنوز قطعی نیست.';
     }
     profiles.push({
@@ -281,7 +292,7 @@ export function evaluateAllCustomerCollections(
       accountName: acc.name,
       phone: acc.phone,
       creditLimit: acc.creditLimit || getDefaultCreditLimit(state),
-      totalBalance: balanceView && balanceView.kind === 'OK' && balanceView.total > 0 ? balanceView.total : overdueBalance,
+      totalBalance: ledgerAmount,
       overdueBalance,
       maxDaysOverdue,
       riskScore: score,
@@ -297,7 +308,13 @@ export function evaluateAllCustomerCollections(
 
   const aging = buildAgingBuckets(agingItems, (state as Record<string, unknown>).settings && ((state as Record<string, unknown>).settings as Record<string, unknown>).agingBucketBounds);
   summary.agingDynamic = aging.buckets;
-  summary.agingReconciliation = { totalOutstanding: aging.total, bucketSum: aging.bucketSum, balanced: aging.balanced, bounds: aging.bounds };
+  const unattributed = Math.max(0, ledgerOutstanding - aging.total);
+  summary.agingReconciliation = { totalOutstanding: ledgerOutstanding, bucketSum: aging.bucketSum, balanced: aging.balanced && Math.abs(ledgerOutstanding - aging.bucketSum) < 0.5 && ledgerIssueCount === 0, bounds: aging.bounds, unattributed, ledgerOutstanding };
+  if (missingCoverageCount > 0 && summary.receivableSource) {
+    summary.receivableSource.authoritative = false;
+    summary.receivableSource.issueCount += missingCoverageCount;
+    summary.receivableSource.blockedReason = 'بخشی از مانده دفتری فاقد پوشش فاکتور یا تاریخ سررسید معتبر است؛ جمع سنی قطعی نیست.';
+  }
   return { profiles, summary };
 }
 
