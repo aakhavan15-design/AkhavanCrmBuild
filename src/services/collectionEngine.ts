@@ -1,4 +1,4 @@
-import { LEGACY_DEFAULT_CREDIT_LIMIT, getDefaultCreditLimit } from '../lib/orgPolicy.ts';
+import { LEGACY_DEFAULT_CREDIT_LIMIT, getDefaultCreditLimit, getCustomerLateFeePolicy, type CustomerLateFeePolicy } from '../lib/orgPolicy.ts';
 import { getMetricThresholds, type CollectionRiskThresholds } from '../lib/metricConfig.ts';
 /**
  * AKHAVAN CRM - Smart Collection & Receivables Engine
@@ -35,6 +35,7 @@ export interface CustomerCollectionProfile {
   maxDaysOverdue: number;
   /** Coverage of the ledger and dated invoice evidence; partial signals are not confirmed risk. */
   agingCoverageComplete?: boolean;
+  lateFeePreview?: CustomerLateFeePreview;
   riskScore: number; // 0 (بی‌خطر) تا 100 (بحرانی‌ترین)
   riskLevel: RiskLevel;
   bouncedChequesCount: number;
@@ -142,6 +143,32 @@ export function calculateCustomerRiskScore(
   return { score, level };
 }
 
+/** Advisory calculation only; estimated LIFO principal is never an accounting charge. */
+export type CustomerLateFeePreview =
+  | { status:'UNAVAILABLE'; reason:'POLICY_MISSING'|'LEDGER_COVERAGE_INCOMPLETE'|'INVALID_EVIDENCE' }
+  | { status:'PREVIEW'; amountRials:number; basis:'LIFO_ESTIMATE'; asOf:string; policy:CustomerLateFeePolicy;
+      items:Array<{invoiceId:string;principalRials:number;daysOverdue:number;chargeableDays:number;uncappedRials:number}> };
+export function previewCustomerLateFee(
+  invoices:readonly OverdueInvoiceInfo[], policy:CustomerLateFeePolicy|null, coverageComplete:boolean, asOf:string
+):CustomerLateFeePreview {
+  if(!policy)return {status:'UNAVAILABLE',reason:'POLICY_MISSING'};
+  if(!coverageComplete)return {status:'UNAVAILABLE',reason:'LEDGER_COVERAGE_INCOMPLETE'};
+  const seen=new Set<string>();
+  const items:Extract<CustomerLateFeePreview,{status:'PREVIEW'}>['items']=[];
+  for(const row of invoices){
+    const invoiceId=row.invoice.id;
+    if(!invoiceId || seen.has(invoiceId) || !Number.isSafeInteger(row.remainingAmount) || row.remainingAmount<=0
+      || !Number.isSafeInteger(row.daysOverdue) || row.daysOverdue<=0)return {status:'UNAVAILABLE',reason:'INVALID_EVIDENCE'};
+    seen.add(invoiceId);
+    const chargeableDays=Math.max(0,row.daysOverdue-policy.graceDays);
+    const uncappedRials=Math.round(row.remainingAmount*(policy.dailyRatePercent/100)*chargeableDays);
+    if(!Number.isSafeInteger(uncappedRials)||uncappedRials<0)return {status:'UNAVAILABLE',reason:'INVALID_EVIDENCE'};
+    items.push({invoiceId,principalRials:row.remainingAmount,daysOverdue:row.daysOverdue,chargeableDays,uncappedRials});
+  }
+  const amountRials=Math.min(policy.capRials,items.reduce((sum,row)=>Math.min(policy.capRials,sum+row.uncappedRials),0));
+  return {status:'PREVIEW',basis:'LIFO_ESTIMATE',amountRials,asOf,policy:{...policy},items};
+}
+
 /**
  * استخراج و تحلیل پروفایل مطالبات تمام مشتریان سازمان
  */
@@ -175,6 +202,7 @@ export function evaluateAllCustomerCollections(
   };
 
   const todayStr = referenceDate.toISOString().split('T')[0];
+  const lateFeePolicy = getCustomerLateFeePolicy(state,todayStr);
   // قاعدهٔ مالک (F0-16): مانده هر فاکتور از مانده دفتری مشتری و به‌صورت LIFO (از آخرین فاکتور به عقب) تخمین زده می‌شود؛
   // مانده/وضعیت/پرداخت ذخیره‌شدهٔ فاکتور و تخصیص CRM مبنا نیست. بدون مانده دفتری ⇒ نامشخص (بدون عدد ساختگی).
   const remainingByInvoice = estimateInvoiceRemaining(ledgerBalances, accounts, invoices);
@@ -298,6 +326,7 @@ export function evaluateAllCustomerCollections(
       overdueBalance,
       maxDaysOverdue,
       agingCoverageComplete: validBalance && !incompleteAging,
+      lateFeePreview: previewCustomerLateFee(overdueList,lateFeePolicy,ledgerBalances?.status==='LIVE' && validBalance && !incompleteAging,todayStr),
       riskScore: score,
       riskLevel: level,
       bouncedChequesCount: bouncedCheques.length,
