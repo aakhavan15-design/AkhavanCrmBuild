@@ -87,3 +87,12 @@ assert.deepEqual(validateMetricRegistry(), []);
 assert.equal(fs.readFileSync(new URL('../docs/17_METRIC_FORMULAS_DATA_SOURCES_FA.md', import.meta.url), 'utf8'), buildDoc(), 'metric doc out of sync — run scripts/generate_metric_doc.mjs');
 for (const code of ['SALES_TARGET_ACHIEVEMENT', 'ON_TIME_DELIVERY_RATE', 'NEGOTIATION_ERP_APPLIED_AMOUNT']) assert.equal(METRIC_REGISTRY.find(x => x.code === code).status, 'IMPLEMENTED_APP');
 console.log('registry/doc sync OK');
+
+// Seller target ranking is exact-month and rejects ambiguous or segmented targets.
+const target=(userId,revenueTargetRials,extra={})=>({userId,periodMonth:'2026-11',revenueTargetRials,...extra});
+const monthSales=[{key:'a',value:120},{key:'b',value:90},{key:'duplicate',value:500},{key:'segment',value:100},{key:'wrong-month',value:50},{key:'UNASSIGNED',value:999}];
+const monthTargets=[target('a',100),target('b',100),target('duplicate',100),target('duplicate',200),target('segment',100,{productBrand:'X'}),target('wrong-month',100,{periodMonth:'2026-10'}),target('UNASSIGNED',100)];
+assert.deepEqual(R.sellerMonthlyAchievement(monthSales,monthTargets,'2026-11').map(row=>[row.key,row.achievementPct]),[['a',120],['b',90]]);
+assert.deepEqual(R.sellerMonthlyAchievement([{key:'a',value:100},{key:'a',value:120}],monthTargets,'2026-11'),[]);
+assert.deepEqual(R.sellerMonthlyAchievement(monthSales,monthTargets,'2026-13'),[]);
+assert.deepEqual(R.sellerMonthlyAchievement([{key:'a',value:0}],monthTargets,'2026-11').map(row=>row.achievementPct),[0]);
