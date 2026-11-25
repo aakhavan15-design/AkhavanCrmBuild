@@ -14,6 +14,7 @@ import {
   Maximize
 } from 'lucide-react';
 import { cn } from '../lib/utils';
+import { formatCount, formatPercent } from '../lib/format';
 import { DonutChart, GaugeChart, FunnelChart, MiniChart } from './charts';
 import { DemoBadge } from './shared/DemoBadge';
 import { DataLineageBadge } from './shared/DataLineageBadge';
@@ -273,9 +274,9 @@ export function DashboardWorkspace({ state }: { state: AppState }) {
       </div>
 
       <VerdictStrip
-        verdict={overdueTasks.length ? `${overdueTasks.length.toLocaleString('fa-IR')} وظیفه معوق در دوره جاری نیازمند تعیین تکلیف است` : `در وظایف قابل مشاهده این دوره مورد معوق ثبت نشده است`}
-        magnitude={periodTasks.length ? `نرخ اتمام وظایف: ${Math.round((doneTasks.length / periodTasks.length) * 100).toLocaleString('fa-IR')}٪` : 'بدون وظیفه در دوره'}
-        tone={overdueTasks.length ? 'warning' : 'success'}
+        verdict={overdueTasks.length ? `${formatCount(overdueTasks.length)} وظیفه معوق در دوره جاری نیازمند تعیین تکلیف است` : `در وظایف قابل مشاهده این دوره مورد معوق ثبت نشده است`}
+        magnitude={periodTasks.length ? `نرخ اتمام وظایف: ${formatPercent(doneTasks.length / periodTasks.length * 100, 0)}` : 'بدون وظیفه در دوره'}
+        tone={overdueTasks.length ? 'warning' : 'neutral'}
         actionLabel="بررسی وظایف"
         onAction={() => navigate('/tasks')}
       />
