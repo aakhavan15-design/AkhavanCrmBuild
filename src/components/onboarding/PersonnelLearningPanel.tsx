@@ -179,7 +179,7 @@ export function PersonnelLearningPanel({ viewer, canReview }: { viewer: string; 
         setSelected(null); setPage(1); setReviewMode(!review);
       }}>{review ? 'آموزش من' : 'بررسی آموزش زیرمجموعه'}</Button>}
     </div>
-    {list.error ? <EmptyState compact title="دریافت دوره‌ها ممکن نیست" description={list.error.message}
+    {list.error ? <EmptyState surface="personnel_learning_error" compact title="دریافت دوره‌ها ممکن نیست" description={list.error.message}
       actionLabel="تلاش دوباره" onAction={()=>void list.refetch()}/> : (!result || list.loading) ? <LoadingState label="در حال دریافت دوره‌ها…"/> : <>
       {result.paths.length>0 && <ul className="space-y-1 text-caption text-text-secondary">{result.paths.map(path=><li key={path.pathCode}>
         <bdi>{path.pathCode}</bdi> · {path.currentLevel ? `سطح تأییدشدهٔ ${count(path.currentLevel)}` : 'در آغاز مسیر'}
@@ -190,7 +190,7 @@ export function PersonnelLearningPanel({ viewer, canReview }: { viewer: string; 
           <span className="block font-semibold">{item.title}{review && <> · {item.employee}</>}</span>
           <span className="block text-caption text-text-secondary">سطح {count(item.level)} · {learningStatuses[item.status]}</span>
         </button>
-      </li>)}</ul> : <EmptyState compact title={review ? 'پروندهٔ آموزشی در دسترس نیست' : 'دوره‌ای به شما تخصیص نیافته است'}/>}
+      </li>)}</ul> : <EmptyState surface="personnel_learning_empty" compact title={review ? 'پروندهٔ آموزشی در دسترس نیست' : 'دوره‌ای به شما تخصیص نیافته است'} description="پس از تخصیص دوره معتبر، پرونده در این فهرست نمایش داده می‌شود."/>}
       {(page>1 || result.hasMore) && <nav className="flex flex-wrap gap-2" aria-label="صفحه‌بندی آموزش">
         <Button type="button" variant="ghost" size="sm" disabled={page===1} onClick={()=>setPage(current=>current-1)}>قبلی</Button>
         <Button type="button" variant="ghost" size="sm" disabled={!result.hasMore} onClick={()=>setPage(current=>current+1)}>بعدی</Button>
@@ -199,7 +199,7 @@ export function PersonnelLearningPanel({ viewer, canReview }: { viewer: string; 
     {selected && (detail && !details.loading && !details.error
       ? <EnrollmentDetails key={detailKey} initial={detail} review={review} onClose={()=>setSelected(null)} onChanged={()=>void list.refetch()}/>
       : <Modal isOpen title="پروندهٔ آموزش" size="sm" onClose={()=>setSelected(null)}>
-        {details.error ? <EmptyState compact title="پرونده در دسترس نیست" description={details.error.message}
+        {details.error ? <EmptyState surface="personnel_learning_detail_error" compact title="پرونده در دسترس نیست" description={details.error.message}
           actionLabel="تلاش دوباره" onAction={()=>void details.refetch()}/> : <LoadingState label="در حال دریافت پرونده…"/>}
       </Modal>)}
   </Card>;
