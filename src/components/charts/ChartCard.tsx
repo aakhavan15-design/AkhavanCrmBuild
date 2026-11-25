@@ -47,7 +47,7 @@ export function ChartCard({ title, periodLabel, children, onClick, onExportExcel
       <div className="px-4 pb-4 pt-1">
         {loading ? <LoadingState label="در حال دریافت دادهٔ نمودار" />
           : error ? <ErrorState surface="chart" title="دریافت نمودار ممکن نیست" description={error} onRetry={onRetry} />
-          : empty ? <EmptyState surface="chart" title={emptyMessage} /> : children}
+          : empty ? <EmptyState surface="chart" title={emptyMessage} description="در بازه و دامنه انتخاب‌شده داده معتبر برای نمودار در دسترس نیست." /> : children}
         {(sourceLabel || freshnessLabel) && <p className="mt-2 text-caption text-text-secondary">
           {[sourceLabel, freshnessLabel].filter(Boolean).join(' · ')}
         </p>}
