@@ -33,6 +33,8 @@ export interface CustomerCollectionProfile {
   totalBalance: number;
   overdueBalance: number;
   maxDaysOverdue: number;
+  /** Coverage of the ledger and dated invoice evidence; partial signals are not confirmed risk. */
+  agingCoverageComplete?: boolean;
   riskScore: number; // 0 (بی‌خطر) تا 100 (بحرانی‌ترین)
   riskLevel: RiskLevel;
   bouncedChequesCount: number;
@@ -295,6 +297,7 @@ export function evaluateAllCustomerCollections(
       totalBalance: ledgerAmount,
       overdueBalance,
       maxDaysOverdue,
+      agingCoverageComplete: validBalance && !incompleteAging,
       riskScore: score,
       riskLevel: level,
       bouncedChequesCount: bouncedCheques.length,
