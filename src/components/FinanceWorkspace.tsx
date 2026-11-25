@@ -200,7 +200,8 @@ export function FinanceWorkspace({ state, updateState }: FinanceWorkspaceProps) 
   // مانده تخمینی هر فاکتور (LIFO از آخرین فاکتور به عقب؛ بدون تخصیص CRM)؛ null = نامشخص
   const invoiceRemaining = canSeeLedger ? estimateInvoiceRemaining(ledgerBalances, ledgerAccounts, invoices) : new Map<string, number | null>();
   const hasEstimate = estimateInputs.length > 0;
-  const totalOverdue = hasEstimate ? agingEstimate.items.filter(i => i.days > 0).reduce((sum, i) => sum + i.amount, 0) : null;
+  const completeAgingCoverage = ledgerReceivables.kind === 'OK' && !ledgerReceivables.incomplete && ledgerReceivables.withoutLedgerCount === 0 && agingEstimate.unattributed < 0.5;
+  const totalOverdue = hasEstimate && completeAgingCoverage ? agingEstimate.items.filter(i => i.days > 0).reduce((sum, i) => sum + i.amount, 0) : null;
 
   const rawAging = (state.settings as unknown as FinanceSettingsView | undefined)?.agingBucketBounds;
   const agingBounds = normalizeAgingBounds(
@@ -208,7 +209,7 @@ export function FinanceWorkspace({ state, updateState }: FinanceWorkspaceProps) 
     (getAgingBucketDays(state.settings) as unknown as Parameters<typeof normalizeAgingBounds>[0])
   );
   const aging = buildAgingBuckets(agingEstimate.items, agingBounds);
-  const agingMatchesTotal = hasEstimate && aging.balanced;
+  const agingMatchesTotal = hasEstimate && completeAgingCoverage && aging.balanced && ledgerReceivables.kind === 'OK' && Math.abs(ledgerReceivables.debtorTotal - aging.bucketSum) < 0.5;
 
   const openCheques = cheques.filter(c => ['PENDING', 'RECEIVED', 'DEPOSITED'].includes(c.status));
   const payableCheques = cheques.filter(c => c.direction === 'PAYABLE');
@@ -436,7 +437,7 @@ export function FinanceWorkspace({ state, updateState }: FinanceWorkspaceProps) 
                         </li>
                       ))}
                       {cust.covered.length === 0 && <li className="text-micro text-text-secondary">فاکتور ERP برای این مشتری موجود نیست</li>}
-                      {cust.unattributed > 0 && cust.covered.length > 0 && <li className="text-micro text-warning">{cust.unattributed.toLocaleString('fa-IR')} ریال بدون فاکتور مرتبط</li>}
+                      {cust.unattributed > 0 && cust.covered.length > 0 && <li className="text-micro text-warning">{cust.unattributed.toLocaleString('fa-IR')} ریال بدون فاکتور یا سررسید معتبر</li>}
                     </ul>
                   </div>
                 ))}
