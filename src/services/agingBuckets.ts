@@ -1,6 +1,7 @@
 import { resolveCustomerBalanceView } from '../lib/receivableReconciliation.ts';
 import type { DetailBalancesResult } from '../lib/receivableReconciliation.ts';
 import { parseFlexibleDate } from '../lib/dateParse.ts';
+import { calendarDayKey, calculateDaysOverdue } from './collectionDateUtils.ts';
 
 /**
  * Pure aging helpers (no app imports) so they are unit-testable and shared by the engine and UI.
@@ -47,11 +48,9 @@ export const isReceivableInvoice = (invoice: { status?: string; deletedAt?: unkn
  * اگر بدهی بیشتر از آن فاکتور بود به فاکتور قبل می‌رود و همین‌طور تا اول. تخصیص ثبت‌شده در CRM هیچ نقشی ندارد.
  * فاکتور بدون تاریخ سررسید قابل سنجش نیست؛ مبلغ بدون فاکتور مرتبط در `unattributed` می‌آید (نه حدس).
  */
-export interface LedgerAgingInput { id?: string; name?: string; balance: number; invoices: Array<{ number?: string; total: number; date?: string; dueDate?: string }> }
+export interface LedgerAgingInput { id?: string; name?: string; balance: number; invoices: Array<{ id?: string; number?: string; total: number; date?: string; dueDate?: string }> }
 export interface LedgerAgingCustomer { id: string; name: string; balance: number; covered: Array<{ invoiceNumber: string; date: string; dueDate: string; invoiceTotal: number; covered: number; days: number | null }>; unattributed: number }
 export function estimateLedgerAging(customers: LedgerAgingInput[], asOf: Date = new Date()): { items: { days: number; amount: number }[]; unattributed: number; customers: LedgerAgingCustomer[] } {
-  const dayMs = 86400000;
-  const today = new Date(asOf.toISOString().slice(0, 10)).getTime();
   const items: { days: number; amount: number }[] = [];
   let unattributed = 0;
   const detail: LedgerAgingCustomer[] = [];
@@ -59,14 +58,17 @@ export function estimateLedgerAging(customers: LedgerAgingInput[], asOf: Date = 
     let remaining = Number.isFinite(c.balance) && c.balance > 0 ? c.balance : 0;
     if (remaining <= 0) continue;
     const row: LedgerAgingCustomer = { id: c.id || '', name: c.name || '', balance: remaining, covered: [], unattributed: 0 };
-    const sorted = [...c.invoices].filter(i => Number(i.total) > 0).sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
-    for (const inv of sorted) {
-      if (remaining <= 0) break;
-      const part = Math.min(remaining, Number(inv.total));
-      remaining -= part;
-      const due = inv.dueDate ? new Date(inv.dueDate).getTime() : NaN;
-      if (!Number.isFinite(due)) { unattributed += part; row.unattributed += part; row.covered.push({ invoiceNumber: inv.number || '', date: inv.date || '', dueDate: '', invoiceTotal: Number(inv.total), covered: part, days: null }); continue; }
-      const days = Math.max(0, Math.floor((today - new Date(new Date(due).toISOString().slice(0, 10)).getTime()) / dayMs));
+    const keyed = c.invoices.map((inv, index) => ({ ...inv, id: inv.id || `legacy-${index}` }));
+    const byId = new Map(keyed.map(inv => [inv.id, inv]));
+    const allocation = allocateLifo(remaining, keyed);
+    remaining = allocation.unattributed;
+    for (const coverage of allocation.rows) {
+      const inv = byId.get(coverage.id)!;
+      const part = coverage.covered;
+      if (part <= 0) continue;
+      const due = inv.dueDate ? calendarDayKey(inv.dueDate) : null;
+      if (!due || !Number.isFinite(Date.parse(`${due}T00:00:00.000Z`)) || new Date(`${due}T00:00:00.000Z`).toISOString().slice(0, 10) !== due) { unattributed += part; row.unattributed += part; row.covered.push({ invoiceNumber: inv.number || '', date: inv.date || '', dueDate: '', invoiceTotal: Number(inv.total), covered: part, days: null }); continue; }
+      const days = calculateDaysOverdue(due, asOf);
       items.push({ days, amount: part });
       row.covered.push({ invoiceNumber: inv.number || '', date: inv.date || '', dueDate: String(inv.dueDate), invoiceTotal: Number(inv.total), covered: part, days });
     }
@@ -84,19 +86,19 @@ export function estimateLedgerAging(customers: LedgerAgingInput[], asOf: Date = 
 export function buildLedgerAgingInputs(
   ledgerBalances: DetailBalancesResult | null | undefined,
   accounts: Array<{ id: string; name?: string; code?: string; detailAccountId?: string; externalDetailCode?: string }>,
-  invoices: Array<{ status?: string; deletedAt?: unknown; isDeleted?: unknown; customerId?: string; accountId?: string; invoiceNumber?: string; totalAmount?: unknown; date?: string; dueDate?: string }>
+  invoices: Array<{ id?: string; status?: string; deletedAt?: unknown; isDeleted?: unknown; customerId?: string; accountId?: string; invoiceNumber?: string; totalAmount?: unknown; date?: string; dueDate?: string }>
 ): LedgerAgingInput[] {
   if (!ledgerBalances) return [];
   return accounts.flatMap(account => {
     const view = resolveCustomerBalanceView(ledgerBalances, account);
-    if (view.kind !== 'OK' || view.total <= 0) return [];
+    if (view.kind !== 'OK' || view.incomplete || !Number.isFinite(view.total) || view.total <= 0) return [];
     return [{
       id: account.id,
       name: account.name,
       balance: view.total,
       invoices: invoices
         .filter(inv => (inv.customerId === account.id || inv.accountId === account.id) && isReceivableInvoice(inv))
-        .map(inv => ({ number: inv.invoiceNumber, total: Number(inv.totalAmount), date: inv.date, dueDate: inv.dueDate })),
+        .map(inv => ({ id: inv.id, number: inv.invoiceNumber, total: Number(inv.totalAmount), date: inv.date, dueDate: inv.dueDate })),
     }];
   });
 }
@@ -118,7 +120,7 @@ const cmpInvoiceNewestFirst = (a: LifoInvoiceInput, b: LifoInvoiceInput): number
 export function allocateLifo(balance: number, invoices: LifoInvoiceInput[]): { rows: LifoCoverage[]; unattributed: number } {
   let remaining = Number.isFinite(balance) && balance > 0 ? balance : 0;
   const rows: LifoCoverage[] = [];
-  for (const inv of [...invoices].filter(i => Number(i.total) > 0).sort(cmpInvoiceNewestFirst)) {
+  for (const inv of [...invoices].filter(i => Number.isFinite(Number(i.total)) && Number(i.total) > 0).sort(cmpInvoiceNewestFirst)) {
     const part = Math.min(remaining, Number(inv.total));
     remaining -= part;
     rows.push({ id: inv.id, covered: part });
@@ -142,7 +144,7 @@ export function estimateInvoiceRemaining(
   if (!ledgerBalances) return out;
   for (const account of accounts) {
     const view = resolveCustomerBalanceView(ledgerBalances, account);
-    if (view.kind !== 'OK') continue;
+    if (view.kind !== 'OK' || view.incomplete || !Number.isFinite(view.total)) continue;
     const mine = live.filter(inv => inv.customerId === account.id || inv.accountId === account.id);
     const { rows } = allocateLifo(view.total, mine.map(inv => ({ id: inv.id, total: Number(inv.totalAmount), date: inv.date, number: inv.invoiceNumber })));
     const byId = new Map(rows.map(r => [r.id, r.covered]));
