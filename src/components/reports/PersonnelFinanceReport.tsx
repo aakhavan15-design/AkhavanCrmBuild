@@ -8,6 +8,7 @@ import { LedgerBookSourceSelect } from '../finance/LedgerBookSourceSelect';
 import { SubsidiaryBalanceDetails } from '../shared/SubsidiaryBalancesPanel';
 import { DonutChart } from '../charts/DonutChart';
 import { CustomDatePicker } from '../ui/CustomDatePicker';
+import { SearchableSelect } from '../ui/SearchableSelect';
 import { formatCurrency, getJalaliDate, jalaliToGregorianISO, toLocalDateISO } from '../../lib/utils';
 import { personnelAccountCodes, buildPersonnelFinanceRows, selectedPersonnelBalance } from '../../lib/personnelFinanceReport';
 
@@ -56,11 +57,11 @@ export function PersonnelFinanceReport({ state }: {state:AppState}) {
     <div className="flex flex-wrap justify-between gap-2"><h2 className="text-lg font-bold">تحلیل مالی و سودآوری پرسنل</h2><Link className="text-sm text-primary" to="/reports?tab=sales">بازگشت به گزارش‌ها</Link></div>
     <LedgerBookSourceSelect viewer={state.currentUserId}/>
     <div className="rounded-xl border border-border bg-surface p-3 space-y-2">
-      <label className="block text-xs font-bold" htmlFor="personnel-ledger-root">گروه معین‌های بدهی پرسنل از کدینگ رسمی</label>
-      <select id="personnel-ledger-root" value={root} onChange={e=>{setRoot(e.target.value);setAccount(null);setPerson(null)}} className="w-full rounded-lg border border-border bg-canvas p-2 text-sm">
-        <option value="">انتخاب سرفصل کل یا گروه مربوط به کارکنان</option>
-        {(data?.coa||[]).filter(a=>a.code&&a.isActive!==false).map(a=><option key={a.id} value={a.code}>{a.code} · {a.name}</option>)}
-      </select>
+      <SearchableSelect inputId="personnel-ledger-root" label="گروه معین‌های بدهی پرسنل از کدینگ رسمی"
+        value={root} onChange={value=>{setRoot(value);setAccount(null);setPerson(null)}}
+        placeholder="انتخاب سرفصل کل یا گروه مربوط به کارکنان"
+        options={(data?.coa||[]).filter(a=>a.code&&a.isActive!==false).map(a=>({value:a.code,label:a.name,subLabel:a.code}))}
+        loading={query.loading} />
       <p className="text-xs text-text-secondary">مانده از اسناد قطعی دفتر؛ سند افتتاحیه دوباره اضافه نمی‌شود. انتخاب سرفصل، زیرمجموعه واقعی آن را وارد گزارش می‌کند.</p>
     </div>
     {query.error&&<p role="alert" className="rounded-lg border border-danger/40 p-3 text-sm text-danger">{query.error.message} <button onClick={()=>void query.refetch()} type="button">تلاش مجدد</button></p>}
