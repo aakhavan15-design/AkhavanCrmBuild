@@ -57,7 +57,7 @@ export function InvoiceFifoSheet({ invoiceId, invoiceNumber, locale, onClose }: 
     ? { key: layerKey, report: await provider.getInvoiceFifoEvidence(invoiceId, selectedLine.lineId) } : null, [layerKey]);
   const evidence = layerQuery.data?.key === layerKey ? layerQuery.data.report : null;
   const evidenceColumn: DataTableColumn<InvoiceFifoRow> = {
-    id: 'layers', header: 'برداشت FIFO', sortable: false,
+    id: 'layers', header: 'برداشت FIFO', sortable: false, value: row => row.lineId,
     render: row => <Button type="button" variant="ghost" size="sm" aria-expanded={selectedLine?.lineId === row.lineId}
       onClick={() => setSelectedLine(current => current?.lineId === row.lineId ? null : row)}>لایه‌های ردیف</Button>,
   };
