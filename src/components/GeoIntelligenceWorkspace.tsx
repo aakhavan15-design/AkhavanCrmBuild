@@ -286,11 +286,11 @@ export function GeoIntelligenceWorkspace({ state, updateState }: Props) {
   const scopedVisitInvoices = canReadVisitFinance
     ? (state.invoices || []).filter(invoice => visitCustomerIds.has(String(invoice.customerId || invoice.accountId || ''))
       && rbac.canActOnRecord('finance', 'VIEW', {
-        ownerId: (invoice as Record<string, unknown>).ownerId as string | undefined,
-        branchId: (invoice as Record<string, unknown>).branchId as string | undefined,
-        territoryId: (invoice as Record<string, unknown>).territoryId as string | undefined,
-        teamId: (invoice as Record<string, unknown>).teamId as string | undefined,
-        tenantId: (invoice as Record<string, unknown>).tenantId as string | undefined,
+        ownerId: (invoice as unknown as Record<string, unknown>).ownerId as string | undefined,
+        branchId: (invoice as unknown as Record<string, unknown>).branchId as string | undefined,
+        territoryId: (invoice as unknown as Record<string, unknown>).territoryId as string | undefined,
+        teamId: (invoice as unknown as Record<string, unknown>).teamId as string | undefined,
+        tenantId: (invoice as unknown as Record<string, unknown>).tenantId as string | undefined,
         deletedAt: invoice.deletedAt,
       }))
     : [];
