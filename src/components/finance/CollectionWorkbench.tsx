@@ -182,6 +182,13 @@ export function CollectionWorkbench({ state, accounts, profiles, balances, aging
               byPeriod locale={state.settings?.locale} />
           </> : <p className="text-caption text-text-secondary">ماندهٔ قابل استناد برای این حساب در دسترس نیست.</p>}
         </DetailGroup>
+        <DetailGroup title="پیش‌نمایش جریمه دیرکرد مشتری">
+          {row.profile.lateFeePreview?.status==='PREVIEW' ? <>
+            <DetailField label="مبلغ پیشنهادی (ریال)">{formatNumber(row.profile.lateFeePreview.amountRials)}</DetailField>
+            <p className="text-caption text-text-secondary">برآورد غیرقطعی بر پایه مانده تخمینی LIFO · سیاست {row.profile.lateFeePreview.policy.code} · نسخه {formatCount(row.profile.lateFeePreview.policy.version)} · تاریخ محاسبه {row.profile.lateFeePreview.asOf}</p>
+            <p className="text-caption text-warning">این پیش‌نمایش هیچ بدهی، سند یا کسری حقوق ایجاد نمی‌کند؛ بررسی مبنا، بخشودگی و تأیید مجاز پیش از اعمال الزامی است.</p>
+          </> : <p className="text-caption text-text-secondary">{row.profile.lateFeePreview?.status==='UNAVAILABLE' && row.profile.lateFeePreview.reason==='POLICY_MISSING' ? 'سیاست معتبر و نسخه‌دار جریمه تعریف نشده است.' : 'پوشش مانده و شواهد سررسید برای پیش‌نمایش کافی نیست.'}</p>}
+        </DetailGroup>
         <DetailGroup title="تعهدهای باز مشتری">
           {!row.profile.activePromises.length ? <p className="text-caption text-text-secondary">تعهد بازی ثبت نشده است.</p>
             : <ul className="space-y-2">{row.profile.activePromises.map(promise => <li key={promise.id} className="rounded-lg bg-canvas p-2 text-caption">
