@@ -198,7 +198,7 @@ export function DashboardWorkspace({ state }: { state: AppState }) {
     opportunities: visibleOpportunities,
     quotes: canViewQuotes ? (state.quotes || []).filter(quote => visibleAccountIds.has(String(quote.accountId || quote.customerId || ''))) : [],
     invoices: visibleInvoices,
-    cases: canViewCases ? (state.cases || []).filter(record => {
+    cases: canViewCases ? (state.cases || []).filter((record: { accountId?:string; customerId?:string; ownerId?:string; branchId?:string; territoryId?:string; teamId?:string; tenantId?:string; deletedAt?:string; isDeleted?:boolean }) => {
       return visibleAccountIds.has(String(record.accountId || record.customerId || '')) && rbac.canActOnRecord('cases', 'VIEW', {
         ownerId: record.ownerId, branchId: record.branchId, territoryId: record.territoryId, teamId: record.teamId, tenantId: record.tenantId,
         deletedAt: record.deletedAt, isDeleted: record.isDeleted,
