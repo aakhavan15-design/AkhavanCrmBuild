@@ -15,12 +15,12 @@ export function StatusChip({ label, tone = 'neutral' }: { label: string; tone?: 
   return <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs ${toneClasses[tone]}`}>{label}</span>;
 }
 
-export function RankList({items,label='رتبه‌بندی',showAvatars=false,allowSigned=false,limit,selectedId,onSelect}:{
-  items:readonly ReportRank[]; label?:string; showAvatars?:boolean; allowSigned?:boolean; limit?:number;
+export function RankList({items,label='رتبه‌بندی',showAvatars=false,allowSigned=false,limit,order='desc',selectedId,onSelect}:{
+  items:readonly ReportRank[]; label?:string; showAvatars?:boolean; allowSigned?:boolean; limit?:number; order?:'desc'|'asc';
   selectedId?:string|null; onSelect?:(id:string|null)=>void;
 }) {
   const valid=items.filter(item=>typeof item.value==='number'&&Number.isFinite(item.value)&&(allowSigned||item.value>=0))
-    .sort((a,b)=>(b.value as number)-(a.value as number)||a.id.localeCompare(b.id));
+    .sort((a,b)=>(order==='asc'?1:-1)*((a.value as number)-(b.value as number))||a.id.localeCompare(b.id));
   const maximum=Math.max(0,...valid.map(item=>Math.abs(item.value as number)));
   const shown=limit===undefined?valid:valid.slice(0,limit);
   const selected=shown.some(item=>item.id===selectedId)?selectedId:null;
