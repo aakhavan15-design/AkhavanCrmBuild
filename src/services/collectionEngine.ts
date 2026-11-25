@@ -309,7 +309,7 @@ export function evaluateAllCustomerCollections(
 
   profiles.sort((a, b) => b.riskScore - a.riskScore || b.overdueBalance - a.overdueBalance);
 
-  const aging = buildAgingBuckets(agingItems, (state as Record<string, unknown>).settings && ((state as Record<string, unknown>).settings as Record<string, unknown>).agingBucketBounds);
+  const aging = buildAgingBuckets(agingItems, (state.settings as Record<string, unknown> | undefined)?.agingBucketBounds);
   summary.agingDynamic = aging.buckets;
   const unattributed = Math.max(0, ledgerOutstanding - aging.total);
   summary.agingReconciliation = { totalOutstanding: ledgerOutstanding, bucketSum: aging.bucketSum, balanced: aging.balanced && Math.abs(ledgerOutstanding - aging.bucketSum) < 0.5 && ledgerIssueCount === 0, bounds: aging.bounds, unattributed, ledgerOutstanding };
