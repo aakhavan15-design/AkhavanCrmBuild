@@ -32,12 +32,17 @@ export function buildPersonnelFinanceRows(people: readonly PersonnelLedgerIdenti
     const matches = ledger.balances.filter(b => b.detailKey === person.detailCode);
     if (matches.length !== 1 || matches[0].status !== 'COMPLETE') return unknown('پوشش گردش تفصیلی تأیید نشده است');
     const accounts = matches[0].subsidiaries.filter(a => a.subsidiaryCode !== null && codes.has(a.subsidiaryCode));
-    if (!accounts.length || accounts.some(a => !Number.isFinite(a.balance))) return unknown('گردش معتبر در گروه انتخابی موجود نیست');
-    return { ...person, accounts, balance: accounts.reduce((sum, a) => sum + a.balance, 0), reason: null };
+    if (!accounts.length || accounts.some(a => !Number.isSafeInteger(a.balance))) return unknown('گردش معتبر در گروه انتخابی موجود نیست');
+    const balance = accounts.reduce((sum, a) => sum + a.balance, 0);
+    if (!Number.isSafeInteger(balance)) return unknown('جمع مانده خارج از دقت عددی قابل اطمینان است');
+    return { ...person, accounts, balance, reason: null };
   });
 }
 export function selectedPersonnelBalance(row: PersonnelFinanceRow, code: string | null): number | null {
   if (row.balance === null) return null;
   if (!code) return row.balance;
-  return row.accounts.filter(a => a.subsidiaryCode === code).reduce((sum, a) => sum + a.balance, 0);
+  const matches = row.accounts.filter(a => a.subsidiaryCode === code);
+  if (!matches.length || matches.some(a => !Number.isSafeInteger(a.balance))) return null;
+  const total = matches.reduce((sum, a) => sum + a.balance, 0);
+  return Number.isSafeInteger(total) ? total : null;
 }
