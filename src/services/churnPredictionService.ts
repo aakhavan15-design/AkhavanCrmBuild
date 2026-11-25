@@ -1,9 +1,9 @@
 import type { Account, AppState, CustomerTask } from '../types.ts';
 import { generateSecureId } from '../lib/secureId.ts';
 import { calculateDaysOverdue } from './collectionDateUtils.ts';
-import { isReceivableInvoice, estimateInvoiceRemaining } from './agingBuckets.ts';
+import { isReceivableInvoice, buildLedgerAgingInputs, estimateLedgerAging } from './agingBuckets.ts';
 import { getMetricThresholds } from '../lib/metricConfig.ts';
-import type { DetailBalancesResult } from '../lib/receivableReconciliation.ts';
+import { resolveCustomerBalanceView, type DetailBalancesResult } from '../lib/receivableReconciliation.ts';
 
 type VerifiedNetSalesWindow = {recent:number;previous:number;ledgerReconciled:boolean};
 
@@ -140,20 +140,20 @@ export function predictAccountChurn(
   }
 
   // An invoice balance is NOT a financial ledger receivable.
-  const remainingMap = options.ledgerBalances
-    ? estimateInvoiceRemaining(options.ledgerBalances, [account], accountInvoices)
+  const ledgerView = resolveCustomerBalanceView(options.ledgerBalances, account);
+  const ledgerAging = estimateLedgerAging(
+    buildLedgerAgingInputs(options.ledgerBalances, [account], accountInvoices), referenceDate
+  );
+  const completeLedger = ledgerView.kind === 'OK' && !ledgerView.incomplete && Number.isFinite(ledgerView.total);
+  const completeAging = completeLedger && (ledgerView.total <= 0 || (
+    ledgerAging.customers.length === 1 && ledgerAging.unattributed < 0.5
+    && Math.abs(ledgerAging.items.reduce((sum, item) => sum + item.amount, 0) - ledgerView.total) < 0.5
+  ));
+  const overdueAmount = completeAging
+    ? ledgerAging.items.filter(item => item.days > 0).reduce((sum, item) => sum + item.amount, 0)
     : null;
-  let overdueAmount: number | null = remainingMap && accountInvoices.length > 0 && accountInvoices.every(inv => { const remaining = remainingMap.get(inv.id); return typeof remaining === 'number' && Number.isFinite(remaining) && remaining >= 0 && (remaining === 0 || (typeof inv.dueDate === 'string' && Number.isFinite(Date.parse(inv.dueDate)))); }) ? 0 : null;
-  let maxOverdueDays = 0;
-  if (remainingMap) accountInvoices.forEach(inv => {
-    const days = calculateDaysOverdue(inv.dueDate, referenceDate);
-    if (days <= 0) return;
-    const rem = remainingMap.get(inv.id);
-    if (rem !== null && rem !== undefined && rem > 0) {
-      if (overdueAmount !== null) overdueAmount += rem;
-      if (days > maxOverdueDays) maxOverdueDays = days;
-    }
-  });
+  const maxOverdueDays = completeAging ? ledgerAging.items.reduce((max, item) => Math.max(max, item.days), 0) : 0;
+  if (!completeAging) reasons.push('پوشش مانده دفتری یا سررسید برای ارزیابی کامل ریسک مالی کافی نیست.');
 
   if (maxOverdueDays > t.overdueCriticalDays) {
     score += 25;
