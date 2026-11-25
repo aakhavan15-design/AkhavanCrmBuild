@@ -14,6 +14,7 @@ import {
   topPercentShare, 
   visitFunnel,
   targetAchievement,
+  sellerMonthlyAchievement,
   projectPeriodEnd,
   shares
 } from '../lib/reportAnalytics';
@@ -207,7 +208,7 @@ export function ReportEnginePanels({ state, visibleInvoices, visiblePayments, vi
     const report = Number(searchParams.get('report'));
     return Number.isInteger(report) && report >= 1 && report <= REPORTS.length ? report : 1;
   });
-  const [period, setPeriod] = useState<'90d' | '12m' | 'all'>('12m');
+  const [period, setPeriod] = useState<'month' | '90d' | '12m' | 'all'>('12m');
   const [customerQuery, setCustomerQuery] = useState('');
   const [lifecycleFilter, setLifecycleFilter] = useState<string | null>(null);
 
@@ -258,12 +259,12 @@ export function ReportEnginePanels({ state, visibleInvoices, visiblePayments, vi
   const reportExpenses = useMemo(() => sampleOnly(visibleExpenses), [visibleExpenses, localTest]);
   const accountMap = useMemo(() => new Map(visibleAccounts.map(a => [a.id, a])), [visibleAccounts]);
   const asOf = new Date().toISOString().slice(0,10);
-  const cutoff = period === 'all' ? null : new Date(Date.now() - (period === '90d' ? 90 : 365) * 86400000).toISOString().slice(0,10);
+  const cutoff = period === 'all' ? null : period === 'month' ? asOf.slice(0,7)+'-01' : new Date(Date.now() - (period === '90d' ? 90 : 365) * 86400000).toISOString().slice(0,10);
 
   const {scope:ledgerScope} = useLedgerBookScope();
   const pnlFetchFrom = useMemo(() => {
     if (period === 'all' || !cutoff) return undefined;
-    const periodDays = period === '90d' ? 90 : 365;
+    const periodDays = period === 'month' ? Number(asOf.slice(8,10)) : period === '90d' ? 90 : 365;
     const twelveMonthsStart = new Date(`${asOf}T00:00:00Z`);
     twelveMonthsStart.setUTCMonth(twelveMonthsStart.getUTCMonth() - 11, 1);
     const twelveMonthsFrom = twelveMonthsStart.toISOString().slice(0, 10);
@@ -350,11 +351,11 @@ export function ReportEnginePanels({ state, visibleInvoices, visiblePayments, vi
   
   const previousPnlReport = useMemo(() => {
     if (!cutoff || period === 'all') return null;
-    const periodDays = period === '90d' ? 90 : 365;
+    const periodDays = period === 'month' ? Number(asOf.slice(8,10)) : period === '90d' ? 90 : 365;
     const previousTo = new Date(new Date(`${cutoff}T00:00:00Z`).getTime() - 86400000).toISOString().slice(0, 10);
     const previousFrom = new Date(new Date(`${previousTo}T00:00:00Z`).getTime() - (periodDays - 1) * 86400000).toISOString().slice(0, 10);
     return computeLedgerPnl(ledgerInputs.rawLines, ledgerInputs.accounts, DEFAULT_REPORT_BUCKETS, { from: previousFrom, to: previousTo });
-  }, [ledgerInputs, cutoff, period]);
+  }, [ledgerInputs, cutoff, period, asOf]);
 
   const monthlyPnlRows = useMemo(() => {
     const end = new Date(`${asOf}T00:00:00Z`);
@@ -419,6 +420,10 @@ export function ReportEnginePanels({ state, visibleInvoices, visiblePayments, vi
       .reduce((sum, item) => sum + Math.max(0, Number(item.revenueTargetRials) || 0), 0);
     return targetAchievement(totalSales, target > 0 ? target : null);
   }, [netSalesEvidence.net, salesReconciled, state.salesTargets, cutoff, asOf]);
+
+  const monthlySellerAchievement=useMemo(()=>period==='month'&&sellerNetSales.status==='AVAILABLE'
+    ? sellerMonthlyAchievement(sellerNetSales.rows,(state.salesTargets||[]).filter(t=>!(t as typeof t & {deletedAt?:string;isDeleted?:boolean}).deletedAt&&!(t as typeof t & {isDeleted?:boolean}).isDeleted),asOf.slice(0,7))
+    : [],[period,sellerNetSales,state.salesTargets,asOf]);
 
   const observedSalesTrend=useMemo(()=>{
     // Return dates need a dated accounting series; never label an invoice-only
@@ -741,6 +746,9 @@ export function ReportEnginePanels({ state, visibleInvoices, visiblePayments, vi
           <div className="flex items-center gap-1.5">
             <span className="text-xs font-semibold text-text-secondary">بازه محاسبه:</span>
             <div className="inline-flex p-0.5 rounded-lg bg-surface border border-border/80">
+              <FilterChip active={period === 'month'} onClick={() => setPeriod('month')} >
+                ماه جاری هدف
+              </FilterChip>
               <FilterChip active={period === '90d'} onClick={() => setPeriod('90d')} >
                 ۹۰ روز اخیر
               </FilterChip>
@@ -1084,12 +1092,32 @@ export function ReportEnginePanels({ state, visibleInvoices, visiblePayments, vi
                 <p className="text-micro text-text-secondary">سهم همه فروشندگان، شامل مبلغ بدون انتساب در صورت وجود؛ ریز مبالغ در کارت کناری.</p>
               </div>
             </div>
+            <div className="rounded-xl border border-border bg-surface p-3 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <h5 className="text-xs font-bold">سه فروشنده پیشتاز تحقق هدف</h5>
+                {period!=='month'&&<button type="button" className="min-h-11 text-xs text-primary" onClick={()=>setPeriod('month')}>ماه جاری هدف</button>}
+              </div>
+              {period==='month' ? <>
+                <p className="text-caption text-text-secondary">فروش خالص از ابتدای ماه ثبت هدف تا امروز در برابر هدف کل همان ماه؛ فقط هدف یکتای بدون تفکیک برند و قلمرو.</p>
+                <RankList showAvatars allowSigned limit={3} label="بالاترین درصد تحقق هدف" items={monthlySellerAchievement.filter(row=>(state.users||[]).some(u=>u.id===row.key)).map(row=>{
+                  const user=(state.users||[]).find(u=>u.id===row.key);
+                  return {id:row.key,label:user?.name||row.key,avatar:user?.avatar,value:row.achievementPct,
+                    formattedValue:pf(row.achievementPct/100),description:formatMoneyCompact(row.actual)+' از '+formatMoneyCompact(row.target),
+                    tone:row.achievementPct>=100?'success':row.achievementPct<0?'danger':'neutral'};
+                })}/>
+                <p className="text-micro text-text-secondary">فروشنده بدون فروش قابل انتساب یا هدف معتبر رتبه نمی‌گیرد؛ نامشخص برابر صفر نیست.</p>
+              </> : <p className="text-caption text-text-secondary">برای مقایسه دقیق با هدف ماهانه، بازه ماه جاری هدف را انتخاب کنید.</p>}
+            </div>
             <details className="rounded-xl border border-border bg-surface p-2.5">
               <summary className="min-h-11 cursor-pointer text-xs font-semibold text-primary py-2">شاخص‌های تکمیلی و تحلیل رشد</summary>
               <div className="grid grid-cols-2 gap-2">
               <Metric label="پیش‌بینی پایان دوره" value={(() => {
-                const totalDays = period === '90d' ? 90 : period === 'all' ? null : 365;
+                const totalDays = period === 'month' ? new Date(Date.UTC(Number(asOf.slice(0,4)),Number(asOf.slice(5,7)),0)).getUTCDate() : period === '90d' ? 90 : period === 'all' ? null : 365;
                 if (totalDays == null || salesKpi.actual===null) return 'نامشخص';
+                if(period==='month'){
+                  const projection=projectPeriodEnd(salesKpi.actual,Number(asOf.slice(8,10)),totalDays);
+                  return projection===null?'نامشخص':formatCurrency(projection);
+                }
                 const dates = invoices.map(i => String(i.date || '').slice(0, 10)).filter(d => d.length === 10).sort();
                 let elapsed: number | null = null;
                 if (dates.length >= 2) {
