@@ -128,7 +128,7 @@ export function DashboardWorkspace({ state }: { state: AppState }) {
         })
       )
     : [];
-  const periodTasks = myTasks.filter(task => inPeriod(task.createdAt || task.updatedAt || task.dueDate));
+  const periodTasks = activeRecords(myTasks).filter(task => !['CANCELLED', 'CANCELED', 'VOID', 'DELETED'].includes(task.status) && inPeriod(task.createdAt || task.updatedAt || task.dueDate));
 
   const visibleOpportunities = (state.opportunities || []).filter(
     opportunity =>
@@ -154,9 +154,9 @@ export function DashboardWorkspace({ state }: { state: AppState }) {
     : [];
   const discussionsCount = visibleMessages.length;
 
-  const overdueTasks = periodTasks.filter(task => task.status !== 'COMPLETED' && task.status !== 'CANCELLED' && !!task.dueDate && task.dueDate < todayStr);
-  const inProgressTasks = periodTasks.filter(task => task.status === 'IN_PROGRESS');
-  const inReviewTasks = periodTasks.filter(task => !['COMPLETED', 'CANCELLED', 'IN_PROGRESS'].includes(task.status) && !(task.dueDate && task.dueDate < todayStr));
+  const overdueTasks = periodTasks.filter(task => !['COMPLETED', 'CANCELLED', 'CANCELED', 'VOID', 'DELETED'].includes(task.status) && !!task.dueDate && task.dueDate < todayStr);
+  const inProgressTasks = periodTasks.filter(task => task.status === 'IN_PROGRESS' && !overdueTasks.includes(task));
+  const inReviewTasks = periodTasks.filter(task => !['COMPLETED', 'CANCELLED', 'CANCELED', 'VOID', 'DELETED', 'IN_PROGRESS'].includes(task.status) && !(task.dueDate && task.dueDate < todayStr));
   const doneTasks = periodTasks.filter(task => task.status === 'COMPLETED');
 
   const oppStages = OPPORTUNITY_STAGES.filter(stage => stage.id !== 'LOST').map(stage => ({
@@ -176,6 +176,15 @@ export function DashboardWorkspace({ state }: { state: AppState }) {
       )
     : [];
 
+  const visibleActivities = (state.activities || []).filter(a =>
+    !a.deletedAt && !a.isDeleted &&
+    (!a.accountId && !a.customerId || visibleAccountIds.has(String(a.accountId || a.customerId))) &&
+    rbac.canActOnRecord('activities', 'VIEW', {
+      ownerId: a.ownerId, branchId: a.branchId, territoryId: a.territoryId,
+      teamId: a.teamId, tenantId: a.tenantId,
+    })
+  );
+
   const scopedState = {
     ...state,
     accounts: visibleAccounts,
@@ -184,6 +193,7 @@ export function DashboardWorkspace({ state }: { state: AppState }) {
     customerNotes: (((state as Record<string, unknown>).customerNotes || []) as Array<Record<string, unknown>>).filter(note => visibleAccountIds.has(String(note.accountId || note.customerId || ''))),
     users: (state.users || []).filter(user => rbac.canSeeRecord(user.id, user.branchId, user.territoryId, user.teamId)),
     tasks: myTasks,
+    activities: visibleActivities,
     opportunities: visibleOpportunities,
     quotes: canViewQuotes ? (state.quotes || []).filter(quote => visibleAccountIds.has(String(quote.accountId || quote.customerId || ''))) : [],
     invoices: visibleInvoices,
@@ -213,15 +223,6 @@ export function DashboardWorkspace({ state }: { state: AppState }) {
   );
   const accSeries = useMemo(() => buildSixMonthCounts(visibleAccounts, now, monthFormatter), [visibleAccounts, now, monthFormatter]);
 
-  const visibleActivities = (state.activities || []).filter(a =>
-    rbac.canActOnRecord('activities', 'VIEW', {
-      ownerId: a.ownerId,
-      branchId: a.branchId,
-      territoryId: a.territoryId,
-      teamId: a.teamId,
-      tenantId: a.tenantId,
-    })
-  );
   const activityTrend = useMemo(
     () => buildSixMonthCounts([...visibleActivities, ...myTasks], now, monthFormatter),
     [visibleActivities, myTasks, now, monthFormatter]
@@ -272,7 +273,7 @@ export function DashboardWorkspace({ state }: { state: AppState }) {
       </div>
 
       <VerdictStrip
-        verdict={overdueTasks.length ? `${overdueTasks.length.toLocaleString('fa-IR')} وظیفه معوق در دوره جاری نیازمند تعیین تکلیف است` : `شاخص‌های فروش و پیگیری دوره در وضعیت مطلوب قرار دارد`}
+        verdict={overdueTasks.length ? `${overdueTasks.length.toLocaleString('fa-IR')} وظیفه معوق در دوره جاری نیازمند تعیین تکلیف است` : `در وظایف قابل مشاهده این دوره مورد معوق ثبت نشده است`}
         magnitude={periodTasks.length ? `نرخ اتمام وظایف: ${Math.round((doneTasks.length / periodTasks.length) * 100).toLocaleString('fa-IR')}٪` : 'بدون وظیفه در دوره'}
         tone={overdueTasks.length ? 'warning' : 'success'}
         actionLabel="بررسی وظایف"
@@ -447,6 +448,7 @@ export function DashboardWorkspace({ state }: { state: AppState }) {
             </Button>
           </div>
 
+          <p className="text-caption text-text-secondary">برآورد از شواهد قابل مشاهده؛ پوشش مانده دفتری و فروش خالص در این نما تأیید نشده است.</p>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-xs">
             <div className="p-2 rounded-lg bg-danger-soft text-danger">
               <span className="text-micro block">بحرانی</span>
@@ -461,7 +463,7 @@ export function DashboardWorkspace({ state }: { state: AppState }) {
               <strong className="text-base font-bold tabular-nums mt-0.5 block">{churnPortfolio.mediumCount.toLocaleString('fa-IR')}</strong>
             </div>
             <div className="p-2 rounded-lg bg-success-soft text-success">
-              <span className="text-micro block">پایدار / سالم</span>
+              <span className="text-micro block">ریسک کم برآوردی</span>
               <strong className="text-base font-bold tabular-nums mt-0.5 block">{churnPortfolio.lowCount.toLocaleString('fa-IR')}</strong>
             </div>
           </div>
