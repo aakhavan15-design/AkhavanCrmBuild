@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
 import { queryJournalLines, buildDetailBalancesResult, resolveCustomerBalanceView } from '../src/lib/receivableReconciliation.ts';
 
-const L = (d, s, debit, credit, extra = {}) => ({ detailAccountId: d, subsidiaryCode: s, debitAmount: debit, creditAmount: credit, ...extra });
+const L = (d, s, debit, credit, extra = {}) => ({ detailAccountId: d, subsidiaryCode: s, debitAmount: debit, creditAmount: credit, status:'POSTED', ...extra });
 const lines = [L('C1', '1101', 100, 0, { id: 1 }), L('C1', '1102', 0, 30, { id: 2 }), L('C1', undefined, 5, 0, { id: 3 }), L('C2', '1101', 9, 0, { id: 4 })];
 
 const m1101 = queryJournalLines(lines, { detailKey: 'C1', subsidiaryCode: '1101' });
