@@ -48,3 +48,22 @@ assert.equal(missing.unattributed,20);
 assert.equal(missing.customers[0].covered[0].days,null);
 assert.equal(allocateLifo(15,[{id:'invalid',total:Infinity}]).unattributed,15);
 console.log('agingBucketsContracts: PASS');
+
+// Customer late fee is an advisory preview, not a new balance or posting.
+const {previewCustomerLateFee}=await import('../src/services/collectionEngine.ts');
+const {getCustomerLateFeePolicy}=await import('../src/lib/orgPolicy.ts');
+const configured={code:'TEST',version:2,effectiveFrom:'2026-01-01',effectiveTo:'2026-12-31',enabled:true,dailyRatePercent:0.1,graceDays:5,capRials:10000};
+const readPolicy=policy=>getCustomerLateFeePolicy({settings:{orgConfig:{customerLateFeePolicy:policy}}},'2026-03-01');
+const policy=readPolicy(configured);
+assert.ok(policy);
+assert.equal(readPolicy({...configured,dailyRatePercent:null}),null);
+assert.equal(readPolicy({...configured,effectiveFrom:'2026-04-01'}),null);
+const debt=[{invoice:{id:'i1'},remainingAmount:1000000,daysOverdue:20}];
+const preview=previewCustomerLateFee(debt,policy,true,'2026-03-01');
+assert.equal(preview.status,'PREVIEW');
+assert.equal(preview.amountRials,10000);
+assert.equal(preview.items[0].chargeableDays,15);
+assert.equal(preview.items[0].uncappedRials,15000);
+assert.equal(previewCustomerLateFee(debt,policy,false,'2026-03-01').status,'UNAVAILABLE');
+assert.equal(previewCustomerLateFee(debt,null,true,'2026-03-01').status,'UNAVAILABLE');
+assert.equal(previewCustomerLateFee([...debt,...debt],policy,true,'2026-03-01').status,'UNAVAILABLE');
