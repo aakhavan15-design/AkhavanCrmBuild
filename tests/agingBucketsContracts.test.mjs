@@ -26,7 +26,7 @@ assert.equal(isReceivableInvoice({ status: 'UNPAID' }), true);
 // engine uses the shared helpers (no parallel aging logic) and exposes the reconciliation check
 const engine = fs.readFileSync(new URL('../src/services/collectionEngine.ts', import.meta.url), 'utf8');
 assert.match(engine, /isReceivableInvoice\(inv\)/);
-assert.match(engine, /buildAgingBuckets\(agingItems, \(state as Record<string, unknown>\)\.settings\?\.agingBucketBounds\)|buildAgingBuckets\(agingItems, \(state as any\)\.settings\?\.agingBucketBounds\)/);
+assert.match(engine, /buildAgingBuckets\(agingItems, \(state\.settings as Record<string, unknown> \| undefined\)\?\.agingBucketBounds\)/);
 assert.match(engine, /agingReconciliation = \{/);
 // Same-date invoices must use the same numeric tie-break in both paths.
 const invoices = [
