@@ -186,7 +186,7 @@ export function FinanceWorkspace({ state, updateState }: FinanceWorkspaceProps) 
     } : null,
     [canSeeLedger, state.currentUserId, ledgerLineCount, ledgerByPeriod,ledgerScopeKey],
   );
-  const ledgerBalances = canSeeLedger && ledgerSnapshot?.viewer === state.currentUserId && ledgerSnapshot?.byPeriod === ledgerByPeriod && ledgerSnapshot.ledgerScopeKey===ledgerScopeKey
+  const ledgerBalances = canSeeLedger && !ledgerError && ledgerSnapshot?.viewer === state.currentUserId && ledgerSnapshot?.byPeriod === ledgerByPeriod && ledgerSnapshot.ledgerScopeKey===ledgerScopeKey
     ? ledgerSnapshot.balances : null;
   // F0-14: a failed provider request is UNAVAILABLE, never a perpetual LOADING state.
   const ledgerResult = canSeeLedger
