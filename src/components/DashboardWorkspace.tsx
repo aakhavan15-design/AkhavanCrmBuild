@@ -2,7 +2,6 @@ import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AppState } from '../types';
 import { Card } from './ui/Card';
-import { Avatar } from './ui/Avatar';
 import { EmptyState } from './ui/EmptyState';
 import {
   FileText,
@@ -233,18 +232,10 @@ export function DashboardWorkspace({ state }: { state: AppState }) {
 
   return (
     <div className="crm-page crm-page-dashboard w-full min-w-0 space-y-3.5 px-2 py-2 sm:px-4 sm:py-3 pb-[calc(6rem+env(safe-area-inset-bottom))] font-sans animate-in fade-in slide-in-from-bottom-1 duration-300" dir="rtl">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 p-3 rounded-xl bg-surface border border-border shadow-xs">
-        <div className="flex items-center gap-2.5">
-          <Avatar name={currentUser?.name || 'کاربر'} src={currentUser?.avatar} size="md" />
-          <div>
-            <h1 data-tour-heading className="text-sm sm:text-base font-bold text-text-main tracking-tight">
-              داشبورد مدیریتی · {currentUser?.name || 'کاربر'}
-            </h1>
-            <p className="text-caption text-text-secondary mt-0.5">
-              پایش عملکرد فروش، فرصت‌ها و وضعیت پیگیری‌ها
-            </p>
-          </div>
-        </div>
+      {/* Workspace controls scroll with the page; Layout owns the only floating header. */}
+      <div className="flex flex-wrap items-center justify-between gap-2" aria-label="کنترل‌های داشبورد">
+        <h1 data-tour-heading className="sr-only">داشبورد مدیریتی</h1>
+        <span className="text-caption text-text-secondary">پایش عملکرد و پیگیری‌ها</span>
 
         <div className="flex items-center gap-2">
           <Button variant="outline" size="xs" type="button" onClick={toggleCockpit}>
@@ -289,7 +280,7 @@ export function DashboardWorkspace({ state }: { state: AppState }) {
         </div>
       )}
 
-      <div id="dash-kpis" data-tour-primary className="crm-metric-grid grid grid-cols-2 lg:grid-cols-4 gap-2.5">
+      <div id="dash-kpis" data-tour-primary className="crm-metric-grid grid grid-cols-2 lg:grid-cols-4 gap-2">
         <Card padding="sm" className="bg-surface border border-border rounded-xl p-3 flex flex-col justify-between cursor-pointer hover:border-primary/40 transition-colors" onClick={() => navigate('/tasks')}>
           <div className="flex items-center justify-between">
             <span className="text-micro font-bold text-text-muted">وظایف</span>
