@@ -1029,31 +1029,12 @@ export function ReportEnginePanels({ state, visibleInvoices, visiblePayments, vi
 
         {selected === 2 && (
           <div className="space-y-4">
-            <div id="report-kpis" className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2" data-tour-primary>
+            <div id="report-kpis" className="grid grid-cols-2 lg:grid-cols-4 gap-2" data-tour-primary>
               <Metric label="فروش مشاهده‌شده" value={salesKpi.actual===null ? "نامشخص" : formatCurrency(salesKpi.actual)} note="فاکتورهای در دسترس دوره" sparkline={observedSalesTrend} />
               <Metric label="هدف مصوب فروش" value={salesKpi.target===null ? "نامشخص" : formatCurrency(salesKpi.target)} note="بودجه مصوب سازمان" />
               <Metric label="درصد تحقق هدف" value={salesKpi.achievementPct == null ? 'هدف ثبت نشده' : pf(salesKpi.achievementPct / 100)} note="شاخص عملکرد شاخص کلیدی" />
               <Metric label="فاصله تا هدف" value={salesKpi.gap == null ? '—' : `${formatCurrency(salesKpi.gap)}`} note="کسری فروش دوره" />
-              <Metric label="پیش‌بینی پایان دوره" value={(() => {
-                const totalDays = period === '90d' ? 90 : period === 'all' ? null : 365;
-                if (totalDays == null || salesKpi.actual===null) return 'نامشخص';
-                const dates = invoices.map(i => String(i.date || '').slice(0, 10)).filter(d => d.length === 10).sort();
-                let elapsed: number | null = null;
-                if (dates.length >= 2) {
-                  const first = Date.parse(dates[0] + 'T00:00:00Z');
-                  const last = Date.parse(dates[dates.length - 1] + 'T00:00:00Z');
-                  if (Number.isFinite(first) && Number.isFinite(last) && last >= first) elapsed = Math.max(1, Math.round((last - first) / 86400000) + 1);
-                }
-                if (elapsed == null && cutoff) {
-                  const c = Date.parse(cutoff + 'T00:00:00Z');
-                  const a = Date.parse(asOf + 'T00:00:00Z');
-                  if (Number.isFinite(c) && Number.isFinite(a) && a >= c) elapsed = Math.max(1, Math.round((a - c) / 86400000) + 1);
-                }
-                if (elapsed == null || elapsed <= 0) return 'نامشخص';
-                const proj = projectPeriodEnd(salesKpi.actual, elapsed, totalDays);
-                return proj == null ? 'نامشخص' : formatCurrency(proj);
-              })()} note="برآورد خطی از داده واقعی دوره" />
-              <Metric label="میانگین ارزش فاکتور" value={salesKpi.actual===null || !invoices.length ? "نامشخص" : formatCurrency(Math.round(salesKpi.actual / invoices.length))} note={`${nf(invoices.length)} فاکتور مشاهده‌شده`} />
+
             </div>
 
             <div className="p-3.5 bg-canvas rounded-xl border border-border space-y-2">
@@ -1069,7 +1050,7 @@ export function ReportEnginePanels({ state, visibleInvoices, visiblePayments, vi
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 min-[390px]:grid-cols-2 gap-2.5">
               <div className="p-3.5 bg-surface rounded-xl border border-border space-y-2">
                 <h5 className="text-xs font-bold text-text-main">فروش خالص فروشندگان — تطبیق‌شده با دفتر</h5>
                 {sellerNetSales.status === 'AVAILABLE' ? (() => {
@@ -1091,11 +1072,49 @@ export function ReportEnginePanels({ state, visibleInvoices, visiblePayments, vi
 
               </div>
 
+              <div className="min-w-0 p-2.5 sm:p-3 bg-surface rounded-xl border border-border space-y-2">
+                <h5 className="text-xs font-bold text-text-main">سهم از فروش خالص</h5>
+                {sellerNetSales.status==='AVAILABLE' && sellerNetSales.rows.every(row=>row.value>=0) && sellerNetSales.rows.some(row=>row.value>0) ?
+                  <DonutChart size={112} thickness={14} centerLabel="فروش خالص" centerValue={formatMoneyCompact(sellerNetSales.rows.reduce((sum,row)=>sum+row.value,0))}
+                    formatValue={formatMoneyCompact} segments={sellerNetSales.rows.filter(row=>row.value>0).map((row,i)=>({
+                      label:row.key==='UNASSIGNED'?'بدون انتساب':((state.users||[]).find(u=>u.id===row.key)?.name||row.key)+' · '+row.key,
+                      value:row.value,color:['var(--c-chart-1)','var(--c-chart-2)','var(--c-chart-3)','var(--c-chart-4)','var(--c-chart-5)'][i%5]
+                    }))} showLegend={false}/>
+                  : <p className="text-caption text-text-secondary">سهم قابل رسم نیست؛ فروش منفی یا نبود شواهد معتبر، نمودار سهم را نامعتبر می‌کند. ریز مبالغ در رتبه‌بندی محفوظ است.</p>}
+                <p className="text-micro text-text-secondary">سهم همه فروشندگان، شامل مبلغ بدون انتساب در صورت وجود؛ ریز مبالغ در کارت کناری.</p>
+              </div>
+            </div>
+            <details className="rounded-xl border border-border bg-surface p-2.5">
+              <summary className="min-h-11 cursor-pointer text-xs font-semibold text-primary py-2">شاخص‌های تکمیلی و تحلیل رشد</summary>
+              <div className="grid grid-cols-2 gap-2">
+              <Metric label="پیش‌بینی پایان دوره" value={(() => {
+                const totalDays = period === '90d' ? 90 : period === 'all' ? null : 365;
+                if (totalDays == null || salesKpi.actual===null) return 'نامشخص';
+                const dates = invoices.map(i => String(i.date || '').slice(0, 10)).filter(d => d.length === 10).sort();
+                let elapsed: number | null = null;
+                if (dates.length >= 2) {
+                  const first = Date.parse(dates[0] + 'T00:00:00Z');
+                  const last = Date.parse(dates[dates.length - 1] + 'T00:00:00Z');
+                  if (Number.isFinite(first) && Number.isFinite(last) && last >= first) elapsed = Math.max(1, Math.round((last - first) / 86400000) + 1);
+                }
+                if (elapsed == null && cutoff) {
+                  const c = Date.parse(cutoff + 'T00:00:00Z');
+                  const a = Date.parse(asOf + 'T00:00:00Z');
+                  if (Number.isFinite(c) && Number.isFinite(a) && a >= c) elapsed = Math.max(1, Math.round((a - c) / 86400000) + 1);
+                }
+                if (elapsed == null || elapsed <= 0) return 'نامشخص';
+                const proj = projectPeriodEnd(salesKpi.actual, elapsed, totalDays);
+                return proj == null ? 'نامشخص' : formatCurrency(proj);
+              })()} note="برآورد خطی از داده واقعی دوره" />
+              <Metric label="میانگین ارزش فاکتور" value={salesKpi.actual===null || !invoices.length ? "نامشخص" : formatCurrency(Math.round(salesKpi.actual / invoices.length))} note={`${nf(invoices.length)} فاکتور مشاهده‌شده`} />
+              </div>
+              <div className="mt-2">
               <div className="rounded-xl border border-warning/25 bg-warning-soft/50 p-3.5 space-y-1">
                 <h5 className="text-xs font-bold text-text-main">آبشار رشد فروش</h5>
                 <p className="text-caption leading-6 text-text-secondary">برای تفکیک اثر رشد و افت گروه کالا، فروش دوره قبل و طبقه‌بندی تغییرات معتبر لازم است. تا زمان تأمین این داده‌ها، آبشار عددی ساخته نمی‌شود.</p>
               </div>
-            </div>
+              </div>
+            </details>
           </div>
         )}
 
