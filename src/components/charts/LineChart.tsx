@@ -42,14 +42,12 @@ export function LineChart({
   const active = hover ?? values.length - 1;
   const tip = pts[active];
 
-  const delta =
-    values.length > 1
-      ? ((values[values.length - 1] - values[0]) / (Math.abs(values[0]) || 1)) * 100
-      : 0;
-  const deltaLabel =
-    values.length > 1
-      ? `${delta >= 0 ? '+' : ''}${delta.toFixed(1)}٪ نسبت به ابتدای بازه`
-      : '';
+  const delta = values.length > 1 && values[0] !== 0
+    ? ((values[values.length - 1] - values[0]) / Math.abs(values[0])) * 100
+    : null;
+  const deltaLabel = delta !== null && Number.isFinite(delta)
+    ? `${delta >= 0 ? '+' : ''}${delta.toFixed(1)}٪ نسبت به ابتدای بازه`
+    : '';
 
   const onMove = (clientX: number, rect: DOMRect) => {
     const x = ((clientX - rect.left) / rect.width) * W;
