@@ -88,15 +88,20 @@ export function calculateProfitability(input: { invoices?: Array<Record<string, 
   const knownExpenses = amountSum(expenses.filter(expense => expense.status === 'PAID'), expense => expense.amount);
   const receivableBalance = input.receivableLedgerVerified === true
     ? finiteAmount(input.officialReceivableBalance) : null;
-  const operationalProfitAvailable = netSales !== null && finite(actualCogs) && knownDispatchCosts > 0;
+  // Orders are forecasts only; realized profit requires reconciled invoice sales and verified FIFO COGS.
+  const realizedGrossProfit = netSales !== null && finite(actualCogs) && actualCogs >= 0 && unconfirmedReturns === 0 ? netSales - actualCogs : null;
+  const realizedGrossMarginPercent = realizedGrossProfit !== null && netSales !== null && netSales > 0 ? realizedGrossProfit / netSales * 100 : null;
+  const operationalProfitAvailable = realizedGrossProfit !== null && knownDispatchCosts > 0;
   return {
     invoiceGross, confirmedReturns, unconfirmedReturns, netSales, clearedPayments,
     receivableBalance,
+    realizedGrossProfit, realizedGrossMarginPercent,
+    // Legacy prospective order fields: negotiation/planning only, never realized financial reports.
     estimatedOrderRevenue, estimatedGrossProfit,
     estimatedGrossMarginPercent: estimatedOrderRevenue > 0 ? estimatedGrossProfit / estimatedOrderRevenue * 100 : null,
     costCoveragePercent: orders.length ? knownCostOrders.length / orders.length * 100 : null,
     knownDispatchCosts, knownExpenses,
-    operationalProfit: operationalProfitAvailable && netSales !== null && actualCogs !== undefined ? netSales - actualCogs - knownExpenses - knownDispatchCosts : null,
+    operationalProfit: operationalProfitAvailable && realizedGrossProfit !== null ? realizedGrossProfit - knownExpenses - knownDispatchCosts : null,
     operationalProfitStatus: operationalProfitAvailable ? 'CALCULATED_WITH_INPUTS' : 'UNAVAILABLE',
     returnReconciliationStatus: input.returnSourceComplete !== true ? 'SOURCE_UNAVAILABLE' :
       unconfirmedReturns > 0 ? 'PENDING_DOCUMENTS' : netSales === null ? 'LEDGER_UNRECONCILED' : 'RECONCILED',
