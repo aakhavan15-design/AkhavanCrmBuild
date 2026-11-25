@@ -1404,6 +1404,8 @@ export function ReportEnginePanels({ state, visibleInvoices, visiblePayments, vi
                 allowedDays={((state.settings as Record<string, any> | undefined)?.orgConfig || {}).allowedCreditDays}
                 sellerName={key => (state.users || []).find((u: UserLike) => u.id === key)?.name || ''}
                 sellerAvatar={key => (state.users || []).find(u => u.id === key)?.avatar}
+                sellerSales={sellerNetSales.status==='AVAILABLE'?sellerNetSales.rows:undefined}
+                salesPeriodLabel={cutoff?cutoff+' تا '+asOf:'تا '+asOf}
                 onOpenCustomer={id => openCustomerDrilldown(id, 'فاکتورهای خارج از مهلت')}
               />
             )}
