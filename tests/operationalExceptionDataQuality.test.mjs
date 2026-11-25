@@ -19,3 +19,15 @@ assert.ok(!items.some(x => x.accountId === 'A2'), 'malformed numeric signals mus
 assert.ok(items.every(x => x.amount === undefined || Number.isFinite(x.amount)), 'exception amounts must be finite');
 assert.ok(items.every(x => x.id !== 'RECEIVABLE:' && x.id !== 'RISK:' && x.id !== 'BOUNCED:'), 'records without account IDs must be ignored');
 console.log('operationalExceptionDataQuality.test.mjs: PASS (6 assertions)');
+
+// Partial ledger evidence must not be promoted into confirmed risk signals.
+const partialProfile = {...profiles[0], agingCoverageComplete:false, activePromises:[
+  {id:'TODAY', promisedDate:'2026-10-29', promisedAmount:50,status:'PENDING'},
+  {id:'YESTERDAY', promisedDate:'2026-10-28', promisedAmount:50,status:'PENDING'},
+  {id:'YESTERDAY', promisedDate:'2026-10-28', promisedAmount:50,status:'PENDING'},
+]};
+const partialItems=buildOperationalExceptionCenter(state,now,[partialProfile]);
+assert.ok(!partialItems.some(x=>x.kind==='OVERDUE_RECEIVABLE'||x.kind==='HIGH_COLLECTION_RISK'));
+assert.ok(partialItems.some(x=>x.kind==='BOUNCED_CHEQUE'));
+assert.ok(!partialItems.some(x=>x.id==='PROMISE:TODAY'));
+assert.equal(partialItems.filter(x=>x.id==='PROMISE:YESTERDAY').length,1);
