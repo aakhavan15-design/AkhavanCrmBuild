@@ -131,3 +131,18 @@ test('پنل کیفیت داده به مرکز همگام‌سازی وصل اس
   assert.match(panel, /can\('finance', 'VIEW'\)/);
   assert.match(panel, /ارزیابی‌نشده/);
 });
+
+
+test('finding identity is stable across reordering and repeated snapshots',()=>{
+ const accounts=[{id:'a',name:'نمونه',mobile:'09121234567'},{id:'b',name:'نمونه',mobile:'09121234567'},{id:'c',name:'دیگر',mobile:'0912123456'}];
+ const ids=r=>r.issues.map(i=>i.id).sort();
+ const first=auditErpDataQuality({accounts});
+ assert.deepEqual(ids(first),ids(auditErpDataQuality({accounts:[...accounts].reverse()})));
+ assert.equal(new Set(ids(first)).size,first.issues.length);
+});
+test('invalid journal evidence is not treated as zero for document balance',()=>{
+ const result=auditErpDataQuality({journalLines:[{id:'a',documentId:'D',debitAmount:100,creditAmount:0,status:'POSTED'},{id:'b',documentId:'D',debitAmount:0,creditAmount:null,status:'POSTED'}]});
+ assert.ok(has(result,'JRN_LINE_AMOUNT_INVALID','b'));
+ assert.ok(!has(result,'JRN_DOC_UNBALANCED','D'));
+ assert.ok(result.notEvaluated.some(n=>n.rule==='JRN_DOC_UNBALANCED'));
+});
