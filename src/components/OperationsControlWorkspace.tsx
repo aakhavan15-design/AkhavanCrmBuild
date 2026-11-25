@@ -242,14 +242,14 @@ export function OperationsControlWorkspace({ state, updateState }: Props) {
       return { key, label: new Intl.DateTimeFormat('fa-IR', { month: 'short' }).format(date), revenue: 0, expenses: 0 };
     });
     const byMonth = new Map(months.map(month => [month.key, month]));
-    invoices.filter(invoice => !invoice.deletedAt && !invoice.isDeleted && !['DRAFT','PENDING','CANCELLED','CANCELED','VOID','VOIDED','REJECTED'].includes(String(invoice.status || '').toUpperCase())).forEach(invoice => {
+    invoices.filter(invoice => !invoice.deletedAt && !invoice.isDeleted && !invoice.isVoided && ['PAID','PARTIAL','UNPAID','OVERDUE','POSTED','CONFIRMED','FINAL','ISSUED'].includes(String(invoice.status || '').toUpperCase())).forEach(invoice => {
       const key = String(invoice.date || '').slice(0, 7);
       const bucket = byMonth.get(key);
       const amount = Number(invoice.totalAmount);
       if (bucket && Number.isFinite(amount) && amount > 0) bucket.revenue += amount;
     });
-    expenses.filter(expense => expense.status === 'PAID').forEach(expense => {
-      const key = String(expense.date || expense.paidAt || '').slice(0, 7);
+    expenses.filter(expense => expense.status === 'PAID' && !expense.deletedAt && !expense.isDeleted && !expense.isVoided).forEach(expense => {
+      const key = String(expense.paidAt || expense.date || '').slice(0, 7);
       const bucket = byMonth.get(key);
       const amount = Number(expense.amount);
       if (bucket && Number.isFinite(amount) && amount > 0) bucket.expenses += amount;
@@ -647,14 +647,14 @@ export function OperationsControlWorkspace({ state, updateState }: Props) {
             <div className="flex justify-between items-center text-xs">
               <div>
                 <span className="font-bold text-text-main block">روند ماهانه فاکتور و هزینه پرداخت‌شده</span>
-                <span className="text-mini text-text-secondary mt-0.5 block">مبالغ ماهانه از فاکتورها و هزینه‌های پرداخت‌شده</span>
+                <span className="text-mini text-text-secondary mt-0.5 block">جمع رکوردهای قابل مشاهده؛ ماه بدون رکورد لزوماً به معنی صفر فعالیت نیست. این نمودار سود و زیان رسمی نیست.</span>
               </div>
               <span className="text-micro text-text-secondary">۱۲ ماه اخیر</span>
             </div>
             <div className="pt-2">
               {monthlyProfitTrend.hasRevenue || monthlyProfitTrend.hasExpenses ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {monthlyProfitTrend.hasRevenue && <div className="space-y-1"><span className="text-micro text-text-secondary">فروش فاکتورهای قابل مشاهده</span><LineChart values={monthlyProfitTrend.revenueValues} labels={monthlyProfitTrend.months} color="var(--c-chart-1)" height={120} /></div>}
+                  {monthlyProfitTrend.hasRevenue && <div className="space-y-1"><span className="text-micro text-text-secondary">مبلغ ناخالص فاکتورهای معتبر قابل مشاهده</span><LineChart values={monthlyProfitTrend.revenueValues} labels={monthlyProfitTrend.months} color="var(--c-chart-1)" height={120} /></div>}
                   {monthlyProfitTrend.hasExpenses && <div className="space-y-1"><span className="text-micro text-text-secondary">هزینه‌های پرداخت‌شده</span><LineChart values={monthlyProfitTrend.expenseValues} labels={monthlyProfitTrend.months} color="var(--c-chart-3)" height={120} /></div>}
                 </div>
               ) : <p className="rounded-xl border border-dashed border-border p-4 text-center text-xs text-text-secondary">برای ۱۲ ماه اخیر فاکتور یا هزینه پرداخت‌شده دارای تاریخ معتبر ثبت نشده است.</p>}
