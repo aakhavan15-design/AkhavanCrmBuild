@@ -139,8 +139,8 @@ export class StateSyncEngine {
     }
     // A revoked conversation must lose both synced messages and local compositions linked to it.
     if (patch.groups) {
-      const visibleIds = new Set(patch.groups.map(group => group.id));
-      patch.messages = (patch.messages ?? current.messages ?? []).filter(message => visibleIds.has(message.groupId));
+      const visibleIds = new Set(patch.groups.map((group: {id:string}) => group.id));
+      patch.messages = (patch.messages ?? current.messages ?? []).filter((message: {groupId?:string}) => typeof message.groupId==='string' && visibleIds.has(message.groupId));
     }
     this.index = index;
     this.suppress = true;
