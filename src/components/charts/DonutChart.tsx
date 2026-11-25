@@ -4,8 +4,8 @@ import { fNum, fPct, Segment } from './fmt';
 import { useCountUp } from '../../hooks/useCountUp';
 
 /** دونات لوکس: گرادیان هر بخش، سایه رنگی نرم، قرص مرکزی شیشه‌ای، حباب عددی (مطابق مرجع). */
-export function DonutChart({ segments, centerValue, centerLabel, size = 168, thickness = 18, showLegend = true, activeSegment, onSegmentClick, formatValue = fNum }:
-  { segments: Segment[]; centerValue?: string | number; centerLabel?: string; size?: number; thickness?: number; showLegend?: boolean; activeSegment?: string | null; onSegmentClick?: (segment: Segment) => void; formatValue?: (value: number) => string }) {
+export function DonutChart({ segments, centerValue, centerLabel, size = 168, thickness = 18, showLegend = true, activeSegment, onSegmentClick, formatValue = fNum, compact = false }:
+  { segments: Segment[]; centerValue?: string | number; centerLabel?: string; size?: number; thickness?: number; showLegend?: boolean; activeSegment?: string | null; onSegmentClick?: (segment: Segment) => void; formatValue?: (value: number) => string; compact?: boolean }) {
   const uid = useId().replace(/:/g, '');
   const [hot, setHot] = useState<number | null>(null);
   const animatedCenterValue = useCountUp(typeof centerValue === 'number' ? centerValue : 0, 850);
@@ -13,10 +13,10 @@ export function DonutChart({ segments, centerValue, centerLabel, size = 168, thi
   const r = 60 - thickness / 2;
   let a = 0;
   const visible = segments.filter(s => s.value > 0);
-  const hovered = hot === null ? null : segments[hot];
+  const hovered = hot === null ? (compact ? segments.find(segment=>segment.label===activeSegment) ?? null : null) : segments[hot];
   const centerText = String(hovered ? formatValue(hovered.value) : typeof centerValue === 'number' ? formatValue(Math.round(animatedCenterValue)) : (centerValue ?? formatValue(total)));
   return (
-    <div className="flex flex-wrap items-center justify-center gap-6">
+    <div className={compact?"flex min-w-0 flex-col items-center gap-2":"flex flex-wrap items-center justify-center gap-6"}>
       <div className="relative shrink-0" style={{ width: size, height: size }}>
         <svg viewBox="0 0 120 120" width={size} height={size} role="img" className="se-donut" data-active={hot !== null ? 'true' : 'false'} style={{ ['--th' as Record<string, unknown>]: thickness }} onMouseLeave={() => setHot(null)}
              aria-label={segments.map(s => `${s.label}: ${formatValue(s.value)}`).join('، ')}>
@@ -48,12 +48,12 @@ export function DonutChart({ segments, centerValue, centerLabel, size = 168, thi
         </div>
       </div>
       {showLegend && (
-        <ul className="grid min-w-(--size-150) gap-2.5 text-xs font-bold text-ink">
+        <ul className={compact?"grid w-full min-w-0 gap-1 text-micro text-ink":"grid min-w-(--size-150) gap-2.5 text-xs font-bold text-ink"}>
           {segments.map(s => (
             <li key={s.label} className={`flex items-center gap-2.5 rounded-lg transition-colors ${activeSegment === s.label ? 'bg-primary/8 ring-1 ring-primary/20 px-2 py-1' : ''}`}>
               <i className="h-3 w-3 shrink-0 rounded-full shadow-sm" style={{ background: `linear-gradient(135deg, ${lighten(s.color, 30)}, ${s.color})` }} />
-              <span>{s.label}</span>
-              <span className="ms-auto ps-3 font-mono font-medium text-ink-soft">{formatValue(s.value)} · {total ? fPct((s.value / total) * 100) : fPct(0)}</span>
+              <span className={compact?"min-w-0 flex-1 break-words":undefined}>{s.label}</span>
+              <span className={compact?"ms-auto shrink-0 tabular-nums font-medium text-ink-soft":"ms-auto ps-3 font-mono font-medium text-ink-soft"}>{formatValue(s.value)} · {total ? fPct((s.value / total) * 100) : fPct(0)}</span>
             </li>))}
         </ul>
       )}
