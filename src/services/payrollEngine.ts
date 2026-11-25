@@ -242,7 +242,8 @@ export function generateEmployeePayslip(input: {
 
   let advanceDeductionRials = 0;
   if (activeAdvanceRequest && activeAdvanceRequest.status === 'APPROVED') {
-    const rawAdvance = activeAdvanceRequest.approvedAmountRials || activeAdvanceRequest.requestedAmountRials;
+    const approved = activeAdvanceRequest.approvedAmountRials;
+    const rawAdvance = typeof approved === 'number' && Number.isFinite(approved) && approved > 0 ? approved : 0;
     const maxAllowable = Math.max(0, Math.floor(grossPayRials * 0.5));
     advanceDeductionRials = Math.min(rawAdvance, maxAllowable);
   }
@@ -330,7 +331,16 @@ export function executePayrollRun(
   const skippedUserIds: string[] = [];
 
   for (const user of users) {
-    let profile = salaryProfiles.find(p => p.userId === user.id && (!p.effectiveTo || p.effectiveTo >= periodMonth));
+    // Select only a policy effective on the first day of the payroll period.
+    // A mid-period change requires explicit proration/approval; never use a future version.
+    const periodStart = `${periodMonth}-01`;
+    const userProfiles = salaryProfiles.filter(p => p.userId === user.id);
+    const eligibleProfiles = userProfiles.filter(p => typeof p.effectiveFrom === 'string' && p.effectiveFrom <= periodStart && (!p.effectiveTo || p.effectiveTo >= periodStart));
+    let profile = [...eligibleProfiles].sort((a,b) => b.effectiveFrom.localeCompare(a.effectiveFrom) || b.version - a.version)[0];
+    if (!profile && userProfiles.length > 0) {
+      skippedUserIds.push(user.id);
+      continue;
+    }
     if (!profile) {
       // فقط حقوق واقعی ثبت‌شده روی کاربر؛ بدون آن فیش صادر نمی‌شود (نه عدد پیش‌فرض).
       const recordedSalary = Number(user.monthlySalaryRials);
@@ -348,6 +358,10 @@ export function executePayrollRun(
       };
     }
 
+    if (!Number.isFinite(profile.monthlyFixedSalaryRials) || profile.monthlyFixedSalaryRials <= 0) {
+      skippedUserIds.push(user.id);
+      continue;
+    }
     const activeAdvance = advances.find(a => a.userId === user.id && a.targetMonth === periodMonth && a.status === 'APPROVED');
     const userInvoices = invoices.filter(invoice => {
       const source = invoice as typeof invoice & { ownerId?: string; isDeleted?: boolean };
