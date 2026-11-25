@@ -122,3 +122,20 @@ const verifiedCredit=calculateCreditMetrics({
 });
 assert.equal(verifiedCredit.overdueInvoiceCount,1);
 assert.equal(verifiedCredit.overdueBalance,50);
+
+// Realized financial profit never includes an order, even a costed order.
+const realizedInput = {
+  invoices: [{id:'sale', totalAmount:1000, status:'POSTED'}],
+  returns: [{id:'return', amount:100, financialDocumentConfirmed:true, status:'POSTED'}],
+  officialLedgerGross:1000, officialLedgerReturns:100,
+  verifiedLedgerScope:true, returnSourceComplete:true, actualCogs:600,
+};
+const realized = calculateProfitability(realizedInput);
+assert.equal(realized.realizedGrossProfit,300);
+assert.ok(Math.abs(realized.realizedGrossMarginPercent - 100/3) < 1e-9);
+const withOrder = calculateProfitability({...realizedInput, orders:[{id:'not-sold',totalAmount:999999,costAmount:1,costKnown:true,status:'APPROVED'}]});
+assert.equal(withOrder.realizedGrossProfit,realized.realizedGrossProfit);
+assert.equal(withOrder.realizedGrossMarginPercent,realized.realizedGrossMarginPercent);
+assert.equal(calculateProfitability({...realizedInput,actualCogs:undefined}).realizedGrossProfit,null);
+assert.equal(calculateProfitability({...realizedInput,returns:[...realizedInput.returns,{amount:25,financialDocumentConfirmed:false}]}).realizedGrossProfit,null);
+assert.equal(calculateProfitability({orders:[{totalAmount:100,costAmount:60,costKnown:true}]}).realizedGrossProfit,null);
