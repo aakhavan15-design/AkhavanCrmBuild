@@ -1,4 +1,6 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
+import { RankList } from '../charts/ReportPrimitives';
+import { formatCount, formatMoneyCompact, formatNumber } from '../../lib/format';
 import { formatCurrency, formatAppDate } from '../../lib/utils';
 import { buildReceivableLifoReport } from '../../services/receivableReports';
 import type { ReceivableAccountRef, ReceivableInvoiceRef } from '../../services/receivableReports';
@@ -15,17 +17,20 @@ interface Props {
   allowedDays?: unknown;
   agingBounds?: unknown;
   sellerName?: (sellerKey: string) => string;
+  sellerAvatar?: (sellerKey: string) => string | undefined;
   onOpenCustomer?: (customerId: string) => void;
   locale?: string;
 }
 
-const fa = (n: number) => n.toLocaleString('fa-IR');
+const fa = (n: number) => formatNumber(n);
 
-export function ReceivablesLifoPanel({ ledgerBalances, accounts, invoices, allowedDays, agingBounds, sellerName, onOpenCustomer, locale }: Props) {
+export function ReceivablesLifoPanel({ ledgerBalances, accounts, invoices, allowedDays, agingBounds, sellerName, sellerAvatar, onOpenCustomer, locale }: Props) {
   const report = useMemo(
     () => buildReceivableLifoReport(ledgerBalances, accounts, invoices, { asOf: new Date(), allowedDays, agingBounds }),
     [ledgerBalances, accounts, invoices, allowedDays, agingBounds]
   );
+  const [selectedSeller,setSelectedSeller]=useState<string|null>(null);
+  const activeSeller=report.bySeller.some(s=>s.sellerKey===selectedSeller)?selectedSeller:null;
   const hasData = report.invoiceCount > 0;
   const allowed = report.allowedDays;
   const overAmount = allowed === null ? null : report.overAllowed.reduce((s, r) => s + r.outstanding, 0);
@@ -52,18 +57,32 @@ export function ReceivablesLifoPanel({ ledgerBalances, accounts, invoices, allow
         </div>
       </div>
 
-      <div className="p-3.5 bg-surface rounded-xl border border-border space-y-2">
-        <h5 className="text-xs font-bold text-text-main">به‌تفکیک فروشنده</h5>
-        {report.bySeller.length === 0 && <p className="text-micro text-text-secondary">مانده‌ای برای تفکیک وجود ندارد.</p>}
-        {report.bySeller.map(s => (
-          <div key={s.sellerKey} className="flex items-center justify-between gap-2 p-2.5 rounded-xl border border-border bg-canvas text-xs">
-            <div className="min-w-0">
-              <strong className="text-text-main truncate block">{s.sellerKey === 'UNASSIGNED' ? 'فروشنده نامشخص' : (sellerName?.(s.sellerKey) || s.sellerCode || s.sellerKey)}</strong>
-              <span className="text-micro text-text-secondary">{fa(s.invoiceCount)} فاکتور · میانگین سن {s.avgAgeDays === null ? 'نامشخص' : `${fa(s.avgAgeDays)} روز`}{s.overAllowedAmount ? ` · خارج از مهلت ${formatCurrency(s.overAllowedAmount)}` : ''}</span>
-            </div>
-            <span className="font-mono font-bold text-danger shrink-0">{formatCurrency(s.outstanding)} ریال</span>
-          </div>
-        ))}
+      <div className="p-3 bg-surface rounded-xl border border-border space-y-2">
+        <h5 className="text-xs font-bold text-text-main">مانده منتسب به فروشندگان (تخمینی)</h5>
+        <p className="text-caption text-text-secondary">مبلغ و تعداد فاکتورهای باز؛ مانده بالا به‌تنهایی نشانه عملکرد ضعیف نیست. فقط خارج از مهلت مصوب با رنگ خطر مشخص می‌شود.</p>
+        <RankList showAvatars limit={3} label="سه مانده بالاتر" items={report.bySeller.filter(s=>s.sellerKey!=='UNASSIGNED').map(s=>({
+          id:s.sellerKey,label:sellerName?.(s.sellerKey)||s.sellerCode||s.sellerKey,avatar:sellerAvatar?.(s.sellerKey),
+          value:s.outstanding,formattedValue:formatMoneyCompact(s.outstanding),
+          description:formatCount(s.invoiceCount)+' فاکتور باز',
+          tone:s.overAllowedAmount!=null&&s.overAllowedAmount>0?'danger':'neutral'
+        }))}/>
+        <details className="border-t border-border pt-2">
+          <summary className="min-h-11 py-2 cursor-pointer text-xs font-semibold text-primary">تمام فروشندگان و ریز مطالبات</summary>
+          <RankList showAvatars label="مانده همه فروشندگان" selectedId={activeSeller} onSelect={setSelectedSeller}
+            items={report.bySeller.map(s=>({
+              id:s.sellerKey,label:s.sellerKey==='UNASSIGNED'?'فروشنده نامشخص':sellerName?.(s.sellerKey)||s.sellerCode||s.sellerKey,
+              avatar:sellerAvatar?.(s.sellerKey),value:s.outstanding,formattedValue:formatMoneyCompact(s.outstanding),
+              description:formatCount(s.invoiceCount)+' فاکتور · میانگین سن '+(s.avgAgeDays===null?'نامشخص':fa(s.avgAgeDays)+' روز')+(s.overAllowedAmount!=null?' · خارج از مهلت '+formatMoneyCompact(s.overAllowedAmount):''),
+              tone:s.overAllowedAmount!=null&&s.overAllowedAmount>0?'danger':'neutral'
+            }))}/>
+        </details>
+        {activeSeller&&<div className="border-t border-border pt-2 space-y-2">
+          <div className="flex items-center justify-between gap-2"><strong className="text-xs">فاکتورهای باز فروشنده منتخب</strong><button type="button" onClick={()=>setSelectedSeller(null)} className="min-h-11 text-xs text-primary">حذف فیلتر</button></div>
+          {report.rows.filter(r=>r.sellerKey===activeSeller).map(r=><div key={r.invoiceId} className="flex items-center justify-between gap-2 text-xs border-b border-border py-1">
+            {onOpenCustomer?<button type="button" className="min-h-11 text-start text-primary" onClick={()=>onOpenCustomer(r.customerId)}>{r.customerName} · {r.invoiceNumber||r.invoiceId}</button>:<span>{r.customerName} · {r.invoiceNumber||r.invoiceId}</span>}
+            <bdi>{formatMoneyCompact(r.outstanding)}</bdi>
+          </div>)}
+        </div>}
       </div>
 
       {allowed !== null && (
