@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { buildAgingBuckets, normalizeAgingBounds, isReceivableInvoice } from '../src/services/agingBuckets.ts';
+import { buildAgingBuckets, normalizeAgingBounds, isReceivableInvoice, allocateLifo, estimateLedgerAging } from '../src/services/agingBuckets.ts';
 
 // buckets: no overlap, sum == total, open-ended last bucket, configurable bounds
 const items = [{ days: -5, amount: 100 }, { days: 0, amount: 50 }, { days: 1, amount: 10 }, { days: 15, amount: 20 }, { days: 16, amount: 30 }, { days: 45, amount: 40 }, { days: 61, amount: 60 }, { days: 400, amount: 70 }];
@@ -28,4 +28,23 @@ const engine = fs.readFileSync(new URL('../src/services/collectionEngine.ts', im
 assert.match(engine, /isReceivableInvoice\(inv\)/);
 assert.match(engine, /buildAgingBuckets\(agingItems, \(state as Record<string, unknown>\)\.settings\?\.agingBucketBounds\)|buildAgingBuckets\(agingItems, \(state as any\)\.settings\?\.agingBucketBounds\)/);
 assert.match(engine, /agingReconciliation = \{/);
+// Same-date invoices must use the same numeric tie-break in both paths.
+const invoices = [
+  { id: 'a', number: '2', total: 7, date: '2026-01-01', dueDate: '2026-02-01' },
+  { id: 'b', number: '10', total: 12, date: '2026-01-01', dueDate: '2026-02-02' },
+  { id: 'c', number: '1', total: 3, date: '2025-12-01', dueDate: '2026-01-01' },
+];
+const reference = new Date('2026-03-01T00:00:00Z');
+for (const ordered of [invoices, [...invoices].reverse()]) {
+  const allocation = allocateLifo(15, ordered);
+  assert.deepEqual(allocation.rows.map(r => [r.id, r.covered]), [['b',12],['a',3],['c',0]]);
+  const report = estimateLedgerAging([{id:'customer', balance:15, invoices:ordered}], reference);
+  assert.deepEqual(report.customers[0].covered.map(r => [r.invoiceNumber,r.covered]), [['10',12],['2',3]]);
+  assert.equal(report.unattributed,0);
+}
+const missing = estimateLedgerAging([{balance:20,invoices:[{id:'bad',total:12,date:'2026-01-01',dueDate:'2026-02-30'}]}],reference);
+assert.equal(missing.items.length,0);
+assert.equal(missing.unattributed,20);
+assert.equal(missing.customers[0].covered[0].days,null);
+assert.equal(allocateLifo(15,[{id:'invalid',total:Infinity}]).unattributed,15);
 console.log('agingBucketsContracts: PASS');
