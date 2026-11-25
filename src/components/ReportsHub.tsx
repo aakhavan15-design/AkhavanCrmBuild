@@ -609,6 +609,7 @@ function LedgerReceivablesReport({ state, accounts, canViewPayments }: {
               allowedDays={state.settings?.orgConfig?.allowedCreditDays}
               agingBounds={state.settings?.agingBucketBounds}
               sellerName={key => state.users.find(user => user.id === key)?.name || ''}
+                  sellerAvatar={key => (state.users || []).find(u => u.id === key)?.avatar}
               onOpenCustomer={id => navigate(`/accounts/${encodeURIComponent(id)}`)}
             />
           </>
