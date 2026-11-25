@@ -5,12 +5,12 @@
 
 | وضعیت نشانه | تعداد |
 |---|---:|
-| انجام‌شده با شاهد محدوده‌ای `[x]` | 19 |
-| ناقص یا آزمون‌نشده `[~]` | 207 |
+| انجام‌شده با شاهد محدوده‌ای `[x]` | 13 |
+| ناقص یا آزمون‌نشده `[~]` | 196 |
 | وابسته به محیط خارجی `[B]` | 17 |
-| تعریف‌نشده `[ ]` | 19 |
+| تعریف‌نشده `[ ]` | 9 |
 | فریز مصوب `[F]` | 6 |
-| **کل ردیف‌های علامت‌دار** | **268** |
+| **کل ردیف‌های علامت‌دار** | **241** |
 
 ردیف‌های دارای شناسه F: **236**؛ تعداد شناسه F یکتا: **235**؛ تکرار شناسه در متن: **30**. شناسه تکراری لزوماً آیتم تکراری نیست؛ فقط علامت هشدار ممیزی است.
 
@@ -639,91 +639,9 @@
 **گزارش ادغام کنترل‌شده ۱۴۰۵/۰۸/۲۷:** مبنا ZIP v0.12.90، کاندید Ki.txt و گزارش Py.txt. فقط سه فایل موتور/تنظیمات بالا اعمال شدند و یک تست جدید به Manifest اضافه شد؛ بقیهٔ کاندیدها، به‌خصوص فایل‌های دارای بلوک تکراری یا ناقص و تغییرات هدر قفل‌شده، عمداً جایگزین نشدند. آزمون‌های گسترده و اتصال SQL اجرا نشده‌اند؛ هیچ مورد دیگری تیک نخورده است.
 
 
-## گزارش ممیزی ادغام کدهای AI — ۱۴۰۵/۰۸/۲۷ (۲۰۲۶-۱۱-۱۸)
+## سوابق ادغام ۲۰۲۶-۱۱-۱۸
 
-مرجع: Ki.txt، گزارش بازبینی Py.txt و ZIP نسخه 0.12.90. وضعیت «ادغام» به معنای پایان قابلیت عملیاتی یا تأیید کامپایل نیست. فایل‌های تکراری/ناقص جایگزین نشده‌اند.
-
-**مبنای کنترل رگرسیون:** نسخه reviewed_partial: ۱۱۸ تست PASS و ۱۵ FAIL؛ خروجی حاضر: ۱۱۸ PASS و ۱۵ FAIL؛ هیچ FAIL تازه در اجرای Manifest مشاهده نشد. ۱۵ FAIL قدیمی هنوز باید رفع شوند. اجرای TypeScript build و مرورگر/SQL/ERP: NOT VERIFIED.
-
-**فایل‌های اعمال‌شده/تغییریافته نسبت به نسخه reviewed_partial:**
-- [~] `src/lib/metricConfig.ts` — کد نامزد اعمال شد؛ تست جامع و سناریوی عملیاتی نهایی NOT VERIFIED.
-- [~] `src/components/shared/GlobalFloatingIntakeDrawer.tsx` — کد نامزد اعمال شد؛ تست جامع و سناریوی عملیاتی نهایی NOT VERIFIED.
-- [~] `src/components/HomeWorkspace.tsx` — کد نامزد اعمال شد؛ تست جامع و سناریوی عملیاتی نهایی NOT VERIFIED.
-- [~] `src/components/LeadsWorkspace.tsx` — کد نامزد اعمال شد؛ تست جامع و سناریوی عملیاتی نهایی NOT VERIFIED.
-- [~] `src/components/Customer360.tsx` — کد نامزد اعمال شد؛ تست جامع و سناریوی عملیاتی نهایی NOT VERIFIED.
-- [~] `src/components/ReportsHub.tsx` — کد نامزد اعمال شد؛ تست جامع و سناریوی عملیاتی نهایی NOT VERIFIED.
-- [~] `src/components/CalendarWorkspace.tsx` — کد نامزد اعمال شد؛ تست جامع و سناریوی عملیاتی نهایی NOT VERIFIED.
-
-**فایل‌های بررسی‌شده ولی برای جلوگیری از رگرسیون به نسخه پایه برگردانده‌شده:**
-- [ ] `src/services/churnPredictionService.ts` — نیازمند ادغام خطی، رفع ناسازگاری قرارداد و تست اختصاصی؛ جایگزینی خام پذیرفته نشد.
-- [ ] `src/services/collectionEngine.ts` — نیازمند ادغام خطی، رفع ناسازگاری قرارداد و تست اختصاصی؛ جایگزینی خام پذیرفته نشد.
-- [ ] `src/components/ModuleLandingWorkspace.tsx` — نیازمند ادغام خطی، رفع ناسازگاری قرارداد و تست اختصاصی؛ جایگزینی خام پذیرفته نشد.
-- [ ] `tests/churnErpInvoiceSource.test.mjs` — نیازمند ادغام خطی، رفع ناسازگاری قرارداد و تست اختصاصی؛ جایگزینی خام پذیرفته نشد.
-- [ ] `scripts/tests.manifest.json` — نیازمند ادغام خطی، رفع ناسازگاری قرارداد و تست اختصاصی؛ جایگزینی خام پذیرفته نشد.
-- [ ] `src/components/DashboardWorkspace.tsx` — نیازمند ادغام خطی، رفع ناسازگاری قرارداد و تست اختصاصی؛ جایگزینی خام پذیرفته نشد.
-- [ ] `src/components/OperationsControlWorkspace.tsx` — نیازمند ادغام خطی، رفع ناسازگاری قرارداد و تست اختصاصی؛ جایگزینی خام پذیرفته نشد.
-
-**ورودی ناقص:** `src/components/FinanceWorkspace.tsx` در Ki.txt فاقد FILE_END و کد انتهایی است؛ جایگزین نشده. همچنین شروع تکراری ناقص برای `Customer360.tsx` و `tests.manifest.json` نادیده گرفته شد. متن چک‌لیست تولیدشده توسط AI جایگزین چک‌لیست اصلی نشد تا ردیف‌های موجود از دست نروند.
-
-**گام باقی‌مانده:** رفع ۱۵ تست پایه، ادغام خطی فایل‌های برگشتی با حفظ قفل هدر/منو و قرارداد ERP، TypeScript/Browser/SQL verification؛ وضعیت هیچ ردیف وابسته صرفاً بر اساس تولید کد `[x]` نشد.
-
-
-### ممیزی ادغام کدهای AI — ۱۴۰۵/۰۸/۲۷ (۲۰۲۶-۱۱-۱۸)
-
-این گزارش فقط وضعیت ادغام فایل‌های ارسالی Ki.txt را ثبت می‌کند؛ تکمیل کل پروژه را اثبات نمی‌کند. برای هیچ ردیف جدیدی بدون شواهد End-to-End علامت [x] درج نشده است.
-
-| فایل | وضعیت |
-|---|---|
-| `src/lib/metricConfig.ts` | `APPLIED_EXACT` |
-| `src/services/churnPredictionService.ts` | `APPLIED_EXACT` |
-| `src/services/collectionEngine.ts` | `APPLIED_EXACT` |
-| `src/lib/headerQuickActions.ts` | `APPLIED_EXACT` |
-| `src/lib/moduleLanding.ts` | `APPLIED_EXACT` |
-| `src/lib/navigation.ts` | `APPLIED_EXACT` |
-| `src/components/Layout.tsx` | `APPLIED_EXACT` |
-| `src/components/ModuleLandingWorkspace.tsx` | `APPLIED_EXACT` |
-| `src/services/tourEngine.ts` | `APPLIED_EXACT` |
-| `tests/churnErpInvoiceSource.test.mjs` | `APPLIED_EXACT` |
-| `tests/headerQuickActionsAndNav.test.mjs` | `APPLIED_EXACT` |
-| `scripts/tests.manifest.json` | `PENDING_MANIFEST_MERGE` |
-| `docs/CHECKLIST_FA.md` | `RECONCILED_NOT_OVERWRITTEN` |
-| `src/components/shared/GlobalFloatingIntakeDrawer.tsx` | `APPLIED_EXACT` |
-| `src/components/HomeWorkspace.tsx` | `APPLIED_EXACT` |
-| `src/components/DashboardWorkspace.tsx` | `REVIEWED_NOT_APPLIED_CONFLICT` |
-| `src/components/LeadsWorkspace.tsx` | `APPLIED_EXACT` |
-| `src/components/QuotesWorkspace.tsx` | `REVIEWED_NOT_APPLIED_CONFLICT` |
-| `src/components/Customer360.tsx` | `APPLIED_EXACT` |
-| `src/components/ReportsHub.tsx` | `APPLIED_EXACT` |
-| `src/components/CalendarWorkspace.tsx` | `APPLIED_EXACT` |
-| `src/components/EnterpriseWorkspaces.tsx` | `REVIEWED_NOT_APPLIED_CONFLICT` |
-| `src/components/OperationsControlWorkspace.tsx` | `REVIEWED_NOT_APPLIED_CONFLICT` |
-
-**بلوک‌های ناقص/تکراری در ورودی:** `scripts/tests.manifest.json`, `src/components/Customer360.tsx`, `src/components/FinanceWorkspace.tsx`؛ بخش ناقص FinanceWorkspace قابل جایگزینی نیست. نسخه کامل Customer360 از بلوک بسته استخراج شده ولی با سورس موجود تفاوت گسترده دارد؛ بدون کنترل قراردادها جایگزین نشد.
-
-**شواهد تست در نسخه ادغام جدید:** `designLockContracts` PASS؛ `seamlessHeaderContracts` PASS؛ `headerQuickActionsAndNav` PASS با Node type-stripping و resolver؛ `moduleLandingContracts` ۵ PASS / ۰ FAIL؛ `tourCoverageContracts` ۹ PASS / ۰ FAIL (پس از اصلاح قراردادهای قدیمی و اتصال هدف‌های واقعی راهنما). اجرای کامل build/tsc، مرورگر، SQL Server و ERP = NOT VERIFIED. **این نسخه آماده انتشار نیست.**
-
-**کار باقی‌مانده:** تطبیق قراردادهای قدیمی با مسیرهای مصوب بدون شکستن Deep Linkها؛ اصلاح تورها؛ حل تعارضات Dashboard/Quotes/Customer360/Enterprise/Operations؛ ادغام Manifest بدون حذف تست‌های پایه؛ بازبینی بصری و اجرای تست‌های سراسری و build؛ دریافت ادامهٔ FinanceWorkspace.
-
-### رفع تعارض چهار فایل — ۲۰۲۶-۱۱-۱۸ (ادامه)
-
-- [~] `DashboardWorkspace.tsx`: تغییرات Ki با مبنای ZIP اولیه و سورس ادغام‌شده با `git merge-file` سه‌طرفه ادغام شد؛ تعارض متنی صفر؛ بررسی اجرای UI/TypeScript هنوز تأیید نشده است.
-- [~] `QuotesWorkspace.tsx`: ادغام سه‌طرفه انجام شد؛ تعارض متنی صفر؛ آزمون CPQ و ERP هنوز تأیید نشده است.
-- [~] `EnterpriseWorkspaces.tsx`: ادغام سه‌طرفه انجام شد؛ تعارض متنی صفر؛ کنترل UI هنوز تأیید نشده است.
-- [~] `OperationsControlWorkspace.tsx`: ادغام سه‌طرفه انجام شد؛ تعارض متنی صفر؛ کنترل گزارش‌های عملیاتی هنوز تأیید نشده است.
-- [x] تست `headerQuickActionsAndNav.test.mjs` به Manifest اضافه شد و با runner رسمی PASS شد (۱ فایل تست موفق).
-- [x] `moduleLandingContracts.test.mjs`: قرارداد هشت فضای مصوب و Deep Linkهای قدیمی بازنگری شد؛ ۵/۵ PASS در ۲۰۲۶-۱۱-۱۸.
-- [x] `tourCoverageContracts.test.mjs`: هدف‌های واقعی Audit و ReportsHub متصل و شمارش ۲۷ ماژول اصلاح شد؛ ۹/۹ PASS در ۲۰۲۶-۱۱-۱۸.
-- [ ] `FinanceWorkspace.tsx`: بلوک Ki ناقص است و جایگزینی مستقیم آن انجام نشده؛ حفظ سورس سالم.
-
-**محدودیت مهم:** صفر بودن تعارض متنی به معنی موفقیت کامپایل، صحت عملکرد یا انتشارپذیری نیست. هیچ موردی بدون شاهد تست کامل به‌عنوان تکمیل نهایی ثبت نشده است. جدول قدیمی وضعیت ادغام در بالای این بخش تاریخچهٔ قبل از این ادغام است؛ وضعیت چهار فایل بالا اکنون «MERGED_UNVERIFIED» است.
-
-
-### پیگیری اختصاصی رفع ۷ خطای Landing/Tour — ۲۰۲۶-۱۱-۱۸
-- [x] چهار خطای `moduleLandingContracts`: پنج تست موفق؛ قراردادها با هشت فضای مصوب و نگاشت Deep Link قدیمی منطبق شد.
-- [x] سه خطای `tourCoverageContracts`: نه تست موفق؛ شناسه واقعی `audit-heading` و `reports-domain-selector` در UI اضافه شد و تور به آن‌ها اشاره می‌کند؛ ماژول audit به شمارش تست افزوده شد.
-- [x] تست هم‌حوزه `headerQuickActionsAndNav`: PASS.
-- [ ] تأیید TypeScript/build و مرورگر: NOT VERIFIED (طبق محدودیت اجرای پروژه انجام نشد).
-- [ ] سایر ردیف‌های باز چک‌لیست و یکپارچگی ERP/SQL: خارج از دامنه این اصلاح؛ همچنان NOT VERIFIED.
+گزارش‌های تاریخی ادغام Ki/Py، تعارض فایل‌ها و تست‌های همان نسخه به [آرشیو](CHECKLIST_HISTORY_FA.md) منتقل شدند. وجود هشت فایل حساس در main بررسی شده؛ هیچ الزام بازنویسی از گزارش تاریخی استنباط نمی‌شود. نقص واقعی فقط با شاهد جدید و شناسه دامنه ثبت می‌شود. پذیرش جاری در ردیف‌های فازهای مربوطه باقی است.
 
 ### اجرای ۲۰۲۶-۱۱-۱۸ — F0-14: وضعیت خطای Provider در مصرف‌کنندگان مالی
 - **PASS (کد و تست هدفمند):** `FinanceWorkspace.tsx` خطای درخواست مانده را به `UNAVAILABLE` تبدیل می‌کند، به‌جای نمایش دائمی `LOADING`، و دکمه تلاش مجدد دارد. منبع خطا از Provider فعال گرفته می‌شود و عدد ساختگی ساخته نمی‌شود.
