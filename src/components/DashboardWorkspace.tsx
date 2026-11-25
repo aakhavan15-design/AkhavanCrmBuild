@@ -31,8 +31,8 @@ import { VerdictStrip } from './shared/VerdictStrip';
 const localDateKey = (date: Date) =>
   `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 
-const dateKeyOf = (value?: string) => {
-  if (!value) return '';
+const dateKeyOf = (value?: unknown) => {
+  if (typeof value !== 'string' || !value.trim()) return '';
   if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? '' : localDateKey(date);
@@ -40,7 +40,7 @@ const dateKeyOf = (value?: string) => {
 
 function AnimatedMetric({ value }: { value: number }) {
   const count = useCountUp(value, 850);
-  return <>{Math.round(count).toLocaleString('fa-IR')}</>;
+  return <>{formatCount(count)}</>;
 }
 
 const getPeriodStart = (period: string, now: Date) => {
@@ -52,7 +52,7 @@ const getPeriodStart = (period: string, now: Date) => {
 };
 
 function buildSixMonthCounts(
-  items: Array<{ createdAt?: string; dateTime?: string; date?: string }>,
+  items: readonly unknown[],
   now: Date,
   formatter: Intl.DateTimeFormat
 ): { labels: string[]; values: number[] } {
@@ -66,7 +66,9 @@ function buildSixMonthCounts(
   });
   const byKey = new Map(buckets.map(b => [b.key, b]));
   items.forEach(item => {
-    const raw = item.createdAt || item.dateTime || item.date;
+    if (!item || typeof item !== 'object') return;
+    const record=item as Record<string,unknown>;
+    const raw = [record.createdAt,record.dateTime,record.date].find(v=>typeof v==='string'&&v.trim());
     const key = dateKeyOf(raw).slice(0, 7);
     const bucket = byKey.get(key);
     if (bucket) bucket.count += 1;
