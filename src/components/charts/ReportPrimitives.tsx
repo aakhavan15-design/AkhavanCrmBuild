@@ -42,7 +42,7 @@ export function RankList({items,label='رتبه‌بندی',showAvatars=false,al
               {item.description&&<p className="text-micro text-text-secondary">{item.description}</p>}
             </div>
           </div>
-          <div className="mt-1 h-1 overflow-hidden rounded-full bg-canvas" aria-hidden="true">
+          <div className="mt-1 h-1 overflow-hidden rounded-full bg-canvas" role="meter" aria-label={item.label} aria-valuemin={0} aria-valuemax={maximum||1} aria-valuenow={Math.abs(value)} aria-valuetext={item.formattedValue??formatNumber(value)}>
             <div className={'h-full rounded-full motion-safe:transition-all '+(danger?'bg-danger':item.tone==='success'?'bg-success':'bg-primary')}
               style={{width:maximum?Math.abs(value)/maximum*100+'%':'0%'}}/>
           </div>
