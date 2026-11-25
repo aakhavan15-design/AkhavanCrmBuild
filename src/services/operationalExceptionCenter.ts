@@ -1,6 +1,8 @@
 import type { AppState } from '../types.ts';
 import { getTaskExceptions } from './taskWorkflow.ts';
 import { activeRecords } from '../lib/recordLifecycle.ts';
+import { BUSINESS_TIME_ZONE, calculateDaysOverdue } from './collectionDateUtils.ts';
+import { getMetricThresholds } from '../lib/metricConfig.ts';
 
 export type OperationalExceptionKind = 'TASK' | 'OVERDUE_RECEIVABLE' | 'HIGH_COLLECTION_RISK' | 'BOUNCED_CHEQUE' | 'BROKEN_COLLECTION_PROMISE';
 export type OperationalExceptionSeverity = 'CRITICAL' | 'HIGH' | 'MEDIUM';
@@ -24,7 +26,7 @@ export interface OperationalException {
  * This does not post accounting data or replace the source engines. Amounts are only shown when
  * supplied by the existing collection engine; ERP provenance must be displayed separately by the UI.
  */
-export function buildOperationalExceptionCenter(state: AppState, now = new Date(), collectionProfiles: Array<{ accountId: string; accountName: string; overdueBalance: number; maxDaysOverdue: number; overdueInvoices: unknown[]; riskLevel: string; riskScore: number; bouncedChequesCount: number; recommendedAction: string; activePromises: Array<{ id: string; promisedDate: string; promisedAmount: number; status: string }> }> = []): OperationalException[] {
+export function buildOperationalExceptionCenter(state: AppState, now = new Date(), collectionProfiles: Array<{ accountId: string; accountName: string; overdueBalance: number; agingCoverageComplete?: boolean; maxDaysOverdue: number; overdueInvoices: unknown[]; riskLevel: string; riskScore: number; bouncedChequesCount: number; recommendedAction: string; activePromises: Array<{ id: string; promisedDate: string; promisedAmount: number; status: string }> }> = []): OperationalException[] {
   const output: OperationalException[] = [];
   const tasks = activeRecords(state.tasks || []).filter(task => !['COMPLETED', 'CANCELLED', 'CANCELED', 'VOID', 'DELETED'].includes(String(task.status || '').toUpperCase()));
 
@@ -49,6 +51,8 @@ export function buildOperationalExceptionCenter(state: AppState, now = new Date(
   // Defend the aggregation boundary against malformed/stale adapter rows.
   // The source collection engine remains authoritative; this layer only presents valid signals.
   const seenAccounts = new Set<string>();
+  const seenPromises = new Set<string>();
+  const thresholds = getMetricThresholds(state.settings as Record<string, unknown> | undefined).collectionRiskThresholds;
   for (const profile of collectionProfiles) {
     const accountId = String(profile.accountId || '').trim();
     if (!accountId || seenAccounts.has(accountId)) continue;
@@ -59,11 +63,11 @@ export function buildOperationalExceptionCenter(state: AppState, now = new Date(
     const riskScore = Number(profile.riskScore);
     const overdueInvoices = Array.isArray(profile.overdueInvoices) ? profile.overdueInvoices : [];
     const accountName = String(profile.accountName || accountId);
-    if (Number.isFinite(overdueBalance) && overdueBalance > 0) {
+    if (profile.agingCoverageComplete !== false && Number.isFinite(overdueBalance) && overdueBalance > 0) {
       output.push({
         id: `RECEIVABLE:${accountId}`,
         kind: 'OVERDUE_RECEIVABLE',
-        severity: Number.isFinite(maxDaysOverdue) && maxDaysOverdue > 60 ? 'CRITICAL' : Number.isFinite(maxDaysOverdue) && maxDaysOverdue > 15 ? 'HIGH' : 'MEDIUM',
+        severity: Number.isFinite(maxDaysOverdue) && maxDaysOverdue > thresholds.overdueCriticalDays ? 'CRITICAL' : Number.isFinite(maxDaysOverdue) && maxDaysOverdue > thresholds.overdueMediumDays ? 'HIGH' : 'MEDIUM',
         title: `مطالبه معوق — ${accountName}`,
         description: `${Number.isFinite(maxDaysOverdue) ? maxDaysOverdue : 'نامشخص'} روز بیشترین تأخیر؛ ${overdueInvoices.length} فاکتور معوق`,
         accountId,
@@ -73,7 +77,7 @@ export function buildOperationalExceptionCenter(state: AppState, now = new Date(
         recommendedAction: profile.recommendedAction
       });
     }
-    if ((profile.riskLevel === 'HIGH' || profile.riskLevel === 'CRITICAL') && Number.isFinite(riskScore)) {
+    if (profile.agingCoverageComplete !== false && (profile.riskLevel === 'HIGH' || profile.riskLevel === 'CRITICAL') && Number.isFinite(riskScore)) {
       output.push({
         id: `RISK:${accountId}`,
         kind: 'HIGH_COLLECTION_RISK',
@@ -101,10 +105,12 @@ export function buildOperationalExceptionCenter(state: AppState, now = new Date(
       });
     }
     for (const promise of (Array.isArray(profile.activePromises) ? profile.activePromises : [])) {
-      const due = promise.promisedDate ? new Date(promise.promisedDate) : null;
-      if ((promise.status === 'BROKEN' || (promise.status === 'PENDING' && due && !Number.isNaN(due.getTime()) && due.getTime() < now.getTime()))) {
+      const promiseId = String(promise.id || '').trim();
+      if (!promiseId || seenPromises.has(promiseId)) continue;
+      if (promise.status === 'BROKEN' || (promise.status === 'PENDING' && calculateDaysOverdue(promise.promisedDate, now, BUSINESS_TIME_ZONE) > 0)) {
+        seenPromises.add(promiseId);
         output.push({
-          id: `PROMISE:${promise.id}`,
+          id: `PROMISE:${promiseId}`,
           kind: 'BROKEN_COLLECTION_PROMISE',
           severity: 'HIGH',
           title: `وعده پرداخت سررسیدگذشته — ${accountName}`,
