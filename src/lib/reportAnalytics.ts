@@ -29,6 +29,28 @@ export function targetAchievement(actual: Num, target: Num) {
   if (!fin(actual) || !fin(target) || target <= 0) return { actual: fin(actual) ? actual : null, target: fin(target) ? target : null, achievementPct: null as Num, gap: null as Num };
   return { actual, target, achievementPct: actual / target * 100, gap: Math.max(0, target - actual) };
 }
+/** Compare reconciled month-to-date sales with an explicit full-month, unsegmented target.
+ * A duplicate, absent, invalid, brand-specific or territory-specific target is not a zero target.
+ * Caller must supply verified facts for the exact target month; no invoice-gross fallback.
+ */
+export function sellerMonthlyAchievement(
+  reconciledSales: readonly {key:string;value:number}[],
+  targets: readonly {userId:string;periodMonth:string;revenueTargetRials:number;productBrand?:string;territoryId?:string}[],
+  month:string
+) {
+  if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(month))return [];
+  const salesCounts=new Map<string,number>();
+  for(const row of reconciledSales)salesCounts.set(row.key,(salesCounts.get(row.key)||0)+1);
+  return reconciledSales.flatMap(row=>{
+    if(!row.key||row.key==='UNASSIGNED'||salesCounts.get(row.key)!==1||!fin(row.value))return [];
+    const matches=targets.filter(t=>t.userId===row.key&&t.periodMonth===month&&!t.productBrand&&!t.territoryId);
+    if(matches.length!==1||!fin(matches[0].revenueTargetRials)||matches[0].revenueTargetRials<=0)return [];
+    const target=matches[0].revenueTargetRials;
+    const calculated=targetAchievement(row.value,target);
+    return calculated.achievementPct===null?[]:[{key:row.key,actual:row.value,target,achievementPct:calculated.achievementPct}];
+  }).sort((a,b)=>b.achievementPct-a.achievementPct||a.key.localeCompare(b.key));
+}
+
 /** Linear end-of-period projection; always labelled forecast by the UI (spec §17). */
 export function projectPeriodEnd(actualToDate: number, elapsedDays: number, totalDays: number): Num {
   return elapsedDays > 0 && totalDays >= elapsedDays ? actualToDate / elapsedDays * totalDays : null;
