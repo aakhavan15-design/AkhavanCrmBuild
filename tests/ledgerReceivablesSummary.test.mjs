@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { estimateLedgerAging } from '../src/services/agingBuckets.ts';
 import { buildDetailBalancesResult, summarizeCustomerLedgerReceivables } from '../src/lib/receivableReconciliation.ts';
 
-const L = (d, s, debit, credit) => ({ detailAccountId: d, subsidiaryCode: s, debitAmount: debit, creditAmount: credit });
+const L = (d, s, debit, credit) => ({ detailAccountId: d, subsidiaryCode: s, debitAmount: debit, creditAmount: credit, status:'POSTED' });
 const res = buildDetailBalancesResult([
   L('C1', '1101', 100, 0), L('C1', '1102', 0, 30),   // بدهکار ۷۰ (دو معین مستقل)
   L('C2', '1101', 0, 40),                            // بستانکار ۴۰ → با مطالبات خنثی نمی‌شود
@@ -31,7 +31,7 @@ assert.equal(summarizeCustomerLedgerReceivables(res, [{ id: 'C9' }]).kind, 'NO_L
 // قرارداد ایستا FinanceWorkspace
 const fin = readFileSync('src/components/FinanceWorkspace.tsx', 'utf8');
 assert.ok(fin.includes('summarizeCustomerLedgerReceivables') && fin.includes('getDetailSubsidiaryBalances'), 'مطالبات از DataProvider/دفتر');
-assert.ok(/canSeeLedger \? provider\.getDetailSubsidiaryBalances\(\)/.test(fin), 'بدون مجوز مالی درخواست نمی‌شود');
+assert.ok(/canSeeLedger \? \{[\s\S]*?balances: await provider\.getDetailSubsidiaryBalances\(\{[\s\S]*?role:'RECEIVABLE'/.test(fin), 'بدون مجوز مالی درخواست نمی‌شود');
 assert.ok(!/const totalReceivables\s*=\s*receivableReconciliation\.totalOutstanding/.test(fin), 'KPI مطالبات از مانده فاکتوری نیست');
 assert.ok(fin.includes('estimateLedgerAging') && fin.includes('تخمینی') && fin.includes('نامشخص'), 'Aging تخمینی از مانده دفتری یا نامشخص');
 assert.ok(!/receivableReconciliation\.invoices\.map\(row => \(\{ days/.test(fin), 'Aging از تخصیص CRM نیست');
