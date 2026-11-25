@@ -210,6 +210,7 @@ export function ReportEnginePanels({ state, visibleInvoices, visiblePayments, vi
   });
   const [period, setPeriod] = useState<'month' | '90d' | '12m' | 'all'>('12m');
   const [customerQuery, setCustomerQuery] = useState('');
+  const [selectedSalesSeller,setSelectedSalesSeller]=useState<string|null>(null);
   const [lifecycleFilter, setLifecycleFilter] = useState<string | null>(null);
 
   const [selectedExpenseCategory, setSelectedExpenseCategory] = useState<string | null>(() => searchParams.get('expenseCategory'));
@@ -420,6 +421,17 @@ export function ReportEnginePanels({ state, visibleInvoices, visiblePayments, vi
       .reduce((sum, item) => sum + Math.max(0, Number(item.revenueTargetRials) || 0), 0);
     return targetAchievement(totalSales, target > 0 ? target : null);
   }, [netSalesEvidence.net, salesReconciled, state.salesTargets, cutoff, asOf]);
+
+  const sellerChartSegments=useMemo(()=>sellerNetSales.status==='AVAILABLE'
+    && sellerNetSales.rows.every(row=>row.value>=0)
+    ? sellerNetSales.rows.filter(row=>row.value>0).map((row,i)=>{
+      const user=(state.users||[]).find(u=>u.id===row.key);
+      const name=row.key==='UNASSIGNED'?'بدون انتساب':user?.name||row.key;
+      const sameName=user?.name&&(state.users||[]).filter(u=>u.name===user.name).length>1;
+      return {key:row.key,label:sameName?name+' · '+row.key:name,value:row.value,
+        color:['var(--c-chart-1)','var(--c-chart-2)','var(--c-chart-3)','var(--c-chart-4)','var(--c-chart-5)'][i%5]};
+    }):[],[sellerNetSales,state.users]);
+  const activeSalesSeller=sellerNetSales.status==='AVAILABLE' ? sellerNetSales.rows.find(row=>row.key===selectedSalesSeller) : undefined;
 
   const monthlySellerAchievement=useMemo(()=>period==='month'&&sellerNetSales.status==='AVAILABLE'
     ? sellerMonthlyAchievement(sellerNetSales.rows,(state.salesTargets||[]).filter(t=>!(t as typeof t & {deletedAt?:string;isDeleted?:boolean}).deletedAt&&!(t as typeof t & {isDeleted?:boolean}).isDeleted),asOf.slice(0,7))
@@ -1070,10 +1082,10 @@ export function ReportEnginePanels({ state, visibleInvoices, visiblePayments, vi
                   const ranked=rows.filter(row=>row.id!=='UNASSIGNED'&&row.value>0&&(state.users||[]).some(u=>u.id===row.id));
                   return <>
                     <p className="text-caption text-text-secondary">سه فروشنده برتر از فروش خالص تطبیق‌شده؛ رتبه سودآوری نیست.</p>
-                    <RankList items={ranked} label="سه فروشنده برتر فروش خالص" showAvatars limit={3}/>
+                    <RankList items={ranked} label="سه فروشنده برتر فروش خالص" showAvatars limit={3} selectedId={activeSalesSeller?.key} onSelect={setSelectedSalesSeller}/>
                     <details className="border-t border-border pt-2">
                       <summary className="min-h-11 cursor-pointer text-xs font-semibold text-primary py-2">تمام فروشندگان و مبالغ منتسب</summary>
-                      <RankList items={rows} label="تمام فروشندگان" showAvatars allowSigned/>
+                      <RankList items={rows} label="تمام فروشندگان" showAvatars allowSigned selectedId={activeSalesSeller?.key} onSelect={setSelectedSalesSeller}/>
                     </details>
                   </>;
                 })() : <p role="status" className="text-xs leading-6 text-text-secondary">سهم فروشنده نامشخص است: {sellerNetSales.reason}</p>}
@@ -1082,16 +1094,23 @@ export function ReportEnginePanels({ state, visibleInvoices, visiblePayments, vi
 
               <div className="min-w-0 p-2.5 sm:p-3 bg-surface rounded-xl border border-border space-y-2">
                 <h5 className="text-xs font-bold text-text-main">سهم از فروش خالص</h5>
-                {sellerNetSales.status==='AVAILABLE' && sellerNetSales.rows.every(row=>row.value>=0) && sellerNetSales.rows.some(row=>row.value>0) ?
-                  <DonutChart size={112} thickness={14} centerLabel="فروش خالص" centerValue={formatMoneyCompact(sellerNetSales.rows.reduce((sum,row)=>sum+row.value,0))}
-                    formatValue={formatMoneyCompact} segments={sellerNetSales.rows.filter(row=>row.value>0).map((row,i)=>({
-                      label:row.key==='UNASSIGNED'?'بدون انتساب':((state.users||[]).find(u=>u.id===row.key)?.name||row.key)+' · '+row.key,
-                      value:row.value,color:['var(--c-chart-1)','var(--c-chart-2)','var(--c-chart-3)','var(--c-chart-4)','var(--c-chart-5)'][i%5]
-                    }))} showLegend={false}/>
+                {sellerChartSegments.length ?
+                  <DonutChart compact size={112} thickness={14} centerLabel="فروش خالص" centerValue={formatMoneyCompact(sellerChartSegments.reduce((sum,row)=>sum+row.value,0))}
+                    formatValue={formatMoneyCompact} segments={sellerChartSegments}
+                    activeSegment={sellerChartSegments.find(row=>row.key===activeSalesSeller?.key)?.label}
+                    onSegmentClick={segment=>{const row=sellerChartSegments.find(item=>item.label===segment.label);if(row)setSelectedSalesSeller(old=>old===row.key?null:row.key)}}/>
                   : <p className="text-caption text-text-secondary">سهم قابل رسم نیست؛ فروش منفی یا نبود شواهد معتبر، نمودار سهم را نامعتبر می‌کند. ریز مبالغ در رتبه‌بندی محفوظ است.</p>}
+
                 <p className="text-micro text-text-secondary">سهم همه فروشندگان، شامل مبلغ بدون انتساب در صورت وجود؛ ریز مبالغ در کارت کناری.</p>
               </div>
             </div>
+            {activeSalesSeller&&<div className="rounded-xl border border-primary/20 bg-surface p-2.5 space-y-1">
+              <div className="flex items-center justify-between gap-2">
+                <strong className="text-xs">{(state.users||[]).find(u=>u.id===activeSalesSeller.key)?.name||(activeSalesSeller.key==='UNASSIGNED'?'بدون انتساب':activeSalesSeller.key)}</strong>
+                <button type="button" onClick={()=>setSelectedSalesSeller(null)} className="min-h-11 text-xs text-primary">پاک کردن انتخاب</button>
+              </div>
+              <p className="text-caption text-text-secondary">فروش خالص تطبیق‌شده در بازه منتخب: <bdi className="font-semibold text-text-main">{formatMoneyCompact(activeSalesSeller.value)}</bdi></p>
+            </div>}
             <div className="rounded-xl border border-border bg-surface p-3 space-y-2">
               <div className="flex items-center justify-between gap-2">
                 <h5 className="text-xs font-bold">سه فروشنده پیشتاز تحقق هدف</h5>
