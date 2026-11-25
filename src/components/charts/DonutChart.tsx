@@ -1,4 +1,4 @@
-import { useId, useState } from 'react';
+import { useId, useState, type CSSProperties } from 'react';
 import { arc, lighten } from './geometry';
 import { fNum, fPct, Segment } from './fmt';
 import { useCountUp } from '../../hooks/useCountUp';
@@ -18,7 +18,7 @@ export function DonutChart({ segments, centerValue, centerLabel, size = 168, thi
   return (
     <div className={compact?"flex min-w-0 flex-col items-center gap-2":"flex flex-wrap items-center justify-center gap-6"}>
       <div className="relative shrink-0" style={{ width: size, height: size }}>
-        <svg viewBox="0 0 120 120" width={size} height={size} role="img" className="se-donut" data-active={hot !== null ? 'true' : 'false'} style={{ ['--th' as Record<string, unknown>]: thickness }} onMouseLeave={() => setHot(null)}
+        <svg viewBox="0 0 120 120" width={size} height={size} role="img" className="se-donut" data-active={hot !== null ? 'true' : 'false'} style={{ '--th': thickness } as CSSProperties} onMouseLeave={() => setHot(null)}
              aria-label={segments.map(s => `${s.label}: ${formatValue(s.value)}`).join('، ')}>
           <defs>
             {segments.map((s, i) => (
@@ -50,10 +50,10 @@ export function DonutChart({ segments, centerValue, centerLabel, size = 168, thi
       {showLegend && (
         <ul className={compact?"grid w-full min-w-0 gap-1 text-micro text-ink":"grid min-w-(--size-150) gap-2.5 text-xs font-bold text-ink"}>
           {segments.map(s => (
-            <li key={s.label} className={`flex items-center gap-2.5 rounded-lg transition-colors ${activeSegment === s.label ? 'bg-primary/8 ring-1 ring-primary/20 px-2 py-1' : ''}`}>
+            <li key={s.label} className={`${compact ? "flex flex-wrap items-center gap-1" : "flex items-center gap-2.5"} rounded-lg transition-colors ${activeSegment === s.label ? 'bg-primary/8 ring-1 ring-primary/20 px-2 py-1' : ''}`}>
               <i className="h-3 w-3 shrink-0 rounded-full shadow-sm" style={{ background: `linear-gradient(135deg, ${lighten(s.color, 30)}, ${s.color})` }} />
               <span className={compact?"min-w-0 flex-1 break-words":undefined}>{s.label}</span>
-              <span className={compact?"ms-auto shrink-0 tabular-nums font-medium text-ink-soft":"ms-auto ps-3 font-mono font-medium text-ink-soft"}>{formatValue(s.value)} · {total ? fPct((s.value / total) * 100) : fPct(0)}</span>
+              <span className={compact?"ms-auto max-w-full break-words tabular-nums font-medium text-ink-soft":"ms-auto ps-3 font-mono font-medium text-ink-soft"}>{formatValue(s.value)} · {total ? fPct((s.value / total) * 100) : fPct(0)}</span>
             </li>))}
         </ul>
       )}
