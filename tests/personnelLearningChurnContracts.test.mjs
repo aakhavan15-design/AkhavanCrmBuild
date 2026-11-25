@@ -98,3 +98,9 @@ assert.deepEqual(JSON.parse(notices.calls[1].params.articles).map(item => item.l
   'churn-owner','churn-supervisor','churn-manager',
 ]);
 console.log('Personnel learning and churn contract checks passed');
+
+// Invalid stored course evidence cannot become a passed examination.
+assert.equal(gradeLearningExam([], [], 60), null);
+assert.equal(gradeLearningExam(questions, new Array(questions.length), 60), null);
+assert.equal(gradeLearningExam(questions, [1,0,0], 0), null);
+assert.equal(gradeLearningExam([{options:['a','b'],correct:2}], [1], 60), null);
