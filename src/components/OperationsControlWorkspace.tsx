@@ -531,7 +531,7 @@ export function OperationsControlWorkspace({ state, updateState }: Props) {
             actionLabel={can('finance', 'VIEW') ? 'بررسی سود فاکتورها' : undefined}
             onAction={() => navigate('/finance?tab=invoices&view=margin')}
           />
-          {can('tasks', 'CREATE') && can('finance', 'VIEW') && profitability.realizedGrossProfit == null && <Button size="sm" variant="outline" onClick={() => handleCreateInsightTask('تطبیق سود فاکتورهای فروش', 'بررسی فاکتور قطعی، برگشتی، آفر و شواهد بهای FIFO')}>ارجاع بررسی شواهد سود</Button>
+          {can('tasks', 'CREATE') && can('finance', 'VIEW') && profitability.realizedGrossProfit == null && <Button size="sm" variant="outline" onClick={() => handleCreateInsightTask('تطبیق سود فاکتورهای فروش', 'بررسی فاکتور قطعی، برگشتی، آفر و شواهد بهای FIFO')}>ارجاع بررسی شواهد سود</Button>}
 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             <Card padding="sm" className="bg-surface border border-border rounded-xl p-3">
