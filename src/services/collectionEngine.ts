@@ -176,10 +176,14 @@ export function evaluateAllCustomerCollections(
   // قاعدهٔ مالک (F0-16): مانده هر فاکتور از مانده دفتری مشتری و به‌صورت LIFO (از آخرین فاکتور به عقب) تخمین زده می‌شود؛
   // مانده/وضعیت/پرداخت ذخیره‌شدهٔ فاکتور و تخصیص CRM مبنا نیست. بدون مانده دفتری ⇒ نامشخص (بدون عدد ساختگی).
   const remainingByInvoice = estimateInvoiceRemaining(ledgerBalances, accounts, invoices);
-  const ledgerReady = !!ledgerBalances && ledgerBalances.status !== 'UNAVAILABLE';
+  const ledgerIssueCount = accounts.filter(acc => {
+    const view = resolveCustomerBalanceView(ledgerBalances, acc);
+    return view.kind !== 'OK' || view.incomplete || !Number.isFinite(view.total);
+  }).length;
+  const ledgerReady = ledgerBalances?.status === 'LIVE' && ledgerIssueCount === 0;
   summary.receivableSource = {
-    authoritative: ledgerReady, issueCount: 0, estimated: true,
-    blockedReason: ledgerReady ? undefined : 'مانده دفتری (Σبدهکار−Σبستانکار) در دسترس نیست؛ مانده و سن فاکتورها نامشخص است.'
+    authoritative: ledgerReady, issueCount: ledgerIssueCount, estimated: true,
+    blockedReason: ledgerReady ? undefined : 'مانده دفتری کامل و معتبر برای همه مشتریان در دسترس نیست؛ سن مطالبات و جمع‌ها قطعی نیستند.'
   };
   const agingItems: { days: number; amount: number }[] = [];
 
@@ -269,6 +273,9 @@ export function evaluateAllCustomerCollections(
     }
 
     const balanceView = ledgerBalances ? resolveCustomerBalanceView(ledgerBalances, acc) : null;
+    if (!balanceView || balanceView.kind !== 'OK' || balanceView.incomplete || !Number.isFinite(balanceView.total)) {
+      recommendedAction = 'ابتدا تکمیل و تطبیق مانده دفتری مشتری؛ ریسک مطالبات هنوز قطعی نیست.';
+    }
     profiles.push({
       accountId: acc.id,
       accountName: acc.name,
