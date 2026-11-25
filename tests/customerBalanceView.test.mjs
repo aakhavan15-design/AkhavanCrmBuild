@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { buildDetailBalancesResult, resolveCustomerBalanceView, customerDetailKeys } from '../src/lib/receivableReconciliation.ts';
 
-const L = (d, s, debit, credit, extra = {}) => ({ detailAccountId: d, subsidiaryCode: s, debitAmount: debit, creditAmount: credit, ...extra });
+const L = (d, s, debit, credit, extra = {}) => ({ detailAccountId: d, subsidiaryCode: s, debitAmount: debit, creditAmount: credit, status:'POSTED', ...extra });
 const res = buildDetailBalancesResult([L('C1', '1101', 100, 0), L('C1', '1102', 0, 30), L('C2', undefined, 50, 0)], 'CLIENT_INDEXEDDB');
 
 assert.deepEqual(resolveCustomerBalanceView(null, { id: 'C1' }), { kind: 'LOADING' });
@@ -27,4 +27,5 @@ assert.equal(resolveCustomerBalanceView(aliases, { id: 'a', code: 'c', detailAcc
 assert.equal(resolveCustomerBalanceView(aliases, { id: 'a', code: 'c', detailAccountId: 'missing' }).total, 300);
 // EMPTY ⇒ NO_LEDGER
 assert.equal(resolveCustomerBalanceView(buildDetailBalancesResult([], 'CLIENT_INDEXEDDB'), { id: 'C1' }).kind, 'NO_LEDGER');
+assert.equal(resolveCustomerBalanceView(buildDetailBalancesResult([L('C1','1101',100,0,{status:undefined})],'CLIENT_INDEXEDDB'),{id:'C1'}).kind,'NO_LEDGER');
 console.log('customerBalanceView: PASS');
