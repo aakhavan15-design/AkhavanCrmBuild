@@ -502,3 +502,169 @@
 - `tests/headerQuickActionsAndNav.test.mjs` — نیازمند ادغام خطی، رفع ناسازگاری قرارداد و تست اختصاصی؛ جایگزینی خام پذیرفته نشد.
 - `src/components/QuotesWorkspace.tsx` — نیازمند ادغام خطی، رفع ناسازگاری قرارداد و تست اختصاصی؛ جایگزینی خام پذیرفته نشد.
 - `src/components/EnterpriseWorkspaces.tsx` — نیازمند ادغام خطی، رفع ناسازگاری قرارداد و تست اختصاصی؛ جایگزینی خام پذیرفته نشد.
+
+## انتقال سوابق قدیمی از چک‌لیست فعال — ۲۰۲۶-۱۱-۲۵
+
+این بخش فقط سابقه تاریخی است؛ ردیف‌های آن کار فعال یا وضعیت فعلی فایل نیستند. مبنا: 29374de5069ebca1c1db1bbbb8c6001d3f4e26f8.
+
+## ثبت ممیزی‌ها (محل یگانهٔ نتایج ممیزی؛ هر ممیزی تاریخ و شاهد دارد)
+- **A1 — ۱۴۰۵/۰۸/۲۵ — مسیر ثبت مشتری (F0-07).** یافته‌ها (با grep روی `server/index.mjs`، `CustomersWorkspace.tsx`، `dataProvider.ts`، `optimisticMutation.ts`): (۱) ثبت محلی مستقیم در `state.accounts` با `origin=CRM_LOCAL`/`isLocalDraft` و صف offline عمومی `accounts CREATE` انجام می‌شد؛ (۲) مسیر پیشنهاد سرور `POST /api/v1/accounts` (Outbox `crm.customer.create-proposed`، idempotency، audit، `canonicalRecordCreated:false`) فقط با `ACCOUNTS_SOURCE=typed` فعال است و هیچ مصرف‌کنندهٔ کلاینتی نداشت؛ `DataProvider.createAccount(account, idempotencyKey)` موجود ولی بی‌استفاده؛ (۳) `findDuplicateAccounts` فقط فهرست‌محور و فقط بر پایهٔ تلفن بود (تطبیق کد ملی/اقتصادی/نام نبود)؛ (۴) متن اعلان «با موفقیت در سامانه ایجاد شد» ادعای مشتری رسمی می‌کرد. وضعیت: ۲ و ۴ و ۳ اصلاح/تکمیل شد؛ ۱ (اتصال شبکه‌ای) باز و BLOCKED.
+- **A2 — ۱۴۰۵/۰۸/۲۵ — `FinanceWorkspace` (F0-06).** `DOCUMENT_TYPE_LABELS`/`CapturedDocumentType` ایمپورت نشده بود (خطای زمان‌اجرا در شاخهٔ سایر اسناد) ← اصلاح؛ شاهد tests/intakePrefillBridge PASS. NOT VERIFIED: `tsc`.
+- **A3 — ۱۴۰۵/۰۸/۲۵ — محدودیت روش.** این ممیزی‌ها فقط grep/خواندن بازه‌ای هدفمند بودند؛ ممیزی کل سورس (F0-03) هنوز انجام نشده است.
+
+- **A4 — ۱۴۰۵/۰۸/۲۵ — مصرف مانده در فهرست مشتری (F0-13/F0-14).** یافته: `CustomersWorkspace` مانده را با `computeCustomerLedgerBalances(state.journalLines)` (خواندن مستقیم state، فقط تفصیلی) می‌ساخت ← با `getDetailSubsidiaryBalances` جایگزین شد. تست‌های `customerListBalancePermission` و `customerSyncExperienceContracts` قرارداد قدیمی را قفل کرده بودند و عمداً به قرارداد جدید به‌روز شدند (طراحی/قفل UI دست نخورد). **شکست از پیش موجود (نه ناشی از این نوبت، روی ZIP ورودی هم FAIL):** `tests/audit2026Contracts` سطر ۳۹ انتظار `invoice.balance` در `CustomersWorkspace` دارد که با اصل «مانده از دفتر کل» (F0-05) در تناقض است؛ نیازمند تصمیم مالک برای اصلاح/حذف آن assertion (دست‌کاری نشد). محدودیت: `ClientStorageDataProvider` مانده را از snapshot محلی می‌سازد؛ مسیر SQL (`/ledger/balances`) هنوز نیست (F10-02b) ⇒ LIVE سرور NOT VERIFIED.
+
+- **A5 — ۲۰۲۶-۱۱-۱۶ — ممیزی هدفمند هویت و چرخه پرسنل (F2-09/F8).** یافته‌های سورس: (۱) `UserAccount` در `src/types.ts` دارای `employeeCode` است، اما فیلدهای قراردادی مشخص برای کد بازرگانی و کد تفصیلی ندارد؛ (۲) تعریف/مدیریت کاربر و نقش هنوز در `SettingsWorkspace` است؛ `handleCreateUser` رکورد را در `state.users` می‌سازد؛ (۳) `onboarding.ts` درخواست همکاری، ارجاع مصاحبه، نتیجه مصاحبه و پرونده پرسنلی متصل به `userId` را دارد و جداسازی «تأیید پرونده» از «فعال‌سازی حساب» را رعایت می‌کند؛ اما تبدیل پذیرفته‌شده به کارمند/کاربر و گردش جامع وضعیت شغلی در این مسیر اثبات نشد؛ (۴) `personnelFiles` و `onboardingApplications` در `AppState`/`stateCollections` وجود دارند، اما مسیرهای بررسی‌شده عمدتاً از State/ClientStorage استفاده می‌کنند؛ اتصال کامل سروری/Provider برای چرخه پرسنل اثبات نشد؛ (۵) در `payrollEngine` دادهٔ پرسنل و حقوق مصرف می‌شود، اما مسیر آموزشی نقش‌محور، سطوح، بانک سوالات/آزمون، تأیید PASS مدیر و اتصال قطعی سطح به پلکان افزایش حقوق در ممیزی هدفمند پیدا نشد؛ (۶) `core.AppUser` در SQL وجود دارد و `ManagerUserId` نیز Migration دارد، اما در جست‌وجوی هدفمند، مدل مستقل و کامل Employee با تاریخچه شغلی/آموزشی و نگاشت کد بازرگانی/تفصیلی اثبات نشد. وضعیت: همهٔ موارد فوق باز هستند؛ این ممیزی محدود به فایل‌ها و الگوهای ذکرشده است و جایگزین ممیزی کامل Migrationها/Provider نیست. گام اجرایی: F2-09 تا F2-13، سپس F8-11 تا F8-17؛ قبل از هر Migration، مدل و جداول موجود دوباره ممیزی شوند.
+
+
+### ثبت ممیزی مستندات — A7 (۲۰۲۶-۱۱-۱۷)
+- تعریف محصول یکپارچه شد: مرز ERP/CRM، تحلیل سفارش و فاکتور ERP، طبقه‌بندی ریسک/نقدی/فرصت افزایش فروش، میز مذاکره روی سفارش، دستور پرداخت قطعی/غیرقطعی، توان پرداخت شرکت، تسک سراسری، مالی، HR، انبار، هوش جغرافیایی و پایش در Master Spec مرجع شدند.
+- ردیف‌های تکراری مدیریت پرسنل F15-01 تا F15-18 با حفظ تمام الزامات در F8-11 تا F8-17 ادغام شدند؛ پیش‌نیازهای مشترک سابق F15-19 تا F15-27 به F14-39 تا F14-47 منتقل شدند. F4-09 تنها مالک موتور جریمه است؛ F8-08 فقط اتصال خروجی آن به مطالبات را پیگیری می‌کند.
+- تعریف تفصیلی پایش/علت‌یابی/HR/مدل داده/پذیرش در بخش‌های ۱۲ تا ۱۶ Master Spec باقی ماند، اما بخش‌های اصلی فقط خلاصه و ارجاع می‌دهند تا مرجع موازی ساخته نشود. هیچ موتور یا فایل اجرایی حذف نشده است.
+- تست‌های اجراشده این نوبت: `node tests/documentationSetContracts.test.mjs` = PASS؛ `node tests/analyticsConstitutionContracts.test.mjs` = 4/4 PASS. این نوبت فقط مستندات، README، قرارداد مستندات و Checklist را اصلاح می‌کند؛ هیچ قابلیت اجرایی، API، Provider، SQL یا موتور جدیدی پیاده‌سازی نشده و هیچ ردیف اجرایی به PASS تبدیل نشده است.
+
+### ثبت ممیزی مستندات — A6
+- **۲۰۲۶-۱۱-۱۶ — تبدیل درخواست جامع مالک به Backlog اجرایی برای عامل بعدی.** چهار سند موجود (`INSTRUCTIONS.md`، `docs/CONSTITUTION_FA.md`، `docs/CHECKLIST_FA.md`، `docs/MASTER_SPEC_FA.md`) به‌صورت الحاقی به‌روزرسانی شدند. Master Spec بخش‌های ۱۲ تا ۱۶ را دریافت کرد؛ Constitution اصول K/L؛ Checklist فازهای F14/F15؛ Instructions ترتیب خواندن و فرمان تحویل‌کار عامل بعدی. این تغییر فقط مستندات است؛ هیچ کد اجرایی/SQL/API/Provider تغییر نکرده و هیچ تست نرم‌افزاری اجرا نشده است. وضعیت تمام ردیف‌های جدید `[ ]`؛ اتصال ERP و نگاشت جداول تا دریافت Schema و دسترسی واقعی ممکن است BLOCKED بماند.
+
+
+**گزارش ادغام کنترل‌شده ۱۴۰۵/۰۸/۲۷:** مبنا ZIP v0.12.90، کاندید Ki.txt و گزارش Py.txt. فقط سه فایل موتور/تنظیمات بالا اعمال شدند و یک تست جدید به Manifest اضافه شد؛ بقیهٔ کاندیدها، به‌خصوص فایل‌های دارای بلوک تکراری یا ناقص و تغییرات هدر قفل‌شده، عمداً جایگزین نشدند. آزمون‌های گسترده و اتصال SQL اجرا نشده‌اند؛ هیچ مورد دیگری تیک نخورده است.
+
+
+## گزارش ممیزی ادغام کدهای AI — ۱۴۰۵/۰۸/۲۷ (۲۰۲۶-۱۱-۱۸)
+
+مرجع: Ki.txt، گزارش بازبینی Py.txt و ZIP نسخه 0.12.90. وضعیت «ادغام» به معنای پایان قابلیت عملیاتی یا تأیید کامپایل نیست. فایل‌های تکراری/ناقص جایگزین نشده‌اند.
+
+**مبنای کنترل رگرسیون:** نسخه reviewed_partial: ۱۱۸ تست PASS و ۱۵ FAIL؛ خروجی حاضر: ۱۱۸ PASS و ۱۵ FAIL؛ هیچ FAIL تازه در اجرای Manifest مشاهده نشد. ۱۵ FAIL قدیمی هنوز باید رفع شوند. اجرای TypeScript build و مرورگر/SQL/ERP: NOT VERIFIED.
+
+**فایل‌های اعمال‌شده/تغییریافته نسبت به نسخه reviewed_partial:**
+- [~] `src/lib/metricConfig.ts` — کد نامزد اعمال شد؛ تست جامع و سناریوی عملیاتی نهایی NOT VERIFIED.
+- [~] `src/components/shared/GlobalFloatingIntakeDrawer.tsx` — کد نامزد اعمال شد؛ تست جامع و سناریوی عملیاتی نهایی NOT VERIFIED.
+- [~] `src/components/HomeWorkspace.tsx` — کد نامزد اعمال شد؛ تست جامع و سناریوی عملیاتی نهایی NOT VERIFIED.
+- [~] `src/components/LeadsWorkspace.tsx` — کد نامزد اعمال شد؛ تست جامع و سناریوی عملیاتی نهایی NOT VERIFIED.
+- [~] `src/components/Customer360.tsx` — کد نامزد اعمال شد؛ تست جامع و سناریوی عملیاتی نهایی NOT VERIFIED.
+- [~] `src/components/ReportsHub.tsx` — کد نامزد اعمال شد؛ تست جامع و سناریوی عملیاتی نهایی NOT VERIFIED.
+- [~] `src/components/CalendarWorkspace.tsx` — کد نامزد اعمال شد؛ تست جامع و سناریوی عملیاتی نهایی NOT VERIFIED.
+
+**فایل‌های بررسی‌شده ولی برای جلوگیری از رگرسیون به نسخه پایه برگردانده‌شده:**
+- [ ] `src/services/churnPredictionService.ts` — نیازمند ادغام خطی، رفع ناسازگاری قرارداد و تست اختصاصی؛ جایگزینی خام پذیرفته نشد.
+- [ ] `src/services/collectionEngine.ts` — نیازمند ادغام خطی، رفع ناسازگاری قرارداد و تست اختصاصی؛ جایگزینی خام پذیرفته نشد.
+- [ ] `src/components/ModuleLandingWorkspace.tsx` — نیازمند ادغام خطی، رفع ناسازگاری قرارداد و تست اختصاصی؛ جایگزینی خام پذیرفته نشد.
+- [ ] `tests/churnErpInvoiceSource.test.mjs` — نیازمند ادغام خطی، رفع ناسازگاری قرارداد و تست اختصاصی؛ جایگزینی خام پذیرفته نشد.
+- [ ] `scripts/tests.manifest.json` — نیازمند ادغام خطی، رفع ناسازگاری قرارداد و تست اختصاصی؛ جایگزینی خام پذیرفته نشد.
+- [ ] `src/components/DashboardWorkspace.tsx` — نیازمند ادغام خطی، رفع ناسازگاری قرارداد و تست اختصاصی؛ جایگزینی خام پذیرفته نشد.
+- [ ] `src/components/OperationsControlWorkspace.tsx` — نیازمند ادغام خطی، رفع ناسازگاری قرارداد و تست اختصاصی؛ جایگزینی خام پذیرفته نشد.
+
+**ورودی ناقص:** `src/components/FinanceWorkspace.tsx` در Ki.txt فاقد FILE_END و کد انتهایی است؛ جایگزین نشده. همچنین شروع تکراری ناقص برای `Customer360.tsx` و `tests.manifest.json` نادیده گرفته شد. متن چک‌لیست تولیدشده توسط AI جایگزین چک‌لیست اصلی نشد تا ردیف‌های موجود از دست نروند.
+
+**گام باقی‌مانده:** رفع ۱۵ تست پایه، ادغام خطی فایل‌های برگشتی با حفظ قفل هدر/منو و قرارداد ERP، TypeScript/Browser/SQL verification؛ وضعیت هیچ ردیف وابسته صرفاً بر اساس تولید کد `[x]` نشد.
+
+
+### ممیزی ادغام کدهای AI — ۱۴۰۵/۰۸/۲۷ (۲۰۲۶-۱۱-۱۸)
+
+این گزارش فقط وضعیت ادغام فایل‌های ارسالی Ki.txt را ثبت می‌کند؛ تکمیل کل پروژه را اثبات نمی‌کند. برای هیچ ردیف جدیدی بدون شواهد End-to-End علامت [x] درج نشده است.
+
+| فایل | وضعیت |
+|---|---|
+| `src/lib/metricConfig.ts` | `APPLIED_EXACT` |
+| `src/services/churnPredictionService.ts` | `APPLIED_EXACT` |
+| `src/services/collectionEngine.ts` | `APPLIED_EXACT` |
+| `src/lib/headerQuickActions.ts` | `APPLIED_EXACT` |
+| `src/lib/moduleLanding.ts` | `APPLIED_EXACT` |
+| `src/lib/navigation.ts` | `APPLIED_EXACT` |
+| `src/components/Layout.tsx` | `APPLIED_EXACT` |
+| `src/components/ModuleLandingWorkspace.tsx` | `APPLIED_EXACT` |
+| `src/services/tourEngine.ts` | `APPLIED_EXACT` |
+| `tests/churnErpInvoiceSource.test.mjs` | `APPLIED_EXACT` |
+| `tests/headerQuickActionsAndNav.test.mjs` | `APPLIED_EXACT` |
+| `scripts/tests.manifest.json` | `PENDING_MANIFEST_MERGE` |
+| `docs/CHECKLIST_FA.md` | `RECONCILED_NOT_OVERWRITTEN` |
+| `src/components/shared/GlobalFloatingIntakeDrawer.tsx` | `APPLIED_EXACT` |
+| `src/components/HomeWorkspace.tsx` | `APPLIED_EXACT` |
+| `src/components/DashboardWorkspace.tsx` | `REVIEWED_NOT_APPLIED_CONFLICT` |
+| `src/components/LeadsWorkspace.tsx` | `APPLIED_EXACT` |
+| `src/components/QuotesWorkspace.tsx` | `REVIEWED_NOT_APPLIED_CONFLICT` |
+| `src/components/Customer360.tsx` | `APPLIED_EXACT` |
+| `src/components/ReportsHub.tsx` | `APPLIED_EXACT` |
+| `src/components/CalendarWorkspace.tsx` | `APPLIED_EXACT` |
+| `src/components/EnterpriseWorkspaces.tsx` | `REVIEWED_NOT_APPLIED_CONFLICT` |
+| `src/components/OperationsControlWorkspace.tsx` | `REVIEWED_NOT_APPLIED_CONFLICT` |
+
+**بلوک‌های ناقص/تکراری در ورودی:** `scripts/tests.manifest.json`, `src/components/Customer360.tsx`, `src/components/FinanceWorkspace.tsx`؛ بخش ناقص FinanceWorkspace قابل جایگزینی نیست. نسخه کامل Customer360 از بلوک بسته استخراج شده ولی با سورس موجود تفاوت گسترده دارد؛ بدون کنترل قراردادها جایگزین نشد.
+
+**شواهد تست در نسخه ادغام جدید:** `designLockContracts` PASS؛ `seamlessHeaderContracts` PASS؛ `headerQuickActionsAndNav` PASS با Node type-stripping و resolver؛ `moduleLandingContracts` ۵ PASS / ۰ FAIL؛ `tourCoverageContracts` ۹ PASS / ۰ FAIL (پس از اصلاح قراردادهای قدیمی و اتصال هدف‌های واقعی راهنما). اجرای کامل build/tsc، مرورگر، SQL Server و ERP = NOT VERIFIED. **این نسخه آماده انتشار نیست.**
+
+**کار باقی‌مانده:** تطبیق قراردادهای قدیمی با مسیرهای مصوب بدون شکستن Deep Linkها؛ اصلاح تورها؛ حل تعارضات Dashboard/Quotes/Customer360/Enterprise/Operations؛ ادغام Manifest بدون حذف تست‌های پایه؛ بازبینی بصری و اجرای تست‌های سراسری و build؛ دریافت ادامهٔ FinanceWorkspace.
+
+### رفع تعارض چهار فایل — ۲۰۲۶-۱۱-۱۸ (ادامه)
+
+- [~] `DashboardWorkspace.tsx`: تغییرات Ki با مبنای ZIP اولیه و سورس ادغام‌شده با `git merge-file` سه‌طرفه ادغام شد؛ تعارض متنی صفر؛ بررسی اجرای UI/TypeScript هنوز تأیید نشده است.
+- [~] `QuotesWorkspace.tsx`: ادغام سه‌طرفه انجام شد؛ تعارض متنی صفر؛ آزمون CPQ و ERP هنوز تأیید نشده است.
+- [~] `EnterpriseWorkspaces.tsx`: ادغام سه‌طرفه انجام شد؛ تعارض متنی صفر؛ کنترل UI هنوز تأیید نشده است.
+- [~] `OperationsControlWorkspace.tsx`: ادغام سه‌طرفه انجام شد؛ تعارض متنی صفر؛ کنترل گزارش‌های عملیاتی هنوز تأیید نشده است.
+- [x] تست `headerQuickActionsAndNav.test.mjs` به Manifest اضافه شد و با runner رسمی PASS شد (۱ فایل تست موفق).
+- [x] `moduleLandingContracts.test.mjs`: قرارداد هشت فضای مصوب و Deep Linkهای قدیمی بازنگری شد؛ ۵/۵ PASS در ۲۰۲۶-۱۱-۱۸.
+- [x] `tourCoverageContracts.test.mjs`: هدف‌های واقعی Audit و ReportsHub متصل و شمارش ۲۷ ماژول اصلاح شد؛ ۹/۹ PASS در ۲۰۲۶-۱۱-۱۸.
+- [ ] `FinanceWorkspace.tsx`: بلوک Ki ناقص است و جایگزینی مستقیم آن انجام نشده؛ حفظ سورس سالم.
+
+**محدودیت مهم:** صفر بودن تعارض متنی به معنی موفقیت کامپایل، صحت عملکرد یا انتشارپذیری نیست. هیچ موردی بدون شاهد تست کامل به‌عنوان تکمیل نهایی ثبت نشده است. جدول قدیمی وضعیت ادغام در بالای این بخش تاریخچهٔ قبل از این ادغام است؛ وضعیت چهار فایل بالا اکنون «MERGED_UNVERIFIED» است.
+
+
+### پیگیری اختصاصی رفع ۷ خطای Landing/Tour — ۲۰۲۶-۱۱-۱۸
+- [x] چهار خطای `moduleLandingContracts`: پنج تست موفق؛ قراردادها با هشت فضای مصوب و نگاشت Deep Link قدیمی منطبق شد.
+- [x] سه خطای `tourCoverageContracts`: نه تست موفق؛ شناسه واقعی `audit-heading` و `reports-domain-selector` در UI اضافه شد و تور به آن‌ها اشاره می‌کند؛ ماژول audit به شمارش تست افزوده شد.
+- [x] تست هم‌حوزه `headerQuickActionsAndNav`: PASS.
+- [ ] تأیید TypeScript/build و مرورگر: NOT VERIFIED (طبق محدودیت اجرای پروژه انجام نشد).
+- [ ] سایر ردیف‌های باز چک‌لیست و یکپارچگی ERP/SQL: خارج از دامنه این اصلاح؛ همچنان NOT VERIFIED.
+
+### اجرای ۲۰۲۶-۱۱-۱۸ — F0-14: وضعیت خطای Provider در مصرف‌کنندگان مالی
+- **PASS (کد و تست هدفمند):** `FinanceWorkspace.tsx` خطای درخواست مانده را به `UNAVAILABLE` تبدیل می‌کند، به‌جای نمایش دائمی `LOADING`، و دکمه تلاش مجدد دارد. منبع خطا از Provider فعال گرفته می‌شود و عدد ساختگی ساخته نمی‌شود.
+- **PASS (کد و تست هدفمند):** `OrderDetailsDrawer.tsx` فقط در حالت باز بودن پنجره، وجود سفارش و مجوز مالی درخواست مانده می‌دهد؛ خطای Provider به‌عنوان مانده قبلی معتبر تلقی نمی‌شود.
+- **PASS (تست):** `node --experimental-strip-types --import ./scripts/register-ts-resolver.mjs --test tests/ledgerProviderUiFailureContracts.test.mjs tests/ledgerProviderFilterParity.test.mjs tests/ledgerJournalQuery.test.mjs tests/ledgerBalanceProjection.test.mjs` برابر **۱۱ PASS / ۰ FAIL**؛ تست جدید در Manifest ثبت و پرچم‌های اجرای تست parity اصلاح شد.
+- **NOT VERIFIED:** اجرای UI در مرورگر، TypeScript/build کامل، اتصال ERP/SQL Server و بررسی همه مصرف‌کنندگان مستقیم State. F0-14 بسته نشده؛ گام بعدی F0-14 انتقال گزارش‌های دفتری `ReportEnginePanels` از `state.journalLines` به DataProvider با حفظ قرارداد محاسبه سود و زیان و فیلترهای مالی.
+
+
+## ثبت یکپارچه‌سازی A/B و بررسی Ch — ۱۴۰۵/۰۸/۲۸
+- **[~] F0-14:** تغییرات ارائه‌دهنده داده P&L و مصرف‌کنندگان گزارش‌ها از A اعمال شد؛ بخش‌های Geo/Tasks و آزمون قرارداد از B ادغام شدند. تداخل فایل Geo با نسخه ناقص A به نفع نسخه کامل B حل شد.
+- **PASS:** آزمون اختصاصی `reportPnlDataProviderContracts.test.mjs` پس از اصلاح ارجاع مستقیم `coaMirror` در ReportEnginePanels.
+- **اصلاح صف:** ثبت وضعیت زون با شناسه واقعی؛ ساخت وظیفه‌های وصول با شناسه و payload مستقل. صف انتساب‌های گروهی زون به دلیل نبود قرارداد اتمیک معتبر فعلاً ارسال نمی‌شود و به تکمیل Provider/API نیاز دارد.
+- **NOT VERIFIED:** TypeScript/Build کامل، SQL Server، RLS و اجرای انتهابه‌انتها؛ گزارش Ch به‌عنوان شواهد بررسی ثانویه در نظر گرفته شد، نه تأیید قطعی رفع تمام ایرادها.
+- **باقی:** اطمینان از ذخیره پایدار نسخه هندسه، پیوست مدارک و انتساب‌های گروهی در Backend؛ بررسی اتصال واقعی P&L و بهبود refresh در صورت تغییرات سرور.
+
+### اصلاح رگرسیون قرارداد هوش مکانی — ۱۴۰۵/۰۸/۲۸
+- **PASS (آزمون اختصاصی):** `node tests/geoWorkspaceContracts.test.mjs` — هر ۴۶ assertion موفق. تست قدیمی به‌جای وابستگی به رشتهٔ ثابت `path: '/workspace/commerce'`، نگاشت واقعی مسیر `/geo-intelligence` به فضای `commerce` را در `navigation.ts` بررسی می‌کند؛ وجود tile در Landing همچنان کنترل می‌شود.
+- **PASS (آزمون اختصاصی):** قرارداد اعلان وظیفه با پذیرش cast نوعی `task as any` و بدون تغییر شرط اجرای موتور `processTaskCollaborationEvents` اصلاح شد.
+- **بدون تغییر محصول:** فقط `tests/geoWorkspaceContracts.test.mjs` اصلاح شد؛ هدر، ناوبری، Landing و منطق اجرایی تغییر نکردند.
+- **NOT VERIFIED:** تست مرورگر، Build/TypeScript و اتصال واقعی SQL/ERP. این اصلاح فقط شکست قدیمی قرارداد هوش مکانی را برطرف می‌کند و تکمیل F0-14 یا کل A/B/Ch محسوب نمی‌شود.
+- **گام بعد:** F0-14 — صحت دریافت/تازه‌سازی داده‌های دفترکل در Provider و رفع موارد باز همگام‌سازی Geo.
+
+---
+
+## ثبت اجرای فاز ۷/۸/۱۲ — ۲۰۲۶-۱۱-۱۹ (v0.12.63)
+
+**دامنه اجرا:** تکمیل قابل‌اجرای فازهای ۷، ۸ و ۱۲ روی سورس موجود (بدون بازنویسی موازی).
+
+### تغییرات اعمال‌شده
+1. **Migration 028** (`database/sqlserver/v1/028_hr_employee_attendance_leave_mission.sql`): جداول `hr.Employee`, `Attendance`, `LeaveRequest`, `OvertimeRequest`, `MissionRequest`, `ApprovalHistory`, `TargetAssignment` — افزایشی، idempotent، tenant-scoped.
+2. **F7-04**: ثبت تاریخی قاعدهٔ قبلی خواندن FIFO از DataProvider و نمایش «نامشخص». مالکیت محاسبه در مصوبهٔ ۲۰۲۶-۱۱-۲۰ به CRM تصریح شد. UI موجود در `OperationsSupplementalTabs.InventoryTab` حفظ شد.
+3. نسخه پکیج به `0.12.63` ارتقا یافت.
+4. تست قرارداد `tests/fifoInventoryHonestyContracts.test.mjs` برای honesty قانون FIFO.
+
+### وضعیت فازها (خلاصه صادقانه)
+| فاز | وضعیت کلی | توضیح |
+|-----|-----------|--------|
+| فاز ۷ | PARTIAL | F7-01/02/03 هنوز درخواست آزمایشی (PR-TEST) و بدون سفارش/رسید/برگشت کامل؛ F7-04 در تحویل تاریخی فقط نمایش (PARTIAL). مصوبهٔ جدید محاسبهٔ CRM را صریح کرده است. |
+| فاز ۸ | PARTIAL | F8-00 موجود؛ F8-03 جداول پایه Migration شد؛ F8-01/04/05/… UI و گردش کامل و DataProvider پایدار نشده‌اند |
+| فاز ۱۲ | MOSTLY MENU | اکثر ردیف‌ها منو/آیکون دارند و مالک منطق در فاز صاحب هستند؛ F12-07..11 FROZEN؛ F12-28/29 اطمینان نهایی باز است |
+
+### موارد باقی‌مانده با اولویت
+- F7-01: تکمیل درخواست داخلی و اتصال خواندن سفارش، رسید و گردش رسمی ERP.
+- F7-02: purchaseReturns + Migration + کنترل مقدار مجاز.
+- F8-01: Landing مستقل HR + اتصال به جداول ۰۲۸.
+- F8-04: گردش ۷مرحله‌ای مساعده (تأیید ≠ پرداخت).
+- F8-05: مدل‌های هدف و موتور پورسانت بدون موازی‌سازی با payrollEngine موجود.
+- اتصال سود فاکتور/برنامه (F12-21/22) به منبع بهای معتبر (نه آخرین خرید).
+- تست‌های End-to-End روی SQL Server زنده → فعلاً NOT VERIFIED.
+
+**قانون تحویل:** این نسخه کامل و نهایی اعلام نمی‌شود. ادامه کار از F7-01 و تکمیل DataProvider برای جداول ۰۲۸.
+
+
