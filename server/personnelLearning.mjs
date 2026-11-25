@@ -55,7 +55,9 @@ export function learningAction(body) {
 }
 
 export function gradeLearningExam(questions, answers, passPercent) {
-  if (questions.length !== answers.length || !answers.every((answer, index) => between(answer, 0, questions[index].options.length - 1))) return null;
+  if (!Array.isArray(questions) || !Array.isArray(answers) || !between(questions.length,1,30) || questions.length !== answers.length || !between(passPercent,1,100)) return null;
+  if (!Array.from(questions).every(item => item && Array.isArray(item.options) && between(item.options.length,2,5) && between(item.correct,0,item.options.length-1))
+    || !Array.from(answers).every((answer,index) => between(answer,0,questions[index].options.length-1))) return null;
   const correct = questions.reduce((total, item, index) => total + Number(answers[index] === item.correct), 0);
   return { score: Math.round((10000 * correct) / questions.length) / 100, passed: (100 * correct) >= passPercent * questions.length };
 }
