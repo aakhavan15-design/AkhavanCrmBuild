@@ -1,7 +1,9 @@
 import React from 'react';
+import { Avatar } from '../ui/Avatar';
+import { formatCount, formatNumber } from '../../lib/format';
 
 export type ReportChoice = { id: string; label: string; disabled?: boolean };
-export type ReportRank = { id: string; label: string; value: number | null; formattedValue?: string };
+export type ReportRank = { id: string; label: string; value: number | null; formattedValue?: string; avatar?: string; description?: string; tone?: 'neutral'|'success'|'danger' };
 
 /** Controlled primitives: consumers supply operational data; no demo values. */
 export function SectionHeader({ title, description, action }: { title: string; description?: string; action?: React.ReactNode }) {
@@ -13,10 +15,44 @@ export function StatusChip({ label, tone = 'neutral' }: { label: string; tone?: 
   return <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs ${toneClasses[tone]}`}>{label}</span>;
 }
 
-export function RankList({ items, label = 'رتبه‌بندی' }: { items: readonly ReportRank[]; label?: string }) {
-  const valid = items.filter(item => item.value !== null && Number.isFinite(item.value) && item.value >= 0).sort((a,b) => (b.value ?? 0) - (a.value ?? 0));
-  const maximum = Math.max(0, ...valid.map(item => item.value ?? 0));
-  return <section aria-label={label} dir="rtl">{!valid.length ? <p role="status" className="p-3 text-center text-xs text-text-muted">داده‌ای برای نمایش وجود ندارد</p> : <ol className="space-y-2">{valid.map((item, i) => <li key={item.id}><div className="flex justify-between gap-3 text-xs"><span className="truncate">{(i + 1).toLocaleString('fa-IR')}. {item.label}</span><span className="tabular-nums">{item.formattedValue ?? item.value?.toLocaleString('fa-IR')}</span></div><div role="meter" aria-label={item.label} aria-valuemin={0} aria-valuemax={maximum || 1} aria-valuenow={item.value ?? 0} className="mt-1 h-1.5 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700"><div className="h-full rounded-full bg-emerald-600" style={{ width: `${maximum ? (item.value ?? 0) / maximum * 100 : 0}%` }} /></div></li>)}</ol>}</section>;
+export function RankList({items,label='رتبه‌بندی',showAvatars=false,allowSigned=false,limit,selectedId,onSelect}:{
+  items:readonly ReportRank[]; label?:string; showAvatars?:boolean; allowSigned?:boolean; limit?:number;
+  selectedId?:string|null; onSelect?:(id:string|null)=>void;
+}) {
+  const valid=items.filter(item=>typeof item.value==='number'&&Number.isFinite(item.value)&&(allowSigned||item.value>=0))
+    .sort((a,b)=>(b.value as number)-(a.value as number)||a.id.localeCompare(b.id));
+  const maximum=Math.max(0,...valid.map(item=>Math.abs(item.value as number)));
+  const shown=limit===undefined?valid:valid.slice(0,limit);
+  const selected=shown.some(item=>item.id===selectedId)?selectedId:null;
+  return <section aria-label={label} dir="rtl">
+    {!shown.length?<p role="status" className="py-3 text-center text-xs text-text-muted">داده‌ای برای نمایش وجود ندارد</p>:<ol className="space-y-2">
+      {shown.map((item,i)=>{
+        const value=item.value as number;
+        const danger=item.tone==='danger'||value<0;
+        const tone=danger?'text-danger':item.tone==='success'?'text-success':'text-text-main';
+        const content=<>
+          <div className="flex items-center gap-1.5 min-w-0">
+            <span className="shrink-0 text-micro tabular-nums text-text-secondary">{formatCount(i+1)}</span>
+            {showAvatars&&<Avatar name={item.label} src={item.avatar} size="xs" className="shrink-0"/>}
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-baseline justify-between gap-x-1 gap-y-0.5">
+                <span className="min-w-0 text-caption font-semibold break-words">{item.label}</span>
+                <bdi className={'text-caption tabular-nums font-semibold '+tone}>{item.formattedValue??formatNumber(value)}</bdi>
+              </div>
+              {item.description&&<p className="text-micro text-text-secondary">{item.description}</p>}
+            </div>
+          </div>
+          <div className="mt-1 h-1 overflow-hidden rounded-full bg-canvas" aria-hidden="true">
+            <div className={'h-full rounded-full motion-safe:transition-all '+(danger?'bg-danger':item.tone==='success'?'bg-success':'bg-primary')}
+              style={{width:maximum?Math.abs(value)/maximum*100+'%':'0%'}}/>
+          </div>
+        </>;
+        return <li key={item.id} className={selected&&selected!==item.id?'opacity-55 motion-safe:transition-opacity':'motion-safe:transition-opacity'}>
+          {onSelect?<button type="button" aria-pressed={selected===item.id} onClick={()=>onSelect(selected===item.id?null:item.id)} className="w-full min-h-11 rounded-lg p-1 text-start focus-visible:outline-2 focus-visible:outline-primary">{content}</button>:content}
+        </li>;
+      })}
+    </ol>}
+  </section>;
 }
 
 export function FilterChips({ options, selected, onChange, label = 'فیلتر گزارش' }: { options: readonly ReportChoice[]; selected: readonly string[]; onChange: (ids: string[]) => void; label?: string }) {
