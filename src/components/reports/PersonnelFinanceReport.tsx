@@ -52,7 +52,9 @@ export function PersonnelFinanceReport({ state }: {state:AppState}) {
   const label=(code:string)=>data?.coa.find(a=>a.code===code)?.name||code;
   const segments=[...debitTotals].filter(([,v])=>v>0).sort((a,b)=>b[1]-a[1]).map(([code,value],i)=>({code,label:label(code)+' · '+code,value,color:palette[i%palette.length]}));
   const max=Math.max(1,...rows.flatMap(r=>[Math.abs(r.balance??0),...r.accounts.map(a=>Math.abs(a.balance))]));
-  const sum=visible.length&&visible.every(r=>r.balance!==null)?visible.reduce((n,r)=>n+(selectedPersonnelBalance(r,account)??0),0):null;
+  const selectedBalances=visible.map(r=>selectedPersonnelBalance(r,account));
+  const sumCandidate=selectedBalances.length && selectedBalances.every((v):v is number=>v!==null) ? selectedBalances.reduce((n,v)=>n+v,0) : null;
+  const sum=sumCandidate!==null && Number.isSafeInteger(sumCandidate)?sumCandidate:null;
   return <section dir="rtl" className="space-y-3" aria-label="تحلیل مالی پرسنل">
     <div className="flex flex-wrap justify-between gap-2"><h2 className="text-lg font-bold">تحلیل مالی و سودآوری پرسنل</h2><Link className="text-sm text-primary" to="/reports?tab=sales">بازگشت به گزارش‌ها</Link></div>
     <LedgerBookSourceSelect viewer={state.currentUserId}/>
