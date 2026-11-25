@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { buildDetailBalancesResult } from '../src/lib/receivableReconciliation.ts';
 import { buildLedgerAgingInputs, estimateLedgerAging } from '../src/services/agingBuckets.ts';
 
-const L = (d, s, debit, credit) => ({ detailAccountId: d, subsidiaryCode: s, debitAmount: debit, creditAmount: credit });
+const L = (d, s, debit, credit) => ({ detailAccountId: d, subsidiaryCode: s, debitAmount: debit, creditAmount: credit, status:'POSTED' });
 const res = buildDetailBalancesResult([
   L('C1', '1101', 150, 0),            // بدهکار ۱۵۰
   L('C2', '1101', 0, 40),             // بستانکار ⇒ در سنی نمی‌آید
@@ -29,7 +29,7 @@ assert.equal(est.unattributed, 0);
 
 // قرارداد ایستا: گزارش ۷ مانده فاکتوری ندارد
 const p = readFileSync('src/components/ReportEnginePanels.tsx', 'utf8');
-assert.ok(p.includes('getDetailSubsidiaryBalances') && /canSeeLedger \? provider\.getDetailSubsidiaryBalances\(\)/.test(p), 'از DataProvider و پشت مجوز مالی');
+assert.ok(p.includes('getDetailSubsidiaryBalances') && /canSeeLedger \? provider\.getDetailSubsidiaryBalances\(\{[^}]*role:'RECEIVABLE'/.test(p), 'از DataProvider و پشت مجوز مالی');
 assert.ok(p.includes('summarizeCustomerLedgerReceivables') && p.includes('buildLedgerAgingInputs') && p.includes('estimateLedgerAging'));
 assert.ok(!p.includes('receivables.totalOutstanding') && !p.includes('receivables.priorities') && !/receivables\.invoices/.test(p), 'مانده/اولویت/سنی از reconcileReceivables نیست');
 assert.ok(!/outstanding:\s*Number\(inv\.balance/.test(p), 'Drill-down مانده هر فاکتور را از inv.balance نمی‌سازد');
@@ -48,7 +48,7 @@ assert.match(workspace, /visibleAccounts\.filter\(row => canOn\('finance', 'VIEW
 assert.match(workspace, /<ReportsHub[\s\S]+?receivableAccounts=\{receivableAccounts\}/);
 const hub = readFileSync('src/components/ReportsHub.tsx', 'utf8');
 assert.match(hub, /domain === 'receivables'[\s\S]+?canViewFinance[\s\S]+?<LedgerReceivablesReport/);
-assert.match(hub, /provider\.getDetailSubsidiaryBalances\(\)/);
+assert.match(hub, /provider\.getDetailSubsidiaryBalances\(\{[^}]*role:'RECEIVABLE'/);
 assert.match(hub, /canViewPayments \? provider\.getPaymentAllocations\(\)/);
 assert.match(hub, /view\.kind === 'OK' && !view\.incomplete/);
 assert.match(hub, /<ReceivablesLifoPanel[\s\S]+?accounts=\{completeAccounts\}/);
