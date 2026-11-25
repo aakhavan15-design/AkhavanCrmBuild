@@ -43,7 +43,7 @@ import { DemoTrustBanner, isAuthoritativeActionAllowed } from './shared/DemoTrus
 import { CustomDatePicker } from './ui/CustomDatePicker';
 import { ChartCard } from './charts/ChartCard';
 import { DonutChart } from './charts/DonutChart';
-import { formatMoney, formatMoneyCompact } from '../lib/format';
+import { formatMoney, formatMoneyCompact, formatNumber, formatCount } from '../lib/format';
 import { LineChart } from './charts/LineChart';
 import { InvoiceFifoSheet } from './finance/InvoiceFifoSheet';
 import { CollectionWorkbench } from './finance/CollectionWorkbench';
@@ -432,12 +432,12 @@ export function FinanceWorkspace({ state, updateState }: FinanceWorkspaceProps) 
                     <ul className="mt-1.5 space-y-1">
                       {cust.covered.map((c, idx) => (
                         <li key={`${c.invoiceNumber}-${idx}`} className="flex items-center justify-between gap-2 text-micro text-text-secondary">
-                          <span>{idx === 0 ? 'آخرین فاکتور' : 'فاکتور قبل'} {c.invoiceNumber || '—'} · {c.date || 'بدون تاریخ'}{c.days === null ? ' · سررسید نامشخص' : c.days > 0 ? ` · ${c.days.toLocaleString('fa-IR')} روز تأخیر` : ' · سررسیدنشده'}</span>
-                          <span className="font-mono">{c.covered.toLocaleString('fa-IR')} از {c.invoiceTotal.toLocaleString('fa-IR')}</span>
+                          <span>{idx === 0 ? 'آخرین فاکتور' : 'فاکتور قبل'} {c.invoiceNumber || '—'} · {c.date || 'بدون تاریخ'}{c.days === null ? ' · سررسید نامشخص' : c.days > 0 ? ` · ${formatCount(c.days)} روز تأخیر` : ' · سررسیدنشده'}</span>
+                          <span className="font-mono">{formatNumber(c.covered)} از {formatNumber(c.invoiceTotal)}</span>
                         </li>
                       ))}
                       {cust.covered.length === 0 && <li className="text-micro text-text-secondary">فاکتور ERP برای این مشتری موجود نیست</li>}
-                      {cust.unattributed > 0 && cust.covered.length > 0 && <li className="text-micro text-warning">{cust.unattributed.toLocaleString('fa-IR')} ریال بدون فاکتور یا سررسید معتبر</li>}
+                      {cust.unattributed > 0 && cust.covered.length > 0 && <li className="text-micro text-warning">{formatNumber(cust.unattributed)} ریال بدون فاکتور یا سررسید معتبر</li>}
                     </ul>
                   </div>
                 ))}
