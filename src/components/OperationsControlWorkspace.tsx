@@ -200,12 +200,13 @@ export function OperationsControlWorkspace({ state, updateState }: Props) {
   const productProfitRanks = useMemo(() => {
     const map = new Map<string, { name: string; revenue: number; cost: number; profit: number; margin: number }>();
     orders.forEach(o => {
-      if (o.status === 'CANCELLED') return;
-      (o.lines || []).forEach((l: Record<string, unknown>) => {
+      if (o.costKnown !== true || o.deletedAt || o.isDeleted || o.isVoided || ['CANCELLED','CANCELED','VOID','VOIDED'].includes(String(o.status || '').toUpperCase())) return;
+      (Array.isArray(o.lines) ? o.lines : []).forEach((l: Record<string, unknown>) => {
         const prod = products.find(p => p.id === l.productId);
         const name = prod?.name || l.productName || 'کالای صنعتی';
         const rev = Number(l.lineTotal || (Number(l.quantity) * Number(l.unitPrice)) || 0);
-        const unitCost = Number(prod?.costPrice ?? l.costPrice ?? 0);
+        // Historical order-line cost only; current catalog cost is not historical evidence.
+        const unitCost = l.costPrice == null || l.costPrice === '' ? NaN : Number(l.costPrice);
         if (!Number.isFinite(unitCost) || unitCost <= 0 || !Number.isFinite(rev) || rev <= 0) return;
         const cost = Number(l.quantity || 0) * unitCost;
         if (!Number.isFinite(cost) || cost < 0) return;
@@ -278,9 +279,9 @@ export function OperationsControlWorkspace({ state, updateState }: Props) {
       <WorkspaceViewSwitcher<Tab> id="ops-tabs" label="بخش عملیات" areas={visibleAreas} value={tab} onChange={setTab} />
 
       <VerdictStrip
-        verdict={openCases > 0 ? `${formatCount(openCases)} مورد مغایرت در فرآیند توزیع نیازمند رسیدگی است` : `فرآیند ارسال و توزیع ناوگان در وضعیت نرمال قرار دارد`}
+        verdict={openCases > 0 ? `${formatCount(openCases)} مورد مغایرت در فرآیند توزیع نیازمند رسیدگی است` : `در داده‌های قابل مشاهده مغایرت باز ثبت نشده است`}
         magnitude={`پوشش بهای تمام‌شده: ${formatCount(Math.round(costCoverage * 100))}٪`}
-        tone={openCases > 0 ? 'warning' : 'success'}
+        tone={openCases > 0 ? 'warning' : 'neutral'}
         actionLabel={openCases > 0 ? 'مشاهده مغایرت‌ها' : undefined}
         onAction={() => setTab('reconciliation')}
       />
@@ -616,8 +617,8 @@ export function OperationsControlWorkspace({ state, updateState }: Props) {
               </div>
               <div className="space-y-2">
                 {productProfitRanks.slice(0, 5).map((item, idx) => {
-                  const maxProfit = productProfitRanks[0]?.profit || 1;
-                  const pct = Math.max(4, Math.round((item.profit / maxProfit) * 100));
+                  const maxProfit = Math.max(1, ...productProfitRanks.map(row => Math.abs(row.profit)));
+                  const pct = Math.min(100, Math.round(Math.abs(item.profit) / maxProfit * 100));
                   return (
                     <div key={idx} className="space-y-1">
                       <div className="flex justify-between text-xs">
