@@ -84,7 +84,6 @@ export function OperationsControlWorkspace({ state, updateState }: Props) {
     const scope = customer ? scopeOf(customer) : scopeOf(c);
     return Boolean((canOn('cases', 'VIEW', scope) || canOn('finance', 'VIEW', scope)) && (customer || c.assignedTo === state.currentUserId));
   });
-  const products: Array<Record<string, unknown>> = state.externalProducts || [];
   const invoicesAll: Array<Record<string, unknown>> = state.invoices || [];
   const invoices: Array<Record<string, unknown>> = can('finance', 'VIEW') ? invoicesAll.filter(i => {
     const customer = customersAll.find(c => c.id === (i.customerId || i.accountId));
@@ -159,11 +158,10 @@ export function OperationsControlWorkspace({ state, updateState }: Props) {
       invoices,
       returns,
       payments,
-      orders,
       dispatchPlans,
       expenses
     });
-  }, [invoices, returns, payments, orders, dispatchPlans, expenses]);
+  }, [invoices, returns, payments, dispatchPlans, expenses]);
 
   const returnsAnalysis = useMemo(() => {
     return analyzeReturns(returns);
@@ -196,31 +194,6 @@ export function OperationsControlWorkspace({ state, updateState }: Props) {
       };
     });
   }, [returnsAnalysis]);
-
-  const productProfitRanks = useMemo(() => {
-    const map = new Map<string, { name: string; revenue: number; cost: number; profit: number; margin: number }>();
-    orders.forEach(o => {
-      if (o.costKnown !== true || o.deletedAt || o.isDeleted || o.isVoided || ['CANCELLED','CANCELED','VOID','VOIDED'].includes(String(o.status || '').toUpperCase())) return;
-      (Array.isArray(o.lines) ? o.lines : []).forEach((l: Record<string, unknown>) => {
-        const prod = products.find(p => p.id === l.productId);
-        const name = prod?.name || l.productName || 'کالای صنعتی';
-        const rev = Number(l.lineTotal || (Number(l.quantity) * Number(l.unitPrice)) || 0);
-        // Historical order-line cost only; current catalog cost is not historical evidence.
-        const unitCost = l.costPrice == null || l.costPrice === '' ? NaN : Number(l.costPrice);
-        if (!Number.isFinite(unitCost) || unitCost <= 0 || !Number.isFinite(rev) || rev <= 0) return;
-        const cost = Number(l.quantity || 0) * unitCost;
-        if (!Number.isFinite(cost) || cost < 0) return;
-        const profit = rev - cost;
-        const existing = map.get(name) || { name, revenue: 0, cost: 0, profit: 0, margin: 0 };
-        existing.revenue += rev;
-        existing.cost += cost;
-        existing.profit += profit;
-        existing.margin = existing.revenue > 0 ? (existing.profit / existing.revenue) * 100 : 0;
-        map.set(name, existing);
-      });
-    });
-    return [...map.values()].sort((a, b) => b.profit - a.profit);
-  }, [orders, products]);
 
   const returnsByProduct = useMemo(() => {
     const map = new Map<string, { name: string; amount: number; count: number }>();
@@ -552,12 +525,13 @@ export function OperationsControlWorkspace({ state, updateState }: Props) {
           </div>
 
           <VerdictStrip
-            verdict={profitability.estimatedGrossMarginPercent == null ? 'حاشیه سود قابل محاسبه نیست؛ بهای معتبر سفارش‌ها کافی نیست.' : `حاشیه سود سفارش‌های دارای بهای معتبر ${Math.round(profitability.estimatedGrossMarginPercent)}٪ است`}
-            magnitude={`سود ناخالص برآوردی اقلام دارای بهای معتبر: ${money(profitability.estimatedGrossProfit)}`}
-            tone={profitability.estimatedGrossMarginPercent == null ? 'neutral' : 'success'}
-            actionLabel={profitability.estimatedGrossMarginPercent == null ? undefined : 'ایجاد وظیفه بازنگری'}
-            onAction={profitability.estimatedGrossMarginPercent == null ? undefined : () => handleCreateInsightTask('بازنگری سودآوری سفارش‌های دارای بهای معتبر', 'بررسی اسناد سفارش‌های دارای بهای تمام‌شده معتبر')}
+            verdict={profitability.realizedGrossProfit == null ? 'سود تحقق‌یافته تا تطبیق فاکتور فروش، برگشتی قطعی و بهای FIFO نامشخص است.' : 'سود ناخالص تحقق‌یافته از اسناد فروش تطبیق‌یافته محاسبه شده است.'}
+            magnitude={`سود ناخالص تحقق‌یافته: ${money(profitability.realizedGrossProfit)}`}
+            tone="neutral"
+            actionLabel={can('finance', 'VIEW') ? 'بررسی سود فاکتورها' : undefined}
+            onAction={() => navigate('/finance?tab=invoices&view=margin')}
           />
+          {can('tasks', 'CREATE') && can('finance', 'VIEW') && profitability.realizedGrossProfit == null && <Button size="sm" variant="outline" onClick={() => handleCreateInsightTask('تطبیق سود فاکتورهای فروش', 'بررسی فاکتور قطعی، برگشتی، آفر و شواهد بهای FIFO')}>ارجاع بررسی شواهد سود</Button>
 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             <Card padding="sm" className="bg-surface border border-border rounded-xl p-3">
@@ -569,19 +543,19 @@ export function OperationsControlWorkspace({ state, updateState }: Props) {
             </Card>
 
             <Card padding="sm" className="bg-surface border border-border rounded-xl p-3">
-              <span className="text-micro text-text-secondary font-medium">سود ناخالص عملیاتی</span>
+              <span className="text-micro text-text-secondary font-medium">سود ناخالص تحقق‌یافته</span>
               <div className="text-base sm:text-lg font-bold text-primary font-mono mt-1">
-                {money(profitability.estimatedGrossProfit)}
+                {money(profitability.realizedGrossProfit)}
               </div>
               <span className="text-micro text-text-secondary mt-0.5 block">پوشش بهای معتبر</span>
             </Card>
 
             <Card padding="sm" className="bg-surface border border-border rounded-xl p-3">
-              <span className="text-micro text-text-secondary font-medium">حاشیه سود ناخالص برآوردی</span>
+              <span className="text-micro text-text-secondary font-medium">حاشیه سود ناخالص تحقق‌یافته</span>
               <div className="text-base sm:text-lg font-bold text-text-main font-mono mt-1">
-                {profitability.estimatedGrossMarginPercent == null ? 'نامشخص' : `${Math.round(profitability.estimatedGrossMarginPercent)}٪`}
+                {profitability.realizedGrossMarginPercent == null ? 'نامشخص' : `${Math.round(profitability.realizedGrossMarginPercent)}٪`}
               </div>
-              <span className="text-micro text-text-secondary mt-0.5 block">سفارش‌های با بهای معتبر</span>
+              <span className="text-micro text-text-secondary mt-0.5 block">فاکتور فروش و برگشتی قطعی با بهای FIFO</span>
             </Card>
 
             <Card padding="sm" className="bg-surface border border-border rounded-xl p-3">
@@ -612,35 +586,12 @@ export function OperationsControlWorkspace({ state, updateState }: Props) {
 
             <Card padding="md" className="space-y-3 rounded-xl border border-border bg-surface">
               <div className="flex justify-between items-center text-xs">
-                <span className="font-bold text-text-main">سود برآوردی سفارش‌های دارای بهای ثبت‌شده</span>
-                <span className="text-micro text-text-secondary">رتبه‌بندی حاشیه سود</span>
+                <span className="font-bold text-text-main">سودآوری تفصیلی فاکتور فروش</span>
+                <span className="text-micro text-text-secondary">شواهد FIFO</span>
               </div>
-              <div className="space-y-2">
-                {productProfitRanks.slice(0, 5).map((item, idx) => {
-                  const maxProfit = Math.max(1, ...productProfitRanks.map(row => Math.abs(row.profit)));
-                  const pct = Math.min(100, Math.round(Math.abs(item.profit) / maxProfit * 100));
-                  return (
-                    <div key={idx} className="space-y-1">
-                      <div className="flex justify-between text-xs">
-                        <span className="font-semibold text-text-main">{item.name}</span>
-                        <div className="flex items-center gap-2">
-                          <span className="font-mono font-bold text-primary">{money(item.profit)}</span>
-                          <span className="text-micro font-bold text-text-secondary">({Math.round(item.margin)}٪)</span>
-                        </div>
-                      </div>
-                      <div className="w-full h-1.5 rounded-full bg-border/60 overflow-hidden">
-                        <div
-                          className="h-full rounded-full bg-primary transition-all duration-500"
-                          style={{ width: `${pct}%` }}
-                        />
-                      </div>
-                    </div>
-                  );
-                })}
-                {productProfitRanks.length === 0 && (
-                  <p className="text-xs text-text-secondary py-4 text-center">کالای دارای بهای تمام‌شده معتبر برای رتبه‌بندی وجود ندارد.</p>
-                )}
-              </div>
+              <p className="text-caption text-text-secondary">رتبه‌بندی قطعی کالا نیازمند پوشش فاکتور، تخفیف و آفر قطعی، برگشتی و بهای تمام‌شده است. سفارش و قیمت فعلی کالا جایگزین این شواهد نمی‌شوند.</p>
+              {can('finance', 'VIEW') && <Button size="sm" variant="outline" onClick={() => navigate('/finance?tab=invoices&view=margin')}>مشاهده سود و ریز بهای فاکتورها</Button>}
+              {can('reports', 'VIEW') && <Button size="sm" variant="ghost" onClick={() => navigate('/reports')}>گزارش تفصیلی سودآوری</Button>}
             </Card>
           </div>
 
