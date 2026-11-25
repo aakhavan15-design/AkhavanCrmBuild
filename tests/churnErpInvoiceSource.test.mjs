@@ -48,11 +48,27 @@ const stateWithInvoices = {
   ],
 };
 
-const invoiceResult = predictAccountChurn(account, stateWithInvoices, refDate);
+const unverifiedResult = predictAccountChurn(account, stateWithInvoices, refDate);
+assert.equal(unverifiedResult.revenueDropPercent, null, 'Gross invoices alone do not establish verified net sales');
+assert.equal(unverifiedResult.unpaidOverdueAmount, null, 'Invoice balance cannot substitute for the ledger');
+const ledgerBalances = {
+  status: 'LIVE', source: 'SQLSERVER_BACKEND', sourceSystem: 'TEST_ERP', currency: 'IRR',
+  balances: [{
+    detailKey: 'acc-1', accountId: 'acc-1', status: 'COMPLETE',
+    subsidiaries: [{subsidiaryCode:'AR',periodCode:null,debit:250_000_000,credit:200_000_000,balance:50_000_000,nature:'DEBIT',lineCount:2}],
+    total: {debit:250_000_000,credit:200_000_000,balance:50_000_000,nature:'DEBIT',lineCount:2},
+  }],
+};
+const verifiedNetSalesByPeriod = {previous:200_000_000,recent:50_000_000,ledgerReconciled:true};
+const invoiceResult = predictAccountChurn(account, stateWithInvoices, refDate, {ledgerBalances, verifiedNetSalesByPeriod});
 assert.equal(invoiceResult.daysSinceLastOrder, 45, 'Must ignore CANCELLED invoice from 2026-06-14');
-assert.equal(invoiceResult.revenueDropPercent, 75, 'Must compute 75% revenue drop from realized invoices (200M -> 50M)');
+assert.equal(invoiceResult.revenueDropPercent, 75, 'Must compute 75% revenue drop from reconciled net sales (200M -> 50M)');
 assert.equal(invoiceResult.bouncedChequesCount, 1, 'Guarantee cheque must be excluded');
 assert.equal(invoiceResult.unpaidOverdueAmount, 50_000_000);
+const uncovered = {...ledgerBalances, balances: [{...ledgerBalances.balances[0], total: {...ledgerBalances.balances[0].total,balance:300_000_000}}]};
+assert.equal(predictAccountChurn(account,stateWithInvoices,refDate,{ledgerBalances:uncovered}).unpaidOverdueAmount,null);
+const partial = {...ledgerBalances, balances: [{...ledgerBalances.balances[0],status:'HAS_UNMAPPED'}]};
+assert.equal(predictAccountChurn(account,stateWithInvoices,refDate,{ledgerBalances:partial}).unpaidOverdueAmount,null);
 
 // ۳. آستانه‌ها باید از تنظیمات سازمان خوانده شوند (نه عدد ثابت).
 const customSettingsState = {
