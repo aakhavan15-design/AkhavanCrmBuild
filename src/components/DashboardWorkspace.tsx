@@ -188,10 +188,9 @@ export function DashboardWorkspace({ state }: { state: AppState }) {
     quotes: canViewQuotes ? (state.quotes || []).filter(quote => visibleAccountIds.has(String(quote.accountId || quote.customerId || ''))) : [],
     invoices: visibleInvoices,
     cases: canViewCases ? (state.cases || []).filter(record => {
-      const scope = record as Record<string, unknown>;
-      return visibleAccountIds.has(String(scope.accountId || scope.customerId || '')) && rbac.canActOnRecord('cases', 'VIEW', {
-        ownerId: scope.ownerId, branchId: scope.branchId, territoryId: scope.territoryId, teamId: scope.teamId, tenantId: scope.tenantId,
-        deletedAt: scope.deletedAt, isDeleted: scope.isDeleted,
+      return visibleAccountIds.has(String(record.accountId || record.customerId || '')) && rbac.canActOnRecord('cases', 'VIEW', {
+        ownerId: record.ownerId, branchId: record.branchId, territoryId: record.territoryId, teamId: record.teamId, tenantId: record.tenantId,
+        deletedAt: record.deletedAt, isDeleted: record.isDeleted,
       });
     }) : [],
     payments: canViewFinance ? (state.payments || []).filter(payment => visibleAccountIds.has(String(payment.accountId || payment.customerId || ''))) : [],
