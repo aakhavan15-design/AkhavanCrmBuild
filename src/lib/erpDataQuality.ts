@@ -131,10 +131,26 @@ export function auditErpDataQuality(state: Rec, options: QualityOptions = {}): Q
   const notEvaluated: NotEvaluated[] = [];
   const coverage: Record<string, number> = {};
   const ruleCounts: Record<string, number> = {};
-  let seq = 0;
+  // A finding identity must survive repeated snapshots and input order changes.
+  // The tenant/source scope is applied by the persistence layer, not inferred here.
+  const seen = new Map<string, QualityIssue | null>();
   const add = (i: Omit<QualityIssue, 'id'>) => {
+    const members = i.evidence?.customerIds ?? i.evidence?.productIds ?? i.evidence?.accountIds;
+    const ids = Array.isArray(members) ? [...new Set(members.map(String))].sort() : [String(i.entityId ?? '').trim()];
+    if (!ids.length || ids.some(id => !id)) return;
+    const id = JSON.stringify([i.domain, i.ruleCode, i.entityType, ids]);
+    if (seen.has(id)) {
+      const existing = seen.get(id);
+      if (existing && i.evidence && JSON.stringify(existing.evidence) !== JSON.stringify(i.evidence)) {
+        const prior = existing.evidence?.observations;
+        existing.evidence = { ...existing.evidence, observations: [...(Array.isArray(prior) ? prior : [existing.evidence ?? {}]), i.evidence] };
+      }
+      return;
+    }
     ruleCounts[i.ruleCode] = (ruleCounts[i.ruleCode] || 0) + 1;
-    if (ruleCounts[i.ruleCode] <= o.maxPerRule) issues.push({ ...i, id: `${i.ruleCode}:${i.entityId}:${seq++}` });
+    const issue = ruleCounts[i.ruleCode] <= o.maxPerRule ? { ...i, id, entityId: ids[0] } : null;
+    seen.set(id, issue);
+    if (issue) issues.push(issue);
   };
 
   /* ═════ مشتریان ═════ */
@@ -173,7 +189,7 @@ export function auditErpDataQuality(state: Rec, options: QualityOptions = {}): Q
   const byId = new Map(customers.map(c => [c.id, c]));
   for (const [key, g] of groups) {
     if (g.ids.size < 2) continue;
-    const ids = [...g.ids];
+    const ids = [...g.ids].sort();
     add({ ruleCode: g.rule, domain: 'CUSTOMER', severity: g.hard ? 'HIGH' : 'MEDIUM', confidence: g.hard ? 'DETERMINISTIC' : 'HEURISTIC', entityType: 'customer', entityId: ids[0],
       entityLabel: ids.map(i => label(byId.get(i)!)).join(' ، '), message: `${ids.length} مشتری با یک ${g.hard ? 'شناسهٔ یکسان' : 'نام یکسان'} ثبت شده‌اند.`, evidence: { key: key.slice(2), customerIds: ids }, suggestion: 'ادغام یا اصلاح در ERP.' });
   }
@@ -280,7 +296,7 @@ export function auditErpDataQuality(state: Rec, options: QualityOptions = {}): Q
     const byCode = new Map<string, Rec[]>();
     for (const a of coa) byCode.set(String(a.code), [...(byCode.get(String(a.code)) || []), a]);
     const al = (a: Rec) => `${a.code} ${a.name}`;
-    for (const [code, list] of byCode) if (list.length > 1) add({ ruleCode: 'COA_DUPLICATE_CODE', domain: 'COA', severity: 'HIGH', confidence: 'DETERMINISTIC', entityType: 'ledgerAccount', entityId: list[0].id, entityLabel: list.map(al).join(' ، '), message: 'یک کد حساب برای چند حساب ثبت شده است.', evidence: { code } });
+    for (const [code, list] of byCode) if (list.length > 1) add({ ruleCode: 'COA_DUPLICATE_CODE', domain: 'COA', severity: 'HIGH', confidence: 'DETERMINISTIC', entityType: 'ledgerAccount', entityId: list[0].id, entityLabel: list.map(al).join(' ، '), message: 'یک کد حساب برای چند حساب ثبت شده است.', evidence: { code, accountIds: list.map(a => String(a.id)).sort() } });
     for (const a of coa) {
       const name = norm(a.name);
       const parent = a.parentCode ? byCode.get(String(a.parentCode))?.[0] : null;
@@ -299,7 +315,7 @@ export function auditErpDataQuality(state: Rec, options: QualityOptions = {}): Q
   }
 
   /* ═════ اسناد حسابداری ═════ */
-  const lines = arr(state.journalLines).filter(alive);
+  const lines = arr(state.journalLines).filter(l => alive(l) && !l.isVoided && !['VOID','VOIDED','CANCELLED','CANCELED','REJECTED'].includes(String(l.status || '').toUpperCase()));
   coverage.journalLines = lines.length;
   if (!lines.length) notEvaluated.push({ domain: 'JOURNAL', reason: 'سطر سند حسابداری (journalLines) در داده موجود نیست.' });
   else {
@@ -335,6 +351,10 @@ export function auditErpDataQuality(state: Rec, options: QualityOptions = {}): Q
       }
     }
     for (const [doc, ls] of docs) {
+      if (ls.some(l => [l.debitAmount,l.creditAmount].some(v => v === null || v === undefined || String(v).trim() === '' || !Number.isFinite(Number(v))))) {
+        notEvaluated.push({ domain:'JOURNAL', rule:'JRN_DOC_UNBALANCED', reason:'سند دارای مبلغ نامعتبر است؛ توازن آن قابل ارزیابی نیست.' });
+        continue;
+      }
       const dr = ls.reduce((s, l) => s + (Number(l.debitAmount) || 0), 0), cr = ls.reduce((s, l) => s + (Number(l.creditAmount) || 0), 0);
       if (Math.abs(dr - cr) > 0.5) add({ ruleCode: 'JRN_DOC_UNBALANCED', domain: 'JOURNAL', severity: 'HIGH', confidence: 'DETERMINISTIC', entityType: 'journalDocument', entityId: doc, entityLabel: doc, message: 'جمع بدهکار و بستانکار سند برابر نیست.', evidence: { debit: dr, credit: cr, diff: dr - cr } });
     }
