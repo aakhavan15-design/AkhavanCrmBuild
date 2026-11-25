@@ -464,6 +464,7 @@ export function FinanceWorkspace({ state, updateState }: FinanceWorkspaceProps) 
                   allowedDays={(state.settings as unknown as FinanceSettingsView | undefined)?.orgConfig?.allowedCreditDays}
                   agingBounds={agingBounds}
                   sellerName={key => (state.users || []).find(u => u.id === key)?.name || ''}
+                  sellerAvatar={key => (state.users || []).find(u => u.id === key)?.avatar}
                   locale={state.settings?.locale}
                 />
               </div>
