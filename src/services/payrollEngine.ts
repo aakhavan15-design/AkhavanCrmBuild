@@ -77,15 +77,20 @@ export function generatePayaBankingBatchFile(
   payslips.forEach((p, idx) => {
     const user = userMap.get(p.userId);
     const pf = pfMap.get(p.userId);
-    const iban = pf?.bankAccount?.iban || 'IR000000000000000000000000';
-    const nationalCode = pf?.nationalCode || user?.nationalId || '0000000000';
+    const bank = pf?.bankAccount;
+    const iban = bank && typeof bank === 'object' && 'iban' in bank && typeof bank.iban === 'string' ? bank.iban.replace(/\s/g,'').toUpperCase() : '';
+    const nationalCode = String(pf?.nationalCode || user?.nationalId || '').trim();
     const amount = p.netPayableRials;
+    if (!user?.name || !/^IR\d{24}$/.test(iban) || /^IR0+$/.test(iban) || !/^\d{10}$/.test(nationalCode) || /^(\d)\1{9}$/.test(nationalCode) || !Number.isSafeInteger(amount) || amount <= 0) {
+      throw new Error(`PAYROLL_BANK_EVIDENCE_INVALID:${p.userId}`);
+    }
 
     totalAmount += amount;
     lines += `${idx + 1},"${iban}",${amount},"${user?.name || 'پرسنل'}","تسویه حقوق دوره ${p.month} ${companyName}","${nationalCode}"\n`;
   });
 
-  const periodMonth = payslips[0]?.month || '1405-01';
+  const periodMonth = payslips[0]?.month;
+  if (!periodMonth || payslips.some(p => p.month !== periodMonth) || new Set(payslips.map(p=>p.userId)).size !== payslips.length) throw new Error('PAYROLL_BANK_BATCH_INVALID');
   const fileName = `PAYA_BATCH_SALARY_${periodMonth}.csv`;
 
   return {
@@ -106,7 +111,7 @@ export function parseBiometricAttendanceLogs(rawLogsText: string): Array<{
 }> {
   if (!rawLogsText || !rawLogsText.trim()) return [];
   const lines = rawLogsText.split(/\r?\n/).filter(Boolean);
-  const events: Array<Record<string, unknown>> = [];
+  const events: Array<{ employeeCode: string; timestamp: string; punchType: 'IN' | 'OUT' }> = [];
 
   for (const line of lines) {
     const parts = line.split(/[;,\t\s]+/).filter(Boolean);
@@ -455,7 +460,7 @@ export function simulatePerformanceAdjustment(input: {
   if (input.basePenaltyRatePercent == null || !Number.isFinite(rate) || rate < 0) {
     return { unavailableReason: 'PENALTY_RATE_MISSING', unknownUserIds, currentAffectedCount: 0, simulatedAffectedCount: 0, totalFinancialDeltaRials: 0, affectedEmployees: [] };
   }
-  const affectedEmployees: Array<Record<string, unknown>> = [];
+  const affectedEmployees: Array<{ userId:string; userName:string; currentPenaltyRials:number; simulatedPenaltyRials:number; differenceRials:number }> = [];
   let currentAffected = 0;
   let simulatedAffected = 0;
   let totalDelta = 0;
