@@ -53,3 +53,19 @@ test('commissions require verified ledger net-sales facts even with positive inv
  });
  assert.equal(wrongMonth.payslips[0].commissionRials??0,0);
 });
+
+
+test('salary versions are selected by effective date, not array order or future changes',()=>{
+ const u={id:'u1',name:'الف',isActive:true,monthlySalaryRials:999_000_000};
+ const profile=(id,effectiveFrom,version,monthlyFixedSalaryRials)=>({id,userId:u.id,effectiveFrom,version,monthlyFixedSalaryRials,dailyBasis:30});
+ const state={...base,users:[u],salaryProfiles:[profile('future','2026-12-01',3,300_000_000),profile('old','2026-01-01',1,100_000_000),profile('current','2026-11-01',2,120_000_000)]};
+ assert.equal(executePayrollRun(state,'2026-11','admin',30).payslips[0].basePayRials,120_000_000);
+ assert.equal(executePayrollRun({...state,salaryProfiles:[state.salaryProfiles[0]]},'2026-11','admin',30).payslips.length,0);
+});
+
+test('approved advance without approved amount is never deducted using requested amount',()=>{
+ const state={...base,users:[{id:'u1',name:'الف',isActive:true,monthlySalaryRials:100_000_000}],advanceRequests:[{id:'a1',userId:'u1',targetMonth:'2026-11',status:'APPROVED',requestedAmountRials:20_000_000,approvedAmountRials:0}]};
+ const result=executePayrollRun(state,'2026-11','admin',30);
+ assert.equal(result.payslips[0].advanceDeductionRials,0);
+ assert.deepEqual(result.settledAdvanceIds,[]);
+});
