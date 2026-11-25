@@ -8,7 +8,7 @@ import { computeQuoteTax } from '../src/lib/taxRate.ts';
 import { parseFlexibleDate } from '../src/lib/dateParse.ts';
 
 assert.equal(new Date(parseFlexibleDate('1405/08/01')).toISOString().slice(0, 10), '2026-10-23');
-const res = buildDetailBalancesResult([{ detailAccountId: 'C1', subsidiaryCode: '1101', debitAmount: 25e6, creditAmount: 0 }], 'CLIENT_INDEXEDDB');
+const res = buildDetailBalancesResult([{ detailAccountId: 'C1', subsidiaryCode: '1101', debitAmount: 25e6, creditAmount: 0, status:'POSTED' }], 'CLIENT_INDEXEDDB');
 const inv = [['1', 3, '1405/08/01', 's1'], ['2', 7, '1405/08/02', 's2'], ['3', 8, '1405/08/07', 's1'], ['4', 12, '1405/08/23', 's2']]
   .map(([n, t, d, s]) => ({ id: 'i' + n, invoiceNumber: n, customerId: 'C1', totalAmount: t * 1e6, date: d, ownerId: s, status: 'CONFIRMED' }));
 const m = estimateInvoiceRemaining(res, [{ id: 'C1' }, { id: 'C9' }], [...inv, { id: 'x', customerId: 'C9', totalAmount: 5, date: '1405/08/01', status: 'CONFIRMED' }, { id: 'v', customerId: 'C1', totalAmount: 9e6, date: '1405/08/30', status: 'CANCELLED' }]);
