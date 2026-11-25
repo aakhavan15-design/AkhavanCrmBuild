@@ -2,7 +2,8 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Card } from './ui/Card';
 import { formatCurrency } from '../lib/utils';
-import { formatCount } from '../lib/format';
+import { formatCount, formatMoneyCompact } from '../lib/format';
+import { RankList } from './charts/ReportPrimitives';
 import { buildProductZoneHeatmap } from '../lib/productZoneHeatmap';
 import { 
   cohortRetention, 
@@ -1071,26 +1072,23 @@ export function ReportEnginePanels({ state, visibleInvoices, visiblePayments, vi
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div className="p-3.5 bg-surface rounded-xl border border-border space-y-2">
                 <h5 className="text-xs font-bold text-text-main">فروش خالص فروشندگان — تطبیق‌شده با دفتر</h5>
-                {sellerNetSales.status === 'AVAILABLE'
-                  ? sellerNetSales.rows.some(row => row.value < 0)
-                    ? <div className="space-y-2">
-                        <p className="text-xs text-text-secondary">برگشتیِ منتسب می‌تواند فروش خالص یک فروشنده را منفی کند؛ تمام سطرها، از جمله ارقام منفی، نمایش داده می‌شوند.</p>
-                        {sellerNetSales.rows.map(row => (
-                          <div key={row.key} className="flex justify-between gap-3 rounded-lg border border-border p-2 text-xs">
-                            <span>{row.key === 'UNASSIGNED' ? 'فروشنده نامشخص' :
-                              ((state.users || []).find(user => user.id === row.key)?.name || row.key)}</span>
-                            <strong className={row.value < 0 ? 'text-danger' : 'text-text-main'}>{formatCurrency(row.value)} ریال</strong>
-                          </div>
-                        ))}
-                      </div>
-                    : <Bars money rows={sellerNetSales.rows.map(row => ({
-                        key: row.key === 'UNASSIGNED' ? 'فروشنده نامشخص' :
-                          ((state.users || []).find(user => user.id === row.key)?.name || row.key),
-                        value: row.value
-                      }))}/>
-                  : <p role="status" className="text-xs leading-6 text-text-secondary">
-                      سهم فروشنده نامشخص است: {sellerNetSales.reason}
-                    </p>}
+                {sellerNetSales.status === 'AVAILABLE' ? (() => {
+                  const rows = sellerNetSales.rows.map(row => {
+                    const user = row.key==='UNASSIGNED' ? undefined : (state.users||[]).find(u=>u.id===row.key);
+                    return {id:row.key,label:row.key==='UNASSIGNED'?'فروشنده نامشخص':user?.name||row.key,
+                      avatar:user?.avatar,value:row.value,formattedValue:formatMoneyCompact(row.value)};
+                  });
+                  const ranked=rows.filter(row=>row.id!=='UNASSIGNED'&&row.value>0&&(state.users||[]).some(u=>u.id===row.id));
+                  return <>
+                    <p className="text-caption text-text-secondary">سه فروشنده برتر از فروش خالص تطبیق‌شده؛ رتبه سودآوری نیست.</p>
+                    <RankList items={ranked} label="سه فروشنده برتر فروش خالص" showAvatars limit={3}/>
+                    <details className="border-t border-border pt-2">
+                      <summary className="min-h-11 cursor-pointer text-xs font-semibold text-primary py-2">تمام فروشندگان و مبالغ منتسب</summary>
+                      <RankList items={rows} label="تمام فروشندگان" showAvatars allowSigned/>
+                    </details>
+                  </>;
+                })() : <p role="status" className="text-xs leading-6 text-text-secondary">سهم فروشنده نامشخص است: {sellerNetSales.reason}</p>}
+
               </div>
 
               <div className="rounded-xl border border-warning/25 bg-warning-soft/50 p-3.5 space-y-1">
@@ -1358,6 +1356,7 @@ export function ReportEnginePanels({ state, visibleInvoices, visiblePayments, vi
                 invoices={reportInvoices}
                 allowedDays={((state.settings as Record<string, any> | undefined)?.orgConfig || {}).allowedCreditDays}
                 sellerName={key => (state.users || []).find((u: UserLike) => u.id === key)?.name || ''}
+                sellerAvatar={key => (state.users || []).find(u => u.id === key)?.avatar}
                 onOpenCustomer={id => openCustomerDrilldown(id, 'فاکتورهای خارج از مهلت')}
               />
             )}
