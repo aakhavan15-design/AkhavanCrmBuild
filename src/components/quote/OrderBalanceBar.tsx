@@ -37,7 +37,7 @@ export function OrderBalanceBar({ balance, includesPending = false, className }:
       role="status"
       aria-live="polite"
       data-testid="order-balance-bar"
-      className={cn('sticky top-0 z-20 -mx-4 px-4 py-2 border-b backdrop-blur-sm', tone.box, className)}
+      className={cn('sticky top-0 z-20 -mx-4 px-4 py-2 border-b backdrop-blur-sm transition-colors duration-300 ease-out', tone.box, className)}
     >
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
@@ -54,13 +54,14 @@ export function OrderBalanceBar({ balance, includesPending = false, className }:
         <div className="text-left shrink-0">
           <div className={cn('font-mono font-extrabold text-lead leading-tight', tone.text)} dir="ltr">
             <bdi>{balance.state === 'UNKNOWN' ? '—' : formatSignedAmount(balance.total)}</bdi>
-            <span className="text-micro font-bold mr-1"> {balance.currencyCode || 'واحد پول نامشخص'}</span>
+            <span className="text-micro font-bold mr-1"> ریال</span>
           </div>
           <div className={cn('text-micro font-bold', tone.text)} dir="ltr">
             {ratio === null ? 'نرخ تراز: —' : `نرخ تراز: ${ratio > 0 ? '+' : ratio < 0 ? '−' : ''}${formatNumber(Math.abs(ratio), { maximumFractionDigits: 1 })}٪`}
           </div>
         </div>
       </div>
+      <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-sunken/70" aria-hidden="true"><div className={cn('h-full rounded-full transition-[width,background-color] duration-300 ease-out', balance.state === 'NEGATIVE' ? 'bg-danger' : balance.state === 'POSITIVE' ? 'bg-success' : 'bg-primary')} style={{ width: ratio === null ? '0%' : `${Math.min(100, Math.abs(ratio))}%` }} /></div>
     </div>
   );
 }
