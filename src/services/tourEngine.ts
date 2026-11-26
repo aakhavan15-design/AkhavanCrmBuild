@@ -804,7 +804,7 @@ export function moduleForPath(pathname: string): string {
   const seg = pathname.split('/').filter(Boolean)[0] || '';
   if (!seg) return 'home';
   if (seg === 'workspace' || seg === 'planned') return 'workspace';
-  if (seg === 'design-system') return 'organization';
+  if (seg === 'design-system') return 'settings';
   return TOUR_MODULES.some(m => m.id === seg) ? seg : 'global';
 }
 
