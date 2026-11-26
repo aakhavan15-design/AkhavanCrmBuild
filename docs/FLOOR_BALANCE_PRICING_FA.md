@@ -16,8 +16,11 @@
 | پالت | فقط Neo-Slate + Electric Indigo مطابق `docs/DESIGN_SYSTEM_FA.md`؛ فقط توکن معنایی (بدون hex). |
 
 ## قرارداد ورودی ERP برای کالا
-`floorPrice`, `unitsPerCarton`, `priceClass1..5` (یا `priceClasses`)، اختیاری `priceClass1Label..5`، `currencyCode دریافتی از ERP`.
+`floorPrice`, `unitsPerCarton`, `priceClass1..5` (یا `priceClasses`)، اختیاری `priceClass1Label..5`، `currencyCode` دریافتی از ERP؛ نبود کد پول مانع محاسبهٔ تراز است..
 مقدار صفر/منفی/اعشاری رد می‌شود (ETL: `PRODUCT_FLOOR_PRICE_INVALID` و …).
+
+## محدودیت دقت عددی
+موتور فعلی فقط مبلغ صحیح امن JavaScript را می‌پذیرد. دقت اعشاری و مقیاس مبلغ (ریال/تومان یا واحد دیگر) هنوز از قرارداد ERP تأیید نشده است؛ تا تعیین آن، این بخش برای تولید `NOT VERIFIED` است و نباید با گردکردن یا تبدیل ضمنی فعال شود.
 
 ## Migration و بازگشت
 `database/sqlserver/v1/057_floor_balance_price_classes.sql` — افزایشی و idempotent؛ روش rollback در انتهای فایل.

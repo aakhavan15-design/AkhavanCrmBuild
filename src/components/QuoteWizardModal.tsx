@@ -132,7 +132,7 @@ export function QuoteWizardModal({ isOpen, onClose, state, updateState, onQuoteC
     if (creationBusy.current) return;
     if (!guard(state, updateState, 'quotes', 'CREATE', 'صدور پیش‌فاکتور')) return;
     if (!selectedCustomerId || !visibleAccounts.some(account => account.id === selectedCustomerId) || lines.length === 0) return;
-    if (invalidPricingLine || lines.some(line => !line.erpClassCurrencyCode)) { notifyInvalidLine(); return; }
+    if (invalidPricingLine || lines.some(line => !line.erpClassCurrencyCode) || orderBalance.currencyMismatch) { notifyInvalidLine(); return; }
     if (!discountValid) {
       updateState(draft => { if (!draft.notifications) draft.notifications = []; draft.notifications.push({ id: generateId(), title: 'درصد تخفیف نامعتبر است', message: 'درصد تخفیف باید عددی بین صفر تا صد باشد.', type: 'WARNING', read: false, createdAt: new Date().toISOString(), linkTab: 'quotes' }); });
       return;
@@ -149,7 +149,7 @@ export function QuoteWizardModal({ isOpen, onClose, state, updateState, onQuoteC
     // هشدار تراز منفی/کف نامعلوم هنگام ذخیره؛ ثبت پیش‌نویس مجاز است ولی تأیید خودکار نمی‌شود.
     if (negativeBalance || orderBalance.excludedLineCount > 0) {
       const parts = [
-        negativeBalance ? `تراز سفارش نسبت به اختلاف با کلاس قیمت منتخب منفی است (کسری ${Math.abs(orderBalance.total).toLocaleString('fa-IR')} ریال).` : '',
+        negativeBalance ? `اختلاف سفارش با کلاس قیمت منتخب منفی است (کسری ${Math.abs(orderBalance.total).toLocaleString('fa-IR')} ${orderBalance.currencyCode || 'واحد پول نامشخص'}).` : '',
         orderBalance.excludedLineCount > 0 ? `${orderBalance.excludedLineCount.toLocaleString('fa-IR')} قلم قیمت کلاس منتخب ندارد و در تراز لحاظ نشده است.` : '',
         'پیش‌فاکتور برای بررسی/تأیید ثبت می‌شود. ادامه می‌دهید؟'
       ].filter(Boolean);
@@ -409,7 +409,7 @@ export function QuoteWizardModal({ isOpen, onClose, state, updateState, onQuoteC
               </div>
               <div className="flex items-center justify-between bg-white/10 p-2.5 rounded-xl" data-testid="summary-balance">
                 <span className="text-micro text-white/70">تراز کل نسبت به کلاس قیمت منتخب</span>
-                <span className="text-xs font-extrabold font-mono" dir="ltr"><bdi>{orderBalance.state === 'UNKNOWN' ? '—' : `${formatSignedRial(orderBalance.total)} ریال`}</bdi></span>
+                <span className="text-xs font-extrabold font-mono" dir="ltr"><bdi>{orderBalance.state === 'UNKNOWN' ? '—' : `${formatSignedRial(orderBalance.total)} ${orderBalance.currencyCode || 'واحد پول نامشخص'}`}</bdi></span>
               </div>
             </div>
           </div>

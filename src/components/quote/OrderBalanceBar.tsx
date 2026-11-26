@@ -3,7 +3,7 @@ import { Scale } from 'lucide-react';
 import type { BalanceState, OrderBalance } from '../../lib/cpqEngine';
 import { cn } from '../../lib/utils';
 
-/** عدد ریالی با علامت صریح (علامت + متن؛ فقط رنگ نیست). */
+/** مقدار پولی با علامت صریح (علامت + متن؛ فقط رنگ نیست). */
 export function formatSignedRial(n: number | null | undefined): string {
   if (typeof n !== 'number' || !Number.isFinite(n)) return '—';
   const abs = Math.abs(n).toLocaleString('fa-IR');

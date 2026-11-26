@@ -63,7 +63,7 @@ function SuggestionStrip({ s, line, onApplyPrice, onApplyQty }: { s: LineRecover
         </div>
         {q && !q.unavailableReason && <Button size="xs" variant="soft" onClick={onApplyQty}><Check size={12} className="ml-1" />اعمال تعداد</Button>}
       </div>
-      {line.floorPrice !== null && <div className="text-micro text-ink-soft">کسری فعلی سفارش: {fa(s.orderDeficit)} {line.currencyCode || 'واحد پول نامشخص'}</div>}
+      <div className="text-micro text-ink-soft">اختلاف فعلی سفارش: {fa(s.orderDeficit)} {line.currencyCode || 'واحد پول نامشخص'}</div>
     </div>
   );
 }
@@ -116,7 +116,7 @@ export function QuotePricingStep({ products, priceClassLabels, priceClassCode, o
 
   const addLine = () => {
     if (!product || !pendingValid || !price) { onInvalidAdd(); return; }
-    const calc = computeOrderBalance([{ key: 'x', comparisonPrice: classPrice, floorPrice: product.floorPrice ?? null, unitPrice: price, baseQuantity: pendingBase }]).lines[0];
+    const calc = computeOrderBalance([{ key: 'x', comparisonPrice: classPrice, floorPrice: product.floorPrice ?? null, currencyCode: classCurrencyCode, unitPrice: price, baseQuantity: pendingBase }]).lines[0];
     // افزودن با تراز منفی مجاز است؛ فروشنده می‌تواند در کالای بعدی جبران کند (هشدار فقط هنگام ذخیره).
     setLines(prev => [...prev, {
       productId: product.id, productName: product.name, productCode: product.sku || product.code || '',
@@ -132,9 +132,9 @@ export function QuotePricingStep({ products, priceClassLabels, priceClassCode, o
       : state === 'POSITIVE' || state === 'ZERO' ? 'border-success-line bg-success-soft/50'
         : 'border-border bg-surface';
   const stateText = (l: LineBalance | undefined) => !l || l.variance === null
-    ? (l?.status === 'REFERENCE_UNKNOWN' ? 'کف ERP نامعلوم؛ در تراز لحاظ نشد' : 'ورودی نامعتبر')
-    : l.state === 'NEGATIVE' ? `پایین‌تر از کلاس منتخب: ${formatSignedRial(l.variance)} {line.currencyCode || 'واحد پول نامشخص'}`
-      : l.state === 'POSITIVE' ? `بالاتر از کلاس منتخب: ${formatSignedRial(l.variance)} {line.currencyCode || 'واحد پول نامشخص'}` : 'برابر کلاس منتخب';
+    ? (l?.status === 'REFERENCE_UNKNOWN' ? 'قیمت کلاس منتخب یا واحد پول ERP نامعلوم؛ در تراز لحاظ نشد' : 'ورودی نامعتبر')
+    : l.state === 'NEGATIVE' ? `پایین‌تر از کلاس منتخب: ${formatSignedRial(l.variance)} ${l.currencyCode || 'واحد پول نامشخص'}`
+      : l.state === 'POSITIVE' ? `بالاتر از کلاس منتخب: ${formatSignedRial(l.variance)} ${l.currencyCode || 'واحد پول نامشخص'}` : 'برابر کلاس منتخب';
 
   const pendingLine = byKey.get('pending');
   const cartonLabel = (u: number | null | undefined) => (u ? `تعداد کارتن (هر کارتن ${fa(u)} واحد)` : 'تعداد (واحد پایه؛ تعداد در کارتن از ERP نیامده)');
@@ -167,8 +167,8 @@ export function QuotePricingStep({ products, priceClassLabels, priceClassCode, o
               </div>
             </div>
             <div className="text-micro text-ink-soft space-y-0.5">
-              <div>کف ERP: <b className="font-mono">{product.floorPrice ? fa(product.floorPrice) : 'نامعلوم'}</b> · {classLabel}: <b className="font-mono">{classPrice ? fa(classPrice) : 'در ERP نیامده'}</b>{upc ? <> · مجموع: <b className="font-mono">{fa(pendingBase)}</b> واحد</> : null}</div>
-              {!product.floorPrice && <div className="text-warning">کف این کالا از ERP نیامده است؛ تراز این قلم محاسبه نمی‌شود.</div>}
+              <div>کف مستقل ERP: <b className="font-mono">{product.floorPrice ? fa(product.floorPrice) : 'نامشخص'}</b> · {classLabel}: <b className="font-mono">{classPrice ? fa(classPrice) : 'در ERP نیامده'}</b>{upc ? <> · مجموع: <b className="font-mono">{fa(pendingBase)}</b> واحد</> : null}</div>
+              {!classPrice && <div className="text-warning">قیمت کلاس منتخب این کالا از ERP نیامده است؛ تراز این قلم محاسبه نمی‌شود.</div>}{!classCurrencyCode && <div className="text-warning">کد واحد پول این قیمت از ERP نیامده است؛ مقایسه و تراز قابل محاسبه نیست.</div>}
               {(!classPrice || !classCurrencyCode) && <div className="text-warning">قیمت «{classLabel}» برای این کالا از ERP نیامده؛ فی را دستی وارد کنید (جایگزین خودکار اعمال نشد).</div>}
             </div>
             {pendingLine && (

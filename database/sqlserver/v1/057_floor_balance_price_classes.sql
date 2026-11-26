@@ -1,7 +1,7 @@
 /* 057 — floor-balance pricing: five ERP price classes per product (versioned snapshots), ERP floor price and
    units-per-carton, plus order/line balance snapshots. Additive only: no existing column is changed or dropped.
-   Rules: every price comes from the ERP and is stored in IRR (rial) per BASE unit as an exact integer (decimal(19,0)),
-   never float. A repeated ERP batch is idempotent (UNIQUE key below). Unknown values stay NULL — never 0 / never 1.
+   Rules: every price comes from ERP per BASE unit; currency code is sourced from ERP and no conversion is inferred.
+   Current numeric implementation accepts integer amounts only; decimal scale must be confirmed before production use. Unknown values stay NULL.
 */
 SET XACT_ABORT ON;
 GO

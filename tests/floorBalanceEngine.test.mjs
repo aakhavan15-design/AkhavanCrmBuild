@@ -32,6 +32,11 @@ assert.equal(mixed.surplus, 2000); assert.equal(mixed.deficit, 3000);
 assert.equal(mixed.negativeLineCount, 1); assert.equal(mixed.excludedLineCount, 1); assert.equal(mixed.countedLineCount, 2);
 assert.equal(mixed.ratioPercent, Math.round((-1000 / 31000) * 1000) / 10);
 assert.equal(computeOrderBalance([]).state, 'UNKNOWN');
+const mixedCurrency = computeOrderBalance([
+  { key: 'irr', comparisonPrice: 10, currencyCode: 'IRR', unitPrice: 12, baseQuantity: 1 },
+  { key: 'usd', comparisonPrice: 10, currencyCode: 'USD', unitPrice: 12, baseQuantity: 1 }
+]);
+assert.equal(mixedCurrency.currencyMismatch, true); assert.equal(mixedCurrency.state, 'UNKNOWN'); assert.equal(mixedCurrency.countedLineCount, 0);
 
 // ── سناریوی کاربر: سفارش منفی؛ کالای دوم با فی بالاتر از کف جبران می‌کند
 // کف ۱۰، من ۱۰ واحد را ۳۰ می‌زنم ⇒ +۲۰۰؛ کسری ردیف دیگر −۵۰۰
@@ -69,7 +74,7 @@ assert.equal(suggestLineRecovery(scenario, 'pos', { priceRoundingStep: 100 }).pr
 // جبران، هرگز کمتر از صفر نمی‌ماند (دامنهٔ تصادفی قطعی)
 let seed = 7; const rnd = (n) => { seed = (seed * 1103515245 + 12345) % 2147483648; return 1 + (seed % n); };
 for (let i = 0; i < 300; i++) {
-  const ls = [0, 1, 2].map(k => ({ key: `k${k}`, comparisonPrice: rnd(5000), unitPrice: rnd(6000), baseQuantity: rnd(40), unitsPerCarton: rnd(12) }));
+  const ls = [0, 1, 2].map(k => ({ key: `k${k}`, comparisonPrice: rnd(5000), currencyCode: 'IRR', unitPrice: rnd(6000), baseQuantity: rnd(40), unitsPerCarton: rnd(12) }));
   const ord = computeOrderBalance(ls);
   if (ord.state !== 'NEGATIVE') continue;
   const s = suggestLineRecovery(ls, 'k0');
@@ -83,7 +88,7 @@ const n = normalizeErpPriceClasses({ priceClass1: '۱۲۰۰۰', priceClass2: 900
 assert.equal(n.PRICE_CLASS_1.unitPrice, 12000); assert.deepEqual(Object.keys(n).sort(), ['PRICE_CLASS_1', 'PRICE_CLASS_2']);
 assert.equal(n.PRICE_CLASS_2.unitPrice, 90000); assert.equal(n.PRICE_CLASS_2.label, 'عمده‌ی ERP');
 assert.equal(n.PRICE_CLASS_3, undefined); assert.equal(n.PRICE_CLASS_5, undefined); // صفر/منفی/اعشاری هرگز نمی‌شود
-assert.equal(normalizeErpPriceClasses({ currencyCode: 'USD', priceClass1: 5 }).PRICE_CLASS_1.currencyCode, 'USD'); // ریال/ارز ناسازگار
+assert.equal(normalizeErpPriceClasses({ currencyCode: 'USD', priceClass1: 5 }).PRICE_CLASS_1.currencyCode, 'USD'); // کد پول از ERP حفظ می‌شود
 assert.equal(normalizeErpPriceClasses({ priceClasses: [{ code: 'PRICE_CLASS_5', unitPrice: 77, label: 'X' }] }).PRICE_CLASS_5.unitPrice, 77);
 assert.equal(normalizeErpPriceClasses({ priceClasses: { PRICE_CLASS_1: { unitPrice: 5 } } }).PRICE_CLASS_1.unitPrice, 5);
 assert.equal(normalizeErpPriceClasses({ priceClasses: { BAD_CODE: 5 } }).BAD_CODE, undefined);

@@ -87,11 +87,11 @@ export function canEditQuoteLines(quote: { status?: string; pricingSnapshot?: un
 /* ═══════════════════════════════════════════════════════════════════════════
  * موتور تراز سفارش بر مبنای کلاس قیمت منتخب + کلاس‌های قیمت
  * قواعد قفل‌شده:
- *  - همهٔ قیمت‌ها (۵ کلاس + کف) از ERP می‌آیند و واحد کل سیستم «ریال» است؛ CRM قیمتی نمی‌سازد.
+ *  - همهٔ قیمت‌ها از ERP می‌آیند؛ واحد پول/مقیاس ثابت فرض نمی‌شود و CRM قیمتی نمی‌سازد.
  *  - قیمت همیشه به‌ازای واحد پایه است؛ تعداد کارتن × تعداد در کارتن = تعداد واحد پایه.
  *  - تراز ردیف = (فی واردشده − قیمت همان کالا در کلاس منتخب ERP) × تعداد پایه؛ کف مستقل ERP فقط سیاست جداگانه است.
  *  - داده نامعلوم هرگز صفر/یک فرض نمی‌شود (کف نامعلوم ⇒ ردیف از تراز بیرون و علامت‌دار).
- *  - همهٔ محاسبات عدد صحیح ریالی است (بدون Float)؛ پیشنهادها فقط Advisory هستند و خودکار اعمال نمی‌شوند.
+ *  - محاسبات فقط برای قیمت‌های عدد صحیح فعلی فعال است؛ دقت اعشاری و مقیاس مبلغ تا قرارداد ERP تأیید نشده و نباید فرض شود.
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 export const PRICE_CLASS_CODES = ['PRICE_CLASS_1', 'PRICE_CLASS_2', 'PRICE_CLASS_3', 'PRICE_CLASS_4', 'PRICE_CLASS_5'] as const;
@@ -122,7 +122,7 @@ export const normalizeErpPositiveInt = positiveInt;
  * ورودی ERP را به نقشهٔ ۵ کلاس نرمال می‌کند. اشکال پذیرفته‌شده:
  *  - priceClasses: { PRICE_CLASS_1: 120000 | { unitPrice, label } , ... } یا آرایهٔ { code, unitPrice, label }
  *  - فیلدهای تخت: priceClass1..priceClass5 و priceClass1Label..priceClass5Label
- * مقدار نامعتبر/صفر/منفی/اعشاری حذف می‌شود (نه صفر)؛ ارز غیر از IRR کل نقشه را رد می‌کند.
+ * مقدار نامعتبر/صفر/منفی/اعشاری حذف می‌شود؛ کد واحد پول از ERP حفظ می‌شود و تبدیل ارز انجام نمی‌شود.
  */
 export function normalizeErpPriceClasses(source: Record<string, unknown> | null | undefined): ErpPriceClassMap {
   const out: ErpPriceClassMap = {};
@@ -168,7 +168,7 @@ export function resolvePriceClassLabels(
 
 export interface BalanceLineInput {
   key: string;
-  /** کف ERP به‌ازای واحد پایه (ریال)؛ null = نامعلوم */
+  /** کف مستقل ERP به‌ازای واحد پایه؛ null = نامعلوم */
   /** قیمت مرجع همان کلاس سراسری سفارش برای این کالا؛ از ERP */
   comparisonPrice: number | null | undefined;
   /** کف مستقل ERP فقط برای کنترل سیاست؛ در فرمول اختلاف کلاس استفاده نمی‌شود */
@@ -218,7 +218,7 @@ export function computeLineBalance(input: BalanceLineInput): LineBalance {
 
 export interface OrderBalance {
   lines: LineBalance[];
-  /** جمع تراز ردیف‌های معتبر (ریال) */
+  /** جمع تراز ردیف‌های معتبر در واحد پول یکسان */
   total: number;
   state: BalanceState;
   surplus: number;
@@ -265,7 +265,7 @@ export interface LineRecoverySuggestion {
   /** NONE = تراز سفارش صفر/مثبت است یا ردیف قابل محاسبه نیست */
   status: 'NONE' | 'AVAILABLE';
   reason?: 'ORDER_NOT_NEGATIVE' | 'LINE_NOT_COMPUTABLE';
-  /** کسری سفارش که باید جبران شود (ریال، مثبت) */
+  /** کسری سفارش که باید جبران شود (در واحد پول سفارش، مثبت) */
   orderDeficit: number;
   /** فی پیشنهادی همین ردیف (با تعداد فعلی) تا تراز کل صفر شود */
   price: null | { unitPrice: number; delta: number; deltaPercent: number | null };
