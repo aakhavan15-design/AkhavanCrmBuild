@@ -1,5 +1,5 @@
 /** نسخه محصول (منبع واحد؛ با package.json هم‌خوان نگه داشته شود). */
-export const APP_VERSION = '0.12.62';
+export const APP_VERSION = '0.12.63';
 export const APP_RELEASE = {
   round: 14,
   checkpoint: 4,

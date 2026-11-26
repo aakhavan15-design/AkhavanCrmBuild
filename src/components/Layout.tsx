@@ -157,6 +157,7 @@ export function Layout({
 
         {/* Main Content Area */}
         <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
+          <div id="ttl" className="contents">
           <FloatingHeader
             state={state}
             roleName={currentRole?.name}
@@ -172,6 +173,7 @@ export function Layout({
             onOpenNotifications={onOpenNotifications}
             onNotificationClick={onNotificationClick}
           />
+          </div>
 
           {/* Local-First Offline Sync status */}
           <OfflineBanner />

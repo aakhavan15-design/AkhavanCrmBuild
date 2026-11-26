@@ -138,7 +138,7 @@ export function QuotePricingStep({ products, priceClassLabels, priceClassCode, o
       : l.state === 'POSITIVE' ? `بالاتر از کلاس منتخب: ${formatSignedAmount(l.variance)} ${l.currencyCode || 'واحد پول نامشخص'}` : 'برابر کلاس منتخب';
 
   const pendingLine = byKey.get('pending');
-  const cartonLabel = (u: number | null | undefined) => (u ? `تعداد کارتن (هر کارتن ${fa(u)} واحد)` : 'تعداد (واحد پایه؛ تعداد در کارتن از ERP نیامده)');
+  const cartonLabel = (u: number | null | undefined) => (u ? `تعداد کارتن (هر کارتن ${fa(u)} واحد)` : 'تعداد (واحد پایه؛ ضریب بسته‌بندی نامشخص است)');
 
   return (
     <div className="space-y-3">
@@ -167,9 +167,9 @@ export function QuotePricingStep({ products, priceClassLabels, priceClassCode, o
               </div>
             </div>
             <div className="text-micro text-ink-soft space-y-0.5">
-              <div>کف مستقل ERP: <b className="font-mono">{product.floorPrice ? fa(product.floorPrice) : 'نامشخص'}</b> · {classLabel}: <b className="font-mono">{classPrice ? fa(classPrice) : 'در ERP نیامده'}</b>{upc ? <> · مجموع: <b className="font-mono">{fa(pendingBase)}</b> واحد</> : null}</div>
-              {!classPrice && <div className="text-warning">قیمت کلاس منتخب این کالا از ERP نیامده است؛ تراز این قلم محاسبه نمی‌شود.</div>}{!classCurrencyCode && <div className="text-warning">کد واحد پول این قیمت از ERP نیامده است؛ مقایسه و تراز قابل محاسبه نیست.</div>}
-              {(!classPrice || !classCurrencyCode) && <div className="text-warning">قیمت «{classLabel}» برای این کالا از ERP نیامده؛ فی را دستی وارد کنید (جایگزین خودکار اعمال نشد).</div>}
+              <div>حداقل قیمت مرجع: <b className="font-mono">{product.floorPrice ? fa(product.floorPrice) : 'نامشخص'}</b> · {classLabel}: <b className="font-mono">{classPrice ? fa(classPrice) : 'دریافت نشده'}</b>{upc ? <> · مجموع: <b className="font-mono">{fa(pendingBase)}</b> واحد</> : null}</div>
+              {!classPrice && <div className="text-warning">قیمت کلاس منتخب این کالا دریافت نشده است؛ تراز این قلم محاسبه نمی‌شود.</div>}{!classCurrencyCode && <div className="text-warning">واحد پول این قیمت مشخص نیست؛ مقایسه و تراز قابل محاسبه نیست.</div>}
+              {(!classPrice || !classCurrencyCode) && <div className="text-warning">قیمت «{classLabel}» برای این کالا دریافت نشده؛ فی را دستی وارد کنید (جایگزین خودکار اعمال نشد).</div>}
             </div>
             {pendingLine && (
               <div className={cn('rounded-xl border px-2.5 py-1.5 text-caption font-bold', rowTone(pendingLine.state))} data-testid="pending-balance">

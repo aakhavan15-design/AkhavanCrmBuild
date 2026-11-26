@@ -38,8 +38,8 @@ test('operations and finance views each have one catalog tile under the owning w
     ['procurement', '/operations?tab=purchasing', 'ops.purchasing'],
     ['finance', '/operations?tab=profitability', 'ops.profitability'],
     ['finance', '/finance?tab=overview', 'finance'],
-    ['finance', '/reports?tab=finance', 'finance'],
-    ['finance', '/reports?tab=receivables', 'finance'],
+    ['finance', '/reports?tab=finance', 'finance.reports'],
+    ['finance', '/reports?tab=receivables', 'finance.reports'],
   ];
   const modules = [...catalogue.matchAll(/^    id: '([a-z-]+)'[\s\S]*?(?=^    id: '|^\];)/gm)];
   for (const [owner, destination, permission] of destinations) {
