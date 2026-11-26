@@ -3,6 +3,7 @@ import { Plus, Save, X, Pencil, CheckCircle2 } from 'lucide-react';
 import type { AppState, CommissionPlan, CommissionTier, SalesTarget } from '../types';
 import { Button } from './ui/Button';
 import { InputControl, Select } from './ui/Input';
+import { SearchableSelect } from './ui/SearchableSelect';
 import { generateSecureId } from '../lib/secureId';
 import { formatNumber } from '../lib/format';
 import { toLatinDigits } from '../lib/digits';
@@ -74,6 +75,7 @@ export function SalesTargetsCommissionsPanel({ state, updateState, initialView, 
   const users = (state.users || []).filter(user => (user.isActive ?? user.active) !== false)
     .slice().sort((a,b) => a.name.localeCompare(b.name, 'fa'));
   const userName = (id?: string) => users.find(user => user.id === id)?.name || 'فروشنده نامشخص';
+  const userOptions = users.map(user => ({ value: user.id, label: user.name, subLabel: user.employeeCode || user.username || user.roleId || '' }));
 
   const resetTarget = () => {
     setTargetFormOpen(false); setEditingTargetId(null); setTargetScope('USER'); setTargetUserId('');
@@ -202,7 +204,7 @@ export function SalesTargetsCommissionsPanel({ state, updateState, initialView, 
             <div className="flex items-center justify-between"><b className="text-caption">{editingTargetId ? 'ویرایش هدف' : 'تعریف هدف فروش'}</b><button type="button" aria-label="بستن فرم" onClick={resetTarget} className="grid size-8 place-items-center rounded-lg hover:bg-sunken"><X size={15}/></button></div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <Select aria-label="دامنه هدف" value={targetScope} onChange={e => setTargetScope(e.target.value as Scope)}><option value="USER">فروشنده</option><option value="COMPANY">کل سازمان</option></Select>
-              {targetScope === 'USER' && <Select aria-label="فروشنده هدف" value={targetUserId} onChange={e => setTargetUserId(e.target.value)}><option value="">انتخاب فروشنده</option>{users.map(user => <option key={user.id} value={user.id}>{user.name}</option>)}</Select>}
+              {targetScope === 'USER' && <SearchableSelect ariaLabel="فروشنده هدف" value={targetUserId} onChange={setTargetUserId} options={userOptions} placeholder="انتخاب فروشنده" searchPlaceholder="جست‌وجوی فروشنده..." className="w-full" />}
               <InputControl type="month" aria-label="ماه هدف" value={targetMonth} onChange={e => setTargetMonth(e.target.value)} />
               <InputControl inputMode="numeric" aria-label="هدف فروش خالص به ریال" placeholder="هدف فروش خالص (ریال)" value={targetRials} onChange={e => setTargetRials(e.target.value)} />
               <InputControl inputMode="numeric" aria-label="هدف تعداد واحد پایه" placeholder="هدف تعداد (اختیاری)" value={targetUnits} onChange={e => setTargetUnits(e.target.value)} />
@@ -227,7 +229,7 @@ export function SalesTargetsCommissionsPanel({ state, updateState, initialView, 
             <InputControl aria-label="نام طرح پورسانت" placeholder="نام طرح" value={planName} onChange={e => setPlanName(e.target.value)} />
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               <Select aria-label="دامنه طرح" value={planScope} onChange={e => setPlanScope(e.target.value as Scope)}><option value="COMPANY">سازمانی</option><option value="USER">فروشنده مشخص</option></Select>
-              {planScope === 'USER' && <Select aria-label="فروشنده طرح" value={planUserId} onChange={e => setPlanUserId(e.target.value)}><option value="">انتخاب فروشنده</option>{users.map(user => <option key={user.id} value={user.id}>{user.name}</option>)}</Select>}
+              {planScope === 'USER' && <SearchableSelect ariaLabel="فروشنده طرح" value={planUserId} onChange={setPlanUserId} options={userOptions} placeholder="انتخاب فروشنده" searchPlaceholder="جست‌وجوی فروشنده..." className="w-full" />}
               <InputControl inputMode="decimal" aria-label="ضریب سختی مسیر" placeholder="ضریب مسیر" value={planMultiplier} onChange={e => setPlanMultiplier(e.target.value)} />
             </div>
             <label className="block text-micro font-bold text-text-secondary">پلکان‌ها: حداقل تحقق | حداکثر تحقق (خالی = بدون سقف) | نرخ پورسانت٪</label>
