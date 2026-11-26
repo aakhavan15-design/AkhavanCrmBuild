@@ -805,6 +805,7 @@ export function moduleForPath(pathname: string): string {
   if (!seg) return 'home';
   if (seg === 'workspace' || seg === 'planned') return 'workspace';
   if (seg === 'design-system') return 'settings';
+  if (seg === 'definitions') return 'workspace';
   return TOUR_MODULES.some(m => m.id === seg) ? seg : 'global';
 }
 
