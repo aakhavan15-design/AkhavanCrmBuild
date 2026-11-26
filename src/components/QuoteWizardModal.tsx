@@ -66,7 +66,7 @@ export function QuoteWizardModal({ isOpen, onClose, state, updateState, onQuoteC
     setLines(prev => prev.map(line => {
       const product = state.externalProducts.find(p => p.id === line.productId);
       const classPrice = product?.priceClasses?.[code as keyof NonNullable<typeof product.priceClasses>]?.unitPrice ?? null;
-      return { ...line, erpClassUnitPrice: classPrice, floorUnitPrice: product?.floorPrice ?? null };
+      return { ...line, erpClassUnitPrice: classPrice, erpClassCurrencyCode: product?.priceClasses?.[code as keyof NonNullable<typeof product.priceClasses>]?.currencyCode ?? product?.currencyCode ?? null, floorUnitPrice: product?.floorPrice ?? null };
     }));
   };
 
@@ -132,7 +132,7 @@ export function QuoteWizardModal({ isOpen, onClose, state, updateState, onQuoteC
     if (creationBusy.current) return;
     if (!guard(state, updateState, 'quotes', 'CREATE', 'صدور پیش‌فاکتور')) return;
     if (!selectedCustomerId || !visibleAccounts.some(account => account.id === selectedCustomerId) || lines.length === 0) return;
-    if (invalidPricingLine) { notifyInvalidLine(); return; }
+    if (invalidPricingLine || lines.some(line => !line.erpClassCurrencyCode)) { notifyInvalidLine(); return; }
     if (!discountValid) {
       updateState(draft => { if (!draft.notifications) draft.notifications = []; draft.notifications.push({ id: generateId(), title: 'درصد تخفیف نامعتبر است', message: 'درصد تخفیف باید عددی بین صفر تا صد باشد.', type: 'WARNING', read: false, createdAt: new Date().toISOString(), linkTab: 'quotes' }); });
       return;
@@ -188,7 +188,7 @@ export function QuoteWizardModal({ isOpen, onClose, state, updateState, onQuoteC
         lineVariance: l.lineVariance ?? null,
         balanceStatus: l.balanceStatus
       })),
-      currencyCode: 'IRR',
+      currencyCode: orderBalance.currencyCode || undefined,
       priceClassCode,
       orderBalance: orderBalance.state === 'UNKNOWN' ? null : orderBalance.total,
       orderBalanceState: orderBalance.state,

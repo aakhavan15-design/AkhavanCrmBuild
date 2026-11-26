@@ -70,7 +70,7 @@ export const ETL_RULES: Record<ErpEntityType, Rule[]> = {
     // کف/تعداد در کارتن/کلاس‌های قیمت اختیاری‌اند؛ اگر آمدند باید عدد صحیح مثبت ریالی باشند (رکورد نامعتبر در staging می‌ماند و قیمت معتبر قبلی را عوض نمی‌کند).
     r => (isBlank(r.floorPrice) || normalizeErpPositiveInt(r.floorPrice) !== null ? null : ['PRODUCT_FLOOR_PRICE_INVALID', 'کف قیمت کالا باید عدد صحیح مثبت (ریال) باشد؛ خالی = نامعلوم.']),
     r => (isBlank(r.unitsPerCarton) || normalizeErpPositiveInt(r.unitsPerCarton) !== null ? null : ['PRODUCT_UNITS_PER_CARTON_INVALID', 'تعداد در کارتن باید عدد صحیح مثبت باشد؛ خالی = نامعلوم (۱ فرض نمی‌شود).']),
-    r => (/^IRR$/i.test(String(r.currencyCode ?? 'IRR').trim() || 'IRR') ? null : ['PRODUCT_CURRENCY_NOT_IRR', 'واحد پول قیمت‌های کالا باید ریال (IRR) باشد؛ ارز ناسازگار پذیرفته نمی‌شود.']),
+    r => (isBlank(r.currencyCode) || /^[A-Z0-9_-]{2,10}$/i.test(String(r.currencyCode).trim()) ? null : ['PRODUCT_CURRENCY_CODE_INVALID', 'کد واحد پول ERP نامعتبر است.']),
     r => {
       const bad = [1, 2, 3, 4, 5].filter(i => !isBlank(r[`priceClass${i}`]) && normalizeErpPositiveInt(r[`priceClass${i}`]) === null);
       return bad.length ? ['PRODUCT_PRICE_CLASS_INVALID', `قیمت کلاس ${bad.join('، ')} باید عدد صحیح مثبت (ریال) باشد؛ صفر/منفی/اعشار پذیرفته نمی‌شود.`] : null;

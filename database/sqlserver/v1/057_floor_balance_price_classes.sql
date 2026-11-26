@@ -5,13 +5,13 @@
 */
 SET XACT_ABORT ON;
 GO
-IF COL_LENGTH(N'crm.ExternalProduct', N'FloorPriceIRR') IS NULL
- ALTER TABLE crm.ExternalProduct ADD FloorPriceIRR decimal(19,0) NULL;
+IF COL_LENGTH(N'crm.ExternalProduct', N'FloorPriceAmount') IS NULL
+ ALTER TABLE crm.ExternalProduct ADD FloorPriceAmount decimal(19,0) NULL;
 IF COL_LENGTH(N'crm.ExternalProduct', N'UnitsPerCarton') IS NULL
  ALTER TABLE crm.ExternalProduct ADD UnitsPerCarton int NULL;
 GO
 IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name=N'CK_ExternalProduct_FloorPrice' AND parent_object_id=OBJECT_ID(N'crm.ExternalProduct'))
- ALTER TABLE crm.ExternalProduct ADD CONSTRAINT CK_ExternalProduct_FloorPrice CHECK(FloorPriceIRR IS NULL OR FloorPriceIRR>0);
+ ALTER TABLE crm.ExternalProduct ADD CONSTRAINT CK_ExternalProduct_FloorPrice CHECK(FloorPriceAmount IS NULL OR FloorPriceAmount>0);
 IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name=N'CK_ExternalProduct_UnitsPerCarton' AND parent_object_id=OBJECT_ID(N'crm.ExternalProduct'))
  ALTER TABLE crm.ExternalProduct ADD CONSTRAINT CK_ExternalProduct_UnitsPerCarton CHECK(UnitsPerCarton IS NULL OR UnitsPerCarton>0);
 GO
@@ -37,8 +37,8 @@ BEGIN
   TenantId uniqueidentifier NOT NULL,
   ExternalProductKey uniqueidentifier NOT NULL,
   PriceClassCode varchar(20) NOT NULL,
-  UnitPriceIRR decimal(19,0) NOT NULL,
-  CurrencyCode char(3) NOT NULL CONSTRAINT DF_ProductPriceClass_Currency DEFAULT 'IRR',
+  UnitPriceAmount decimal(19,0) NOT NULL,
+  CurrencyCode varchar(10) NOT NULL,
   SourceSystemCode varchar(40) NOT NULL,
   SourceRecordId nvarchar(200) NULL,
   SourceVersion nvarchar(80) NOT NULL,
@@ -52,8 +52,7 @@ BEGIN
   CONSTRAINT FK_ProductPriceClass_Product FOREIGN KEY(ExternalProductKey) REFERENCES crm.ExternalProduct(ExternalProductKey),
   CONSTRAINT UQ_ProductPriceClass_Version UNIQUE(TenantId,ExternalProductKey,PriceClassCode,SourceVersion),
   CONSTRAINT CK_ProductPriceClass_Code CHECK(PriceClassCode IN ('PRICE_CLASS_1','PRICE_CLASS_2','PRICE_CLASS_3','PRICE_CLASS_4','PRICE_CLASS_5')),
-  CONSTRAINT CK_ProductPriceClass_Price CHECK(UnitPriceIRR>0),
-  CONSTRAINT CK_ProductPriceClass_Currency CHECK(CurrencyCode='IRR'),
+  CONSTRAINT CK_ProductPriceClass_Price CHECK(UnitPriceAmount>0),
   CONSTRAINT CK_ProductPriceClass_Validity CHECK(ValidToUtc IS NULL OR ValidFromUtc IS NULL OR ValidToUtc>ValidFromUtc)
  );
  CREATE INDEX IX_ProductPriceClass_Current ON crm.ProductPriceClass(TenantId,ExternalProductKey,PriceClassCode,ReceivedAtUtc DESC) WHERE IsActive=1;
@@ -61,7 +60,7 @@ END;
 GO
 /* Current price = newest active, in-validity snapshot per product+class. Expired/invalid rows are kept (never physically deleted). */
 CREATE OR ALTER VIEW crm.vw_ProductPriceClassCurrent AS
-SELECT TenantId,ExternalProductKey,PriceClassCode,UnitPriceIRR,SourceSystemCode,SourceVersion,ValidFromUtc,ValidToUtc,ReceivedAtUtc
+SELECT TenantId,ExternalProductKey,PriceClassCode,UnitPriceAmount,SourceSystemCode,SourceVersion,ValidFromUtc,ValidToUtc,ReceivedAtUtc
 FROM (
  SELECT p.*,ROW_NUMBER() OVER(PARTITION BY p.TenantId,p.ExternalProductKey,p.PriceClassCode ORDER BY p.ReceivedAtUtc DESC,p.ProductPriceClassId DESC) AS rn
  FROM crm.ProductPriceClass p
@@ -71,14 +70,14 @@ FROM (
 ) x WHERE x.rn=1;
 GO
 /* PriceClassCode belongs to the whole Quote/order header, never to an individual QuoteLine. */
-IF COL_LENGTH(N'crm.QuoteLine', N'ErpClassUnitPriceIRR') IS NULL ALTER TABLE crm.QuoteLine ADD ErpClassUnitPriceIRR decimal(19,0) NULL;
-IF COL_LENGTH(N'crm.QuoteLine', N'FloorUnitPriceIRR') IS NULL ALTER TABLE crm.QuoteLine ADD FloorUnitPriceIRR decimal(19,0) NULL;
+IF COL_LENGTH(N'crm.QuoteLine', N'ErpClassUnitPriceAmount') IS NULL ALTER TABLE crm.QuoteLine ADD ErpClassUnitPriceAmount decimal(19,0) NULL;
+IF COL_LENGTH(N'crm.QuoteLine', N'FloorUnitPriceAmount') IS NULL ALTER TABLE crm.QuoteLine ADD FloorUnitPriceAmount decimal(19,0) NULL;
 IF COL_LENGTH(N'crm.QuoteLine', N'UnitsPerCartonSnapshot') IS NULL ALTER TABLE crm.QuoteLine ADD UnitsPerCartonSnapshot int NULL;
 IF COL_LENGTH(N'crm.QuoteLine', N'CartonQuantity') IS NULL ALTER TABLE crm.QuoteLine ADD CartonQuantity decimal(19,4) NULL;
-IF COL_LENGTH(N'crm.QuoteLine', N'LineVarianceIRR') IS NULL ALTER TABLE crm.QuoteLine ADD LineVarianceIRR decimal(19,0) NULL;
+IF COL_LENGTH(N'crm.QuoteLine', N'LineVarianceAmount') IS NULL ALTER TABLE crm.QuoteLine ADD LineVarianceAmount decimal(19,0) NULL;
 IF COL_LENGTH(N'crm.QuoteLine', N'BalanceStatus') IS NULL ALTER TABLE crm.QuoteLine ADD BalanceStatus varchar(20) NULL;
 IF COL_LENGTH(N'crm.Quote', N'PriceClassCode') IS NULL ALTER TABLE crm.Quote ADD PriceClassCode varchar(20) NULL;
-IF COL_LENGTH(N'crm.Quote', N'OrderVarianceIRR') IS NULL ALTER TABLE crm.Quote ADD OrderVarianceIRR decimal(19,0) NULL;
+IF COL_LENGTH(N'crm.Quote', N'OrderVarianceAmount') IS NULL ALTER TABLE crm.Quote ADD OrderVarianceAmount decimal(19,0) NULL;
 IF COL_LENGTH(N'crm.Quote', N'OrderBalanceState') IS NULL ALTER TABLE crm.Quote ADD OrderBalanceState varchar(10) NULL;
 GO
 IF NOT EXISTS (SELECT 1 FROM sys.security_policies

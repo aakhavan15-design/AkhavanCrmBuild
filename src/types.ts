@@ -510,7 +510,8 @@ export interface ExternalProduct {
   /** تعداد واحد پایه در هر کارتن از ERP. undefined/null = نامعلوم (۱ فرض نمی‌شود). */
   unitsPerCarton?: number | null;
   /** ۵ کلاس قیمت ERP (ریال به‌ازای واحد پایه)؛ فقط‌خواندنی در CRM. */
-  priceClasses?: Partial<Record<'PRICE_CLASS_1' | 'PRICE_CLASS_2' | 'PRICE_CLASS_3' | 'PRICE_CLASS_4' | 'PRICE_CLASS_5', { unitPrice: number; label?: string }>>;
+  currencyCode?: string | null;
+  priceClasses?: Partial<Record<'PRICE_CLASS_1' | 'PRICE_CLASS_2' | 'PRICE_CLASS_3' | 'PRICE_CLASS_4' | 'PRICE_CLASS_5', { unitPrice: number; label?: string; currencyCode?: string }>>;
   [key: string]: any;
 }
 
@@ -518,6 +519,7 @@ export interface ExternalProduct {
 export interface QuoteLineBalanceSnapshot {
   /** مقدار قیمت ERP همان کالا در کلاس سراسری انتخاب‌شده روی Quote */
   erpClassUnitPrice?: number | null;
+  erpClassCurrencyCode?: string | null;
   floorUnitPrice?: number | null;
   cartonQuantity?: number | null;
   unitsPerCarton?: number | null;

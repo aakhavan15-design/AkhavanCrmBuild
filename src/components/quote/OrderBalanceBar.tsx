@@ -53,7 +53,7 @@ export function OrderBalanceBar({ balance, includesPending = false, className }:
         <div className="text-left shrink-0">
           <div className={cn('font-mono font-extrabold text-lead leading-tight', tone.text)} dir="ltr">
             <bdi>{balance.state === 'UNKNOWN' ? '—' : formatSignedRial(balance.total)}</bdi>
-            <span className="text-micro font-bold mr-1"> ریال</span>
+            <span className="text-micro font-bold mr-1"> {balance.currencyCode || 'واحد پول نامشخص'}</span>
           </div>
           <div className={cn('text-micro font-bold', tone.text)} dir="ltr">
             {ratio === null ? 'نرخ تراز: —' : `نرخ تراز: ${ratio > 0 ? '+' : ratio < 0 ? '−' : ''}${Math.abs(ratio).toLocaleString('fa-IR')}٪`}

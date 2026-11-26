@@ -19,7 +19,7 @@ assert.deepEqual(codes({}), []);
 assert.ok(codes({ floorPrice: -5 }).includes('PRODUCT_FLOOR_PRICE_INVALID'));
 assert.ok(codes({ unitsPerCarton: 0 }).includes('PRODUCT_UNITS_PER_CARTON_INVALID'));
 assert.ok(codes({ priceClass3: 1.5 }).includes('PRODUCT_PRICE_CLASS_INVALID'));
-assert.ok(codes({ currencyCode: 'USD' }).includes('PRODUCT_CURRENCY_NOT_IRR'));
+assert.deepEqual(codes({ currencyCode: 'USD' }), []);
 
 // ── منبع: ویزارد از موتور مرکزی استفاده می‌کند؛ هشدار ذخیره؛ نوار چسبان؛ بدون hex
 const src = (p) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
@@ -47,7 +47,7 @@ const sql = src('database/sqlserver/v1/057_floor_balance_price_classes.sql');
 assert.match(sql, /UQ_ProductPriceClass_Version UNIQUE\(TenantId,ExternalProductKey,PriceClassCode,SourceVersion\)/);
 const code = sql.replace(/\/\*[\s\S]*?\*\//g, '');
 assert.match(code, /decimal\(19,0\)/); assert.doesNotMatch(code, /\bfloat\b|\breal\b/i);
-assert.match(sql, /ON crm\.ProductPriceClass/); assert.match(sql, /CurrencyCode='IRR'/);
+assert.match(sql, /ON crm\.ProductPriceClass/); assert.doesNotMatch(sql, /CurrencyCode='IRR'/);
 // سازمان/کاربران/گروه‌ها/پرسنل زیر «تعاریف»؛ تنظیمات فقط rules/agents/integrations/locale
 const st = src('src/components/SettingsWorkspace.tsx');
 assert.match(st, /SETTINGS_ONLY_TABS = \['rules', 'agents', 'integrations', 'locale'\]/);

@@ -106,7 +106,7 @@ export const DEFAULT_PRICE_CLASS_LABELS: Partial<Record<PriceClassCode, string>>
   PRICE_CLASS_4: 'فروشگاهی'
 };
 
-export interface ErpPriceClassEntry { unitPrice: number; label?: string }
+export interface ErpPriceClassEntry { unitPrice: number; label?: string; currencyCode?: string }
 export type ErpPriceClassMap = Partial<Record<PriceClassCode, ErpPriceClassEntry>>;
 
 const positiveInt = (v: unknown): number | null => {
@@ -128,14 +128,15 @@ export function normalizeErpPriceClasses(source: Record<string, unknown> | null 
   const out: ErpPriceClassMap = {};
   if (!source) return out;
   const currency = source.currencyCode ?? source.currency;
-  if (typeof currency === 'string' && currency.trim() !== '' && currency.trim().toUpperCase() !== 'IRR') return out;
+  const sourceCurrency = typeof currency === 'string' && currency.trim() ? currency.trim().toUpperCase() : undefined;
   const put = (code: string, raw: unknown, label?: unknown) => {
     if (!(PRICE_CLASS_CODES as readonly string[]).includes(code)) return;
     const entry = raw && typeof raw === 'object' ? raw as Record<string, unknown> : { unitPrice: raw, label };
     const unitPrice = positiveInt(entry.unitPrice ?? entry.price);
     if (unitPrice === null) return;
     const text = typeof (entry.label ?? label) === 'string' ? String(entry.label ?? label).trim() : '';
-    out[code as PriceClassCode] = text ? { unitPrice, label: text } : { unitPrice };
+    const entryCurrency = typeof entry.currencyCode === 'string' && entry.currencyCode.trim() ? entry.currencyCode.trim().toUpperCase() : sourceCurrency;
+    out[code as PriceClassCode] = { unitPrice, ...(text ? { label: text } : {}), ...(entryCurrency ? { currencyCode: entryCurrency } : {}) };
   };
   const nested = source.priceClasses;
   if (Array.isArray(nested)) nested.forEach(item => item && typeof item === 'object' && put(String((item as any).code ?? ''), item));
@@ -177,6 +178,7 @@ export interface BalanceLineInput {
   /** تعداد واحد پایه (= کارتن × تعداد در کارتن) */
   baseQuantity: number | null | undefined;
   unitsPerCarton?: number | null;
+  currencyCode?: string | null;
 }
 
 export interface LineBalance {
@@ -185,6 +187,7 @@ export interface LineBalance {
   state: BalanceState;
   comparisonPrice: number | null;
   floorPrice: number | null;
+  currencyCode: string | null;
   unitPrice: number | null;
   baseQuantity: number | null;
   referenceAmount: number;
@@ -201,15 +204,16 @@ export function computeLineBalance(input: BalanceLineInput): LineBalance {
   const floor = asSafeInt(input.floorPrice);
   const price = asSafeInt(input.unitPrice);
   const qty = asSafeInt(input.baseQuantity);
+  const currencyCode = typeof input.currencyCode === 'string' && input.currencyCode.trim() ? input.currencyCode.trim().toUpperCase() : null;
   const validEntry = price !== null && price > 0 && qty !== null && qty > 0;
-  if (!validEntry) return { key: input.key, status: 'INVALID', state: 'UNKNOWN', comparisonPrice: reference, floorPrice: floor && floor > 0 ? floor : null, unitPrice: price, baseQuantity: qty, referenceAmount: 0, enteredAmount: 0, variance: null };
+  if (!validEntry) return { key: input.key, status: 'INVALID', state: 'UNKNOWN', comparisonPrice: reference, floorPrice: floor && floor > 0 ? floor : null, currencyCode, unitPrice: price, baseQuantity: qty, referenceAmount: 0, enteredAmount: 0, variance: null };
   const enteredAmount = price! * qty!;
-  if (!Number.isSafeInteger(enteredAmount)) return { key: input.key, status: 'INVALID', state: 'UNKNOWN', comparisonPrice: reference, floorPrice: floor && floor > 0 ? floor : null, unitPrice: price, baseQuantity: qty, referenceAmount: 0, enteredAmount: 0, variance: null };
-  if (reference === null || reference <= 0) return { key: input.key, status: 'REFERENCE_UNKNOWN', state: 'UNKNOWN', comparisonPrice: null, floorPrice: floor && floor > 0 ? floor : null, unitPrice: price, baseQuantity: qty, referenceAmount: 0, enteredAmount, variance: null };
+  if (!Number.isSafeInteger(enteredAmount)) return { key: input.key, status: 'INVALID', state: 'UNKNOWN', comparisonPrice: reference, floorPrice: floor && floor > 0 ? floor : null, currencyCode, unitPrice: price, baseQuantity: qty, referenceAmount: 0, enteredAmount: 0, variance: null };
+  if (reference === null || reference <= 0 || !currencyCode) return { key: input.key, status: 'REFERENCE_UNKNOWN', state: 'UNKNOWN', comparisonPrice: reference, floorPrice: floor && floor > 0 ? floor : null, currencyCode, unitPrice: price, baseQuantity: qty, referenceAmount: 0, enteredAmount, variance: null };
   const referenceAmount = reference * qty!;
   const variance = (price! - reference) * qty!;
-  if (!Number.isSafeInteger(referenceAmount) || !Number.isSafeInteger(variance)) return { key: input.key, status: 'INVALID', state: 'UNKNOWN', comparisonPrice: reference, floorPrice: floor && floor > 0 ? floor : null, unitPrice: price, baseQuantity: qty, referenceAmount: 0, enteredAmount: 0, variance: null };
-  return { key: input.key, status: 'OK', state: stateOf(variance), comparisonPrice: reference, floorPrice: floor && floor > 0 ? floor : null, unitPrice: price, baseQuantity: qty, referenceAmount, enteredAmount, variance };
+  if (!Number.isSafeInteger(referenceAmount) || !Number.isSafeInteger(variance)) return { key: input.key, status: 'INVALID', state: 'UNKNOWN', comparisonPrice: reference, floorPrice: floor && floor > 0 ? floor : null, currencyCode, unitPrice: price, baseQuantity: qty, referenceAmount: 0, enteredAmount: 0, variance: null };
+  return { key: input.key, status: 'OK', state: stateOf(variance), comparisonPrice: reference, floorPrice: floor && floor > 0 ? floor : null, currencyCode, unitPrice: price, baseQuantity: qty, referenceAmount, enteredAmount, variance };
 }
 
 export interface OrderBalance {
@@ -226,26 +230,33 @@ export interface OrderBalance {
   negativeLineCount: number;
   excludedLineCount: number;
   countedLineCount: number;
+  currencyCode: string | null;
+  currencyMismatch: boolean;
 }
 
 export function computeOrderBalance(inputs: BalanceLineInput[]): OrderBalance {
   const lines = inputs.map(computeLineBalance);
   const counted = lines.filter(l => l.variance !== null);
-  const total = counted.reduce((s, l) => s + (l.variance as number), 0);
-  const referenceAmount = counted.reduce((s, l) => s + l.referenceAmount, 0);
-  const enteredAmount = counted.reduce((s, l) => s + l.enteredAmount, 0);
+  const currencies = new Set(counted.map(l => l.currencyCode).filter((v): v is string => !!v));
+  const currencyMismatch = currencies.size > 1;
+  const usable = currencyMismatch ? [] : counted;
+  const total = usable.reduce((s, l) => s + (l.variance as number), 0);
+  const referenceAmount = usable.reduce((s, l) => s + l.referenceAmount, 0);
+  const enteredAmount = usable.reduce((s, l) => s + l.enteredAmount, 0);
   return {
     lines,
     total,
-    state: counted.length === 0 ? 'UNKNOWN' : stateOf(total),
-    surplus: counted.reduce((s, l) => s + Math.max(0, l.variance as number), 0),
-    deficit: counted.reduce((s, l) => s + Math.max(0, -(l.variance as number)), 0),
+    state: usable.length === 0 ? 'UNKNOWN' : stateOf(total),
+    surplus: usable.reduce((s, l) => s + Math.max(0, l.variance as number), 0),
+    deficit: usable.reduce((s, l) => s + Math.max(0, -(l.variance as number)), 0),
     referenceAmount,
     enteredAmount,
     ratioPercent: referenceAmount > 0 ? Math.round((total / referenceAmount) * 1000) / 10 : null,
-    negativeLineCount: counted.filter(l => (l.variance as number) < 0).length,
-    excludedLineCount: lines.length - counted.length,
-    countedLineCount: counted.length
+    negativeLineCount: usable.filter(l => (l.variance as number) < 0).length,
+    excludedLineCount: lines.length - usable.length,
+    countedLineCount: usable.length,
+    currencyCode: currencies.size === 1 && !currencyMismatch ? [...currencies][0] : null,
+    currencyMismatch
   };
 }
 

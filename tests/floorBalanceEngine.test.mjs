@@ -1,4 +1,4 @@
-// موتور تراز لحظه‌ای سفارش: کف ERP، کارتن، پیشنهاد فی/تعداد، کلاس‌های قیمت (عدد صحیح ریالی؛ بدون Float).
+// موتور تراز لحظه‌ای سفارش: کف ERP، کارتن، پیشنهاد فی/تعداد، کلاس‌های قیمت (عدد صحیح با واحد پول ERP؛ بدون Float).
 import assert from 'node:assert/strict';
 import {
   computeLineBalance, computeOrderBalance, suggestLineRecovery,
@@ -6,26 +6,26 @@ import {
 } from '../src/lib/cpqEngine.ts';
 
 // ── تراز ردیف: (فی − کف) × تعداد پایه
-const l1 = computeLineBalance({ key: 'a', comparisonPrice: 100, unitPrice: 300, baseQuantity: 10 });
+const l1 = computeLineBalance({ key: 'a', comparisonPrice: 100, currencyCode: 'IRR', unitPrice: 300, baseQuantity: 10 });
 assert.equal(l1.variance, 2000); assert.equal(l1.state, 'POSITIVE'); assert.equal(l1.referenceAmount, 1000); assert.equal(l1.enteredAmount, 3000);
-assert.equal(computeLineBalance({ key: 'b', comparisonPrice: 100, unitPrice: 100, baseQuantity: 5 }).state, 'ZERO');
-assert.equal(computeLineBalance({ key: 'c', comparisonPrice: 100, unitPrice: 90, baseQuantity: 5 }).variance, -50);
+assert.equal(computeLineBalance({ key: 'b', comparisonPrice: 100, currencyCode: 'IRR', unitPrice: 100, baseQuantity: 5 }).state, 'ZERO');
+assert.equal(computeLineBalance({ key: 'c', comparisonPrice: 100, currencyCode: 'IRR', unitPrice: 90, baseQuantity: 5 }).variance, -50);
 // کف نامعلوم: صفر فرض نمی‌شود؛ از تراز بیرون است
-const unk = computeLineBalance({ key: 'u', comparisonPrice: null, unitPrice: 90, baseQuantity: 5 });
+const unk = computeLineBalance({ key: 'u', comparisonPrice: null, currencyCode: 'IRR', unitPrice: 90, baseQuantity: 5 });
 assert.equal(unk.status, 'REFERENCE_UNKNOWN'); assert.equal(unk.variance, null);
-assert.equal(computeLineBalance({ key: 'z', comparisonPrice: 0, unitPrice: 90, baseQuantity: 5 }).status, 'REFERENCE_UNKNOWN');
+assert.equal(computeLineBalance({ key: 'z', comparisonPrice: 0, currencyCode: 'IRR', unitPrice: 90, baseQuantity: 5 }).status, 'REFERENCE_UNKNOWN');
 // ورودی نامعتبر (اعشار/صفر/منفی)
 for (const bad of [{ unitPrice: 10.5, baseQuantity: 1 }, { unitPrice: 0, baseQuantity: 1 }, { unitPrice: 10, baseQuantity: 0 }, { unitPrice: 10, baseQuantity: -2 }, { unitPrice: undefined, baseQuantity: 2 }])
-  assert.equal(computeLineBalance({ key: 'x', comparisonPrice: 5, ...bad }).status, 'INVALID');
+  assert.equal(computeLineBalance({ key: 'x', comparisonPrice: 5, currencyCode: 'IRR', ...bad }).status, 'INVALID');
 
 // ── تراز سفارش: جمع ردیف‌ها، تغییر تعداد بلافاصله تراز را دو برابر می‌کند
-const mk = (q) => [{ key: 'a', comparisonPrice: 100, unitPrice: 300, baseQuantity: q }];
+const mk = (q) => [{ key: 'a', comparisonPrice: 100, currencyCode: 'IRR', unitPrice: 300, baseQuantity: q }];
 assert.equal(computeOrderBalance(mk(10)).total, 2000);
 assert.equal(computeOrderBalance(mk(20)).total, 4000);
 const mixed = computeOrderBalance([
-  { key: 'a', comparisonPrice: 100, unitPrice: 300, baseQuantity: 10 },
-  { key: 'b', comparisonPrice: 1000, unitPrice: 900, baseQuantity: 30 },
-  { key: 'u', comparisonPrice: null, unitPrice: 50, baseQuantity: 3 }
+  { key: 'a', comparisonPrice: 100, currencyCode: 'IRR', unitPrice: 300, baseQuantity: 10 },
+  { key: 'b', comparisonPrice: 1000, currencyCode: 'IRR', unitPrice: 900, baseQuantity: 30 },
+  { key: 'u', comparisonPrice: null, currencyCode: 'IRR', unitPrice: 50, baseQuantity: 3 }
 ]);
 assert.equal(mixed.total, 2000 - 3000); assert.equal(mixed.state, 'NEGATIVE');
 assert.equal(mixed.surplus, 2000); assert.equal(mixed.deficit, 3000);
@@ -36,8 +36,8 @@ assert.equal(computeOrderBalance([]).state, 'UNKNOWN');
 // ── سناریوی کاربر: سفارش منفی؛ کالای دوم با فی بالاتر از کف جبران می‌کند
 // کف ۱۰، من ۱۰ واحد را ۳۰ می‌زنم ⇒ +۲۰۰؛ کسری ردیف دیگر −۵۰۰
 const scenario = [
-  { key: 'neg', comparisonPrice: 1000, unitPrice: 950, baseQuantity: 10, unitsPerCarton: 10 }, // −500
-  { key: 'pos', comparisonPrice: 10, unitPrice: 30, baseQuantity: 10, unitsPerCarton: 10 }     // +200
+  { key: 'neg', comparisonPrice: 1000, currencyCode: 'IRR', unitPrice: 950, baseQuantity: 10, unitsPerCarton: 10 }, // −500
+  { key: 'pos', comparisonPrice: 10, currencyCode: 'IRR', unitPrice: 30, baseQuantity: 10, unitsPerCarton: 10 }     // +200
 ];
 const sc = computeOrderBalance(scenario); assert.equal(sc.total, -300);
 const sg = suggestLineRecovery(scenario, 'pos');
@@ -55,15 +55,15 @@ assert.equal(suggestLineRecovery(more, 'pos').price.unitPrice, 10 + Math.ceil(50
 assert.ok(suggestLineRecovery(more, 'pos').price.unitPrice < sg.price.unitPrice);
 
 // فی ≤ کف ⇒ افزایش تعداد کمکی نمی‌کند؛ فقط پیشنهاد فی
-const flat = suggestLineRecovery([{ key: 'neg', comparisonPrice: 1000, unitPrice: 950, baseQuantity: 10 }], 'neg');
+const flat = suggestLineRecovery([{ key: 'neg', comparisonPrice: 1000, currencyCode: 'IRR', unitPrice: 950, baseQuantity: 10 }], 'neg');
 assert.equal(flat.quantity.unavailableReason, 'PRICE_NOT_ABOVE_REFERENCE'); assert.equal(flat.quantity.cartons, null);
 assert.equal(flat.price.unitPrice, 1000 + Math.ceil(0 / 10)); // سفارش تک‌ردیفی: رسیدن به کف
 // بدون تعداد در کارتن: تعداد به واحد پایه برمی‌گردد و ۱ فرض نمی‌شود
-const noUpc = suggestLineRecovery([{ key: 'n', comparisonPrice: 1000, unitPrice: 950, baseQuantity: 10 }, { key: 'p', comparisonPrice: 10, unitPrice: 30, baseQuantity: 10 }], 'p');
+const noUpc = suggestLineRecovery([{ key: 'n', comparisonPrice: 1000, currencyCode: 'IRR', unitPrice: 950, baseQuantity: 10 }, { key: 'p', comparisonPrice: 10, currencyCode: 'IRR', unitPrice: 30, baseQuantity: 10 }], 'p');
 assert.equal(noUpc.quantity.cartons, null); assert.equal(noUpc.quantity.baseQuantity, 25);
 // تراز مثبت/صفر ⇒ پیشنهادی نیست؛ ردیف نامحاسبه‌پذیر ⇒ پیشنهادی نیست
 assert.equal(suggestLineRecovery(mk(10), 'a').reason, 'ORDER_NOT_NEGATIVE');
-assert.equal(suggestLineRecovery([{ key: 'u', comparisonPrice: null, unitPrice: 1, baseQuantity: 1 }], 'u').reason, 'LINE_NOT_COMPUTABLE');
+assert.equal(suggestLineRecovery([{ key: 'u', comparisonPrice: null, currencyCode: 'IRR', unitPrice: 1, baseQuantity: 1 }], 'u').reason, 'LINE_NOT_COMPUTABLE');
 // گرد کردن فی به گام (۱۰۰۰ ریال) فقط رو به بالا
 assert.equal(suggestLineRecovery(scenario, 'pos', { priceRoundingStep: 100 }).price.unitPrice, 100);
 // جبران، هرگز کمتر از صفر نمی‌ماند (دامنهٔ تصادفی قطعی)
@@ -83,7 +83,7 @@ const n = normalizeErpPriceClasses({ priceClass1: '۱۲۰۰۰', priceClass2: 900
 assert.equal(n.PRICE_CLASS_1.unitPrice, 12000); assert.deepEqual(Object.keys(n).sort(), ['PRICE_CLASS_1', 'PRICE_CLASS_2']);
 assert.equal(n.PRICE_CLASS_2.unitPrice, 90000); assert.equal(n.PRICE_CLASS_2.label, 'عمده‌ی ERP');
 assert.equal(n.PRICE_CLASS_3, undefined); assert.equal(n.PRICE_CLASS_5, undefined); // صفر/منفی/اعشاری هرگز نمی‌شود
-assert.equal(normalizeErpPriceClasses({ currencyCode: 'USD', priceClass1: 5 }).PRICE_CLASS_1, undefined); // ریال/ارز ناسازگار
+assert.equal(normalizeErpPriceClasses({ currencyCode: 'USD', priceClass1: 5 }).PRICE_CLASS_1.currencyCode, 'USD'); // ریال/ارز ناسازگار
 assert.equal(normalizeErpPriceClasses({ priceClasses: [{ code: 'PRICE_CLASS_5', unitPrice: 77, label: 'X' }] }).PRICE_CLASS_5.unitPrice, 77);
 assert.equal(normalizeErpPriceClasses({ priceClasses: { PRICE_CLASS_1: { unitPrice: 5 } } }).PRICE_CLASS_1.unitPrice, 5);
 assert.equal(normalizeErpPriceClasses({ priceClasses: { BAD_CODE: 5 } }).BAD_CODE, undefined);
