@@ -190,11 +190,12 @@ export function QuoteWizardModal({ isOpen, onClose, sourceOrderId, state, update
       return;
     }
     if (!state.currentUserId) return;
-    // هشدار تراز منفی/کف نامعلوم هنگام ذخیره؛ ثبت پیش‌نویس مجاز است ولی تأیید خودکار نمی‌شود.
-    if (negativeBalance || orderBalance.excludedLineCount > 0) {
+    // نبود قیمت کلاس برای حتی یک قلم، تراز را ناقص می‌کند و اجازه ثبت پیشنهاد نمی‌دهد.
+    if (orderBalance.excludedLineCount > 0) { toast.error(`${formatNumber(orderBalance.excludedLineCount)} قلم قیمت کلاس منتخب ریالی و معتبر ندارد؛ ابتدا قیمت مرجع کالا را از ERP دریافت کنید.`); return; }
+    // تراز منفی هشدار دارد، اما امکان ثبت پیشنهاد برای بررسی و جبران در اقلام دیگر حفظ می‌شود.
+    if (negativeBalance) {
       const parts = [
         negativeBalance ? `اختلاف سفارش با کلاس قیمت منتخب منفی است (کسری ${formatNumber(Math.abs(orderBalance.total))} ${orderBalance.currencyCode || 'واحد پول نامشخص'}).` : '',
-        orderBalance.excludedLineCount > 0 ? `${formatNumber(orderBalance.excludedLineCount)} قلم قیمت کلاس منتخب ندارد و در تراز لحاظ نشده است.` : '',
         'پیش‌فاکتور برای بررسی/تأیید ثبت می‌شود. ادامه می‌دهید؟'
       ].filter(Boolean);
       if (!confirm(parts.join('\n'))) return;

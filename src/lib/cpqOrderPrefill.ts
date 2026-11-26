@@ -1,5 +1,5 @@
 import type { DraftQuoteState, ExternalProduct } from '../types';
-import { computeOrderBalance } from './cpqEngine';
+import { computeOrderBalance } from './cpqEngine.ts';
 
 type ErpOrderLineRecord = Record<string, unknown>;
 const safePositiveOrderInt = (value: unknown): number | null => {

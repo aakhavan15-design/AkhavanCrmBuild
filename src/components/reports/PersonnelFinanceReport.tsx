@@ -13,7 +13,7 @@ import { formatCurrency, getJalaliDate, jalaliToGregorianISO, toLocalDateISO } f
 import { personnelAccountCodes, buildPersonnelFinanceRows, selectedPersonnelBalance } from '../../lib/personnelFinanceReport';
 
 const money=(n:number|null)=>n===null?'نامشخص':formatCurrency(n);
-const palette=['#477B68','#B99A68','#8497B0','#B97478','#727D53','#706D96'];
+const palette=['var(--c-chart-1)','var(--c-chart-4)','var(--c-chart-2)','var(--c-chart-5)','var(--chart-6)','var(--chart-7)'];
 export function PersonnelFinanceReport({ state }: {state:AppState}) {
   const {scope}=useLedgerBookScope();
   const {serverVersion}=useDataSyncStatus();

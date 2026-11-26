@@ -13,6 +13,7 @@ interface PlannedModulePageProps { state: AppState }
 const legacyTiles: Record<string, string> = {
   'hr-applicants': 'hr-recruitment',
   'fin-reports': 'finance-reports',
+  'fin-liquidity': 'treasury',
 };
 
 /**

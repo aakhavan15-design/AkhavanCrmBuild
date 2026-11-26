@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Package, Plus, Trash2, Lightbulb, Check } from 'lucide-react';
 import type { DraftQuoteState, ExternalProduct } from '../../types';
 import {
-  computeOrderBalance, suggestLineRecovery,
+  computeOrderBalance, suggestLineRecovery, isRialCurrencyCode,
   type BalanceLineInput, type LineBalance, type LineRecoverySuggestion, type PriceClassLabelRow
 } from '../../lib/cpqEngine';
 import { SearchableSelect, type SelectOption } from '../ui/SearchableSelect';
@@ -93,7 +93,8 @@ export function QuotePricingStep({ products, priceClassLabels, priceClassCode, o
 
   const pendingBase = baseFrom(cartons, upc, quantityMode);
   const pendingTotal = pendingBase * (price ?? 0);
-  const pendingValid = !!product && Number.isSafeInteger(pendingBase) && pendingBase > 0 && !!price && price > 0 && Number.isSafeInteger(pendingTotal);
+  const classPriceValid = Number.isSafeInteger(classPrice) && (classPrice as number) > 0 && isRialCurrencyCode(classCurrencyCode);
+  const pendingValid = !!product && classPriceValid && Number.isSafeInteger(pendingBase) && pendingBase > 0 && !!price && price > 0 && Number.isSafeInteger(pendingTotal);
   const pendingInput: BalanceLineInput | null = pendingValid
     ? { key: 'pending', comparisonPrice: classPrice, currencyCode: classCurrencyCode, unitPrice: price, baseQuantity: pendingBase, unitsPerCarton: upc }
     : null;

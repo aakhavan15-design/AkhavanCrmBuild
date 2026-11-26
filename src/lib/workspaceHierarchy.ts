@@ -67,7 +67,7 @@ export const REPORT_VIEWS: ViewDef[] = [
 /** Settings (/settings?tab=…&sub=…) — already one central hub; ids in lower-case URL form. */
 export const SETTINGS_TABS = ['org', 'users', 'groups', 'rules', 'agents', 'integrations', 'locale'] as const;
 /** Definitions (/definitions?tab=…) — org/users/groups come from the settings engine in definitions mode. */
-export const DEFINITIONS_TABS = ['org', 'users', 'groups', 'personnel', 'price-classes', 'products', 'customers'] as const;
+export const DEFINITIONS_TABS = ['org', 'users', 'groups', 'personnel', 'price-classes', 'products', 'customers', 'finance-codes', 'routes', 'geo', 'suppliers', 'sellers', 'distributors', 'drivers', 'product-groups', 'sales-targets', 'commissions', 'payment-mappings', 'detail-groups', 'expense-budgets', 'salary-definitions', 'credit-policies'] as const;
 export const SETTINGS_USER_SUBS = ['list', 'roles', 'permissions'] as const;
 
 /** Internal automation (/internal_automation?tab=…). */

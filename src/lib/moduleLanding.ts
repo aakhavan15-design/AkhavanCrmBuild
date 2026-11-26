@@ -93,7 +93,7 @@ export const MODULE_LANDINGS: ModuleLandingDefinition[] = [
         title: 'مرکز داده و همگام‌سازی',
         tiles: [
           tile('sync-center', 'مرکز داده و همگام‌سازی', 'وضعیت پایگاه داده مرکزی، همگام‌سازی و کیفیت داده', '/sync-center', 'settings', RefreshCw),
-          tile('audit-master', 'پایش کیفیت داده', 'کنترل مغایرت و یکپارچگی اطلاعات پایه', '/audit?module=organization', 'settings', SearchCheck),
+          tile('audit-master', 'نمای کلی سلامت داده', 'نمای تجمیعی کنترل کیفیت مشتری، مسیر، کالا و کدینگ', '/audit?module=home', 'settings', SearchCheck),
         ],
       },
       {
@@ -216,7 +216,7 @@ export const MODULE_LANDINGS: ModuleLandingDefinition[] = [
         title: 'تأمین و سفارش خرید',
         tiles: [
           tile('purchasing', 'درخواست و سفارش خرید', 'ثبت و پیگیری درخواست تأمین و سفارش خرید', '/operations?tab=purchasing', 'ops.purchasing', ShoppingCart),
-          tile('proc-inventory', 'نیاز تأمین و سفارش خرید', 'بررسی نیازهای تأمین در فرایند خرید', '/operations?tab=purchasing', 'ops.purchasing', Package),
+          tile('proc-inventory', 'موجودی و نیاز تأمین', 'مشاهده موجودی و اقلام نیازمند تأمین', '/operations?tab=inventory', 'ops.inventory', Package),
         ],
       },
       {
