@@ -18,7 +18,7 @@ const fa = (n: number | null | undefined) => (typeof n === 'number' && Number.is
 
 /** قیمت مقایسه از کلاس سراسری سفارش می‌آید؛ فقط مقدار همان کالا در کلاس منتخب snapshot می‌شود. */
 export const lineToBalanceInput = (l: DraftLine, key: string): BalanceLineInput => ({
-  key, comparisonPrice: l.erpClassUnitPrice ?? null, floorPrice: l.floorUnitPrice ?? null, currencyCode: l.erpClassCurrencyCode ?? null, unitPrice: l.unitPrice, baseQuantity: l.quantity, unitsPerCarton: l.unitsPerCarton ?? null
+  key, comparisonPrice: l.erpClassUnitPrice ?? null, currencyCode: l.erpClassCurrencyCode ?? null, unitPrice: l.unitPrice, baseQuantity: l.quantity, unitsPerCarton: l.unitsPerCarton ?? null
 });
 
 /** تعداد واحد پایه از ورودی کاربر: کارتن × تعداد در کارتن؛ اگر تعداد در کارتن نامعلوم باشد ورودی همان واحد پایه است (۱ فرض نمی‌شود، حالت واحد صریح نمایش داده می‌شود). */
@@ -48,7 +48,7 @@ function SuggestionStrip({ s, line, onApplyPrice, onApplyQty }: { s: LineRecover
       <div className="flex items-center justify-between gap-2">
         <div className="text-caption text-ink">
           فی پیشنهادی: <b className="font-mono">{fa(s.price.unitPrice)}</b>
-          <span className="text-micro text-ink-soft"> ({formatSignedAmount(s.price.delta)} {line.currencyCode || 'واحد پول نامشخص'}{s.price.deltaPercent !== null ? ` · ${formatSignedAmount(s.price.deltaPercent)}٪` : ''})</span>
+          <span className="text-micro text-ink-soft"> ({formatSignedAmount(s.price.delta)} {line.currencyCode || 'واحد پول غیرریالی/نامشخص'}{s.price.deltaPercent !== null ? ` · ${formatSignedAmount(s.price.deltaPercent)}٪` : ''})</span>
         </div>
         <Button size="xs" variant="soft" onClick={onApplyPrice}><Check size={12} className="ml-1" />اعمال فی</Button>
       </div>
@@ -78,7 +78,7 @@ export function QuotePricingStep({ products, priceClassLabels, priceClassCode, o
   const product = products.find(p => p.id === productId);
   const classEntry = product?.priceClasses?.[priceClassCode as keyof NonNullable<ExternalProduct['priceClasses']>];
   const classPrice = classEntry?.unitPrice ?? null;
-  const classCurrencyCode = classEntry?.currencyCode ?? product?.currencyCode ?? null;
+  const classCurrencyCode = classEntry?.currencyCode ?? (classPrice ? (product?.currencyCode ?? 'IRR') : null);
   const classLabel = priceClassLabels.find(c => c.code === priceClassCode)?.label || priceClassCode;
   const upc = product?.unitsPerCarton ?? null;
 
@@ -95,7 +95,7 @@ export function QuotePricingStep({ products, priceClassLabels, priceClassCode, o
   const pendingTotal = pendingBase * (price ?? 0);
   const pendingValid = !!product && Number.isSafeInteger(pendingBase) && pendingBase > 0 && !!price && price > 0 && Number.isSafeInteger(pendingTotal);
   const pendingInput: BalanceLineInput | null = pendingValid
-    ? { key: 'pending', comparisonPrice: classPrice, floorPrice: product!.floorPrice ?? null, currencyCode: classCurrencyCode, unitPrice: price, baseQuantity: pendingBase, unitsPerCarton: upc }
+    ? { key: 'pending', comparisonPrice: classPrice, currencyCode: classCurrencyCode, unitPrice: price, baseQuantity: pendingBase, unitsPerCarton: upc }
     : null;
 
   const savedInputs = lines.map((l, i) => lineToBalanceInput(l, String(i)));
@@ -113,7 +113,7 @@ export function QuotePricingStep({ products, priceClassLabels, priceClassCode, o
     const quantity = baseFrom(nextCartons, upcSnap, nextMode);
     const unitPrice = 'unitPrice' in patch ? patch.unitPrice ?? 0 : l.unitPrice;
     if (!Number.isSafeInteger(quantity) || quantity <= 0 || !Number.isSafeInteger(unitPrice * quantity)) return { ...l, quantity: 0, lineTotal: 0, quantityMode: nextMode, cartonQuantity: nextMode === 'CARTON' ? null : l.cartonQuantity, lineVariance: null, balanceStatus: 'INVALID' };
-    const calc = computeOrderBalance([{ key: 'x', comparisonPrice: l.erpClassUnitPrice ?? null, floorPrice: l.floorUnitPrice ?? null, currencyCode: l.erpClassCurrencyCode ?? null, unitPrice, baseQuantity: quantity }]).lines[0];
+    const calc = computeOrderBalance([{ key: 'x', comparisonPrice: l.erpClassUnitPrice ?? null, currencyCode: l.erpClassCurrencyCode ?? null, unitPrice, baseQuantity: quantity }]).lines[0];
     return {
       ...l, quantity, unitPrice, lineTotal: quantity * unitPrice,
       cartonQuantity: nextMode === 'CARTON' && nextCartons && nextCartons > 0 ? nextCartons : null, quantityMode: nextMode,
@@ -123,13 +123,12 @@ export function QuotePricingStep({ products, priceClassLabels, priceClassCode, o
 
   const addLine = () => {
     if (!product || !pendingValid || !price) { onInvalidAdd(); return; }
-    const calc = computeOrderBalance([{ key: 'x', comparisonPrice: classPrice, floorPrice: product.floorPrice ?? null, currencyCode: classCurrencyCode, unitPrice: price, baseQuantity: pendingBase }]).lines[0];
+    const calc = computeOrderBalance([{ key: 'x', comparisonPrice: classPrice, currencyCode: classCurrencyCode, unitPrice: price, baseQuantity: pendingBase }]).lines[0];
     // افزودن با تراز منفی مجاز است؛ فروشنده می‌تواند در کالای بعدی جبران کند (هشدار فقط هنگام ذخیره).
     setLines(prev => [...prev, {
       productId: product.id, productName: product.name, productCode: product.sku || product.code || '',
       quantity: pendingBase, unitPrice: price, costPrice: product.costPrice, lineTotal: pendingBase * price,
-      erpClassUnitPrice: classPrice, erpClassCurrencyCode: classCurrencyCode, floorUnitPrice: product.floorPrice ?? null,
-      cartonQuantity: quantityMode === 'CARTON' ? cartons : null, unitsPerCarton: upc, quantityMode, lineVariance: calc.variance, balanceStatus: calc.status
+      erpClassUnitPrice: classPrice, erpClassCurrencyCode: classCurrencyCode, cartonQuantity: quantityMode === 'CARTON' ? cartons : null, unitsPerCarton: upc, quantityMode, lineVariance: calc.variance, balanceStatus: calc.status
     }]);
     setCartons(1);
   };
@@ -170,17 +169,17 @@ export function QuotePricingStep({ products, priceClassLabels, priceClassCode, o
                 <NumericField ariaLabel="تعداد" value={cartons} onCommit={setCartons} grouped={false} />
               </div>
               <div>
-                <label className="block text-micro font-bold text-text-secondary mb-1">فی هر واحد ({classCurrencyCode || 'واحد پول نامشخص'})</label>
+                <label className="block text-micro font-bold text-text-secondary mb-1">فی هر واحد پایه (ریال)</label>
                 <NumericField ariaLabel="فی هر واحد" value={price} onCommit={setPrice} />
               </div>
             </div>
             <div className="text-micro text-ink-soft space-y-0.5">
-              <div>حداقل قیمت مرجع: <b className="font-mono">{product.floorPrice ? fa(product.floorPrice) : 'نامشخص'}</b> · {classLabel}: <b className="font-mono">{classPrice ? fa(classPrice) : 'دریافت نشده'}</b>{upc ? <> · مجموع: <b className="font-mono">{fa(pendingBase)}</b> واحد</> : null}</div>
+              <div>قیمت مرجع کلاس {classLabel}: <b className="font-mono">{classPrice ? fa(classPrice) : 'دریافت نشده'}</b>{upc ? <> · مجموع: <b className="font-mono">{fa(pendingBase)}</b> واحد</> : null}</div>
               {!classPrice && <div className="text-warning">قیمت کلاس منتخب این کالا دریافت نشده است؛ تراز این قلم محاسبه نمی‌شود.</div>}{!classCurrencyCode && <div className="text-warning">واحد پول این قیمت مشخص نیست؛ مقایسه و تراز قابل محاسبه نیست.</div>}
               {(!classPrice || !classCurrencyCode) && <div className="text-warning">قیمت «{classLabel}» برای این کالا دریافت نشده؛ فی را دستی وارد کنید (جایگزین خودکار اعمال نشد).</div>}
             </div>
             {pendingLine && (
-              <div className={cn('rounded-xl border px-2.5 py-1.5 text-caption font-bold', rowTone(pendingLine.state))} data-testid="pending-balance">
+              <div className={cn('rounded-xl border px-2.5 py-1.5 text-caption font-bold transition-all duration-300 ease-out', rowTone(pendingLine.state))} data-testid="pending-balance">
                 تراز این قلم: {stateText(pendingLine)}
               </div>
             )}
@@ -199,11 +198,11 @@ export function QuotePricingStep({ products, priceClassLabels, priceClassCode, o
           const lb = byKey.get(String(i));
           const sug = suggestFor(String(i));
           return (
-            <div key={i} data-testid="balance-line" data-balance-state={lb?.state} className={cn('rounded-2xl border p-3 space-y-2', rowTone(lb?.state))}>
+            <div key={i} data-testid="balance-line" data-balance-state={lb?.state} className={cn('rounded-2xl border p-3 space-y-2 transition-all duration-300 ease-out', rowTone(lb?.state))}>
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
                   <div className="text-compact font-bold text-text-main truncate">{l.productName}</div>
-                  <div className="text-micro text-ink-soft">{l.productCode || '—'} · حداقل قیمت مرجع: <span className="font-mono">{l.floorUnitPrice ? fa(l.floorUnitPrice) : 'نامعلوم'}</span></div>
+                  <div className="text-micro text-ink-soft">{l.productCode || '—'} · قیمت مرجع کلاس منتخب: <span className="font-mono">{l.erpClassUnitPrice ? fa(l.erpClassUnitPrice) : 'نامعلوم'}</span></div>
                 </div>
                 <button aria-label="حذف قلم" onClick={() => setLines(prev => prev.filter((_, idx) => idx !== i))} className="text-danger p-2 -m-1 rounded-md cursor-pointer min-w-(--size-touch) min-h-(--size-touch) flex items-center justify-center"><Trash2 size={15} /></button>
               </div>
@@ -219,9 +218,10 @@ export function QuotePricingStep({ products, priceClassLabels, priceClassCode, o
                   <NumericField ariaLabel={`فی ${l.productName}`} value={l.unitPrice || null} onCommit={(n) => patchLine(i, { unitPrice: n })} />
                 </div>
               </div>
+              <div className="h-1 overflow-hidden rounded-full bg-sunken/70" aria-hidden="true"><div className={cn('h-full rounded-full transition-[width,background-color] duration-300 ease-out', lb?.state === 'NEGATIVE' ? 'bg-danger' : lb?.state === 'UNKNOWN' ? 'bg-border-strong' : 'bg-success')} style={{ width: `${lb?.variance === null || !lb?.referenceAmount ? 0 : Math.min(100, Math.abs(lb.variance / lb.referenceAmount) * 100)}%` }} /></div>
               <div className="flex items-center justify-between gap-2 text-caption">
-                <span className="text-ink-soft">مبلغ ردیف ({fa(l.quantity)} واحد): <b className="font-mono text-ink">{fa(l.lineTotal)}</b></span>
-                <span className={cn('font-bold', lb?.state === 'NEGATIVE' ? 'text-danger' : lb?.state === 'UNKNOWN' ? 'text-ink-soft' : 'text-success')}>{stateText(lb)}</span>
+                <span className="text-ink-soft">مبلغ ردیف ({fa(l.quantity)} واحد): <b className="font-mono text-ink">{fa(l.lineTotal)} ریال</b></span>
+                <span className={cn('font-bold transition-colors duration-300', lb?.state === 'NEGATIVE' ? 'text-danger' : lb?.state === 'UNKNOWN' ? 'text-ink-soft' : 'text-success')}>{stateText(lb)}</span>
               </div>
               {lb && <SuggestionStrip s={sug} line={lb}
                 onApplyPrice={() => sug.price && patchLine(i, { unitPrice: sug.price.unitPrice })}
