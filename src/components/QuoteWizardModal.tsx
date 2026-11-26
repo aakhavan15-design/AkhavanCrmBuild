@@ -191,6 +191,7 @@ export function QuoteWizardModal({ isOpen, onClose, sourceOrderId, state, update
         floorUnitPrice: l.floorUnitPrice ?? null,
         cartonQuantity: l.cartonQuantity ?? null,
         unitsPerCarton: l.unitsPerCarton ?? null,
+        quantityMode: l.quantityMode ?? null,
         lineVariance: l.lineVariance ?? null,
         balanceStatus: l.balanceStatus
       })),
