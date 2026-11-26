@@ -3,7 +3,7 @@ import { formatNumber, formatMoney } from '../lib/format';
 import { computeQuoteTax } from '../lib/taxRate';
 import React, { useState, useEffect, useRef } from 'react';
 import { AppState, Quote, ID, DraftQuoteState } from '../types';
-import { generateId, nextSequenceNumber, formatCurrency, parsePersianNumber, formatInputCurrency, cleanNumericInput } from '../lib/utils';
+import { generateId, nextSequenceNumber, formatCurrency, parsePersianNumber, formatInputCurrency, cleanNumericInput, cn } from '../lib/utils';
 import { Modal } from './ui/Modal';
 import { Button } from './ui/Button';
 import { CheckCircle2, ChevronRight, ChevronLeft, Trash2, Printer, Percent, ShieldCheck, FileText, Save } from 'lucide-react';
@@ -82,7 +82,7 @@ export function QuoteWizardModal({ isOpen, onClose, sourceOrderId, state, update
         const rawCurrency = entry?.currencyCode ?? product?.currencyCode ?? 'IRR';
         return { ...line, erpClassUnitPrice: classPrice, erpClassCurrencyCode: classPrice ? (isRialCurrencyCode(rawCurrency) ? 'IRR' : String(rawCurrency)) : null };
       });
-      const balance = computeOrderBalance(next.map(lineToBalanceInput));
+      const balance = computeOrderBalance(next.map((line, index) => lineToBalanceInput(line, String(index))));
       return next.map((line, index) => ({ ...line, lineVariance: balance.lines[index]?.variance ?? null, balanceStatus: balance.lines[index]?.status ?? 'REFERENCE_UNKNOWN' }));
     });
   };

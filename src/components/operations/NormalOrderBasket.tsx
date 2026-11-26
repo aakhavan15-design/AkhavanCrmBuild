@@ -103,9 +103,9 @@ export function NormalOrderBasket({ state, updateState, erpOrders, crmDrafts, cu
   const selectedProduct = products.find(product => String(product.id) === selectedProductId);
   const selectedClassPrice = classPrice(selectedProduct, priceClassCode);
   const selectedPackSize = safePositiveInt(selectedProduct?.unitsPerCarton);
-  const selectedClassLabel = classLabels[priceClassCode as keyof typeof classLabels] || priceClassCode;
+  const selectedClassLabel = classLabels.find(row => row.code === priceClassCode)?.label || priceClassCode;
   const customerOptions = customers.map(customer => ({ value: String(customer.id), label: String(customer.name || customer.code || customer.id), subLabel: [customer.code, customer.city, customer.phone].filter(Boolean).join(' · ') }));
-  const classOptions = PRICE_CLASS_CODES.map(code => ({ value: code, label: classLabels[code] || code }));
+  const classOptions = PRICE_CLASS_CODES.map(code => ({ value: code, label: classLabels.find(row => row.code === code)?.label || code }));
   const productOptions = products.map(product => ({ value: String(product.id), label: String(product.name || product.sku || product.id), subLabel: [product.sku || product.code, product.category, product.brand].filter(Boolean).join(' · ') }));
 
   const totalAmount = lines.reduce((sum, line) => sum + line.lineTotal, 0);
@@ -302,7 +302,7 @@ export function NormalOrderBasket({ state, updateState, erpOrders, crmDrafts, cu
   return (
     <section className="space-y-3" aria-label="سبد سفارش عادی">
       <div className="flex items-center justify-between gap-2">
-        <div><h3 className="text-sm font-bold text-text-main">سبد سفارش عادی</h3><p className="text-micro text-text-secondary">مشاهده سفارش ERP و ثبت پیش‌نویس عادی یا اصلاحی؛ CPQ مسیر مستقل پیشنهاد فروش است.</p></div>
+        <div><h3 className="text-sm font-bold text-text-main">سبد سفارش عادی ERP</h3><p className="text-micro text-text-secondary">مشاهده سفارش ERP و ثبت پیش‌نویس عادی یا اصلاحی؛ CPQ مسیر مستقل پیشنهاد فروش است.</p></div>
         {canCreate && <Button size="sm" onClick={openNew}>+ سفارش جدید</Button>}
       </div>
       {crmDrafts.length > 0 && <div className="space-y-2"><div className="text-caption font-bold text-warning">پیش‌نویس‌های CRM · هنوز در ERP ثبت نشده‌اند</div>{crmDrafts.map(order => renderOrder(order, true))}</div>}
