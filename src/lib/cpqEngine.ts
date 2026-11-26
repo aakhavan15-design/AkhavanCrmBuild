@@ -118,34 +118,75 @@ const positiveInt = (v: unknown): number | null => {
 
 export const normalizeErpPositiveInt = positiveInt;
 
+/** فقط ریال در CRM معتبر است؛ نبود کد پول طبق قرارداد پروژه ریال است. تبدیل ضمنی تومان/ارز دیگر نداریم. */
+export function isRialCurrencyCode(raw: unknown): boolean {
+  if (raw === null || raw === undefined || String(raw).trim() === '') return true;
+  return ['IRR', 'RIAL', 'RIALS', 'ریال'].includes(String(raw).trim().toUpperCase());
+}
+
 /**
- * ورودی ERP را به نقشهٔ ۵ کلاس نرمال می‌کند. اشکال پذیرفته‌شده:
- *  - priceClasses: { PRICE_CLASS_1: 120000 | { unitPrice, label } , ... } یا آرایهٔ { code, unitPrice, label }
- *  - فیلدهای تخت: priceClass1..priceClass5 و priceClass1Label..priceClass5Label
- * مقدار نامعتبر/صفر/منفی/اعشاری حذف می‌شود؛ کد واحد پول از ERP حفظ می‌شود و تبدیل ارز انجام نمی‌شود.
+ * پنج قیمت ERP را به مدل داخلی ریالی نرمال می‌کند.
+ * ارز صریحاً غیرریالی رد می‌شود؛ مقدار بدون currencyCode طبق قرارداد این سامانه ریال است.
  */
 export function normalizeErpPriceClasses(source: Record<string, unknown> | null | undefined): ErpPriceClassMap {
   const out: ErpPriceClassMap = {};
   if (!source) return out;
-  const currency = source.currencyCode ?? source.currency;
-  const sourceCurrency = typeof currency === 'string' && currency.trim() ? currency.trim().toUpperCase() : undefined;
+  const sourceCurrency = source.currencyCode ?? source.currency;
+  if (!isRialCurrencyCode(sourceCurrency)) return out;
   const put = (code: string, raw: unknown, label?: unknown) => {
     if (!(PRICE_CLASS_CODES as readonly string[]).includes(code)) return;
     const entry = raw && typeof raw === 'object' ? raw as Record<string, unknown> : { unitPrice: raw, label };
+    if (!isRialCurrencyCode(entry.currencyCode ?? sourceCurrency)) return;
     const unitPrice = positiveInt(entry.unitPrice ?? entry.price);
     if (unitPrice === null) return;
     const text = typeof (entry.label ?? label) === 'string' ? String(entry.label ?? label).trim() : '';
-    const entryCurrency = typeof entry.currencyCode === 'string' && entry.currencyCode.trim() ? entry.currencyCode.trim().toUpperCase() : sourceCurrency;
-    out[code as PriceClassCode] = { unitPrice, ...(text ? { label: text } : {}), ...(entryCurrency ? { currencyCode: entryCurrency } : {}) };
+    out[code as PriceClassCode] = { unitPrice, ...(text ? { label: text } : {}), currencyCode: 'IRR' };
   };
   const nested = source.priceClasses;
   if (Array.isArray(nested)) nested.forEach(item => item && typeof item === 'object' && put(String((item as any).code ?? ''), item));
-  else if (nested && typeof nested === 'object') Object.entries(nested as Record<string, unknown>).forEach(([code, v]) => put(code, v));
-  PRICE_CLASS_CODES.forEach((code, i) => {
-    if (out[code]) return;
-    put(code, source[`priceClass${i + 1}`], source[`priceClass${i + 1}Label`]);
-  });
+  else if (nested && typeof nested === 'object') Object.entries(nested as Record<string, unknown>).forEach(([code, value]) => put(code, value));
+  PRICE_CLASS_CODES.forEach((code, index) => { if (!out[code]) put(code, source[`priceClass${index + 1}`], source[`priceClass${index + 1}Label`]); });
   return out;
+}
+
+/** ردیف‌های سفارش ERP را برای شروع پیشنهاد CPQ پیش‌پر می‌کند؛ اصل سفارش ERP تغییر نمی‌کند. */
+export function buildDraftQuoteLinesFromErpOrder(
+  order: Record<string, unknown>,
+  products: Array<Record<string, any>>,
+  priceClassCode: string
+) {
+  const sourceLines = Array.isArray(order.lines) ? order.lines as Array<Record<string, unknown>> : [];
+  return sourceLines.map((source, index) => {
+    const externalProductId = String(source.externalProductId ?? source.productId ?? source.productCode ?? '').trim();
+    const product = products.find(item => [item.id, item.erpId, item.externalId, item.code, item.sku].some(value => String(value ?? '') === externalProductId));
+    const unitsPerCarton = positiveInt(source.unitsPerCarton ?? product?.unitsPerCarton);
+    const sourceMode = String(source.quantityMode ?? '').toUpperCase();
+    const explicitCartons = positiveInt(source.cartonQuantity ?? (sourceMode === 'CARTON' ? source.quantity : undefined));
+    const quantityMode = sourceMode === 'CARTON' || explicitCartons !== null ? 'CARTON' as const : 'BASE_UNIT' as const;
+    const sourceQuantity = positiveInt(source.quantity) ?? 0;
+    const quantity = quantityMode === 'CARTON'
+      ? (explicitCartons !== null && unitsPerCarton !== null && Number.isSafeInteger(explicitCartons * unitsPerCarton) ? explicitCartons * unitsPerCarton : 0)
+      : sourceQuantity;
+    const sourceCurrency = source.currencyCode ?? source.currency ?? order.currencyCode ?? order.currency;
+    const sourcePriceIsRial = isRialCurrencyCode(sourceCurrency);
+    const unitPrice = sourcePriceIsRial ? (positiveInt(source.unitPrice ?? source.netUnitPrice) ?? 0) : 0;
+    const classEntry = product?.priceClasses?.[priceClassCode];
+    const classCurrency = classEntry?.currencyCode ?? product?.currencyCode ?? 'IRR';
+    const erpClassUnitPrice = isRialCurrencyCode(classCurrency) ? positiveInt(classEntry?.unitPrice) : null;
+    const erpClassCurrencyCode = erpClassUnitPrice === null ? null : 'IRR';
+    const lineTotal = Number.isSafeInteger(quantity * unitPrice) ? quantity * unitPrice : 0;
+    const balance = computeLineBalance({ key: String(index), comparisonPrice: erpClassUnitPrice, currencyCode: erpClassCurrencyCode, unitPrice, baseQuantity: quantity });
+    return {
+      productId: String(product?.id ?? externalProductId ?? `erp-line-${index + 1}`),
+      productName: String(product?.name ?? source.productName ?? source.name ?? 'کالای نامشخص'),
+      productCode: String(product?.sku ?? product?.code ?? source.productCode ?? externalProductId),
+      quantity, unitPrice, costPrice: positiveInt(product?.costPrice) ?? 0, lineTotal,
+      erpClassUnitPrice, erpClassCurrencyCode,
+      cartonQuantity: quantityMode === 'CARTON' ? explicitCartons : null,
+      unitsPerCarton: unitsPerCarton ?? null, quantityMode,
+      lineVariance: balance.variance, balanceStatus: balance.status
+    };
+  });
 }
 
 export interface PriceClassLabelRow { code: PriceClassCode; label: string; source: 'ERP' | 'MANUAL' | 'DEFAULT' | 'NONE' }
@@ -204,12 +245,13 @@ export function computeLineBalance(input: BalanceLineInput): LineBalance {
   const floor = asSafeInt(input.floorPrice);
   const price = asSafeInt(input.unitPrice);
   const qty = asSafeInt(input.baseQuantity);
-  const currencyCode = typeof input.currencyCode === 'string' && input.currencyCode.trim() ? input.currencyCode.trim().toUpperCase() : null;
+  const rawCurrencyCode = typeof input.currencyCode === 'string' && input.currencyCode.trim() ? input.currencyCode.trim().toUpperCase() : null;
+  const currencyCode = rawCurrencyCode ? (isRialCurrencyCode(rawCurrencyCode) ? 'IRR' : rawCurrencyCode) : null;
   const validEntry = price !== null && price > 0 && qty !== null && qty > 0;
   if (!validEntry) return { key: input.key, status: 'INVALID', state: 'UNKNOWN', comparisonPrice: reference, floorPrice: floor && floor > 0 ? floor : null, currencyCode, unitPrice: price, baseQuantity: qty, referenceAmount: 0, enteredAmount: 0, variance: null };
   const enteredAmount = price! * qty!;
   if (!Number.isSafeInteger(enteredAmount)) return { key: input.key, status: 'INVALID', state: 'UNKNOWN', comparisonPrice: reference, floorPrice: floor && floor > 0 ? floor : null, currencyCode, unitPrice: price, baseQuantity: qty, referenceAmount: 0, enteredAmount: 0, variance: null };
-  if (reference === null || reference <= 0 || !currencyCode) return { key: input.key, status: 'REFERENCE_UNKNOWN', state: 'UNKNOWN', comparisonPrice: reference, floorPrice: floor && floor > 0 ? floor : null, currencyCode, unitPrice: price, baseQuantity: qty, referenceAmount: 0, enteredAmount, variance: null };
+  if (reference === null || reference <= 0 || !currencyCode || !isRialCurrencyCode(rawCurrencyCode)) return { key: input.key, status: 'REFERENCE_UNKNOWN', state: 'UNKNOWN', comparisonPrice: reference, floorPrice: floor && floor > 0 ? floor : null, currencyCode, unitPrice: price, baseQuantity: qty, referenceAmount: 0, enteredAmount, variance: null };
   const referenceAmount = reference * qty!;
   const variance = (price! - reference) * qty!;
   if (!Number.isSafeInteger(referenceAmount) || !Number.isSafeInteger(variance)) return { key: input.key, status: 'INVALID', state: 'UNKNOWN', comparisonPrice: reference, floorPrice: floor && floor > 0 ? floor : null, currencyCode, unitPrice: price, baseQuantity: qty, referenceAmount: 0, enteredAmount: 0, variance: null };
@@ -237,8 +279,8 @@ export interface OrderBalance {
 export function computeOrderBalance(inputs: BalanceLineInput[]): OrderBalance {
   const lines = inputs.map(computeLineBalance);
   const counted = lines.filter(l => l.variance !== null);
-  const currencies = new Set(counted.map(l => l.currencyCode).filter((v): v is string => !!v));
-  const currencyMismatch = currencies.size > 1;
+  const currencies = new Set(lines.map(line => line.currencyCode).filter((value): value is string => !!value));
+  const currencyMismatch = currencies.size > 1 || [...currencies].some(value => !isRialCurrencyCode(value));
   const usable = currencyMismatch ? [] : counted;
   const total = usable.reduce((s, l) => s + (l.variance as number), 0);
   const referenceAmount = usable.reduce((s, l) => s + l.referenceAmount, 0);
@@ -255,7 +297,7 @@ export function computeOrderBalance(inputs: BalanceLineInput[]): OrderBalance {
     negativeLineCount: usable.filter(l => (l.variance as number) < 0).length,
     excludedLineCount: lines.length - usable.length,
     countedLineCount: usable.length,
-    currencyCode: currencies.size === 1 && !currencyMismatch ? [...currencies][0] : null,
+    currencyCode: currencies.size === 1 && !currencyMismatch ? 'IRR' : null,
     currencyMismatch
   };
 }
