@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { toLatinDigits } from '../../lib/digits';
 import { cn } from '../../lib/utils';
+import { formatNumber } from '../../lib/format';
 
 interface Props {
   value: number | null;
@@ -22,7 +23,7 @@ const parse = (raw: string): number | null => {
 
 /** ورودی عدد صحیح: هنگام تایپ فوراً به والد می‌رسد (محاسبهٔ آنی)؛ هنگام فوکوس متن کاربر دست‌نخورده می‌ماند. */
 export function NumericField({ value, onCommit, ariaLabel, className, disabled, grouped = true }: Props) {
-  const format = (n: number | null) => (n === null ? '' : grouped ? n.toLocaleString('fa-IR') : String(n));
+  const format = (n: number | null) => (n === null ? '' : grouped ? formatNumber(n) : String(n));
   const [text, setText] = useState(format(value));
   const focused = useRef(false);
   useEffect(() => { if (!focused.current) setText(format(value)); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [value]);

@@ -6,14 +6,14 @@ import {
   type BalanceLineInput, type LineBalance, type LineRecoverySuggestion, type PriceClassLabelRow
 } from '../../lib/cpqEngine';
 import { SearchableSelect, type SelectOption } from '../ui/SearchableSelect';
-import { Select } from '../ui/Input';
 import { Button } from '../ui/Button';
 import { cn } from '../../lib/utils';
+import { formatNumber } from '../../lib/format';
 import { NumericField } from './NumericField';
-import { OrderBalanceBar, formatSignedRial } from './OrderBalanceBar';
+import { OrderBalanceBar, formatSignedAmount } from './OrderBalanceBar';
 
 type DraftLine = DraftQuoteState['lines'][number];
-const fa = (n: number | null | undefined) => (typeof n === 'number' && Number.isFinite(n) ? n.toLocaleString('fa-IR') : '—');
+const fa = (n: number | null | undefined) => (typeof n === 'number' && Number.isFinite(n) ? formatNumber(n) : '—');
 
 /** قیمت مقایسه از کلاس سراسری سفارش می‌آید؛ فقط مقدار همان کالا در کلاس منتخب snapshot می‌شود. */
 export const lineToBalanceInput = (l: DraftLine, key: string): BalanceLineInput => ({
@@ -47,7 +47,7 @@ function SuggestionStrip({ s, line, onApplyPrice, onApplyQty }: { s: LineRecover
       <div className="flex items-center justify-between gap-2">
         <div className="text-caption text-ink">
           فی پیشنهادی: <b className="font-mono">{fa(s.price.unitPrice)}</b>
-          <span className="text-micro text-ink-soft"> ({formatSignedRial(s.price.delta)} {line.currencyCode || 'واحد پول نامشخص'}{s.price.deltaPercent !== null ? ` · ${formatSignedRial(s.price.deltaPercent)}٪` : ''})</span>
+          <span className="text-micro text-ink-soft"> ({formatSignedAmount(s.price.delta)} {line.currencyCode || 'واحد پول نامشخص'}{s.price.deltaPercent !== null ? ` · ${formatSignedAmount(s.price.deltaPercent)}٪` : ''})</span>
         </div>
         <Button size="xs" variant="soft" onClick={onApplyPrice}><Check size={12} className="ml-1" />اعمال فی</Button>
       </div>
@@ -55,7 +55,7 @@ function SuggestionStrip({ s, line, onApplyPrice, onApplyQty }: { s: LineRecover
         <div className="text-caption text-ink">
           {q && q.unavailableReason === 'PRICE_NOT_ABOVE_REFERENCE' && <span className="text-ink-soft">با همین فی (قیمت کلاس منتخب یا کمتر) افزایش تعداد کمکی نمی‌کند.</span>}
           {q && !q.unavailableReason && q.cartons !== null && (
-            <>با همین فی: <b className="font-mono">{fa(q.cartons)}</b> کارتن <span className="text-micro text-ink-soft">({q.extraCartons ? `${formatSignedRial(q.extraCartons)} کارتن · ` : ''}{fa(q.effectiveBaseQuantity)} واحد)</span></>
+            <>با همین فی: <b className="font-mono">{fa(q.cartons)}</b> کارتن <span className="text-micro text-ink-soft">({q.extraCartons ? `${formatSignedAmount(q.extraCartons)} کارتن · ` : ''}{fa(q.effectiveBaseQuantity)} واحد)</span></>
           )}
           {q && !q.unavailableReason && q.cartons === null && (
             <>با همین فی: <b className="font-mono">{fa(q.baseQuantity)}</b> واحد <span className="text-micro text-ink-soft">(تعداد در کارتن از ERP نیامده؛ تبدیل به کارتن انجام نشد)</span></>
@@ -83,6 +83,7 @@ export function QuotePricingStep({ products, priceClassLabels, priceClassCode, o
   // با تغییر کالا یا کلاس، فی از ERP همان کلاس پیشنهاد می‌شود؛ نبودنش خالی می‌ماند (صفر/کلاس دیگر جایگزین نمی‌شود).
   useEffect(() => { setPrice(classPrice); }, [productId, priceClassCode, classPrice]);
 
+  const priceClassOptions: SelectOption[] = useMemo(() => priceClassLabels.map(c => ({ value: c.code, label: c.label })), [priceClassLabels]);
   const productOptions: SelectOption[] = useMemo(() => products.map(p => ({
     value: p.id, label: p.name, subLabel: [p.sku || p.code, p.category, p.brand].filter(Boolean).join(' · '), keywords: [p.erpId, p.description].filter(Boolean).join(' ')
   })), [products]);
@@ -133,8 +134,8 @@ export function QuotePricingStep({ products, priceClassLabels, priceClassCode, o
         : 'border-border bg-surface';
   const stateText = (l: LineBalance | undefined) => !l || l.variance === null
     ? (l?.status === 'REFERENCE_UNKNOWN' ? 'قیمت کلاس منتخب یا واحد پول ERP نامعلوم؛ در تراز لحاظ نشد' : 'ورودی نامعتبر')
-    : l.state === 'NEGATIVE' ? `پایین‌تر از کلاس منتخب: ${formatSignedRial(l.variance)} ${l.currencyCode || 'واحد پول نامشخص'}`
-      : l.state === 'POSITIVE' ? `بالاتر از کلاس منتخب: ${formatSignedRial(l.variance)} ${l.currencyCode || 'واحد پول نامشخص'}` : 'برابر کلاس منتخب';
+    : l.state === 'NEGATIVE' ? `پایین‌تر از کلاس منتخب: ${formatSignedAmount(l.variance)} ${l.currencyCode || 'واحد پول نامشخص'}`
+      : l.state === 'POSITIVE' ? `بالاتر از کلاس منتخب: ${formatSignedAmount(l.variance)} ${l.currencyCode || 'واحد پول نامشخص'}` : 'برابر کلاس منتخب';
 
   const pendingLine = byKey.get('pending');
   const cartonLabel = (u: number | null | undefined) => (u ? `تعداد کارتن (هر کارتن ${fa(u)} واحد)` : 'تعداد (واحد پایه؛ تعداد در کارتن از ERP نیامده)');
@@ -145,9 +146,8 @@ export function QuotePricingStep({ products, priceClassLabels, priceClassCode, o
 
       <div className="grid grid-cols-1 gap-1.5">
         <label className="block text-caption font-bold text-text-secondary">کلاس قیمت سفارش</label>
-        <Select aria-label="کلاس قیمت سفارش" value={priceClassCode} onChange={(e) => onPriceClassChange(e.target.value)}>
-          {priceClassLabels.map(c => <option key={c.code} value={c.code}>{c.label}</option>)}
-        </Select>
+        <SearchableSelect options={priceClassOptions} value={priceClassCode} onChange={onPriceClassChange}
+          placeholder="انتخاب کلاس قیمت" searchPlaceholder="نام کلاس قیمت..." ariaLabel="کلاس قیمت سفارش" />
       </div>
 
       <div className="bg-canvas p-3 rounded-2xl border border-border space-y-2.5">

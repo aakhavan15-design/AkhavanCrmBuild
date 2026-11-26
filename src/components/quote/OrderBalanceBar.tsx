@@ -2,11 +2,12 @@ import React from 'react';
 import { Scale } from 'lucide-react';
 import type { BalanceState, OrderBalance } from '../../lib/cpqEngine';
 import { cn } from '../../lib/utils';
+import { formatNumber } from '../../lib/format';
 
 /** مقدار پولی با علامت صریح (علامت + متن؛ فقط رنگ نیست). */
-export function formatSignedRial(n: number | null | undefined): string {
+export function formatSignedAmount(n: number | null | undefined): string {
   if (typeof n !== 'number' || !Number.isFinite(n)) return '—';
-  const abs = Math.abs(n).toLocaleString('fa-IR');
+  const abs = formatNumber(Math.abs(n));
   return n > 0 ? `+${abs}` : n < 0 ? `−${abs}` : abs;
 }
 
@@ -26,7 +27,7 @@ interface Props {
 
 /**
  * نوار تراز کل سفارش: همیشه بالای محتوای اسکرول‌شونده می‌ماند (sticky) و با هر تغییر تعداد/فی آنی به‌روز می‌شود.
- * مقدار تراز ثابت و در یک نقطه است؛ «نرخ تراز» = تراز ÷ ارزش کف.
+ * مقدار تراز ثابت و در یک نقطه است؛ «نرخ تراز» = تراز ÷ ارزش کلاس منتخب.
  */
 export function OrderBalanceBar({ balance, includesPending = false, className }: Props) {
   const tone = BALANCE_TONE[balance.state];
@@ -44,9 +45,9 @@ export function OrderBalanceBar({ balance, includesPending = false, className }:
             <Scale size={14} aria-hidden /> {tone.label}
           </div>
           <div className="text-micro text-ink-soft truncate">
-            {balance.countedLineCount.toLocaleString('fa-IR')} قلم محاسبه‌شده
-            {balance.negativeLineCount > 0 && ` · ${balance.negativeLineCount.toLocaleString('fa-IR')} قلم پایین‌تر از کلاس منتخب`}
-            {balance.excludedLineCount > 0 && ` · ${balance.excludedLineCount.toLocaleString('fa-IR')} قلم بدون قیمت کلاس`}
+            {formatNumber(balance.countedLineCount)} قلم محاسبه‌شده
+            {balance.negativeLineCount > 0 && ` · ${formatNumber(balance.negativeLineCount)} قلم پایین‌تر از کلاس منتخب`}
+            {balance.excludedLineCount > 0 && ` · ${formatNumber(balance.excludedLineCount)} قلم بدون قیمت کلاس`}
             {includesPending && ' · شامل قلم در حال درج'}
           </div>
         </div>
@@ -56,7 +57,7 @@ export function OrderBalanceBar({ balance, includesPending = false, className }:
             <span className="text-micro font-bold mr-1"> {balance.currencyCode || 'واحد پول نامشخص'}</span>
           </div>
           <div className={cn('text-micro font-bold', tone.text)} dir="ltr">
-            {ratio === null ? 'نرخ تراز: —' : `نرخ تراز: ${ratio > 0 ? '+' : ratio < 0 ? '−' : ''}${Math.abs(ratio).toLocaleString('fa-IR')}٪`}
+            {ratio === null ? 'نرخ تراز: —' : `نرخ تراز: ${ratio > 0 ? '+' : ratio < 0 ? '−' : ''}${formatNumber(Math.abs(ratio), { maximumFractionDigits: 1 })}٪`}
           </div>
         </div>
       </div>

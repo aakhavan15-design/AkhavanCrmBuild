@@ -14,6 +14,7 @@ import { useCan } from '../hooks/useCan';
 import { Card } from './ui/Card';
 import { InputControl } from './ui/Input';
 import { cn } from '../lib/utils';
+import { formatNumber } from '../lib/format';
 
 interface Props { state: AppState; updateState: (u: (d: AppState) => AppState | void) => void }
 type TabId = 'home' | 'org' | 'users' | 'groups' | 'personnel' | 'price-classes' | 'products' | 'customers' | 'finance-codes' | 'routes';
@@ -34,7 +35,7 @@ const DEFINITION_GROUPS = [
   { title: 'تعاریف مالی', items: ['finance-codes'] as TabId[] },
   { title: 'تعاریف میدانی', items: ['routes'] as TabId[] }
 ];
-const fa = (n: unknown) => (typeof n === 'number' && Number.isFinite(n) ? n.toLocaleString('fa-IR') : 'نامعلوم');
+const fa = (n: unknown) => (typeof n === 'number' && Number.isFinite(n) ? formatNumber(n) : 'نامعلوم');
 const LIMIT = 100;
 
 export function BaseDefinitionsWorkspace({ state, updateState }: Props) {

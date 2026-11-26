@@ -1,4 +1,5 @@
 import { guard, useCan } from '../hooks/useCan';
+import { formatNumber, formatMoney } from '../lib/format';
 import { computeQuoteTax } from '../lib/taxRate';
 import React, { useState, useEffect, useRef } from 'react';
 import { AppState, Quote, ID, DraftQuoteState } from '../types';
@@ -14,7 +15,7 @@ import { toast } from './ui/Toast';
 import { dataSyncController } from '../services/dataSyncController';
 import { computeOrderBalance, resolvePriceClassLabels, PRICE_CLASS_CODES } from '../lib/cpqEngine';
 import { QuotePricingStep, lineToBalanceInput } from './quote/QuotePricingStep';
-import { OrderBalanceBar, formatSignedRial } from './quote/OrderBalanceBar';
+import { OrderBalanceBar, formatSignedAmount } from './quote/OrderBalanceBar';
 
 interface QuoteWizardModalProps {
   isOpen: boolean;
@@ -149,8 +150,8 @@ export function QuoteWizardModal({ isOpen, onClose, state, updateState, onQuoteC
     // هشدار تراز منفی/کف نامعلوم هنگام ذخیره؛ ثبت پیش‌نویس مجاز است ولی تأیید خودکار نمی‌شود.
     if (negativeBalance || orderBalance.excludedLineCount > 0) {
       const parts = [
-        negativeBalance ? `اختلاف سفارش با کلاس قیمت منتخب منفی است (کسری ${Math.abs(orderBalance.total).toLocaleString('fa-IR')} ${orderBalance.currencyCode || 'واحد پول نامشخص'}).` : '',
-        orderBalance.excludedLineCount > 0 ? `${orderBalance.excludedLineCount.toLocaleString('fa-IR')} قلم قیمت کلاس منتخب ندارد و در تراز لحاظ نشده است.` : '',
+        negativeBalance ? `اختلاف سفارش با کلاس قیمت منتخب منفی است (کسری ${formatNumber(Math.abs(orderBalance.total))} ${orderBalance.currencyCode || 'واحد پول نامشخص'}).` : '',
+        orderBalance.excludedLineCount > 0 ? `${formatNumber(orderBalance.excludedLineCount)} قلم قیمت کلاس منتخب ندارد و در تراز لحاظ نشده است.` : '',
         'پیش‌فاکتور برای بررسی/تأیید ثبت می‌شود. ادامه می‌دهید؟'
       ].filter(Boolean);
       if (!confirm(parts.join('\n'))) return;
@@ -322,7 +323,7 @@ export function QuoteWizardModal({ isOpen, onClose, state, updateState, onQuoteC
                 </div>
                 <div className="flex justify-between text-text-secondary">
                   <span>سقف اعتبار مالی:</span>
-                  <span className="font-mono font-bold text-text-main">{(selectedCustomer.creditLimit || 0).toLocaleString('fa-IR')} {selectedCustomer.currencyCode || 'واحد پول نامشخص'}</span>
+                  <span className="font-mono font-bold text-text-main">{formatMoney(selectedCustomer.creditLimit || 0, selectedCustomer.currencyCode || 'واحد پول نامشخص')}</span>
                 </div>
                 <div className="flex justify-between text-text-secondary">
                   <span>آدرس و نشانی تحویل:</span>
@@ -370,7 +371,7 @@ export function QuoteWizardModal({ isOpen, onClose, state, updateState, onQuoteC
                 <label className="block text-xs font-bold text-text-main mb-1.5">مالیات بر ارزش افزوده</label>
                 <div className="flex items-center gap-2 pt-2">
                   <Checkbox id="applyTax" checked={applyTax} disabled={!taxKnown} onChange={(e) => setApplyTax(e.target.checked)} className="w-4" />
-                  <label htmlFor="applyTax" className="text-xs font-bold text-text-main cursor-pointer">{!taxKnown ? 'نرخ مالیات کالا نامشخص است' : `اعمال مالیات به‌تفکیک نرخ کالا (${taxResult.byRate.map(r => `${r.rate.toLocaleString('fa-IR')}٪`).join('، ') || '—'})`}</label>
+                  <label htmlFor="applyTax" className="text-xs font-bold text-text-main cursor-pointer">{!taxKnown ? 'نرخ مالیات کالا نامشخص است' : `اعمال مالیات به‌تفکیک نرخ کالا (${taxResult.byRate.map(r => `${formatNumber(r.rate)}٪`).join('، ') || '—'})`}</label>
                 </div>
                 {!taxKnown && lines.length > 0 && <p className="mt-1 text-micro text-warning">نرخ فرضی اعمال نمی‌شود؛ نرخ مالیات این کالا(ها) از ERP نیامده است.</p>}
               </div>
@@ -392,24 +393,24 @@ export function QuoteWizardModal({ isOpen, onClose, state, updateState, onQuoteC
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
                 <div className="bg-white/10 p-2.5 rounded-xl">
                   <div className="text-micro text-white/60 mb-0.5">مبلغ خام</div>
-                  <div className="text-xs font-bold font-mono">{subtotal.toLocaleString('fa-IR')}</div>
+                  <div className="text-xs font-bold font-mono">{formatNumber(subtotal)}</div>
                 </div>
                 <div className="bg-white/10 p-2.5 rounded-xl">
                   <div className="text-micro text-white/60 mb-0.5">تخفیف</div>
-                  <div className="text-xs font-bold font-mono text-status-risk">{discountVal.toLocaleString('fa-IR')}</div>
+                  <div className="text-xs font-bold font-mono text-status-risk">{formatNumber(discountVal)}</div>
                 </div>
                 <div className="bg-white/10 p-2.5 rounded-xl">
                   <div className="text-micro text-white/60 mb-0.5">ارزش افزوده</div>
-                  <div className="text-xs font-bold font-mono text-status-warning">{taxVal.toLocaleString('fa-IR')}</div>
+                  <div className="text-xs font-bold font-mono text-status-warning">{formatNumber(taxVal)}</div>
                 </div>
                 <div className="bg-primary/20 border border-primary/50 p-2.5 rounded-xl">
                   <div className="text-micro text-accent mb-0.5">مبلغ نهایی</div>
-                  <div className="text-sm font-extrabold font-mono text-white">{grandTotal.toLocaleString('fa-IR')} {orderBalance.currencyCode || 'واحد پول نامشخص'}</div>
+                  <div className="text-sm font-extrabold font-mono text-white">{formatMoney(grandTotal, orderBalance.currencyCode || 'واحد پول نامشخص')}</div>
                 </div>
               </div>
               <div className="flex items-center justify-between bg-white/10 p-2.5 rounded-xl" data-testid="summary-balance">
                 <span className="text-micro text-white/70">تراز کل نسبت به کلاس قیمت منتخب</span>
-                <span className="text-xs font-extrabold font-mono" dir="ltr"><bdi>{orderBalance.state === 'UNKNOWN' ? '—' : `${formatSignedRial(orderBalance.total)} ${orderBalance.currencyCode || 'واحد پول نامشخص'}`}</bdi></span>
+                <span className="text-xs font-extrabold font-mono" dir="ltr"><bdi>{orderBalance.state === 'UNKNOWN' ? '—' : `${formatSignedAmount(orderBalance.total)} ${orderBalance.currencyCode || 'واحد پول نامشخص'}`}</bdi></span>
               </div>
             </div>
           </div>

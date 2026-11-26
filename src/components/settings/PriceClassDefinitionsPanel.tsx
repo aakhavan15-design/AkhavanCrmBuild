@@ -8,6 +8,7 @@ import type { AppState } from '../../types';
 import { resolvePriceClassLabels, type PriceClassCode } from '../../lib/cpqEngine';
 import { InputControl } from '../ui/Input';
 import { generateId } from '../../lib/utils';
+import { formatNumber } from '../../lib/format';
 
 interface Props {
   state: AppState;
@@ -51,7 +52,7 @@ export function PriceClassDefinitionsPanel({ state, updateState, canEdit }: Prop
         {rows.map((row, i) => (
           <div key={row.code}>
             <label className="mb-1 flex items-center justify-between text-xs font-bold text-text-main" htmlFor={`price-class-${row.code}`}>
-              <span>کلاس {(i + 1).toLocaleString('fa-IR')}</span>
+              <span>کلاس {formatNumber(i + 1)}</span>
               <span className="text-micro font-normal text-ink-soft">{SOURCE_LABEL[row.source]}</span>
             </label>
             <InputControl
