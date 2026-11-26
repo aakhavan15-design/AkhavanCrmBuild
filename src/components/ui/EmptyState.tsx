@@ -9,7 +9,7 @@ export interface EmptyStateProps {
   /** عنوان کوتاه و واضح */
   title: string;
   /** راهنمایی برای اقدام بعدی */
-  description: string;
+  description?: string;
   /** برچسب دکمه اصلی */
   actionLabel?: string;
   /** هندلر دکمه اصلی */
@@ -39,7 +39,7 @@ export interface EmptyStateProps {
 export const EmptyState: React.FC<EmptyStateProps> = ({
   icon,
   title,
-  description,
+  description = 'در حال حاضر موردی برای نمایش وجود ندارد.',
   actionLabel,
   onAction,
   secondaryActionLabel,

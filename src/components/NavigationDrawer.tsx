@@ -121,9 +121,9 @@ export function NavigationDrawer({ isOpen, onClose, state, onLogout, onOpenSearc
     .filter((user: Record<string, unknown>) => user.id !== currentUser?.id && !user.deletedAt && user.isActive !== false)
     .slice(0, 3)
     .map((user: Record<string, unknown>) => ({
-      id: user.id,
-      name: user.name || user.username || 'کاربر',
-      role: state?.roles?.find((role: Record<string, unknown>) => role.id === user.roleId)?.name || 'عضو سازمان',
+      id: String(user.id ?? ''),
+      name: String(user.name ?? user.username ?? 'کاربر'),
+      role: String(state?.roles?.find((role: Record<string, unknown>) => role.id === user.roleId)?.name ?? 'عضو سازمان'),
     }));
 
   const dockActions = {

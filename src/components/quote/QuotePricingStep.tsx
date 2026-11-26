@@ -22,7 +22,7 @@ export const lineToBalanceInput = (l: DraftLine, key: string): BalanceLineInput 
 });
 
 /** تعداد واحد پایه از ورودی کاربر: کارتن × تعداد در کارتن؛ اگر تعداد در کارتن نامعلوم باشد ورودی همان واحد پایه است (۱ فرض نمی‌شود، حالت واحد صریح نمایش داده می‌شود). */
-const baseFrom = (entered: number | null, upc: number | null | undefined, mode: 'CARTON' | 'BASE_UNIT'): number => {
+const baseFrom = (entered: number | null | undefined, upc: number | null | undefined, mode: 'CARTON' | 'BASE_UNIT'): number => {
   if (entered === null || !Number.isSafeInteger(entered) || entered <= 0) return 0;
   if (mode === 'BASE_UNIT') return entered;
   return upc && Number.isSafeInteger(upc) && upc > 0 ? entered * upc : 0;
@@ -186,7 +186,7 @@ export function QuotePricingStep({ products, priceClassLabels, priceClassCode, o
             )}
             {pendingLine && pendingInput && <SuggestionStrip s={suggestFor('pending')} line={pendingLine}
               onApplyPrice={() => { const s = suggestFor('pending'); if (s.price) setPrice(s.price.unitPrice); }}
-              onApplyQty={() => { const s = suggestFor('pending'); const q = s.quantity; if (q && !q.unavailableReason) setCartons(quantityMode === 'CARTON' ? q.cartons : q.baseQuantity); }} />}
+              onApplyQty={() => { const s = suggestFor('pending'); const q = s.quantity; if (q && !q.unavailableReason) setCartons((quantityMode === 'CARTON' ? q.cartons : q.baseQuantity) ?? null); }} />}
           </>
         )}
         <Button size="sm" variant="primary" onClick={addLine} disabled={!product} className="w-full flex items-center justify-center gap-1">
@@ -225,7 +225,7 @@ export function QuotePricingStep({ products, priceClassLabels, priceClassCode, o
               </div>
               {lb && <SuggestionStrip s={sug} line={lb}
                 onApplyPrice={() => sug.price && patchLine(i, { unitPrice: sug.price.unitPrice })}
-                onApplyQty={() => { const q = sug.quantity; if (q && !q.unavailableReason) patchLine(i, { cartons: (l.quantityMode ?? (l.unitsPerCarton ? 'CARTON' : 'BASE_UNIT')) === 'CARTON' ? q.cartons : q.baseQuantity }); }} />}
+                onApplyQty={() => { const q = sug.quantity; if (q && !q.unavailableReason) patchLine(i, { cartons: ((l.quantityMode ?? (l.unitsPerCarton ? 'CARTON' : 'BASE_UNIT')) === 'CARTON' ? q.cartons : q.baseQuantity) ?? null }); }} />}
             </div>
           );
         })}

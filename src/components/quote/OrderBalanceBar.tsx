@@ -53,7 +53,7 @@ export function OrderBalanceBar({ balance, includesPending = false, className }:
         </div>
         <div className="text-left shrink-0">
           <div className={cn('font-mono font-extrabold text-lead leading-tight', tone.text)} dir="ltr">
-            <bdi>{balance.state === 'UNKNOWN' ? '—' : formatSignedRial(balance.total)}</bdi>
+            <bdi>{balance.state === 'UNKNOWN' ? '—' : formatSignedAmount(balance.total)}</bdi>
             <span className="text-micro font-bold mr-1"> {balance.currencyCode || 'واحد پول نامشخص'}</span>
           </div>
           <div className={cn('text-micro font-bold', tone.text)} dir="ltr">

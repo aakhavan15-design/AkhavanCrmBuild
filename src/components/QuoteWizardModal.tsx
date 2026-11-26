@@ -32,7 +32,7 @@ export function QuoteWizardModal({ isOpen, onClose, sourceOrderId, state, update
   const creationBusy=useRef(false);
   const creationAttempt=useRef<{key:string;quote:Quote}|null>(null);
   const draftState = state.draftQuote;
-  const orgConfig = (state.settings as Record<string, unknown>)?.orgConfig || {};
+  const orgConfig = ((state.settings as Record<string, unknown> | undefined)?.orgConfig ?? {}) as Record<string, unknown>;
   const configuredTaxRaw = orgConfig.taxRatePercent;
   const configuredTaxRate = configuredTaxRaw !== undefined && configuredTaxRaw !== null && String(configuredTaxRaw).trim() !== '' && Number.isFinite(Number(configuredTaxRaw)) && Number(configuredTaxRaw) >= 0 && Number(configuredTaxRaw) <= 100
     ? Number(configuredTaxRaw) : null;
@@ -42,7 +42,8 @@ export function QuoteWizardModal({ isOpen, onClose, sourceOrderId, state, update
   const visibleAccounts = (state.accounts || []).filter(account => canOn('accounts', 'VIEW', {
     ownerId: account.ownerId, branchId: account.branchId, territoryId: account.territoryId, teamId: account.teamId, tenantId: account.tenantId
   }));
-  const sourceOrder = sourceOrderId ? (state.salesOrders || []).find(order => [order.id, order.externalOrderId, order.externalId].some(value => String(value ?? '') === sourceOrderId) && isNegotiableErpOrder(order as Record<string, unknown>)) : undefined;
+  const sourceOrders = (state.salesOrders || []) as Array<Record<string, unknown>>;
+  const sourceOrder = sourceOrderId ? sourceOrders.find((order: Record<string, unknown>) => [order.id, order.externalOrderId, order.externalId].some(value => String(value ?? '') === sourceOrderId) && isNegotiableErpOrder(order)) : undefined;
   const draftCustomerId = draftState?.selectedCustomerId || state.activeContextAccountId || '';
   const defaultCustomerId = visibleAccounts.some(account => account.id === draftCustomerId) ? draftCustomerId : (visibleAccounts[0]?.id || '');
 

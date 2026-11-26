@@ -97,7 +97,8 @@ export function QuotesWorkspace({ state, updateState }: QuotesWorkspaceProps) {
   const visibleQuotes = (state.quotes || []).filter(quote => canOn('quotes', 'VIEW', {
     ownerId: quote.ownerId, branchId: quote.branchId, territoryId: quote.territoryId, teamId: quote.teamId, tenantId: quote.tenantId
   }));
-  const eligibleErpOrders = (state.salesOrders || []).filter(order => isNegotiableErpOrder(order as Record<string, unknown>) && canOn('quotes', 'VIEW', {
+  const salesOrders = (state.salesOrders || []) as Array<Record<string, any>>;
+  const eligibleErpOrders = salesOrders.filter((order: Record<string, any>) => isNegotiableErpOrder(order) && canOn('quotes', 'VIEW', {
     ownerId: order.ownerId, branchId: order.branchId, territoryId: order.territoryId, teamId: order.teamId, tenantId: order.tenantId
   }));
   useEffect(() => {
