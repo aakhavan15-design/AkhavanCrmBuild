@@ -5,6 +5,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { getPersianStatusLabel } from '../lib/labels';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { isNegotiableErpOrder } from '../lib/phase2Flow';
+import { formatCount } from '../lib/format';
 import { AppState, Quote, QuoteLine, ID, PriceWaterfallBreakdown } from '../types';
 import { generateId, nextSequenceNumber, formatCurrency, cleanNumericInput, formatInputCurrency, parsePersianNumber, formatAppDate, toLocalDateISO } from '../lib/utils';
 import { calculateQuoteLineMargin, calculatePriceWaterfall } from '../lib/cpqEngine';
@@ -674,7 +675,7 @@ export function QuotesWorkspace({ state, updateState }: QuotesWorkspaceProps) {
       </Card>
 
       <section className="rounded-xl border border-border bg-surface p-3 space-y-2" aria-label="سبد پیشنهاد فروش CPQ از سفارش‌های ERP">
-        <div className="flex items-center justify-between gap-2"><h3 className="text-sm font-bold text-text-main">سبد پیشنهاد فروش CPQ</h3><span className="text-micro text-text-secondary">{eligibleErpOrders.length.toLocaleString('fa-IR')} سفارش ERP واجد شرایط</span></div>
+        <div className="flex items-center justify-between gap-2"><h3 className="text-sm font-bold text-text-main">سبد پیشنهاد فروش CPQ</h3><span className="text-micro text-text-secondary">{formatCount(eligibleErpOrders.length)} سفارش ERP واجد شرایط</span></div>
         <p className="text-micro text-text-secondary">در این مسیر سفارش ERP فقط مبنای پیشنهاد و مذاکره است؛ Quote سفارش رسمی ERP ایجاد نمی‌کند.</p>
         <div className="divide-y divide-border max-h-[28rem] overflow-auto">
           {eligibleErpOrders.map(order => {

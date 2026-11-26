@@ -313,7 +313,7 @@ export function OperationsControlWorkspace({ state, updateState }: Props) {
 
       {tab==='orders' && (
         <div className="space-y-2">
-          <div className="flex items-center justify-between gap-2"><h3 className="text-sm font-bold text-text-main">سبد سفارش عادی ERP</h3><span className="text-micro text-text-secondary">{orders.length.toLocaleString('fa-IR')} سفارش</span></div>
+          <div className="flex items-center justify-between gap-2"><h3 className="text-sm font-bold text-text-main">سبد سفارش عادی ERP</h3><span className="text-micro text-text-secondary">{formatCount(orders.length)} سفارش</span></div>
           <p className="text-micro text-text-secondary">مشاهده و پیگیری سفارش رسمی ERP؛ ایجاد/ویرایش تا اتصال و آزمون API رسمی ERP فعال نمی‌شود.</p>
           {orders.map(o => {
             const account = customers.find(customer => customer.id === (o.accountId ?? o.customerId));
