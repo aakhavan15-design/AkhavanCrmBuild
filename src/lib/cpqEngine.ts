@@ -340,7 +340,8 @@ export function suggestLineRecovery(inputs: BalanceLineInput[], key: string, opt
   const needed = -others; // سهمی که این ردیف باید بدهد تا کل صفر شود
   const step = Number.isSafeInteger(opts.priceRoundingStep) && (opts.priceRoundingStep as number) > 1 ? (opts.priceRoundingStep as number) : 1;
 
-  let target = line.comparisonPrice + ceilDiv(needed, line.baseQuantity);
+  // پیشنهاد فی نباید از قیمت مرجع کلاس همین کالا پایین‌تر برود.
+  let target = Math.max(line.comparisonPrice, line.comparisonPrice + ceilDiv(needed, line.baseQuantity));
   if (step > 1) target = ceilDiv(target, step) * step;
   const delta = target - line.unitPrice;
   const price = { unitPrice: target, delta, deltaPercent: line.unitPrice > 0 ? Math.round((delta / line.unitPrice) * 1000) / 10 : null };
