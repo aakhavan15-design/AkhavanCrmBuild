@@ -750,3 +750,10 @@
   - **P1 · PARTIAL** · ReportsHub، PurchaseCycleFollowUp، MoneyIntelligencePanel و journalCoverage؛ گزارش‌های مستند/قابل پیگیری بخشی؛ QA مالی همهٔ گزارش‌ها باز.
 - [B] F18-08 تست تصویری موبایل و RTL، ماتریس مجوز و نگاشت، تست SQL/ERP/API، build/typecheck، سناریوهای end-to-end و تحویل ZIP/GitHub با وضعیت PASS/FAIL/BLOCKED/NOT VERIFIED؛ بدون ادعای تکمیل غیرمستند.
   - **P0 · BLOCKED** · ux-quality.yml و تست‌های قرارداد قابل اجرا هستند؛ معیار مرکب تحویل به داده/ERP/SQL و ماتریس دستگاه واقعی نیاز دارد.
+
+
+## اصلاحات مصوب ۲۰۲۶-۱۱-۲۶ — وضعیت اجرایی
+- **P0 · PARTIAL:** کلاس قیمت در سطح کل سفارش است؛ قیمت ERP همان کالا در کلاس منتخب فقط snapshot مقدار ردیف است و کد کلاس روی ردیف قرار نمی‌گیرد.
+- **P0 · BLOCKED:** سبد سفارش عادی و سبد پیشنهاد CPQ دو مسیر مستقل‌اند. ایجاد/ویرایش رسمی SalesOrder تا قرارداد و آزمون API/SQL رسمی ERP کامل نشده است؛ Quote یا state محلی جایگزین سفارش رسمی نیست.
+- **P0 · PARTIAL:** صفحه تعاریف دسته‌بندی آیکونی دارد؛ منابع دادهٔ ERP فقط‌خواندنی‌اند. اتصال تمام تعاریف به جداول SQL، CRUD تعاریف CRM-owned، و ممیزی RBAC باید جداگانه آزموده و تکمیل شود.
+- **NOT VERIFIED:** ProductPriceClass هنوز در ETL/DataProvider به جدول SQL متصل و با دادهٔ واقعی راستی‌آزمایی نشده است.

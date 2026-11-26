@@ -84,7 +84,7 @@ function moduleOwnerOfRoute(pathname: string, search = ''): string | null {
     return 'home';
   }
 
-  if (pathname === '/sync-center') return 'master';
+  if (pathname === '/sync-center' || pathname === '/definitions') return 'master';
   if (pathname === '/onboarding' || pathname === '/personnel-file') return 'hr';
 
   if (
@@ -124,7 +124,6 @@ function moduleOwnerOfRoute(pathname: string, search = ''): string | null {
   }
 
   if (pathname === '/settings') {
-    if (tab === 'users' || tab === 'groups') return 'master';
     return 'organization';
   }
 

@@ -99,14 +99,19 @@ export const MODULE_LANDINGS: ModuleLandingDefinition[] = [
       {
         title: 'هویت و سازمان',
         tiles: [
-          tile('master-users', 'کاربران و نقش‌ها', 'مدیریت کاربران، نقش‌ها و زنجیره گزارش‌دهی', '/settings?tab=users', 'users', Users),
-          tile('master-teams', 'تیم‌ها و گروه‌های کاری', 'ساختار تیمی و شعب سازمان', '/settings?tab=groups', 'settings', Building2),
-          tile('master-personnel', 'پرسنل و پرونده‌ها', 'مدیریت پرونده کارکنان و کدهای پرسنلی', '/onboarding', 'onboarding', UserCheck),
+          tile('master-org', 'سازمان و سیاست‌های پایه', 'اطلاعات سازمان، سیاست‌های فروش و ماژول‌ها', '/definitions?tab=org', 'settings', Settings2),
+          tile('master-users', 'کاربران و نقش‌ها', 'مدیریت کاربران، نقش‌ها و زنجیره گزارش‌دهی', '/definitions?tab=users', 'users', Users),
+          tile('master-permissions', 'پروفایل دسترسی و مجوزها', 'مدیریت مجموعه مجوزها و سطح دسترسی', '/definitions?tab=users&sub=permissions', 'users', Shield),
+          tile('master-teams', 'تیم‌ها و گروه‌های کاری', 'ساختار تیمی و شعب سازمان', '/definitions?tab=groups', 'settings', Building2),
+          tile('master-personnel', 'پرسنل و پرونده‌ها', 'مدیریت پرونده کارکنان و کدهای پرسنلی', '/definitions?tab=personnel', 'onboarding', UserCheck),
         ],
       },
       {
         title: 'کالا و بازار',
         tiles: [
+          tile('master-price-classes', 'نام کلاس‌های قیمت', 'تعریف نام پنج کلاس قیمت (در صورت ندادن نام از ERP)', '/definitions?tab=price-classes', 'settings', Tag),
+          tile('master-product-prices', 'کالا، کف و قیمت‌ها', 'کف قیمت، تعداد در کارتن و ۵ کلاس قیمت از ERP', '/definitions?tab=products', 'accounts', Scale),
+          tile('master-customers', 'مشتریان و کلاس قیمت', 'فهرست مشتریان و کلاس قیمت پیش‌فرض هر مشتری', '/definitions?tab=customers', 'accounts', Users),
           tile('master-products', 'کالا و کاتالوگ', 'اقلام کالایی مرجع سامانه مالی', '/operations?tab=inventory', 'ops.inventory', Package),
           tile('master-promotions', 'طرح پروموشن و بودجه', 'پیشنهادهای تشویقی و کمپین‌ها', '/marketing', 'marketing', Megaphone),
         ],
@@ -325,9 +330,6 @@ export const MODULE_LANDINGS: ModuleLandingDefinition[] = [
       {
         title: 'سازمان و دسترسی',
         tiles: [
-          tile('settings', 'تنظیمات سازمان', 'اطلاعات پایه و سیاست‌های کلان سازمان', '/settings', 'settings', Settings2),
-          tile('permissions', 'پروفایل دسترسی و مجوزها', 'مدیریت مجموعه مجوزها و سطح دسترسی', '/settings?tab=users&sub=permissions', 'users', Shield),
-          tile('teams', 'تیم‌ها و گروه‌های کاری', 'تنظیم ساختار تیمی و عضویت', '/settings?tab=groups', 'settings', Building2),
         ],
       },
       {

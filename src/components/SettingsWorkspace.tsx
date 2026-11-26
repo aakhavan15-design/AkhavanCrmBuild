@@ -7,7 +7,8 @@ import { useCan } from '../hooks/useCan';
 import { getTenantName } from '../lib/orgPolicy';
 import { toLatinDigits } from '../lib/digits';
 import { DEFAULT_CHURN_THRESHOLDS, getChurnThresholdOverrides, getChurnThresholdsMeta, type ChurnThresholds } from '../lib/metricConfig';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { subscribeWebPush, unsubscribeWebPush, isPushSupported, isPushEnabledLocally } from '../lib/webPush';
 import { 
   AppState, IndustryProfile, UserGroup, DevicePermissionType, VisibilityScope, CapabilityPermission,
@@ -37,19 +38,32 @@ import { ApprovalChainConfigPanel } from './settings/ApprovalChainConfigPanel';
 import { ReportingLineSettings } from './settings/ReportingLineSettings';
 import { getActiveDataProvider } from '../services/dataProvider';
 
+/** settings = فقط تنظیمات (قوانین، دستیارها، اتصال‌ها، زبان)؛ definitions = تعاریف سازمان/کاربران/گروه‌ها که زیر منوی «تعاریف» نمایش داده می‌شود. */
+export type SettingsWorkspaceMode = 'settings' | 'definitions';
+const SETTINGS_ONLY_TABS = ['rules', 'agents', 'integrations', 'locale'] as const;
+const DEFINITION_TABS = ['org', 'users', 'groups'] as const;
+
 interface SettingsWorkspaceProps {
+  mode?: SettingsWorkspaceMode;
   state: AppState;
   updateState: (updater: (draft: AppState) => AppState | void) => void;
 }
 
-export function SettingsWorkspace({ state, updateState }: SettingsWorkspaceProps) {
+export function SettingsWorkspace({ state, updateState, mode = 'settings' }: SettingsWorkspaceProps) {
   const { can, denied, rbac } = useCan(state, updateState);
   const serverReportingLines=getActiveDataProvider().name==='SQLSERVER_BACKEND';
   // بخش فعال و زیربخش کاربران از آدرس (?tab=…&sub=…) خوانده می‌شود تا منوی سلسله‌مراتبی مستقیم به آن‌ها پیوند دهد.
-  const [tabParam, setTabParam] = useTabParam(SETTINGS_TABS, 'org');
+  const definitionsMode = mode === 'definitions';
+  const [tabParam, setTabParam] = useTabParam<string>(definitionsMode ? DEFINITION_TABS : SETTINGS_ONLY_TABS, definitionsMode ? 'org' : 'rules');
+  // پیوندهای قدیمی /settings?tab=org|users|groups به زیرمنوی تعاریف می‌روند.
+  const legacyNavigate = useNavigate();
+  const legacyLocation = useLocation();
+  const legacyTab = (new URLSearchParams(legacyLocation.search).get('tab') || '').toLowerCase();
+  const legacyRedirect = !definitionsMode && (DEFINITION_TABS as readonly string[]).includes(legacyTab);
+  useEffect(() => { if (legacyRedirect) legacyNavigate(`/definitions${legacyLocation.search}`, { replace: true }); }, [legacyRedirect, legacyLocation.search, legacyNavigate]);
   type SettingsTab = 'ORG' | 'USERS' | 'GROUPS' | 'LOCALE' | 'INTEGRATIONS' | 'AGENTS' | 'RULES';
   const tab = tabParam.toUpperCase() as SettingsTab;
-  const setTab = (next: SettingsTab) => setTabParam(next.toLowerCase() as typeof tabParam);
+  const setTab = (next: SettingsTab) => setTabParam(next.toLowerCase());
   const [settingsQuery, setSettingsQuery] = useState('');
   const [ruleModalOpen, setRuleModalOpen] = useState(false);
   const [exportNotice, setExportNotice] = useState<string | null>(null);
@@ -529,7 +543,7 @@ export function SettingsWorkspace({ state, updateState }: SettingsWorkspaceProps
   };
 
   const selectedAgent = agents.find(a => a.id === selectedAgentId) || agents[0];
-  const settingsSections = [
+  const allSettingsSections = [
     { id: 'ORG', group: 'سازمان و ساختار', label: 'اطلاعات و سیاست‌های سازمان', keywords: 'نام سازمان سیاست فروش مالیات اعتبار اطلاعات عمومی' },
     { id: 'USERS', group: 'سازمان و ساختار', label: 'کاربران، نقش‌ها و دسترسی', keywords: 'کاربر نقش مجوز دسترسی RBAC ACL' },
     { id: 'GROUPS', group: 'سازمان و ساختار', label: 'تیم‌ها و گروه‌های کاری', keywords: 'تیم گروه سازمان سرپرست' },
@@ -538,18 +552,22 @@ export function SettingsWorkspace({ state, updateState }: SettingsWorkspaceProps
     { id: 'INTEGRATIONS', group: 'اتصال و پیکربندی', label: 'یکپارچه‌سازی و اتصال‌ها', keywords: 'ERP API اتصال سامانه خارجی' },
     { id: 'LOCALE', group: 'اتصال و پیکربندی', label: 'زبان، تقویم و منطقه زمانی', keywords: 'زبان فارسی تاریخ شمسی منطقه زمانی واحد پول' },
   ] as const;
+  const settingsSections = allSettingsSections.filter(section => (definitionsMode ? (DEFINITION_TABS as readonly string[]) : (SETTINGS_ONLY_TABS as readonly string[])).includes(section.id.toLowerCase()));
   const normalizedSettingsQuery = settingsQuery.trim().toLocaleLowerCase('fa-IR').replace(/[يى]/g, 'ی').replace(/ك/g, 'ک');
   const matchedSettingsSections = settingsSections.filter(section => `${section.label} ${section.group} ${section.keywords}`.toLocaleLowerCase('fa-IR').replace(/[يى]/g, 'ی').replace(/ك/g, 'ک').includes(normalizedSettingsQuery));
   const activeSettingsLabel = settingsSections.find(section => section.id === tab)?.label || 'تنظیمات';
   const settingsGroups = [...new Set(settingsSections.map(section => section.group))];
 
   return (
-    <div className="flex-1 overflow-auto bg-transparent p-3 sm:p-5 space-y-4" dir="rtl">
+    <div className={definitionsMode ? "space-y-4" : "flex-1 overflow-auto bg-transparent p-3 sm:p-5 space-y-4"} dir="rtl">
+      {!definitionsMode && (
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div><p className="text-caption font-semibold text-text-secondary">مدیریت سامانه</p><h1 data-tour-heading className="mt-1 text-lg font-extrabold tracking-tight text-text-main">تنظیمات</h1><p className="mt-1 text-xs text-text-secondary">پیکربندی سازمان، کاربران، فرایندها و اتصال‌ها</p></div>
         <label className="flex h-10 w-full max-w-sm items-center gap-2 rounded-xl border border-border bg-surface px-3 focus-within:border-primary"><Search size={15} className="shrink-0 text-text-secondary"/><input value={settingsQuery} onChange={event => setSettingsQuery(event.target.value)} placeholder="جست‌وجو در تنظیمات..." aria-label="جست‌وجوی تنظیمات" className="min-w-0 flex-1 bg-transparent text-xs outline-none placeholder:text-text-secondary"/>{settingsQuery && <button type="button" onClick={() => setSettingsQuery('')} aria-label="پاک کردن جست‌وجو" className="text-text-secondary"><X size={14}/></button>}</label>
       </header>
-      <div className="grid grid-cols-1 items-start gap-3 lg:grid-cols-[minmax(210px,250px)_minmax(0,1fr)]">
+      )}
+      <div className={definitionsMode ? "grid grid-cols-1 items-start gap-3" : "grid grid-cols-1 items-start gap-3 lg:grid-cols-[minmax(210px,250px)_minmax(0,1fr)]"}>
+        {!definitionsMode && (
         <nav id="settings-nav" data-tour-heading className="rounded-xl border border-border bg-surface p-2 lg:sticky lg:top-3" aria-label="ناوبری تنظیمات">
           {settingsGroups.map(group => {
             const items = settingsSections.filter(section => section.group === group && (!normalizedSettingsQuery || matchedSettingsSections.some(match => match.id === section.id)));
@@ -558,6 +576,7 @@ export function SettingsWorkspace({ state, updateState }: SettingsWorkspaceProps
           })}
           {normalizedSettingsQuery && matchedSettingsSections.length === 0 && <p className="px-3 py-4 text-xs text-text-secondary">نتیجه‌ای پیدا نشد.</p>}
         </nav>
+        )}
         <main id="settings-content" data-tour-primary className="min-w-0 space-y-4" aria-label={`تنظیمات ${activeSettingsLabel}`}>
           <div className="flex items-center justify-between border-b border-border pb-2"><h2 className="text-sm font-extrabold text-text-main">{activeSettingsLabel}</h2><span className="text-micro text-text-muted">{settingsSections.find(section => section.id === tab)?.group}</span></div>
       {/* ===================== TAB: AGENTS & MESSAGING GATEWAYS ===================== */}

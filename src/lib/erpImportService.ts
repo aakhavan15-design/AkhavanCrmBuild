@@ -1,5 +1,6 @@
 import { externalIdentityKey, upsertExternalRecords } from './phase2Flow.ts';
 import type { ERPImportRecord } from './erpContracts';
+import { normalizeErpPriceClasses, normalizeErpPositiveInt } from './cpqEngine.ts';
 
 export type ErpEntityType =
   | 'SALES_ORDER' | 'INVOICE'
@@ -55,9 +56,18 @@ function normalizeRecord(entityType: ErpEntityType, source: ErpImportRecord) {
   const productTax = entityType === 'PRODUCT'
     ? { taxRatePercent: (source.taxRatePercent == null || String(source.taxRatePercent).trim() === '' || !Number.isFinite(Number(source.taxRatePercent))) ? null : Number(source.taxRatePercent) }
     : {};
+  // کف، تعداد در کارتن و ۵ کلاس قیمت: فقط عدد صحیح مثبت ریالی؛ نامعتبر ⇒ null/حذف (هرگز صفر یا حدس).
+  const productPricing = entityType === 'PRODUCT'
+    ? {
+        floorPrice: normalizeErpPositiveInt(source.floorPrice),
+        unitsPerCarton: normalizeErpPositiveInt(source.unitsPerCarton),
+        priceClasses: normalizeErpPriceClasses(source as Record<string, unknown>)
+      }
+    : {};
   return {
     ...source,
     ...productTax,
+    ...productPricing,
     id: String(source.id ?? `${sourceSystemCode}:${entityType}:${externalId}`),
     tenantId,
     sourceSystemCode,

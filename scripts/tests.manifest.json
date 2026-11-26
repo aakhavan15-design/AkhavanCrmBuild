@@ -826,5 +826,17 @@
   {
     "file": "tests/dispatchCollectionZone.behavior.test.mjs",
     "flags": []
+  },
+  {
+    "file": "tests/floorBalanceEngine.test.mjs",
+    "flags": [
+      "--experimental-strip-types"
+    ]
+  },
+  {
+    "file": "tests/floorBalanceIntegrationContracts.test.mjs",
+    "flags": [
+      "--experimental-strip-types"
+    ]
   }
 ]

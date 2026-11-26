@@ -686,7 +686,7 @@ export const WHATS_NEW_ITEMS: WhatsNewItem[] = [
     description: 'آستانهٔ ریزش با رقم فارسی ثبت می‌شود. برای بازگشت به پیش‌فرض، مقدار سفارشی را پاک کنید.',
     tag: 'IMPROVED',
     module: 'settings',
-    route: '/settings?tab=org',
+    route: '/definitions?tab=org',
   },
   {
     id: 'wn-paya-banking',

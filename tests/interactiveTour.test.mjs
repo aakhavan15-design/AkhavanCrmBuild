@@ -35,7 +35,7 @@ test('Tour Engine: release notes link to the restored churn settings', () => {
   assert.ok(churnItem, 'What\'s new must highlight Churn Prediction engine');
   assert.equal(churnItem.tag, 'IMPROVED');
   assert.equal(churnItem.module, 'settings');
-  assert.equal(churnItem.route, '/settings?tab=org');
+  assert.equal(churnItem.route, '/definitions?tab=org');
   assert.ok(churnItem.description.includes('ریزش'));
 });
 

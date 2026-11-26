@@ -7,6 +7,7 @@
  */
 import { planErpImport, erpCollectionFor, type ErpEntityType, type ErpImportRecord } from './erpImportService.ts';
 import { externalIdentityKey } from './phase2Flow.ts';
+import { normalizeErpPositiveInt } from './cpqEngine.ts';
 
 export type EtlMode = 'FULL' | 'INCREMENTAL' | 'ONLINE' | 'REPLAY';
 export interface EtlRejection { entityType: ErpEntityType; externalId?: string; ruleCode: string; severity: 'ERROR' | 'WARNING'; messageFa: string }
@@ -42,6 +43,7 @@ export function stablePayloadHash(value: unknown): string {
 
 const num = (v: unknown) => (v === null || v === undefined || v === '' ? NaN : Number(v));
 const validDate = (v: unknown) => typeof v === 'string' && v.trim() !== '' && Number.isFinite(Date.parse(v));
+const isBlank = (v: unknown) => v === null || v === undefined || String(v).trim() === '';
 const LEDGER_LEVELS = ['GROUP', 'GENERAL', 'SUBSIDIARY', 'DETAIL', 'EXTRA'];
 const DELIVERY_STATUS = ['READY', 'LOADED', 'SHIPPED', 'DELIVERED_FULL', 'DELIVERED_PARTIAL', 'FAILED', 'RETURNED'];
 
@@ -64,7 +66,17 @@ export const ETL_RULES: Record<ErpEntityType, Rule[]> = {
   // CoaMirror (existing app model) uses code/level(1..n); SQL crm.LedgerAccount uses AccountCode/LevelCode — both accepted at the boundary.
   LEDGER_ACCOUNT: [anyOf(['accountCode', 'code'], 'LEDGER_CODE_MISSING'), r => (LEDGER_LEVELS.includes(String(r.levelCode)) || (Number.isInteger(num(r.level)) && num(r.level) >= 1 && num(r.level) <= 9) ? null : ['LEDGER_LEVEL_INVALID', 'سطح کدینگ باید یکی از گروه/کل/معین/تفصیلی/تکمیلی (یا سطح عددی ۱ تا ۹) باشد.'])],
   // نرخ مالیات کالا اختیاری است (نبود = نامشخص/null، نه ۰)؛ اگر آمد باید در ۰..۱۰۰ باشد.
-  PRODUCT: [r => (r.taxRatePercent == null || String(r.taxRatePercent).trim() === '' || (Number.isFinite(Number(r.taxRatePercent)) && Number(r.taxRatePercent) >= 0 && Number(r.taxRatePercent) <= 100) ? null : ['PRODUCT_TAX_RATE_INVALID', 'نرخ مالیات کالا باید عددی بین ۰ تا ۱۰۰ باشد (خالی = نامشخص).'])],
+  PRODUCT: [
+    // کف/تعداد در کارتن/کلاس‌های قیمت اختیاری‌اند؛ اگر آمدند باید عدد صحیح مثبت ریالی باشند (رکورد نامعتبر در staging می‌ماند و قیمت معتبر قبلی را عوض نمی‌کند).
+    r => (isBlank(r.floorPrice) || normalizeErpPositiveInt(r.floorPrice) !== null ? null : ['PRODUCT_FLOOR_PRICE_INVALID', 'کف قیمت کالا باید عدد صحیح مثبت (ریال) باشد؛ خالی = نامعلوم.']),
+    r => (isBlank(r.unitsPerCarton) || normalizeErpPositiveInt(r.unitsPerCarton) !== null ? null : ['PRODUCT_UNITS_PER_CARTON_INVALID', 'تعداد در کارتن باید عدد صحیح مثبت باشد؛ خالی = نامعلوم (۱ فرض نمی‌شود).']),
+    r => (/^IRR$/i.test(String(r.currencyCode ?? 'IRR').trim() || 'IRR') ? null : ['PRODUCT_CURRENCY_NOT_IRR', 'واحد پول قیمت‌های کالا باید ریال (IRR) باشد؛ ارز ناسازگار پذیرفته نمی‌شود.']),
+    r => {
+      const bad = [1, 2, 3, 4, 5].filter(i => !isBlank(r[`priceClass${i}`]) && normalizeErpPositiveInt(r[`priceClass${i}`]) === null);
+      return bad.length ? ['PRODUCT_PRICE_CLASS_INVALID', `قیمت کلاس ${bad.join('، ')} باید عدد صحیح مثبت (ریال) باشد؛ صفر/منفی/اعشار پذیرفته نمی‌شود.`] : null;
+    },
+    r => (r.taxRatePercent == null || String(r.taxRatePercent).trim() === '' || (Number.isFinite(Number(r.taxRatePercent)) && Number(r.taxRatePercent) >= 0 && Number(r.taxRatePercent) <= 100) ? null : ['PRODUCT_TAX_RATE_INVALID', 'نرخ مالیات کالا باید عددی بین ۰ تا ۱۰۰ باشد (خالی = نامشخص).'])
+  ],
   PRODUCT_COST: [anyOf(['externalProductId'], 'COST_PRODUCT_MISSING'), nonNegative('unitCost', 'COST_VALUE_INVALID'), dateRule('effectiveFrom', 'COST_EFFECTIVE_FROM_INVALID')],
   SALES_RETURN: [dateRule('returnDate', 'RETURN_DATE_INVALID'), nonNegative('totalAmount', 'RETURN_AMOUNT_INVALID')],
   VISIT_ROUTE: [
