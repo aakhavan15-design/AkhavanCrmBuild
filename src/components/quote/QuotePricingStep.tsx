@@ -165,7 +165,7 @@ export function QuotePricingStep({ products, priceClassLabels, priceClassCode, o
             <div className="grid grid-cols-2 gap-2.5">
               <div>
                 <label className="block text-micro font-bold text-text-secondary mb-1">نوع تعداد</label>
-                <Select aria-label="نوع تعداد" value={quantityMode} onChange={e => setQuantityMode(e.target.value as 'CARTON' | 'BASE_UNIT')} density="compact"><option value="CARTON" disabled={!upc}>کارتن / بسته</option><option value="BASE_UNIT">واحد پایه</option></Select>
+                <Select aria-label="نوع تعداد" value={quantityMode} onChange={e => setQuantityMode(e.target.value as 'CARTON' | 'BASE_UNIT')}><option value="CARTON" disabled={!upc}>کارتن / بسته</option><option value="BASE_UNIT">واحد پایه</option></Select>
                 <label className="block text-micro font-bold text-text-secondary mb-1 mt-2">{cartonLabel(upc, quantityMode)}</label>
                 <NumericField ariaLabel="تعداد" value={cartons} onCommit={setCartons} grouped={false} />
               </div>
@@ -210,7 +210,7 @@ export function QuotePricingStep({ products, priceClassLabels, priceClassCode, o
               <div className="grid grid-cols-2 gap-2.5">
                 <div>
                   <label className="block text-micro font-bold text-text-secondary mb-1">نوع تعداد</label>
-                  <Select aria-label={`نوع تعداد ${l.productName}`} value={l.quantityMode ?? (l.unitsPerCarton ? 'CARTON' : 'BASE_UNIT')} onChange={e => patchLine(i, { quantityMode: e.target.value as 'CARTON' | 'BASE_UNIT' })} density="compact"><option value="CARTON" disabled={!l.unitsPerCarton}>کارتن / بسته</option><option value="BASE_UNIT">واحد پایه</option></select>
+                  <Select aria-label={`نوع تعداد ${l.productName}`} value={l.quantityMode ?? (l.unitsPerCarton ? 'CARTON' : 'BASE_UNIT')} onChange={e => patchLine(i, { quantityMode: e.target.value as 'CARTON' | 'BASE_UNIT' })}><option value="CARTON" disabled={!l.unitsPerCarton}>کارتن / بسته</option><option value="BASE_UNIT">واحد پایه</option></Select>
                   <label className="block text-micro font-bold text-text-secondary mb-1 mt-2">{cartonLabel(l.unitsPerCarton, l.quantityMode ?? (l.unitsPerCarton ? 'CARTON' : 'BASE_UNIT'))}</label>
                   <NumericField ariaLabel={`تعداد ${l.productName}`} value={(l.quantityMode ?? (l.unitsPerCarton ? 'CARTON' : 'BASE_UNIT')) === 'CARTON' ? l.cartonQuantity : l.quantity} grouped={false} onCommit={(n) => patchLine(i, { cartons: n })} />
                 </div>
