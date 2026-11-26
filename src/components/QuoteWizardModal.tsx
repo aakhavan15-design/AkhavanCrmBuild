@@ -2,7 +2,7 @@ import { guard, useCan } from '../hooks/useCan';
 import { formatNumber, formatMoney } from '../lib/format';
 import { computeQuoteTax } from '../lib/taxRate';
 import React, { useState, useEffect, useRef } from 'react';
-import { AppState, Quote, ID, DraftQuoteState } from '../types';
+import { AppState, Quote, ID, DraftQuoteState, ExternalProduct } from '../types';
 import { generateId, nextSequenceNumber, formatCurrency, parsePersianNumber, formatInputCurrency, cleanNumericInput } from '../lib/utils';
 import { Modal } from './ui/Modal';
 import { Button } from './ui/Button';
@@ -25,6 +25,81 @@ interface QuoteWizardModalProps {
   state: AppState;
   updateState: (updater: (draft: AppState) => AppState | void) => void;
   onQuoteCreated?: (quoteId: ID) => void;
+}
+
+
+type ErpOrderLineRecord = Record<string, unknown>;
+const safePositiveOrderInt = (value: unknown): number | null => {
+  const number = typeof value === 'number' ? value : Number(value);
+  return Number.isSafeInteger(number) && number > 0 ? number : null;
+};
+const isRialOrderCurrency = (value: unknown) => ['IRR', 'RIAL', 'RIALS', 'ریال'].includes(String(value ?? 'IRR').trim().toUpperCase());
+
+function prefillQuoteLinesFromErpOrder(
+  order: Record<string, unknown>,
+  products: ExternalProduct[],
+  priceClassCode: string
+): { lines: DraftQuoteState['lines']; sourceLineCount: number; unmappedCount: number } {
+  const sourceLines = Array.isArray(order.lines) ? order.lines as ErpOrderLineRecord[] : [];
+  let unmappedCount = 0;
+  const lines: DraftQuoteState['lines'] = [];
+  for (const source of sourceLines) {
+    const productKey = String(source.externalProductId ?? source.productId ?? source.productCode ?? source.sku ?? '').trim();
+    const product = products.find(item => [item.id, item.erpId, item.externalId, item.code, item.sku]
+      .some(value => String(value ?? '') === productKey));
+    if (!product) { unmappedCount += 1; continue; }
+
+    const classEntry = product.priceClasses?.[priceClassCode as keyof NonNullable<ExternalProduct['priceClasses']>];
+    const classPrice = safePositiveOrderInt(classEntry?.unitPrice);
+    const classCurrency = classEntry?.currencyCode ?? product.currencyCode ?? order.currencyCode ?? 'IRR';
+    const sourceCurrency = source.currencyCode ?? source.currency ?? order.currencyCode ?? 'IRR';
+    if (!isRialOrderCurrency(classCurrency) || !isRialOrderCurrency(sourceCurrency)) { unmappedCount += 1; continue; }
+
+    const unitsPerCarton = safePositiveOrderInt(source.unitsPerCarton ?? product.unitsPerCarton);
+    const explicitCartons = safePositiveOrderInt(source.cartonQuantity);
+    const sourceMode = String(source.quantityMode ?? '').toUpperCase();
+    const quantityMode = sourceMode === 'CARTON' || (explicitCartons !== null && unitsPerCarton !== null) ? 'CARTON' as const : 'BASE_UNIT' as const;
+    const enteredQuantity = quantityMode === 'CARTON'
+      ? (explicitCartons ?? safePositiveOrderInt(source.quantity))
+      : safePositiveOrderInt(source.quantity);
+    const quantity = quantityMode === 'CARTON'
+      ? (enteredQuantity !== null && unitsPerCarton !== null ? enteredQuantity * unitsPerCarton : null)
+      : enteredQuantity;
+    if (quantity === null || !Number.isSafeInteger(quantity) || quantity <= 0) { unmappedCount += 1; continue; }
+
+    const sourcePrice = safePositiveOrderInt(source.unitPrice ?? source.netUnitPrice);
+    const unitPrice = sourcePrice ?? classPrice;
+    if (unitPrice === null) { unmappedCount += 1; continue; }
+    const lineTotal = quantity * unitPrice;
+    if (!Number.isSafeInteger(lineTotal) || lineTotal <= 0) { unmappedCount += 1; continue; }
+    const balance = computeOrderBalance([{
+      key: 'source',
+      comparisonPrice: classPrice,
+      currencyCode: 'IRR',
+      unitPrice,
+      baseQuantity: quantity,
+      unitsPerCarton
+    }]).lines[0];
+    const cost = Number(source.costPrice ?? product.costPrice);
+    lines.push({
+      productId: product.id,
+      productName: product.name,
+      productCode: product.sku || product.code || String(source.productCode ?? ''),
+      quantity,
+      unitPrice,
+      costPrice: Number.isFinite(cost) && cost > 0 ? cost : 0,
+      lineTotal,
+      erpClassUnitPrice: classPrice,
+      erpClassCurrencyCode: 'IRR',
+      floorUnitPrice: product.floorPrice ?? null,
+      cartonQuantity: quantityMode === 'CARTON' ? enteredQuantity : null,
+      unitsPerCarton,
+      quantityMode,
+      lineVariance: balance.variance,
+      balanceStatus: balance.status
+    });
+  }
+  return { lines, sourceLineCount: sourceLines.length, unmappedCount };
 }
 
 export function QuoteWizardModal({ isOpen, onClose, sourceOrderId, state, updateState, onQuoteCreated }: QuoteWizardModalProps) {
@@ -54,11 +129,14 @@ export function QuoteWizardModal({ isOpen, onClose, sourceOrderId, state, update
   const [validUntilDays, setValidUntilDays] = useState(draftState?.validUntilDays ?? defaultValidityDays);
 
   const [lines, setLines] = useState<DraftQuoteState['lines']>(draftState?.lines || []);
+  const [sourceOrderUnmappedCount, setSourceOrderUnmappedCount] = useState(0);
+  const [sourceOrderLineCount, setSourceOrderLineCount] = useState(0);
+  const sourceOrderPrefillKey = useRef<string | null>(null);
   // کلاس قیمت سفارش: پیش‌فرض از مشتری (ERP)، قابل تغییر؛ نام کلاس‌ها از ERP یا تعاریف پایه می‌آید.
   const priceClassLabels = resolvePriceClassLabels(orgConfig.priceClassLabels as Record<string, unknown> | undefined, state.externalProducts);
   const customerDefaultClass = (code: unknown) => (typeof code === 'string' && (PRICE_CLASS_CODES as readonly string[]).includes(code) ? code : undefined);
   const [priceClassCode, setPriceClassCode] = useState<string>(
-    draftState?.priceClassCode || customerDefaultClass((visibleAccounts.find(a => a.id === defaultCustomerId) as Record<string, unknown> | undefined)?.priceClassCode) || PRICE_CLASS_CODES[0]
+    draftState?.priceClassCode || customerDefaultClass(sourceOrder?.priceClassCode) || customerDefaultClass((visibleAccounts.find(a => a.id === defaultCustomerId) as Record<string, unknown> | undefined)?.priceClassCode) || PRICE_CLASS_CODES[0]
   );
   const handleCustomerChange = (id: ID) => {
     setSelectedCustomerId(id);
@@ -75,6 +153,26 @@ export function QuoteWizardModal({ isOpen, onClose, sourceOrderId, state, update
       return { ...line, erpClassUnitPrice: classPrice, erpClassCurrencyCode: product?.priceClasses?.[code as keyof NonNullable<typeof product.priceClasses>]?.currencyCode ?? product?.currencyCode ?? null, floorUnitPrice: product?.floorPrice ?? null };
     }));
   };
+
+
+  // CPQ از سفارش ERP باید ردیف‌های سفارش را پیش‌پر کند؛ ردیف نامنطبق هرگز بی‌صدا حذف نمی‌شود.
+  useEffect(() => {
+    if (!isOpen) { sourceOrderPrefillKey.current = null; return; }
+    if (!sourceOrderId || !sourceOrder || sourceOrderPrefillKey.current === sourceOrderId) return;
+    sourceOrderPrefillKey.current = sourceOrderId;
+    const customerId = String(sourceOrder.accountId ?? sourceOrder.customerId ?? '');
+    const customerClass = customerDefaultClass((visibleAccounts.find(a => a.id === customerId) as Record<string, unknown> | undefined)?.priceClassCode);
+    const sourceClass = customerDefaultClass(sourceOrder.priceClassCode) || customerClass || priceClassCode;
+    if (sourceClass !== priceClassCode) setPriceClassCode(sourceClass);
+    const mapped = prefillQuoteLinesFromErpOrder(sourceOrder, state.externalProducts || [], sourceClass);
+    setSourceOrderLineCount(mapped.sourceLineCount);
+    setSourceOrderUnmappedCount(mapped.unmappedCount);
+    if (draftState?.sourceOrderId === sourceOrderId && draftState.lines.length > 0) return;
+    setLines(mapped.lines);
+    if (mapped.unmappedCount > 0) {
+      toast.warning(`${mapped.unmappedCount} قلم از ${mapped.sourceLineCount} قلم سفارش ERP به کالای مرجع یا قیمت ریالی نگاشت نشد؛ ثبت پیشنهاد تا رفع مغایرت متوقف است.`);
+    }
+  }, [isOpen, sourceOrderId, sourceOrder, state.externalProducts, visibleAccounts, draftState?.sourceOrderId, draftState?.lines, priceClassCode]);
 
   const [discountPercent, setDiscountPercent] = useState(draftState?.discountPercent || '0');
   const [applyTax, setApplyTax] = useState(draftState?.applyTax ?? true);
@@ -139,6 +237,7 @@ export function QuoteWizardModal({ isOpen, onClose, sourceOrderId, state, update
     if (!guard(state, updateState, 'quotes', 'CREATE', 'صدور پیش‌فاکتور')) return;
     if (!selectedCustomerId || !visibleAccounts.some(account => account.id === selectedCustomerId) || lines.length === 0) return;
     if (sourceOrderId && (!sourceOrder || !isNegotiableErpOrder(sourceOrder as Record<string, unknown>))) { toast.warning('سفارش ERP دیگر واجد شرایط مذاکره نیست؛ پیشنهاد ساخته نشد.'); return; }
+    if (sourceOrderId && sourceOrderLineCount > 0 && sourceOrderUnmappedCount > 0) { toast.warning(`${sourceOrderUnmappedCount} قلم سفارش ERP هنوز نگاشت معتبر ندارد؛ ثبت پیشنهاد متوقف شد.`); return; }
     if (invalidPricingLine || lines.some(line => !line.erpClassCurrencyCode) || orderBalance.currencyMismatch) { notifyInvalidLine(); return; }
     if (!discountValid) {
       updateState(draft => { if (!draft.notifications) draft.notifications = []; draft.notifications.push({ id: generateId(), title: 'درصد تخفیف نامعتبر است', message: 'درصد تخفیف باید عددی بین صفر تا صد باشد.', type: 'WARNING', read: false, createdAt: new Date().toISOString(), linkTab: 'quotes' }); });
@@ -354,7 +453,7 @@ export function QuoteWizardModal({ isOpen, onClose, sourceOrderId, state, update
 
         {step === 2 && (
           <>
-          {sourceOrder && <div className="rounded-lg border border-primary/20 bg-primary/5 p-2 text-caption text-text-secondary">پیشنهاد فروش CPQ برای سفارش ERP <b className="font-mono text-primary">{String(sourceOrder.orderNumber ?? sourceOrder.documentNumber ?? sourceOrder.externalOrderId ?? sourceOrder.id)}</b> · سفارش اصلی بدون تغییر باقی می‌ماند.</div>}
+          {sourceOrder && <div className="rounded-lg border border-primary/20 bg-primary/5 p-2 text-caption text-text-secondary">پیشنهاد فروش CPQ برای سفارش ERP <b className="font-mono text-primary">{String(sourceOrder.orderNumber ?? sourceOrder.documentNumber ?? sourceOrder.externalOrderId ?? sourceOrder.id)}</b> · سفارش اصلی بدون تغییر باقی می‌ماند. {sourceOrderLineCount > 0 ? `${formatNumber(sourceOrderLineCount - sourceOrderUnmappedCount)} از ${formatNumber(sourceOrderLineCount)} قلم نگاشت شد.` : 'ردیف‌های سفارش از منبع دریافت نشده‌اند؛ اقلام را دستی اضافه کنید.'}</div>}
           <QuotePricingStep
             products={state.externalProducts || []}
             priceClassLabels={priceClassLabels}
