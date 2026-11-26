@@ -3,6 +3,7 @@ import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
 import { Modal } from '../ui/Modal';
 import { InputControl, Select } from '../ui/Input';
+import { SearchableSelect } from '../ui/SearchableSelect';
 import { NumericField } from '../quote/NumericField';
 import { PurchaseProductHints } from '../reports/PurchaseCycleFollowUp';
 import { formatCount, formatNumber } from '../../lib/format';
@@ -103,6 +104,9 @@ export function NormalOrderBasket({ state, updateState, erpOrders, crmDrafts, cu
   const selectedClassPrice = classPrice(selectedProduct, priceClassCode);
   const selectedPackSize = safePositiveInt(selectedProduct?.unitsPerCarton);
   const selectedClassLabel = classLabels[priceClassCode as keyof typeof classLabels] || priceClassCode;
+  const customerOptions = customers.map(customer => ({ value: String(customer.id), label: String(customer.name || customer.code || customer.id), subLabel: [customer.code, customer.city, customer.phone].filter(Boolean).join(' · ') }));
+  const classOptions = PRICE_CLASS_CODES.map(code => ({ value: code, label: classLabels[code] || code }));
+  const productOptions = products.map(product => ({ value: String(product.id), label: String(product.name || product.sku || product.id), subLabel: [product.sku || product.code, product.category, product.brand].filter(Boolean).join(' · ') }));
 
   const totalAmount = lines.reduce((sum, line) => sum + line.lineTotal, 0);
   const totalUnits = lines.reduce((sum, line) => sum + line.quantity, 0);
@@ -309,23 +313,14 @@ export function NormalOrderBasket({ state, updateState, erpOrders, crmDrafts, cu
         <div className="space-y-3 pb-3">
           {sourceOrderId && <div className="rounded-lg border border-warning/30 bg-warning-soft px-3 py-2 text-caption text-warning">این یک پیش‌نویس CRM برای سفارش {sourceOrderNumber || sourceOrderId} است. سفارش رسمی ERP تغییر نمی‌کند و هنوز ارسال/تأیید نشده است.</div>}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            <Select label="مشتری" value={customerId} onChange={event => handleCustomerChange(event.target.value)}>
-              <option value="">انتخاب مشتری…</option>
-              {customers.map(customer => <option key={String(customer.id)} value={String(customer.id)}>{String(customer.name || customer.code || customer.id)}</option>)}
-            </Select>
-            <Select label="کلاس قیمت سفارش" value={priceClassCode} onChange={event => handlePriceClassChange(event.target.value)}>
-              <option value="">انتخاب کلاس قیمت…</option>
-              {PRICE_CLASS_CODES.map(code => <option key={code} value={code}>{classLabels[code] || code}</option>)}
-            </Select>
+            <SearchableSelect label="مشتری" ariaLabel="انتخاب مشتری" placeholder="انتخاب مشتری…" value={customerId} options={customerOptions} onChange={handleCustomerChange} className="w-full" />
+            <SearchableSelect label="کلاس قیمت سفارش" ariaLabel="انتخاب کلاس قیمت سفارش" placeholder="انتخاب کلاس قیمت…" value={priceClassCode} options={classOptions} onChange={handlePriceClassChange} className="w-full" />
           </div>
 
           <div className="rounded-xl border border-border bg-canvas p-3 space-y-2">
             <div className="flex items-center justify-between gap-2"><b className="text-xs">افزودن کالا</b><span className="text-micro text-text-secondary">قیمت مرجع فقط از ERP</span></div>
             <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_120px_112px_auto] gap-2 items-end">
-              <Select label="کالا" value={selectedProductId} onChange={event => { setSelectedProductId(event.target.value); const product = products.find(item => String(item.id) === event.target.value); setAddMode(safePositiveInt(product?.unitsPerCarton) ? 'CARTON' : 'BASE_UNIT'); setAddQuantity(1); }}>
-                <option value="">انتخاب کالا…</option>
-                {products.map(product => <option key={String(product.id)} value={String(product.id)}>{String(product.name || product.sku || product.id)}</option>)}
-              </Select>
+              <SearchableSelect label="کالا" ariaLabel="انتخاب کالا برای سفارش" placeholder="انتخاب کالا…" value={selectedProductId} options={productOptions} onChange={value => { setSelectedProductId(value); const product = products.find(item => String(item.id) === value); setAddMode(safePositiveInt(product?.unitsPerCarton) ? 'CARTON' : 'BASE_UNIT'); setAddQuantity(1); }} className="w-full" />
               <Select label="نوع تعداد" value={addMode} onChange={event => setAddMode(event.target.value as NormalOrderQuantityMode)}>
                 <option value="CARTON">کارتن</option><option value="BASE_UNIT">واحد پایه</option>
               </Select>
