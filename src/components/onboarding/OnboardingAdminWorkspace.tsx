@@ -40,8 +40,8 @@ import { getActiveDataProvider } from '../../services/dataProvider';
 import { RecruitmentReviewPanel } from './RecruitmentReviewPanel';
 import { LearningCatalogPanel } from './LearningCatalogPanel';
 
-type Tab = 'apps' | 'files' | 'payroll' | 'learning' | 'config';
-const TABS: readonly Tab[] = ['apps', 'files', 'payroll', 'learning', 'config'];
+type Tab = 'apps' | 'files' | 'payroll' | 'payslips' | 'learning' | 'config';
+const TABS: readonly Tab[] = ['apps', 'files', 'payroll', 'payslips', 'learning', 'config'];
 const maskNid = (n?: string) => (n ? n.slice(0, 3) + '****' + n.slice(-3) : '—');
 
 export function OnboardingAdminWorkspace({ state, updateState }: { state: AppState; updateState: (u: (d: AppState) => AppState | void) => void }) {
@@ -152,7 +152,7 @@ export function OnboardingAdminWorkspace({ state, updateState }: { state: AppSta
               <FilterChip active={tab === t} key={t} onClick={() => setTab(t)} >
                 {t === 'apps' ? (remote ? 'درخواست‌های همکاری' : `درخواست‌های همکاری (${apps.length})`) :
                  t === 'files' ? `پرونده‌های پرسنلی (${files.length})` :
-                 t === 'payroll' ? 'حقوق، مساعده و پورسانت' : t === 'learning' ? 'آموزش و آزمون' : 'تنظیمات'}
+                 t === 'payroll' ? 'حقوق، مساعده و پورسانت' : t === 'payslips' ? 'فیش‌های صادرشده' : t === 'learning' ? 'آموزش و آزمون' : 'تنظیمات'}
               </FilterChip>
             ))}
           </div>
@@ -332,6 +332,45 @@ export function OnboardingAdminWorkspace({ state, updateState }: { state: AppSta
             </div>
           )}
         </div>
+      )}
+
+
+      {tab === 'payslips' && (
+        <section className="space-y-2" aria-label="فیش‌های حقوقی صادرشده">
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="text-xs font-bold text-text-main">فیش‌های حقوقی ثبت‌شده</h3>
+            <span className="text-micro text-text-secondary">{formatCurrency((state.payslips || []).reduce((sum, row) => sum + Number(row.netPayableRials || 0), 0))} ریال خالص مجموع رکوردهای قابل مشاهده</span>
+          </div>
+          {(state.payslips || []).slice().sort((a, b) => String(b.month).localeCompare(String(a.month)) || String(a.userId).localeCompare(String(b.userId))).map(payslip => (
+            <details key={payslip.id} className="rounded-xl border border-border bg-surface p-3">
+              <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3">
+                <span className="min-w-0">
+                  <b className="block truncate text-xs text-text-main">{userName(payslip.userId)}</b>
+                  <span className="mt-0.5 block text-micro text-text-secondary">دوره {payslip.month} · {payslip.workedDays} روز کارکرد</span>
+                </span>
+                <span className="shrink-0 text-left">
+                  <b className="block font-mono text-xs text-primary">{formatCurrency(payslip.netPayableRials)} ریال</b>
+                  <span className="text-micro text-text-secondary">{payslip.status === 'APPROVED' ? 'تأییدشده' : payslip.status === 'DISPATCHED_TO_FINANCE' ? 'ارسال به مالی' : 'پیش‌نویس'}</span>
+                </span>
+              </summary>
+              <div className="mt-2 space-y-2 border-t border-border pt-2">
+                <div className="grid grid-cols-2 gap-2 text-micro">
+                  <div>حقوق پایه: <b className="font-mono">{formatCurrency(payslip.basePayRials)} ریال</b></div>
+                  <div>ناخالص: <b className="font-mono">{formatCurrency(payslip.grossPayRials)} ریال</b></div>
+                  <div>پورسانت: <b className="font-mono">{formatCurrency(payslip.commissionRials)} ریال</b></div>
+                  <div>کسورات: <b className="font-mono">{formatCurrency(payslip.totalDeductionsRials)} ریال</b></div>
+                </div>
+                {(payslip.lines || []).map(line => (
+                  <div key={line.id} className="flex items-center justify-between gap-2 border-t border-border/60 py-1.5 text-caption">
+                    <span className="text-text-secondary">{line.title}</span>
+                    <b className={line.isCredit ? 'font-mono text-text-main' : 'font-mono text-danger'}>{line.isCredit ? '+' : '−'}{formatCurrency(line.amountRials)} ریال</b>
+                  </div>
+                ))}
+              </div>
+            </details>
+          ))}
+          {(state.payslips || []).length === 0 && <p className="rounded-xl border border-dashed border-border p-6 text-center text-xs text-text-secondary">فیش صادرشده‌ای در داده‌های متصل وجود ندارد؛ این صفحه فیش ساختگی تولید نمی‌کند.</p>}
+        </section>
       )}
 
       {/* جزئیات درخواست همکاری */}
