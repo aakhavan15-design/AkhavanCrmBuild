@@ -1,5 +1,6 @@
 import { ChartCard } from './charts/ChartCard';
 import { WorkspaceViewSwitcher } from './shared/WorkspaceViewSwitcher';
+import { NormalOrderBasket } from './operations/NormalOrderBasket';
 import React, { useMemo, useState } from 'react';
 import { DemoTrustBanner } from './shared/DemoTrustBanner';
 import { useTabParam } from '../hooks/useTabParam';
@@ -24,9 +25,6 @@ import { VerdictStrip } from './shared/VerdictStrip';
 import { DonutChart } from './charts/DonutChart';
 import { LineChart } from './charts/LineChart';
 import { useNavigate } from 'react-router-dom';
-import { isNegotiableErpOrder } from '../lib/phase2Flow';
-import { getActiveDataProvider } from '../services/dataProvider';
-import { PurchaseProductHints } from './reports/PurchaseCycleFollowUp';
 import type { AppState } from '../types';
 
 interface Props { state: AppState; updateState: (updater: (draft: AppState) => void | Partial<AppState>) => void }
@@ -45,7 +43,6 @@ const nextId = (prefix: string) => generateSecureId(prefix);
 export function OperationsControlWorkspace({ state, updateState }: Props) {
   const navigate = useNavigate();
   const [search, setSearch] = useState('');
-  const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
   const [customerId, setCustomerId] = useState('');
   const [productId, setProductId] = useState('');
   const [quantity, setQuantity] = useState('');
@@ -312,40 +309,16 @@ export function OperationsControlWorkspace({ state, updateState }: Props) {
       )}
 
       {tab==='orders' && (
-        <div className="space-y-2">
-          <div className="flex items-center justify-between gap-2"><h3 className="text-sm font-bold text-text-main">سبد سفارش عادی ERP</h3><span className="text-micro text-text-secondary">{formatCount(orders.length)} سفارش</span></div>
-          <p className="text-micro text-text-secondary">مشاهده و پیگیری سفارش رسمی ERP؛ ایجاد/ویرایش تا اتصال و آزمون API رسمی ERP فعال نمی‌شود.</p>
-          {orders.map(o => {
-            const account = customers.find(customer => customer.id === (o.accountId ?? o.customerId));
-            const source = typeof o.sourceSystemCode === 'string' ? o.sourceSystemCode : '';
-            const accountId = typeof account?.id === 'string' ? account.id : '';
-            const externalId = o.externalOrderId ?? o.externalId;
-            const relevant = Boolean(getActiveDataProvider().name === 'SQLSERVER_BACKEND' && can('quotes', 'VIEW') && source.trim()
-              && typeof externalId === 'string' && externalId.trim() && isNegotiableErpOrder(o)
-              && /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(accountId));
-            const existingProducts = new Set<string>(Array.isArray(o.lines) ? o.lines
-              .flatMap(line => typeof line?.externalProductId === 'string' ? [line.externalProductId] : []) : []);
-            return <article key={String(o.id)} className="space-y-2 rounded-xl border border-border bg-surface p-3 text-xs">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <span className="font-bold font-mono text-text-main">{String(o.orderNumber || '')}</span>
-                <span className="block text-mini text-text-secondary mt-0.5">{String(o.notes || 'سفارش ثبت شده')}</span>
-              </div>
-              <span className="font-bold font-mono text-text-main">{o.totalAmount == null || o.totalAmount === '' ? 'مبلغ نامشخص' : money(Number(o.totalAmount))}</span>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <Button size="sm" variant="outline" onClick={() => setExpandedOrderId(expandedOrderId === String(o.id) ? null : String(o.id))}>{expandedOrderId === String(o.id) ? 'بستن جزئیات' : 'مشاهده جزئیات'}</Button>
-                {relevant && <Button size="sm" variant="outline" onClick={() => navigate(`/quotes?sourceOrderId=${encodeURIComponent(String(externalId))}`)}>پیشنهاد فروش CPQ</Button>}
-              </div>
-              {expandedOrderId === String(o.id) && <div className="rounded-lg bg-canvas p-2 space-y-1.5">
-                <div className="text-micro text-text-secondary">مشتری: {String(account?.name || 'نامشخص')} · منبع: {source || 'نامشخص'} · شناسه ERP: {String(externalId || 'نامشخص')}</div>
-                {Array.isArray(o.lines) && o.lines.length ? o.lines.map((line, index) => <div key={String(line.id ?? index)} className="flex items-center justify-between gap-2 border-t border-border/60 py-1.5"><span className="text-caption text-text-main">{String(line.productName ?? line.name ?? line.externalProductId ?? 'کالای نامشخص')}</span><span className="text-caption font-mono text-text-secondary">{String(line.quantity ?? '—')} × {String(line.unitPrice ?? '—')}</span></div>) : <p className="text-caption text-text-secondary">ردیف‌های سفارش از ERP دریافت نشده‌اند.</p>}
-              </div>}
-              {relevant && <PurchaseProductHints key={`${state.currentUserId}:${accountId}:${source}`} account={accountId} source={source} excludeProductIds={existingProducts} />}
-            </article>;
-          })}
-          {orders.length === 0 && <p className="text-xs text-text-secondary py-6 text-center">سفارشی یافت نشد.</p>}
-        </div>
+        <NormalOrderBasket
+          state={state}
+          updateState={updateState}
+          erpOrders={orders as unknown as Record<string, any>[]}
+          crmDrafts={crmOrderDrafts as unknown as Record<string, any>[]}
+          customers={customers as unknown as Record<string, any>[]}
+          canCreate={can('quotes', 'CREATE')}
+          canViewCpq={can('quotes', 'VIEW')}
+          onOpenCpq={orderId => navigate(`/quotes?sourceOrderId=${encodeURIComponent(orderId)}`)}
+        />
       )}
 
       {tab==='dispatch' && (
