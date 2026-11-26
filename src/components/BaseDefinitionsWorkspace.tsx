@@ -9,6 +9,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import type { AppState } from '../types';
 import { resolvePriceClassLabels, PRICE_CLASS_CODES } from '../lib/cpqEngine';
 import { PriceClassDefinitionsPanel } from './settings/PriceClassDefinitionsPanel';
+import { SalesTargetsCommissionsPanel } from './SalesTargetsCommissionsPanel';
 import { SettingsWorkspace } from './SettingsWorkspace';
 import { useCan } from '../hooks/useCan';
 import { Card } from './ui/Card';
@@ -83,8 +84,6 @@ export function BaseDefinitionsWorkspace({ state, updateState }: Props) {
       { title: 'گروه‌های کالا', rows: rows('productGroups'), available: Array.isArray(raw.productGroups), owner: 'ERP · فقط‌خواندنی' },
       { title: 'برندها', rows: rows('productBrands'), available: Array.isArray(raw.productBrands), owner: 'ERP · فقط‌خواندنی' }
     ],
-    'sales-targets': [{ title: 'اهداف فروش', rows: rows('salesTargets'), available: Array.isArray(raw.salesTargets), owner: 'CRM', route: '/reports' }],
-    commissions: [{ title: 'طرح‌های پورسانت', rows: rows('commissionPlans'), available: Array.isArray(raw.commissionPlans), owner: 'CRM · سیاست نسخه‌دار', route: '/finance' }],
     'payment-mappings': [{ title: 'نگاشت ماهیت پرداخت', rows: rows('paymentNatureMappings'), available: Array.isArray(raw.paymentNatureMappings), owner: 'ERP/CRM · مطابق مالکیت نگاشت', route: '/finance?tab=treasury' }],
     'detail-groups': [
       { title: 'گروه‌های تفصیلی', rows: rows('detailGroups'), available: Array.isArray(raw.detailGroups), owner: 'ERP · فقط‌خواندنی', route: '/finance' },
@@ -216,6 +215,16 @@ export function BaseDefinitionsWorkspace({ state, updateState }: Props) {
           ))}
           {personnel.length === 0 && <p className="text-center text-caption text-ink-soft py-6">پروندهٔ پرسنلی برای نمایش وجود ندارد.</p>}
         </div>
+      )}
+
+      {(tab === 'sales-targets' || tab === 'commissions') && (
+        <SalesTargetsCommissionsPanel
+          state={state}
+          updateState={updateState}
+          initialView={tab === 'sales-targets' ? 'targets' : 'commissions'}
+          canEdit={!!can('internal', 'EDIT')}
+          canApprove={!!can('settings', 'EDIT')}
+        />
       )}
 
       {tab === 'price-classes' && (

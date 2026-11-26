@@ -825,6 +825,7 @@ export interface Payslip {
   approvedMissionDays: number;
   missionPayRials: number;
   commissionRials: number;
+  commissionCalculationStatus?: 'CALCULATED' | 'UNVERIFIED' | 'SELLER_SALES_UNAVAILABLE' | 'TARGET_MISSING' | 'TARGET_AMBIGUOUS' | 'PLAN_MISSING';
   totalBenefitsRials: number;
   grossPayRials: number;
   advanceDeductionRials: number;
@@ -857,12 +858,20 @@ export interface PayrollRun {
 
 export interface SalesTarget {
   id: string;
-  userId: string;
+  userId?: string;
   periodMonth: string; // YYYY-MM
   revenueTargetRials: number;
   volumeTargetUnits?: number;
   productBrand?: string;
   territoryId?: string;
+  scopeType?: 'COMPANY' | 'BRANCH' | 'TEAM' | 'USER' | 'BRAND' | 'PRODUCT_GROUP' | 'ROUTE';
+  scopeId?: string;
+  kpiCode?: 'NET_SALES_IRR' | 'VOLUME_UNITS' | string;
+  approvalStatus?: 'DRAFT' | 'APPROVED' | 'REJECTED';
+  approvedBy?: string;
+  approvedAt?: string;
+  createdBy?: string;
+  updatedAt?: string;
   createdAt: string;
 }
 
@@ -878,6 +887,17 @@ export interface CommissionPlan {
   tiers: CommissionTier[];
   routeDifficultyMultiplier: number;
   isActive: boolean;
+  scopeType?: 'COMPANY' | 'BRANCH' | 'TEAM' | 'USER';
+  scopeId?: string;
+  userIds?: string[];
+  branchId?: string;
+  teamId?: string;
+  territoryId?: string;
+  effectiveFrom?: string;
+  effectiveTo?: string;
+  version?: number;
+  createdBy?: string;
+  updatedAt?: string;
 }
 
 export interface CommissionTransaction {
