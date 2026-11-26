@@ -60,6 +60,17 @@ const more = scenario.map(l => l.key === 'pos' ? { ...l, baseQuantity: 20 } : l)
 assert.equal(suggestLineRecovery(more, 'pos').price.unitPrice, 10 + Math.ceil(500 / 20));
 assert.ok(suggestLineRecovery(more, 'pos').price.unitPrice < sg.price.unitPrice);
 
+
+const belowClassPrice = suggestLineRecovery([
+  { key: 'selected', comparisonPrice: 100, currencyCode: 'IRR', unitPrice: 50, baseQuantity: 1 },
+  { key: 'surplus', comparisonPrice: 100, currencyCode: 'IRR', unitPrice: 120, baseQuantity: 1 }
+], 'selected');
+assert.equal(belowClassPrice.price.unitPrice, 100); // پیشنهاد فی هیچ‌گاه زیر قیمت کلاس همان کالا نمی‌رود.
+assert.ok(computeOrderBalance([
+  { key: 'selected', comparisonPrice: 100, currencyCode: 'IRR', unitPrice: belowClassPrice.price.unitPrice, baseQuantity: 1 },
+  { key: 'surplus', comparisonPrice: 100, currencyCode: 'IRR', unitPrice: 120, baseQuantity: 1 }
+]).total >= 0);
+
 // فی ≤ کف ⇒ افزایش تعداد کمکی نمی‌کند؛ فقط پیشنهاد فی
 const flat = suggestLineRecovery([{ key: 'neg', comparisonPrice: 1000, currencyCode: 'IRR', unitPrice: 950, baseQuantity: 10 }], 'neg');
 assert.equal(flat.quantity.unavailableReason, 'PRICE_NOT_ABOVE_REFERENCE'); assert.equal(flat.quantity.cartons, null);

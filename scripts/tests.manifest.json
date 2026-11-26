@@ -838,5 +838,11 @@
     "flags": [
       "--experimental-strip-types"
     ]
+  },
+  {
+    "file": "tests/cpqOrderPrefill.test.mjs",
+    "flags": [
+      "--experimental-strip-types"
+    ]
   }
 ]
