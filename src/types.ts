@@ -505,11 +505,11 @@ export interface ExternalProduct {
   taxRatePercent?: number | null;
   /** ارزش موجودی طبق FIFO؛ فقط از دیتابیس/ERP خوانده می‌شود (CRM محاسبه نمی‌کند). undefined/null = نامشخص. */
   inventoryValueFifo?: number | null;
-  /** کف قیمت مجاز از ERP، ریال به‌ازای واحد پایه. undefined/null = ERP کف نداده (نامعلوم؛ هرگز صفر نیست). */
+  /** کف مستقل ERP به‌ازای واحد پایه، در ارز و scale اعلام‌شده از ERP. undefined/null = ERP کف نداده (نامعلوم؛ هرگز صفر نیست). */
   floorPrice?: number | null;
   /** تعداد واحد پایه در هر کارتن از ERP. undefined/null = نامعلوم (۱ فرض نمی‌شود). */
   unitsPerCarton?: number | null;
-  /** ۵ کلاس قیمت ERP (ریال به‌ازای واحد پایه)؛ فقط‌خواندنی در CRM. */
+  /** ۵ کلاس قیمت ERP (در ارز و scale اعلام‌شده از ERP)؛ فقط‌خواندنی در CRM. */
   currencyCode?: string | null;
   priceClasses?: Partial<Record<'PRICE_CLASS_1' | 'PRICE_CLASS_2' | 'PRICE_CLASS_3' | 'PRICE_CLASS_4' | 'PRICE_CLASS_5', { unitPrice: number; label?: string; currencyCode?: string }>>;
   [key: string]: any;

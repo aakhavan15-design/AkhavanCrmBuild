@@ -23,7 +23,7 @@ export const lineToBalanceInput = (l: DraftLine, key: string): BalanceLineInput 
 
 /** تعداد واحد پایه از ورودی کاربر: کارتن × تعداد در کارتن؛ اگر تعداد در کارتن نامعلوم باشد ورودی همان واحد پایه است (۱ فرض نمی‌شود، حالت واحد صریح نمایش داده می‌شود). */
 const baseFrom = (entered: number | null | undefined, upc: number | null | undefined, mode: 'CARTON' | 'BASE_UNIT'): number => {
-  if (entered === null || !Number.isSafeInteger(entered) || entered <= 0) return 0;
+  if (entered == null || !Number.isSafeInteger(entered) || entered <= 0) return 0;
   if (mode === 'BASE_UNIT') return entered;
   return upc && Number.isSafeInteger(upc) && upc > 0 ? entered * upc : 0;
 };
@@ -212,7 +212,7 @@ export function QuotePricingStep({ products, priceClassLabels, priceClassCode, o
                   <label className="block text-micro font-bold text-text-secondary mb-1">نوع تعداد</label>
                   <Select aria-label={`نوع تعداد ${l.productName}`} value={l.quantityMode ?? (l.unitsPerCarton ? 'CARTON' : 'BASE_UNIT')} onChange={e => patchLine(i, { quantityMode: e.target.value as 'CARTON' | 'BASE_UNIT' })}><option value="CARTON" disabled={!l.unitsPerCarton}>کارتن / بسته</option><option value="BASE_UNIT">واحد پایه</option></Select>
                   <label className="block text-micro font-bold text-text-secondary mb-1 mt-2">{cartonLabel(l.unitsPerCarton, l.quantityMode ?? (l.unitsPerCarton ? 'CARTON' : 'BASE_UNIT'))}</label>
-                  <NumericField ariaLabel={`تعداد ${l.productName}`} value={(l.quantityMode ?? (l.unitsPerCarton ? 'CARTON' : 'BASE_UNIT')) === 'CARTON' ? l.cartonQuantity : l.quantity} grouped={false} onCommit={(n) => patchLine(i, { cartons: n })} />
+                  <NumericField ariaLabel={`تعداد ${l.productName}`} value={((l.quantityMode ?? (l.unitsPerCarton ? 'CARTON' : 'BASE_UNIT')) === 'CARTON' ? l.cartonQuantity : l.quantity) ?? null} grouped={false} onCommit={(n) => patchLine(i, { cartons: n })} />
                 </div>
                 <div>
                   <label className="block text-micro font-bold text-text-secondary mb-1">فی هر واحد ({classCurrencyCode || 'واحد پول نامشخص'})</label>
