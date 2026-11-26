@@ -76,6 +76,7 @@ GO
 /* PriceClassCode belongs to the whole Quote/order header, never to an individual QuoteLine. */
 IF COL_LENGTH(N'crm.QuoteLine', N'ErpClassUnitPriceAmount') IS NULL ALTER TABLE crm.QuoteLine ADD ErpClassUnitPriceAmount decimal(19,0) NULL;
 /* Legacy compatibility column only; selected ProductPriceClass is the sole CPQ reference/floor. */
+/* Deprecated compatibility snapshot only; CPQ uses ErpClassUnitPriceAmount as the sole per-product floor. */
 IF COL_LENGTH(N'crm.QuoteLine', N'FloorUnitPriceAmount') IS NULL ALTER TABLE crm.QuoteLine ADD FloorUnitPriceAmount decimal(19,0) NULL;
 IF COL_LENGTH(N'crm.QuoteLine', N'UnitsPerCartonSnapshot') IS NULL ALTER TABLE crm.QuoteLine ADD UnitsPerCartonSnapshot int NULL;
 IF COL_LENGTH(N'crm.QuoteLine', N'CartonQuantity') IS NULL ALTER TABLE crm.QuoteLine ADD CartonQuantity int NULL;

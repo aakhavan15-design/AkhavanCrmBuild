@@ -74,6 +74,21 @@ export const ETL_RULES: Record<ErpEntityType, Rule[]> = {
       const bad = [1, 2, 3, 4, 5].filter(i => !isBlank(r[`priceClass${i}`]) && normalizeErpPositiveInt(r[`priceClass${i}`]) === null);
       return bad.length ? ['PRODUCT_PRICE_CLASS_INVALID', `قیمت کلاس ${bad.join('، ')} باید عدد صحیح مثبت (ریال) باشد؛ صفر/منفی/اعشار پذیرفته نمی‌شود.`] : null;
     },
+    r => {
+      const raw = r.priceClasses;
+      const entries = Array.isArray(raw) ? raw : raw && typeof raw === 'object' ? Object.values(raw as Record<string, unknown>) : [];
+      for (const value of entries) {
+        if (!value || typeof value !== 'object') continue;
+        const entry = value as Record<string, unknown>;
+        const currency = entry.currencyCode ?? r.currencyCode;
+        if (!isBlank(currency) && !['IRR', 'RIAL', 'RIALS', 'ریال'].includes(String(currency).trim().toUpperCase()))
+          return ['PRODUCT_PRICE_CLASS_CURRENCY_NOT_IRR', 'واحد پول قیمت کلاس باید ریال باشد.'];
+        const price = entry.unitPrice ?? entry.price;
+        if (!isBlank(price) && normalizeErpPositiveInt(price) === null)
+          return ['PRODUCT_PRICE_CLASS_PRICE_INVALID', 'قیمت کلاس باید عدد صحیح مثبت ریال باشد.'];
+      }
+      return null;
+    },
     r => (r.taxRatePercent == null || String(r.taxRatePercent).trim() === '' || (Number.isFinite(Number(r.taxRatePercent)) && Number(r.taxRatePercent) >= 0 && Number(r.taxRatePercent) <= 100) ? null : ['PRODUCT_TAX_RATE_INVALID', 'نرخ مالیات کالا باید عددی بین ۰ تا ۱۰۰ باشد (خالی = نامشخص).'])
   ],
   PRODUCT_COST: [anyOf(['externalProductId'], 'COST_PRODUCT_MISSING'), nonNegative('unitCost', 'COST_VALUE_INVALID'), dateRule('effectiveFrom', 'COST_EFFECTIVE_FROM_INVALID')],
