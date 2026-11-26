@@ -934,5 +934,9 @@
     "flags": [
       "--experimental-strip-types"
     ]
+  },
+  {
+    "file": "tests/staticCacheHeaders.test.mjs",
+    "flags": []
   }
 ]

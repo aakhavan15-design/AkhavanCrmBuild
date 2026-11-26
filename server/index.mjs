@@ -1614,13 +1614,22 @@ if (fs.existsSync(path.join(clientBuildDirectory, 'index.html'))) {
   app.use(express.static(clientBuildDirectory, {
     index: false,
     etag: true,
-    maxAge: process.env.NODE_ENV === 'production' ? '1h' : 0,
+    maxAge: process.env.NODE_ENV === 'production' ? '1y' : 0,
+    immutable: process.env.NODE_ENV === 'production',
     setHeaders(res, filePath) {
-      if (filePath.endsWith('index.html')) res.setHeader('cache-control', 'no-store');
+      const relative = path.relative(clientBuildDirectory, filePath).split(path.sep).join('/');
+      if (relative === 'index.html' || relative === 'sw.js' || relative === 'service-worker.js' || relative === 'manifest.webmanifest') {
+        res.setHeader('cache-control', 'no-cache, must-revalidate');
+      } else if (relative.startsWith('assets/')) {
+        res.setHeader('cache-control', process.env.NODE_ENV === 'production' ? 'public, max-age=31536000, immutable' : 'no-cache');
+      } else {
+        res.setHeader('cache-control', process.env.NODE_ENV === 'production' ? 'public, max-age=3600' : 'no-cache');
+      }
     }
   }));
   app.get('*', (req, res, next) => {
     if (req.path.startsWith('/api/') || req.path.startsWith('/health/')) return next();
+    res.setHeader('cache-control', 'no-cache, must-revalidate');
     res.sendFile(path.join(clientBuildDirectory, 'index.html'));
   });
 }
