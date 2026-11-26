@@ -24,7 +24,7 @@ const TABS: Array<{ id: TabId; label: string; icon: React.ElementType }> = [
   { id: 'groups', label: 'تیم‌ها و گروه‌ها', icon: UsersRound },
   { id: 'personnel', label: 'پرسنل', icon: UserRound },
   { id: 'price-classes', label: 'کلاس‌های قیمت', icon: Tags },
-  { id: 'products', label: 'کالا و قیمت ERP', icon: Package },
+  { id: 'products', label: 'کالا و قیمت مرجع', icon: Package },
   { id: 'customers', label: 'مشتریان', icon: Store },
   { id: 'finance-codes', label: 'کدینگ و تعاریف مالی', icon: Wallet },
   { id: 'routes', label: 'مسیرها و تورها', icon: RouteIcon }
@@ -109,7 +109,7 @@ export function BaseDefinitionsWorkspace({ state, updateState }: Props) {
       {tab === 'routes' && (
         <div className="space-y-2">
           {[
-            { title: 'مسیرهای ERP', rows: state.erpVisitRoutes || [] },
+            { title: 'مسیرهای مرجع', rows: state.erpVisitRoutes || [] },
             { title: 'تورهای ویزیت ERP', rows: state.erpVisitTours || [] },
             { title: 'کارکنان مسیر', rows: state.erpVisitRouteStaff || [] },
             { title: 'مشتریان مسیر', rows: state.erpVisitRouteCustomers || [] },

@@ -1,6 +1,6 @@
 /**
  * PriceClassDefinitionsPanel — تعاریف پایهٔ نام ۵ کلاس قیمت.
- * قیمت هر کلاس فقط از ERP می‌آید؛ اینجا فقط «نام نمایشی» تعریف می‌شود.
+ * قیمت هر کلاس فقط از سامانه مرجع می‌آید؛ اینجا فقط «نام نمایشی» تعریف می‌شود.
  * اولویت نام: ERP ← تعریف دستی همین‌جا ← پیش‌فرض اعلام‌شده ← «کلاس قیمت N» (نام تجاری حدس زده نمی‌شود).
  */
 import React from 'react';
@@ -16,7 +16,7 @@ interface Props {
   canEdit: boolean;
 }
 
-const SOURCE_LABEL = { ERP: 'از ERP', MANUAL: 'تعریف دستی', DEFAULT: 'پیش‌فرض', NONE: 'نام‌گذاری نشده' } as const;
+const SOURCE_LABEL = { ERP: 'از سامانه مرجع', MANUAL: 'تعریف دستی', DEFAULT: 'پیش‌فرض', NONE: 'نام‌گذاری نشده' } as const;
 
 export function PriceClassDefinitionsPanel({ state, updateState, canEdit }: Props) {
   const manual = ((state.settings as Record<string, any> | undefined)?.orgConfig?.priceClassLabels || {}) as Partial<Record<PriceClassCode, string>>;
@@ -45,7 +45,7 @@ export function PriceClassDefinitionsPanel({ state, updateState, canEdit }: Prop
       <div>
         <h4 className="text-xs font-extrabold text-text-main">نام کلاس‌های قیمت (تعاریف پایه)</h4>
         <p className="mt-1 text-caption text-text-secondary">
-          قیمت هر کالا در پنج کلاس و کف قیمت فقط از ERP دریافت می‌شود. اگر ERP نام کلاس را بفرستد همان نمایش داده می‌شود؛ در غیر این صورت نام تعریف‌شدهٔ شما به‌کار می‌رود.
+          قیمت هر کالا در پنج کلاس و کف قیمت فقط از سامانه مرجع دریافت می‌شود. اگر منبع مرجع نام کلاس را ارسال کند همان نمایش داده می‌شود؛ در غیر این صورت نام تعریف‌شدهٔ شما به‌کار می‌رود.
         </p>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -64,7 +64,7 @@ export function PriceClassDefinitionsPanel({ state, updateState, canEdit }: Prop
               placeholder={row.source === 'ERP' ? row.label : 'نام کلاس را وارد کنید'}
               onBlur={e => commit(row.code, e.target.value)}
             />
-            {row.source === 'ERP' && <p className="mt-1 text-micro text-ink-soft">نام ERP «{row.label}» اولویت دارد.</p>}
+            {row.source === 'ERP' && <p className="mt-1 text-micro text-ink-soft">نام ثبت‌شده در منبع مرجع «{row.label}» اولویت دارد.</p>}
           </div>
         ))}
       </div>

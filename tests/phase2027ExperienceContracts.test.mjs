@@ -9,6 +9,8 @@ const quotes = read('src/components/QuotesWorkspace.tsx');
 const drawer = read('src/components/NavigationDrawer.tsx');
 const settings = read('src/components/SettingsWorkspace.tsx');
 const bottomNav = read('src/components/BottomNav.tsx');
+const designSystem = read('docs/DESIGN_SYSTEM_FA.md');
+const themeTokens = read('src/theme/colors.css');
 
 assert.match(autocomplete, /onSearch\?: \(query: string\) => void/);
 assert.match(autocomplete, /debounceMs/);
@@ -29,4 +31,6 @@ assert.doesNotMatch(quotes, /پیش‌نویس سریع/);
 assert.match(drawer, /جست‌وجوی منوی اصلی/);
 assert.match(settings, /جست‌وجوی تنظیمات/);
 assert.match(bottomNav, /se-dock-pill absolute inset-x-3 -top-1 h-\[2px\] rounded-full bg-primary/);
+assert.match(designSystem, /Neo-Slate/);
+assert.doesNotMatch(`${designSystem}\\n${themeTokens}`, /jade/i);
 console.log('phase2027ExperienceContracts.test.mjs: all assertions passed');
