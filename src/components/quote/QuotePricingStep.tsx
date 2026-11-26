@@ -58,7 +58,7 @@ function SuggestionStrip({ s, line, onApplyPrice, onApplyQty }: { s: LineRecover
             <>با همین فی: <b className="font-mono">{fa(q.cartons)}</b> کارتن <span className="text-micro text-ink-soft">({q.extraCartons ? `${formatSignedAmount(q.extraCartons)} کارتن · ` : ''}{fa(q.effectiveBaseQuantity)} واحد)</span></>
           )}
           {q && !q.unavailableReason && q.cartons === null && (
-            <>با همین فی: <b className="font-mono">{fa(q.baseQuantity)}</b> واحد <span className="text-micro text-ink-soft">(تعداد در کارتن از ERP نیامده؛ تبدیل به کارتن انجام نشد)</span></>
+            <>با همین فی: <b className="font-mono">{fa(q.baseQuantity)}</b> واحد <span className="text-micro text-ink-soft">(ضریب بسته‌بندی مشخص نیست؛ تبدیل به کارتن انجام نشد)</span></>
           )}
         </div>
         {q && !q.unavailableReason && <Button size="xs" variant="soft" onClick={onApplyQty}><Check size={12} className="ml-1" />اعمال تعداد</Button>}
@@ -133,7 +133,7 @@ export function QuotePricingStep({ products, priceClassLabels, priceClassCode, o
       : state === 'POSITIVE' || state === 'ZERO' ? 'border-success-line bg-success-soft/50'
         : 'border-border bg-surface';
   const stateText = (l: LineBalance | undefined) => !l || l.variance === null
-    ? (l?.status === 'REFERENCE_UNKNOWN' ? 'قیمت کلاس منتخب یا واحد پول ERP نامعلوم؛ در تراز لحاظ نشد' : 'ورودی نامعتبر')
+    ? (l?.status === 'REFERENCE_UNKNOWN' ? 'قیمت کلاس منتخب یا واحد پول نامشخص؛ در تراز لحاظ نشد' : 'ورودی نامعتبر')
     : l.state === 'NEGATIVE' ? `پایین‌تر از کلاس منتخب: ${formatSignedAmount(l.variance)} ${l.currencyCode || 'واحد پول نامشخص'}`
       : l.state === 'POSITIVE' ? `بالاتر از کلاس منتخب: ${formatSignedAmount(l.variance)} ${l.currencyCode || 'واحد پول نامشخص'}` : 'برابر کلاس منتخب';
 
@@ -195,7 +195,7 @@ export function QuotePricingStep({ products, priceClassLabels, priceClassCode, o
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
                   <div className="text-compact font-bold text-text-main truncate">{l.productName}</div>
-                  <div className="text-micro text-ink-soft">{l.productCode || '—'} · کف ERP: <span className="font-mono">{l.floorUnitPrice ? fa(l.floorUnitPrice) : 'نامعلوم'}</span></div>
+                  <div className="text-micro text-ink-soft">{l.productCode || '—'} · حداقل قیمت مرجع: <span className="font-mono">{l.floorUnitPrice ? fa(l.floorUnitPrice) : 'نامعلوم'}</span></div>
                 </div>
                 <button aria-label="حذف قلم" onClick={() => setLines(prev => prev.filter((_, idx) => idx !== i))} className="text-danger p-2 -m-1 rounded-md cursor-pointer min-w-(--size-touch) min-h-(--size-touch) flex items-center justify-center"><Trash2 size={15} /></button>
               </div>

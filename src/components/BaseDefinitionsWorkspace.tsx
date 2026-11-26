@@ -122,7 +122,7 @@ export function BaseDefinitionsWorkspace({ state, updateState }: Props) {
                   <div className="font-semibold text-ink">{String(row.name || row.routeName || row.tourName || row.reasonTitleFa || row.code || '—')}</div>
                   <div className="text-ink-soft">{String(row.code || row.routeCode || row.externalId || '—')}</div>
                 </div>
-              )) : <p className="text-micro text-ink-soft">رکوردی از ERP برای نمایش وجود ندارد.</p>}
+              )) : <p className="text-micro text-ink-soft">رکوردی از منبع مرجع برای نمایش وجود ندارد.</p>}
             </Card>
           ))}
           <p className="text-micro text-ink-soft">مسیرها و تورهای دریافتی از منبع مرجع در CRM فقط‌خواندنی هستند.</p>
