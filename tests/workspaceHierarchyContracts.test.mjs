@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import assert from 'node:assert/strict';
 const css = fs.readFileSync('src/index.css','utf8');
+const switcher = fs.readFileSync('src/components/shared/WorkspaceViewSwitcher.tsx','utf8');
 const pkg = JSON.parse(fs.readFileSync('package.json','utf8'));
 const version = fs.readFileSync('src/lib/version.ts','utf8');
 assert.match(pkg.version, /^\d+\.\d+\.\d+$/);
@@ -11,4 +12,6 @@ assert.match(css, /role="tab"\]\[aria-selected="true"[\s\S]*?background:transpar
 assert.match(css, /env\(safe-area-inset-bottom/);
 assert.match(css, /prefers-reduced-motion:reduce/);
 assert.match(css, /font-family: var\(--font-family-ui\)/);
+assert.match(switcher, /areas\.find\(area => area\.views\.some\(view => view\.id === value\)\)/, 'in-page view switcher must scope choices to the active business area');
+assert.match(switcher, /const siblingAreas = activeArea \? \[activeArea\] : \[\]/);
 console.log('workspaceHierarchyContracts.test.mjs: PASS');

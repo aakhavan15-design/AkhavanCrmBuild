@@ -112,15 +112,13 @@ export const MODULE_LANDINGS: ModuleLandingDefinition[] = [
           tile('master-price-classes', 'نام کلاس‌های قیمت', 'تعریف نام پنج کلاس قیمت (در صورت ندادن نام از ERP)', '/definitions?tab=price-classes', 'settings', Tag),
           tile('master-product-prices', 'کالا، کف و قیمت‌ها', 'کف قیمت، تعداد در کارتن و ۵ کلاس قیمت از ERP', '/definitions?tab=products', 'accounts', Scale),
           tile('master-customers', 'مشتریان و کلاس قیمت', 'فهرست مشتریان و کلاس قیمت پیش‌فرض هر مشتری', '/definitions?tab=customers', 'accounts', Users),
-          tile('master-products', 'کالا و کاتالوگ', 'اقلام کالایی مرجع سامانه مالی', '/operations?tab=inventory', 'ops.inventory', Package),
-          tile('master-promotions', 'طرح پروموشن و بودجه', 'پیشنهادهای تشویقی و کمپین‌ها', '/marketing', 'marketing', Megaphone),
         ],
       },
       {
         title: 'جغرافیا و مالی پایه',
         tiles: [
-          tile('master-geo', 'زون‌ها و مسیرهای جغرافیایی', 'تعریف محدوده‌ها و مرزهای توزیع', '/geo-intelligence', 'geo_intelligence', MapPinned),
-          tile('master-coding', 'کدینگ، بانک و خزانه پایه', 'نمای کدینگ، حساب‌های بانکی و خزانه', '/finance?tab=treasury', 'finance', Landmark),
+          tile('master-geo', 'زون‌ها و مسیرهای جغرافیایی', 'تعریف محدوده‌ها و مرزهای توزیع', '/definitions?tab=geo', 'internal', MapPinned),
+          tile('master-coding', 'کدینگ حسابداری و مالی پایه', 'تعاریف کدینگ حسابداری و نگاشت‌های مرجع', '/definitions?tab=finance-codes', 'internal', Landmark),
         ],
       },
     ],
@@ -135,7 +133,7 @@ export const MODULE_LANDINGS: ModuleLandingDefinition[] = [
         title: 'مشتریان',
         tiles: [
           tile('accounts', 'پرونده مشتریان', 'بانک مشتریان و پرونده ۳۶۰ درجه', '/accounts', 'accounts', Users),
-          tile('fin-credit-scoring', 'اعتبارسنجی مشتریان', 'امتیاز و سقف اعتبار مشتری', '/planned?item=fin-credit-scoring', 'finance', ShieldCheck),
+          tile('fin-credit-scoring', 'اعتبارسنجی و ریسک مشتریان', 'مانده، سقف اعتبار و ریسک مشتری', '/operations?tab=credit', 'ops.credit', ShieldCheck),
         ],
       },
       {
@@ -160,8 +158,8 @@ export const MODULE_LANDINGS: ModuleLandingDefinition[] = [
           tile('sales-reports', 'گزارش‌های فروش و درآمد', 'عملکرد فروش، محصولات، مشتریان و ویزیت', '/reports?tab=sales', 'reports', ChartNoAxesCombined),
           tile('advanced-analytics', 'بینش‌های عمیق مالی و بازرگانی', 'گزارش‌های تحلیلی با شواهد، فیلتر و جزئیات', '/reports?view=analytical', 'reports', TrendingUp),
           tile('audit-sales', 'پایش مغایرت فروش', 'کنترل کیفیت و مغایرت‌های فروش و مشتری', '/audit?module=sales', 'leads', SearchCheck),
-          tile('fin-targets', 'اهداف و تحقق فروش', 'تعریف هدف و پایش تحقق', '/planned?item=fin-targets', 'finance', Target),
-          tile('fin-commission', 'محاسبه پورسانت', 'هدف، پلکان و ضرایب پورسانت', '/planned?item=fin-commission', 'finance', Percent),
+          tile('fin-targets', 'اهداف و تحقق فروش', 'تعریف هدف فروشندگان و پایش تحقق خالص', '/definitions?tab=sales-targets', 'internal', Target),
+          tile('fin-commission', 'طرح‌های پورسانت', 'تعریف پلکان، ضرایب و گزارش برآورد پورسانت', '/definitions?tab=commissions', 'internal', Percent),
         ],
       },
     ],
@@ -218,14 +216,13 @@ export const MODULE_LANDINGS: ModuleLandingDefinition[] = [
         title: 'تأمین و سفارش خرید',
         tiles: [
           tile('purchasing', 'درخواست و سفارش خرید', 'ثبت و پیگیری درخواست تأمین و سفارش خرید', '/operations?tab=purchasing', 'ops.purchasing', ShoppingCart),
-          tile('proc-inventory', 'وضعیت موجودی کالاها', 'کالاهای زیر نقطه سفارش و نیاز تأمین', '/operations?tab=inventory', 'ops.inventory', Package),
+          tile('proc-inventory', 'نیاز تأمین و سفارش خرید', 'بررسی نیازهای تأمین در فرایند خرید', '/operations?tab=purchasing', 'ops.purchasing', Package),
         ],
       },
       {
         title: 'اسناد و پایش تأمین',
         tiles: [
-          tile('proc-expenses', 'هزینه‌ها و پرداخت تأمین', 'پایش اسناد هزینه و تعهدات مرتبط', '/finance?tab=expenses', 'finance', Receipt),
-          tile('audit-procurement', 'پایش مغایرت تأمین', 'کنترل کیفیت داده‌های کالا و تأمین', '/audit?module=commerce', 'ops.purchasing', SearchCheck),
+          
         ],
       },
     ],
@@ -240,8 +237,7 @@ export const MODULE_LANDINGS: ModuleLandingDefinition[] = [
         title: 'خزانه و بانک',
         tiles: [
           tile('finance-overview', 'نمای کلی مالی', 'خلاصه مطالبات، سررسیدها و وضعیت مالی', '/finance?tab=overview', 'finance', Gauge),
-          tile('treasury', 'خزانه‌داری', 'نمای تجمیعی گردش وجوه و حساب‌ها', '/finance?tab=treasury', 'finance', Landmark),
-          tile('fin-liquidity', 'نقدینگی و حساب‌های بانکی', 'مانده بانک، پیش‌بینی و گردش', '/finance?tab=treasury', 'finance', Coins),
+          tile('treasury', 'خزانه و نقدینگی', 'گردش وجوه، حساب‌های بانکی، پیش‌بینی و سررسیدها', '/finance?tab=treasury', 'finance', Landmark),
           tile('fin-cashbox', 'مدیریت صندوق', 'مانده و گردش صندوق', '/planned?item=fin-cashbox', 'finance', Wallet),
         ],
       },
@@ -250,15 +246,13 @@ export const MODULE_LANDINGS: ModuleLandingDefinition[] = [
         tiles: [
           tile('payments', 'دریافتی‌ها و رسیدها', 'ثبت، تطبیق و تخصیص دریافتی‌ها', '/finance?tab=payments', 'finance', Banknote),
           tile('cheques', 'چک‌ها', 'چک‌های دریافتی و پرداختی صیادی', '/finance?tab=cheques', 'finance', FileText),
-          tile('finance-payment-requests', 'دستورهای پرداخت و تسویه', 'درخواست‌های پرداخت و تأیید حسابداری', '/finance?tab=requests', 'finance', ClipboardList),
-          tile('fin-payments', 'مدیریت پرداخت‌ها', 'دستور پرداخت قطعی و غیرقطعی', '/planned?item=fin-payments', 'finance', CreditCard),
+          tile('fin-payments', 'دستورهای پرداخت و تسویه', 'درخواست‌های پرداخت و تأیید حسابداری', '/finance?tab=requests', 'finance', ClipboardList),
         ],
       },
       {
         title: 'مطالبات و اعتبار',
         tiles: [
           tile('collection', 'مطالبات و وصول', 'مانده دفتری، سنی تخمینی و پیگیری وصول', '/finance?tab=collection', 'finance', ArrowDownLeft),
-          tile('credit-risk', 'ریسک اعتباری مشتریان', 'پایش اعتبار، چک برگشتی و نرخ تسویه', '/operations?tab=credit', 'ops.credit', ShieldCheck),
           tile('receivables-reports', 'گزارش‌های مطالبات', 'تحلیل سنی و تمرکز مطالبات', '/reports?tab=receivables', 'finance.reports', BarChart2),
         ],
       },

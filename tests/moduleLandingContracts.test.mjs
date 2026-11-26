@@ -30,6 +30,10 @@ test('landing tile paths refer to registered routes and preserve ERP boundaries'
  for(const path of tiles) assert.ok(routePaths.has(path.split('?')[0]),`missing route ${path}`);
  assert.match(catalogue,/tile\('quotes',[^\n]*'\/quotes'/);
  assert.match(catalogue,/tile\('orders',[^\n]*'\/operations\?tab=orders'/);
+ assert.match(catalogue,/tile\('fin-credit-scoring',[^\n]*'\/operations\?tab=credit'/);
+ assert.match(catalogue,/tile\('fin-payments',[^\n]*'\/finance\?tab=requests'/);
+ assert.match(catalogue,/tile\('master-coding',[^\n]*'\/definitions\?tab=finance-codes'/);
+ assert.match(catalogue,/tile\('master-geo',[^\n]*'\/definitions\?tab=geo'/);
  assert.match(catalogue,/tile\('invoices',[^\n]*'\/finance\?tab=invoices'/);
 });
 test('operations and finance views each have one catalog tile under the owning workspace', () => {

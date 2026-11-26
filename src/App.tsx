@@ -293,7 +293,7 @@ function AppContent() {
           <Route path="/calendar" element={guard('calendar', <CalendarWorkspace state={state} updateState={updateState} />)} />
           <Route path="/reports" element={guard('reports', <ReportsWorkspace state={state} updateState={updateState} setActiveTab={(t: string) => navigate(`/${t}`)} />)} />
           <Route path="/settings" element={guard('settings', <SettingsWorkspace state={state} updateState={updateState} />)} />
-          <Route path="/definitions" element={guardAny(rbac.hasPermission('accounts.view') || rbac.hasPermission('settings.manage'), <BaseDefinitionsWorkspace state={state} updateState={updateState} />)} />
+          <Route path="/definitions" element={guardAny(rbac.hasPermission('accounts.view') || rbac.hasPermission('settings.manage') || rbac.hasPermission('internal.view') || rbac.hasPermission('internal.manage'), <BaseDefinitionsWorkspace state={state} updateState={updateState} />)} />
           <Route path="/sync-center" element={guard('settings', <SyncCenterWorkspace state={state} />)} />
           <Route path="/audit" element={guardAny(makeCanAccess(rbac)('audit'), <AuditWorkspace state={state} />)} />
           <Route path="/onboarding" element={guard('onboarding', <OnboardingAdminWorkspace state={state} updateState={updateState} />)} />
