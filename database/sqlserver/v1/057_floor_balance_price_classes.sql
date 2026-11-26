@@ -1,6 +1,6 @@
 /* 057 — floor-balance pricing: five ERP price classes per product (versioned snapshots), ERP floor price and
    units-per-carton, plus order/line balance snapshots. Additive only: no existing column is changed or dropped.
-   Rules: every price comes from ERP per BASE unit; currency code is sourced from ERP and no conversion is inferred.
+   Rules: all prices are ERP-sourced per BASE unit and stored in IRR; non-IRR codes are rejected. Price in the selected class is the per-product reference/floor; the legacy independent floor columns are not used by CPQ.
    Current numeric implementation accepts integer amounts only; decimal scale must be confirmed before production use. Unknown values stay NULL.
 */
 SET XACT_ABORT ON;
@@ -56,6 +56,7 @@ BEGIN
   CONSTRAINT UQ_ProductPriceClass_Version UNIQUE(TenantId,ExternalProductKey,PriceClassCode,SourceVersion),
   CONSTRAINT CK_ProductPriceClass_Code CHECK(PriceClassCode IN ('PRICE_CLASS_1','PRICE_CLASS_2','PRICE_CLASS_3','PRICE_CLASS_4','PRICE_CLASS_5')),
   CONSTRAINT CK_ProductPriceClass_Price CHECK(UnitPriceAmount>0),
+  CONSTRAINT CK_ProductPriceClass_Currency CHECK(CurrencyCode='IRR'),
   CONSTRAINT CK_ProductPriceClass_Validity CHECK(ValidToUtc IS NULL OR ValidFromUtc IS NULL OR ValidToUtc>ValidFromUtc)
  );
  CREATE INDEX IX_ProductPriceClass_Current ON crm.ProductPriceClass(TenantId,ExternalProductKey,PriceClassCode,ReceivedAtUtc DESC) WHERE IsActive=1;
@@ -74,9 +75,10 @@ FROM (
 GO
 /* PriceClassCode belongs to the whole Quote/order header, never to an individual QuoteLine. */
 IF COL_LENGTH(N'crm.QuoteLine', N'ErpClassUnitPriceAmount') IS NULL ALTER TABLE crm.QuoteLine ADD ErpClassUnitPriceAmount decimal(19,0) NULL;
+/* Legacy compatibility column only; selected ProductPriceClass is the sole CPQ reference/floor. */
 IF COL_LENGTH(N'crm.QuoteLine', N'FloorUnitPriceAmount') IS NULL ALTER TABLE crm.QuoteLine ADD FloorUnitPriceAmount decimal(19,0) NULL;
 IF COL_LENGTH(N'crm.QuoteLine', N'UnitsPerCartonSnapshot') IS NULL ALTER TABLE crm.QuoteLine ADD UnitsPerCartonSnapshot int NULL;
-IF COL_LENGTH(N'crm.QuoteLine', N'CartonQuantity') IS NULL ALTER TABLE crm.QuoteLine ADD CartonQuantity decimal(19,4) NULL;
+IF COL_LENGTH(N'crm.QuoteLine', N'CartonQuantity') IS NULL ALTER TABLE crm.QuoteLine ADD CartonQuantity int NULL;
 IF COL_LENGTH(N'crm.QuoteLine', N'QuantityMode') IS NULL ALTER TABLE crm.QuoteLine ADD QuantityMode varchar(12) NULL;
 IF COL_LENGTH(N'crm.QuoteLine', N'LineVarianceAmount') IS NULL ALTER TABLE crm.QuoteLine ADD LineVarianceAmount decimal(19,0) NULL;
 IF COL_LENGTH(N'crm.QuoteLine', N'BalanceStatus') IS NULL ALTER TABLE crm.QuoteLine ADD BalanceStatus varchar(20) NULL;

@@ -506,6 +506,7 @@ export interface ExternalProduct {
   /** ارزش موجودی طبق FIFO؛ فقط از دیتابیس/ERP خوانده می‌شود (CRM محاسبه نمی‌کند). undefined/null = نامشخص. */
   inventoryValueFifo?: number | null;
   /** کف مستقل ERP به‌ازای واحد پایه، در ارز و scale اعلام‌شده از ERP. undefined/null = ERP کف نداده (نامعلوم؛ هرگز صفر نیست). */
+  /** legacy compatibility only; price floor is the selected price class of the product. */
   floorPrice?: number | null;
   /** تعداد واحد پایه در هر کارتن از ERP. undefined/null = نامعلوم (۱ فرض نمی‌شود). */
   unitsPerCarton?: number | null;
@@ -520,6 +521,7 @@ export interface QuoteLineBalanceSnapshot {
   /** مقدار قیمت ERP همان کالا در کلاس سراسری انتخاب‌شده روی Quote */
   erpClassUnitPrice?: number | null;
   erpClassCurrencyCode?: string | null;
+  /** legacy snapshot only; no independent floor is used in CPQ. */
   floorUnitPrice?: number | null;
   cartonQuantity?: number | null;
   unitsPerCarton?: number | null;

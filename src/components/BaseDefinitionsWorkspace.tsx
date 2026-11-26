@@ -231,7 +231,7 @@ export function BaseDefinitionsWorkspace({ state, updateState }: Props) {
           {products.slice(0, LIMIT).map(p => (
             <Card key={p.id} className="p-3 space-y-1.5">
               <div className="text-compact font-bold text-text-main truncate">{p.name}</div>
-              <div className="text-micro text-ink-soft">{p.sku || p.code || '—'} · حداقل قیمت مرجع: <b className="font-mono">{fa(p.floorPrice)}</b> · در هر کارتن: <b className="font-mono">{fa(p.unitsPerCarton)}</b></div>
+              <div className="text-micro text-ink-soft">{p.sku || p.code || '—'} · در هر کارتن: <b className="font-mono">{fa(p.unitsPerCarton)}</b></div>
               <div className="grid grid-cols-2 gap-1.5 text-micro">
                 {PRICE_CLASS_CODES.map(code => (
                   <div key={code} className="rounded-lg bg-sunken px-2 py-1 flex justify-between gap-2"><span className="text-ink-soft truncate">{labelOf(code)}</span><b className="font-mono">{p.priceClasses?.[code] ? fa(p.priceClasses[code]!.unitPrice) : 'نیامده'}</b></div>

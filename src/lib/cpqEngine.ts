@@ -149,45 +149,6 @@ export function normalizeErpPriceClasses(source: Record<string, unknown> | null 
   return out;
 }
 
-/** ردیف‌های سفارش ERP را برای شروع پیشنهاد CPQ پیش‌پر می‌کند؛ اصل سفارش ERP تغییر نمی‌کند. */
-export function buildDraftQuoteLinesFromErpOrder(
-  order: Record<string, unknown>,
-  products: Array<Record<string, any>>,
-  priceClassCode: string
-) {
-  const sourceLines = Array.isArray(order.lines) ? order.lines as Array<Record<string, unknown>> : [];
-  return sourceLines.map((source, index) => {
-    const externalProductId = String(source.externalProductId ?? source.productId ?? source.productCode ?? '').trim();
-    const product = products.find(item => [item.id, item.erpId, item.externalId, item.code, item.sku].some(value => String(value ?? '') === externalProductId));
-    const unitsPerCarton = positiveInt(source.unitsPerCarton ?? product?.unitsPerCarton);
-    const sourceMode = String(source.quantityMode ?? '').toUpperCase();
-    const explicitCartons = positiveInt(source.cartonQuantity ?? (sourceMode === 'CARTON' ? source.quantity : undefined));
-    const quantityMode = sourceMode === 'CARTON' || explicitCartons !== null ? 'CARTON' as const : 'BASE_UNIT' as const;
-    const sourceQuantity = positiveInt(source.quantity) ?? 0;
-    const quantity = quantityMode === 'CARTON'
-      ? (explicitCartons !== null && unitsPerCarton !== null && Number.isSafeInteger(explicitCartons * unitsPerCarton) ? explicitCartons * unitsPerCarton : 0)
-      : sourceQuantity;
-    const sourceCurrency = source.currencyCode ?? source.currency ?? order.currencyCode ?? order.currency;
-    const sourcePriceIsRial = isRialCurrencyCode(sourceCurrency);
-    const unitPrice = sourcePriceIsRial ? (positiveInt(source.unitPrice ?? source.netUnitPrice) ?? 0) : 0;
-    const classEntry = product?.priceClasses?.[priceClassCode];
-    const classCurrency = classEntry?.currencyCode ?? product?.currencyCode ?? 'IRR';
-    const erpClassUnitPrice = isRialCurrencyCode(classCurrency) ? positiveInt(classEntry?.unitPrice) : null;
-    const erpClassCurrencyCode = erpClassUnitPrice === null ? null : 'IRR';
-    const lineTotal = Number.isSafeInteger(quantity * unitPrice) ? quantity * unitPrice : 0;
-    const balance = computeLineBalance({ key: String(index), comparisonPrice: erpClassUnitPrice, currencyCode: erpClassCurrencyCode, unitPrice, baseQuantity: quantity });
-    return {
-      productId: String(product?.id ?? externalProductId ?? `erp-line-${index + 1}`),
-      productName: String(product?.name ?? source.productName ?? source.name ?? 'کالای نامشخص'),
-      productCode: String(product?.sku ?? product?.code ?? source.productCode ?? externalProductId),
-      quantity, unitPrice, costPrice: positiveInt(product?.costPrice) ?? 0, lineTotal,
-      erpClassUnitPrice, erpClassCurrencyCode,
-      cartonQuantity: quantityMode === 'CARTON' ? explicitCartons : null,
-      unitsPerCarton: unitsPerCarton ?? null, quantityMode,
-      lineVariance: balance.variance, balanceStatus: balance.status
-    };
-  });
-}
 
 export interface PriceClassLabelRow { code: PriceClassCode; label: string; source: 'ERP' | 'MANUAL' | 'DEFAULT' | 'NONE' }
 

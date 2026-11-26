@@ -64,7 +64,6 @@ export function prefillQuoteLinesFromErpOrder(
       lineTotal,
       erpClassUnitPrice: classPrice,
       erpClassCurrencyCode: 'IRR',
-      floorUnitPrice: product.floorPrice ?? null,
       cartonQuantity: quantityMode === 'CARTON' ? enteredQuantity : null,
       unitsPerCarton,
       quantityMode,
