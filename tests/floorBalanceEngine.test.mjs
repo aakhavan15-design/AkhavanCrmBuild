@@ -14,6 +14,7 @@ assert.equal(computeLineBalance({ key: 'c', comparisonPrice: 100, currencyCode: 
 const unk = computeLineBalance({ key: 'u', comparisonPrice: null, currencyCode: 'IRR', unitPrice: 90, baseQuantity: 5 });
 assert.equal(unk.status, 'REFERENCE_UNKNOWN'); assert.equal(unk.variance, null);
 assert.equal(computeLineBalance({ key: 'z', comparisonPrice: 0, currencyCode: 'IRR', unitPrice: 90, baseQuantity: 5 }).status, 'REFERENCE_UNKNOWN');
+assert.equal(computeLineBalance({ key: 'no-currency', comparisonPrice: 100, unitPrice: 120, baseQuantity: 1 }).status, 'REFERENCE_UNKNOWN');
 // ورودی نامعتبر (اعشار/صفر/منفی)
 for (const bad of [{ unitPrice: 10.5, baseQuantity: 1 }, { unitPrice: 0, baseQuantity: 1 }, { unitPrice: 10, baseQuantity: 0 }, { unitPrice: 10, baseQuantity: -2 }, { unitPrice: undefined, baseQuantity: 2 }])
   assert.equal(computeLineBalance({ key: 'x', comparisonPrice: 5, currencyCode: 'IRR', ...bad }).status, 'INVALID');

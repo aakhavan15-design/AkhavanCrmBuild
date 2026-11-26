@@ -16,7 +16,7 @@
 | پالت | فقط Neo-Slate + Electric Indigo مطابق `docs/DESIGN_SYSTEM_FA.md`؛ فقط توکن معنایی (بدون hex). |
 
 ## قرارداد ورودی ERP برای کالا
-`floorPrice`, `unitsPerCarton`, `priceClass1..5` (یا `priceClasses`)، اختیاری `priceClass1Label..5`، `currencyCode` دریافتی از ERP؛ نبود کد پول مانع محاسبهٔ تراز است..
+`floorPrice`, `unitsPerCarton`, `priceClass1..5` (یا `priceClasses`)، اختیاری `priceClass1Label..5`، `currencyCode` دریافتی از ERP؛ نبود کد پول مانع محاسبهٔ تراز است.
 مقدار صفر/منفی/اعشاری رد می‌شود (ETL: `PRODUCT_FLOOR_PRICE_INVALID` و …).
 
 ## محدودیت دقت عددی

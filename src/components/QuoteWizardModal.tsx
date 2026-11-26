@@ -322,7 +322,7 @@ export function QuoteWizardModal({ isOpen, onClose, state, updateState, onQuoteC
                 </div>
                 <div className="flex justify-between text-text-secondary">
                   <span>سقف اعتبار مالی:</span>
-                  <span className="font-mono font-bold text-text-main">{(selectedCustomer.creditLimit || 0).toLocaleString('fa-IR')} ریال</span>
+                  <span className="font-mono font-bold text-text-main">{(selectedCustomer.creditLimit || 0).toLocaleString('fa-IR')} {selectedCustomer.currencyCode || 'واحد پول نامشخص'}</span>
                 </div>
                 <div className="flex justify-between text-text-secondary">
                   <span>آدرس و نشانی تحویل:</span>
@@ -404,7 +404,7 @@ export function QuoteWizardModal({ isOpen, onClose, state, updateState, onQuoteC
                 </div>
                 <div className="bg-primary/20 border border-primary/50 p-2.5 rounded-xl">
                   <div className="text-micro text-accent mb-0.5">مبلغ نهایی</div>
-                  <div className="text-sm font-extrabold font-mono text-white">{grandTotal.toLocaleString('fa-IR')} ریال</div>
+                  <div className="text-sm font-extrabold font-mono text-white">{grandTotal.toLocaleString('fa-IR')} {orderBalance.currencyCode || 'واحد پول نامشخص'}</div>
                 </div>
               </div>
               <div className="flex items-center justify-between bg-white/10 p-2.5 rounded-xl" data-testid="summary-balance">
