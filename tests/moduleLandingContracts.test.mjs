@@ -64,7 +64,7 @@ test('compact accessible RTL landing retains RBAC, search, icon grid and disclos
 });
 
 test('existing payroll and payslip workspaces are linked instead of planned dead ends',()=>{
- assert.match(catalogue,/tile\('hr-payroll',[^\\n]*'\/onboarding\?tab=payroll'/);
- assert.match(catalogue,/tile\('hr-payslip',[^\\n]*'\/onboarding\?tab=payslips'/);
+ assert.match(catalogue,/tile\('hr-payroll'[\s\S]{0,240}'\/onboarding\?tab=payroll'/);
+ assert.match(catalogue,/tile\('hr-payslip'[\s\S]{0,240}'\/onboarding\?tab=payslips'/);
  assert.match(read('src/components/onboarding/OnboardingAdminWorkspace.tsx'),/tab === 'payslips'/);
 });

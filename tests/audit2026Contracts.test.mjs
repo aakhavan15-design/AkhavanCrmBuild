@@ -36,7 +36,8 @@ assert.doesNotMatch(customers, /متصل به سامانه مالی|اتصال �
 assert.match(customers, /selectable renderDetail/);
 assert.match(customers, /canOn\('accounts', 'VIEW'/);
 assert.match(customers, /searchSuggestions/);
-assert.match(customers, /invoice\.balance/);
+assert.match(customers, /resolveCustomerBalanceView\(detailBalances, account\)/);
+assert.doesNotMatch(customers, /invoice\.balance/, 'customer receivable view must use scoped ledger evidence, not invoice mirror balances');
 const modal = read('src/components/ui/Modal.tsx');
 assert.match(modal, /key === 'Escape'/);
 assert.match(modal, /z-\(--z-modal\)/);

@@ -100,7 +100,7 @@ const n = normalizeErpPriceClasses({ priceClass1: '۱۲۰۰۰', priceClass2: 900
 assert.equal(n.PRICE_CLASS_1.unitPrice, 12000); assert.deepEqual(Object.keys(n).sort(), ['PRICE_CLASS_1', 'PRICE_CLASS_2']);
 assert.equal(n.PRICE_CLASS_2.unitPrice, 90000); assert.equal(n.PRICE_CLASS_2.label, 'عمده‌ی ERP');
 assert.equal(n.PRICE_CLASS_3, undefined); assert.equal(n.PRICE_CLASS_5, undefined); // صفر/منفی/اعشاری هرگز نمی‌شود
-assert.equal(normalizeErpPriceClasses({ currencyCode: 'USD', priceClass1: 5 }).PRICE_CLASS_1.currencyCode, 'USD'); // کد پول از ERP حفظ می‌شود
+assert.equal(normalizeErpPriceClasses({ currencyCode: 'USD', priceClass1: 5 }).PRICE_CLASS_1, undefined); // فقط ریال در CRM معتبر است؛ ارز دیگر بدون تبدیل رد می‌شود
 assert.equal(normalizeErpPriceClasses({ priceClasses: [{ code: 'PRICE_CLASS_5', unitPrice: 77, label: 'X' }] }).PRICE_CLASS_5.unitPrice, 77);
 assert.equal(normalizeErpPriceClasses({ priceClasses: { PRICE_CLASS_1: { unitPrice: 5 } } }).PRICE_CLASS_1.unitPrice, 5);
 assert.equal(normalizeErpPriceClasses({ priceClasses: { BAD_CODE: 5 } }).BAD_CODE, undefined);

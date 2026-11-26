@@ -10,5 +10,5 @@ assert.equal(state.seedMetadata.mode, 'EMPTY_PRODUCTION');
 const demo = generateSeedData({ includeDemo: true });
 assert.ok(demo.customers.length > 0, 'demo data remains explicitly available for development/tests');
 const storage = readFileSync(new URL('../src/lib/storage.ts', import.meta.url), 'utf8');
-assert.match(storage, /INCLUDE_DEMO_SEED = demoSeedPreference === 'true'\s*\|\| \(demoSeedPreference !== 'false' && import\.meta\.env\?\.DEV === true\)/);
+assert.match(storage, /INCLUDE_DEMO_SEED = import\.meta\.env\?\.DEV === true && demoSeedPreference !== 'false'/);
 console.log('production seed safety: PASS');

@@ -23,5 +23,5 @@ const inactiveBoss = { ...mk('2026-10-20'), users: [{ id: 'u1', managerId: 'u2' 
 // منطقه زمانی: ۲۲:۳۰ UTC = ۰۲:۰۰ بعد از نیمه‌شب تهران → تاریخ محلی روز بعد
 eq(localDateStr(new Date('2026-10-22T22:30:00Z'), 'Asia/Tehran'), '2026-10-23', 'تایم‌زون تهران'); eq(localDateStr(new Date('2026-10-22T22:30:00Z'), 'UTC'), '2026-10-22', 'UTC');
 // ارجاع به گروه: گیرنده تعیین‌شده ندارد (نه به کاربر اشتباه)
-eq(computeTaskReminders(mk('2026-10-22', { assigneeType: 'GROUP', assigneeId: 'g1' }), T0).map(e => e.recipientId), [undefined], 'گروه');
+eq(computeTaskReminders(mk('2026-10-22', { assigneeType: 'GROUP', assigneeId: 'g1' }), T0).length, 0, 'گروه بدون گیرنده مستقیم، یادآوری شخصی دریافت نمی‌کند');
 console.log(`PASS: ${n} assertions (reminders)`);

@@ -46,7 +46,8 @@ assert.match(step, /data-balance-state/); assert.match(step, /suggestLineRecover
 assert.match(step, /quantityMode/);
 assert.match(step, /نوع تعداد/);
 assert.match(src('src/components/QuotesWorkspace.tsx'), /سبد پیشنهاد فروش CPQ/);
-assert.match(src('src/components/OperationsControlWorkspace.tsx'), /سبد سفارش عادی ERP/);
+assert.match(src('src/components/OperationsControlWorkspace.tsx'), /<NormalOrderBasket/);
+assert.match(src('src/components/operations/NormalOrderBasket.tsx'), /سبد سفارش عادی ERP/);
 assert.match(src('src/components/BaseDefinitionsWorkspace.tsx'), /تعاریف کلی/);
 assert.match(src('src/components/BaseDefinitionsWorkspace.tsx'), /تعاریف فروش/);
 assert.match(src('src/components/BaseDefinitionsWorkspace.tsx'), /تعاریف مالی/);
