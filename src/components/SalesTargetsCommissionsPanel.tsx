@@ -75,7 +75,7 @@ export function SalesTargetsCommissionsPanel({ state, updateState, initialView, 
   const users = (state.users || []).filter(user => (user.isActive ?? user.active) !== false)
     .slice().sort((a,b) => a.name.localeCompare(b.name, 'fa'));
   const userName = (id?: string) => users.find(user => user.id === id)?.name || 'فروشنده نامشخص';
-  const userOptions = users.map(user => ({ value: user.id, label: user.name, subLabel: user.employeeCode || user.username || user.roleId || '' }));
+  const userOptions = users.map(user => ({ value: String(user.id ?? ''), label: user.name, subLabel: user.employeeCode || user.username || user.roleId || '' })).filter(option => option.value.length > 0);
 
   const resetTarget = () => {
     setTargetFormOpen(false); setEditingTargetId(null); setTargetScope('USER'); setTargetUserId('');
