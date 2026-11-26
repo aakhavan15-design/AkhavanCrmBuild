@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { BadgeCheck, Plus, Save, X, Pencil, CheckCircle2 } from 'lucide-react';
+import { Plus, Save, X, Pencil, CheckCircle2 } from 'lucide-react';
 import type { AppState, CommissionPlan, CommissionTier, SalesTarget } from '../types';
 import { Button } from './ui/Button';
 import { InputControl, Select } from './ui/Input';
@@ -67,9 +67,9 @@ export function SalesTargetsCommissionsPanel({ state, updateState, initialView, 
   const [planTiers, setPlanTiers] = useState('80|99.99|1.5\n100|119.99|2.5\n120||3.5');
   const [planError, setPlanError] = useState('');
 
-  const targets = useMemo(() => (state.salesTargets || []).filter(t => !t.deletedAt && !t.isDeleted)
+  const targets = useMemo(() => (state.salesTargets || []).filter(t => { const row = t as SalesTarget & { deletedAt?: string; isDeleted?: boolean }; return !row.deletedAt && !row.isDeleted; })
     .slice().sort((a,b) => String(b.periodMonth).localeCompare(String(a.periodMonth))), [state.salesTargets]);
-  const plans = useMemo(() => (state.commissionPlans || []).filter(p => !p.deletedAt && !p.isDeleted)
+  const plans = useMemo(() => (state.commissionPlans || []).filter(p => { const row = p as CommissionPlan & { deletedAt?: string; isDeleted?: boolean }; return !row.deletedAt && !row.isDeleted; })
     .slice().sort((a,b) => Number(b.version || 1)-Number(a.version || 1)), [state.commissionPlans]);
   const users = (state.users || []).filter(user => (user.isActive ?? user.active) !== false)
     .slice().sort((a,b) => a.name.localeCompare(b.name, 'fa'));
@@ -114,7 +114,7 @@ export function SalesTargetsCommissionsPanel({ state, updateState, initialView, 
         scopeType: targetScope,
         periodMonth: targetMonth,
         revenueTargetRials: amount,
-        ...(volume === null ? {} : { volumeTargetUnits: volume }),
+        volumeTargetUnits: volume ?? undefined,
         kpiCode: 'NET_SALES_IRR',
         approvalStatus: 'DRAFT',
         approvedBy: undefined,
@@ -169,15 +169,17 @@ export function SalesTargetsCommissionsPanel({ state, updateState, initialView, 
       const current = (draft.commissionPlans || []) as CommissionPlan[];
       const existing = current.find(row => row.id === editingPlanId);
       const next: CommissionPlan = {
-        ...(existing || {} as CommissionPlan),
-        id: editingPlanId || generateSecureId('commission-plan'),
+        id: generateSecureId('commission-plan'),
         name: planName.trim(), tiers, routeDifficultyMultiplier: multiplier,
         scopeType: planScope, scopeId: planScope === 'USER' ? planUserId : undefined,
         userIds: planScope === 'USER' ? [planUserId] : undefined,
         isActive: true, version: Number(existing?.version || 0) + 1,
         createdBy: existing?.createdBy || draft.currentUserId || undefined, updatedAt: now,
       };
-      draft.commissionPlans = existing ? current.map(row => row.id === existing.id ? next : row) : [next, ...current];
+      // طرح قبلی immutable می‌ماند؛ ویرایش، نسخهٔ تازه می‌سازد و نسخهٔ قبلی را غیرفعال می‌کند.
+      draft.commissionPlans = existing
+        ? [{ ...existing, isActive: false, updatedAt: now }, next, ...current.filter(row => row.id !== existing.id)]
+        : [next, ...current];
       draft.auditLogs ||= [];
       draft.auditLogs.push({ id: generateSecureId('audit-commission'), action: existing ? 'COMMISSION_PLAN_UPDATED' : 'COMMISSION_PLAN_CREATED',
         entityType: 'COMMISSION_PLAN', entityId: next.id, actor: draft.currentUserId || 'unknown', createdAt: now,
