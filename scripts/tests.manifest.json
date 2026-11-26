@@ -844,5 +844,95 @@
     "flags": [
       "--experimental-strip-types"
     ]
+  },
+  {
+    "file": "tests/advancedReportsAccess.test.mjs",
+    "flags": []
+  },
+  {
+    "file": "tests/analyticsEvidenceContracts.test.mjs",
+    "flags": []
+  },
+  {
+    "file": "tests/authLampExperienceContracts.test.mjs",
+    "flags": []
+  },
+  {
+    "file": "tests/cashFlowScenarioReconciliation.test.mjs",
+    "flags": [
+      "--experimental-strip-types"
+    ]
+  },
+  {
+    "file": "tests/cinematicWebGLStageContracts.test.mjs",
+    "flags": []
+  },
+  {
+    "file": "tests/criticalGeoFifoContracts.test.mjs",
+    "flags": [
+      "--experimental-strip-types"
+    ]
+  },
+  {
+    "file": "tests/erpVisitToursContracts.test.mjs",
+    "flags": [
+      "--experimental-strip-types"
+    ]
+  },
+  {
+    "file": "tests/financialDrivers.behavior.test.mjs",
+    "flags": [
+      "--experimental-strip-types"
+    ]
+  },
+  {
+    "file": "tests/financialMetricKernel.behavior.test.mjs",
+    "flags": [
+      "--experimental-strip-types"
+    ]
+  },
+  {
+    "file": "tests/geoRouteAnalysis.test.mjs",
+    "flags": [
+      "--experimental-strip-types"
+    ]
+  },
+  {
+    "file": "tests/landingNavigationSourceContracts.test.mjs",
+    "flags": []
+  },
+  {
+    "file": "tests/livePendantWebGLContracts.test.mjs",
+    "flags": []
+  },
+  {
+    "file": "tests/normalOrderBasket.test.mjs",
+    "flags": [
+      "--experimental-strip-types"
+    ]
+  },
+  {
+    "file": "tests/personnelLoginPresentation.test.mjs",
+    "flags": []
+  },
+  {
+    "file": "tests/routeMapAnalytics.test.mjs",
+    "flags": []
+  },
+  {
+    "file": "tests/routeMapMoney.test.mjs",
+    "flags": []
+  },
+  {
+    "file": "tests/routeMetricHealth.test.mjs",
+    "flags": [
+      "--experimental-strip-types"
+    ]
+  },
+  {
+    "file": "tests/visitIntelligence.test.mjs",
+    "flags": [
+      "--experimental-strip-types"
+    ]
   }
 ]
