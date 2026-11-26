@@ -505,7 +505,24 @@ export interface ExternalProduct {
   taxRatePercent?: number | null;
   /** ارزش موجودی طبق FIFO؛ فقط از دیتابیس/ERP خوانده می‌شود (CRM محاسبه نمی‌کند). undefined/null = نامشخص. */
   inventoryValueFifo?: number | null;
+  /** کف قیمت مجاز از ERP، ریال به‌ازای واحد پایه. undefined/null = ERP کف نداده (نامعلوم؛ هرگز صفر نیست). */
+  floorPrice?: number | null;
+  /** تعداد واحد پایه در هر کارتن از ERP. undefined/null = نامعلوم (۱ فرض نمی‌شود). */
+  unitsPerCarton?: number | null;
+  /** ۵ کلاس قیمت ERP (ریال به‌ازای واحد پایه)؛ فقط‌خواندنی در CRM. */
+  priceClasses?: Partial<Record<'PRICE_CLASS_1' | 'PRICE_CLASS_2' | 'PRICE_CLASS_3' | 'PRICE_CLASS_4' | 'PRICE_CLASS_5', { unitPrice: number; label?: string }>>;
   [key: string]: any;
+}
+
+/** اسنپ‌شات تراز روی ردیف پیش‌فاکتور (قیمت ERP بعدی تاریخچه را تغییر نمی‌دهد). */
+export interface QuoteLineBalanceSnapshot {
+  /** مقدار قیمت ERP همان کالا در کلاس سراسری انتخاب‌شده روی Quote */
+  erpClassUnitPrice?: number | null;
+  floorUnitPrice?: number | null;
+  cartonQuantity?: number | null;
+  unitsPerCarton?: number | null;
+  lineVariance?: number | null;
+  balanceStatus?: 'OK' | 'REFERENCE_UNKNOWN' | 'INVALID';
 }
 
 export interface DraftQuoteState {
@@ -521,7 +538,9 @@ export interface DraftQuoteState {
     unitPrice: number;
     costPrice: number;
     lineTotal: number;
-  }>;
+  } & QuoteLineBalanceSnapshot>;
+  /** کلاس قیمت انتخابی سفارش (پیش‌فرض از مشتری) */
+  priceClassCode?: string;
   discountPercent: string;
   applyTax: boolean;
   paymentTerms: string;
