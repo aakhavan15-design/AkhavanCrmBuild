@@ -93,7 +93,7 @@ export const MODULE_LANDINGS: ModuleLandingDefinition[] = [
         title: 'مرکز داده و همگام‌سازی',
         tiles: [
           tile('sync-center', 'مرکز داده و همگام‌سازی', 'وضعیت پایگاه داده مرکزی، همگام‌سازی و کیفیت داده', '/sync-center', 'settings', RefreshCw),
-          tile('audit-master', 'نمای کلی سلامت داده', 'نمای تجمیعی کنترل کیفیت مشتری، مسیر، کالا و کدینگ', '/audit?module=home', 'settings', SearchCheck),
+          tile('audit-master', 'نمای کلی سلامت داده', 'پایش داده و تنظیمات سازمان', '/audit?module=organization', 'settings', SearchCheck),
         ],
       },
       {
@@ -201,7 +201,7 @@ export const MODULE_LANDINGS: ModuleLandingDefinition[] = [
           tile('operations-quality', 'کیفیت چرخه سفارش', 'پوشش بهای تمام‌شده و سلامت چرخه', '/operations?tab=reports', 'ops.reports', ShieldCheck),
           tile('distribution-reports', 'گزارش توزیع و مسیرها', 'تحلیل تحویل به‌موقع و برگشتی‌ها', '/reports?tab=distribution', 'reports', BarChart3),
           tile('audit-commerce', 'پایش مغایرت بازرگانی', 'کنترل کیفیت کالا، مسیر و اسناد بازرگانی', '/audit?module=commerce', 'ops.orders', SearchCheck),
-          tile('dist-settlement-sales', 'هماهنگی تسویه و برگشتی با فروش', 'تسویه یا برگشتی هر فاکتور', '/planned?item=dist-settlement-sales', 'ops.dispatch', ArrowLeftRight),
+          tile('dist-settlement-sales', 'هماهنگی تسویه و برگشتی با فروش', 'مشاهده برگشتی‌ها و وضعیت رسیدگی', '/operations?tab=returns', 'ops.dispatch', ArrowLeftRight),
         ],
       },
     ],
@@ -216,7 +216,7 @@ export const MODULE_LANDINGS: ModuleLandingDefinition[] = [
         title: 'تأمین و سفارش خرید',
         tiles: [
           tile('purchasing', 'درخواست و سفارش خرید', 'ثبت و پیگیری درخواست تأمین و سفارش خرید', '/operations?tab=purchasing', 'ops.purchasing', ShoppingCart),
-          tile('proc-inventory', 'موجودی و نیاز تأمین', 'مشاهده موجودی و اقلام نیازمند تأمین', '/operations?tab=inventory', 'ops.inventory', Package),
+          tile('proc-inventory', 'موجودی و نیاز تأمین', 'درخواست‌ها و چرخه خرید و تأمین', '/operations?tab=purchasing', 'ops.inventory', Package),
         ],
       },
       {
@@ -266,7 +266,7 @@ export const MODULE_LANDINGS: ModuleLandingDefinition[] = [
           tile('finance-intelligence', 'هوش مالی و تحلیل نقدینگی', '۱۱ گزارش بینشی با سود و زیان دفتری و شواهد قابل پیگیری', '/reports?view=analytical&report=1', 'finance.reports', TrendingUp),
           tile('audit-finance', 'پایش مغایرت مالی', 'کنترل کدینگ، ماهیت حساب و توازن اسناد', '/audit?module=finance', 'finance', SearchCheck),
           tile('fin-budget', 'بودجه‌ریزی', 'بودجه دوره‌ای هر واحد', '/planned?item=fin-budget', 'finance', Target),
-          tile('fin-cost-control', 'کنترل هزینه‌ها', 'هزینه در برابر بودجه', '/planned?item=fin-cost-control', 'finance', Sliders),
+          tile('fin-cost-control', 'کنترل هزینه‌ها', 'مشاهده و پیگیری هزینه‌های ثبت‌شده', '/finance?tab=expenses', 'finance', Sliders),
           tile('fin-invoice-profit', 'سود فاکتور', 'سود هر فاکتور بر مبنای بهای تمام‌شده', '/finance?tab=invoices&view=margin', 'finance.invoiceMargin', Percent),
           tile('fin-dispatch-profit', 'سود برنامه توزیع', 'سود هر برنامه توزیع', '/planned?item=fin-dispatch-profit', 'finance', Truck),
           tile('fin-cash-discount', 'تخفیف نقد فاکتور و پخش', 'کنترل تخفیف نقد در فاکتور و برنامه توزیع', '/planned?item=fin-cash-discount', 'finance', Tag),
