@@ -77,7 +77,7 @@ export function BaseDefinitionsWorkspace({ state, updateState }: Props) {
       ) : (
         <div className="flex items-center justify-between gap-2">
           <button type="button" onClick={() => setParams({})} className="text-caption font-bold text-primary">بازگشت به تعاریف</button>
-          <h2 className="text-caption font-extrabold text-ink">{TABS.find(t => t.id === tab)?.label}</h2>
+          <div className="flex items-center gap-2"><h2 className="text-caption font-extrabold text-ink">{TABS.find(t => t.id === tab)?.label}</h2>{tab === 'customers' && canOn('accounts', 'CREATE') && <Link to="/accounts?create=1" className="rounded-lg bg-primary px-3 py-2 text-micro font-bold text-on-primary">+ ثبت مشتری</Link>}</div>
         </div>
       )}
 
@@ -86,7 +86,7 @@ export function BaseDefinitionsWorkspace({ state, updateState }: Props) {
       {tab === 'finance-codes' && (
         <div className="space-y-3">
           {[
-            { title: 'کدینگ حسابداری ERP', rows: state.coaMirror || [], code: 'code', name: 'name' },
+            { title: 'کدینگ حسابداری منبع مرجع', rows: state.coaMirror || [], code: 'code', name: 'name' },
             { title: 'تعاریف سرفصل گزارش', rows: state.reportBuckets || [], code: 'key', name: 'title' },
             { title: 'نگاشت حساب‌ها', rows: state.accountMapRules || [], code: 'erpAccountCode', name: 'crmEntityType' },
             { title: 'حساب‌های بانکی', rows: state.bankMaps || [], code: 'accountNumber', name: 'bankName' },
@@ -102,7 +102,7 @@ export function BaseDefinitionsWorkspace({ state, updateState }: Props) {
               )) : <p className="text-micro text-ink-soft">رکوردی از منبع دادهٔ متصل دریافت نشده است.</p>}
             </Card>
           ))}
-          <p className="text-micro text-ink-soft">کدینگ‌های آینه‌شده از ERP فقط‌خواندنی‌اند؛ نگاشت‌های CRM باید از مسیر مالکیت و مجوز همان ماژول ویرایش شوند.</p>
+          <p className="text-micro text-ink-soft">کدینگ‌های آینه‌شده از منبع مرجع فقط‌خواندنی‌اند؛ نگاشت‌های CRM باید از مسیر مالکیت و مجوز همان ماژول ویرایش شوند.</p>
         </div>
       )}
 
@@ -110,7 +110,7 @@ export function BaseDefinitionsWorkspace({ state, updateState }: Props) {
         <div className="space-y-2">
           {[
             { title: 'مسیرهای مرجع', rows: state.erpVisitRoutes || [] },
-            { title: 'تورهای ویزیت ERP', rows: state.erpVisitTours || [] },
+            { title: 'تورهای ویزیت مرجع', rows: state.erpVisitTours || [] },
             { title: 'کارکنان مسیر', rows: state.erpVisitRouteStaff || [] },
             { title: 'مشتریان مسیر', rows: state.erpVisitRouteCustomers || [] },
             { title: 'دلایل عدم سفارش', rows: state.erpVisitNoOrderReasons || [] }
@@ -125,7 +125,7 @@ export function BaseDefinitionsWorkspace({ state, updateState }: Props) {
               )) : <p className="text-micro text-ink-soft">رکوردی از ERP برای نمایش وجود ندارد.</p>}
             </Card>
           ))}
-          <p className="text-micro text-ink-soft">مسیرها و تورهای دریافتی از ERP در CRM فقط‌خواندنی هستند.</p>
+          <p className="text-micro text-ink-soft">مسیرها و تورهای دریافتی از منبع مرجع در CRM فقط‌خواندنی هستند.</p>
         </div>
       )}
 
@@ -161,7 +161,7 @@ export function BaseDefinitionsWorkspace({ state, updateState }: Props) {
           {products.slice(0, LIMIT).map(p => (
             <Card key={p.id} className="p-3 space-y-1.5">
               <div className="text-compact font-bold text-text-main truncate">{p.name}</div>
-              <div className="text-micro text-ink-soft">{p.sku || p.code || '—'} · کف ERP: <b className="font-mono">{fa(p.floorPrice)}</b> · در هر کارتن: <b className="font-mono">{fa(p.unitsPerCarton)}</b></div>
+              <div className="text-micro text-ink-soft">{p.sku || p.code || '—'} · حداقل قیمت مرجع: <b className="font-mono">{fa(p.floorPrice)}</b> · در هر کارتن: <b className="font-mono">{fa(p.unitsPerCarton)}</b></div>
               <div className="grid grid-cols-2 gap-1.5 text-micro">
                 {PRICE_CLASS_CODES.map(code => (
                   <div key={code} className="rounded-lg bg-sunken px-2 py-1 flex justify-between gap-2"><span className="text-ink-soft truncate">{labelOf(code)}</span><b className="font-mono">{p.priceClasses?.[code] ? fa(p.priceClasses[code]!.unitPrice) : 'نیامده'}</b></div>
@@ -171,7 +171,7 @@ export function BaseDefinitionsWorkspace({ state, updateState }: Props) {
           ))}
           {products.length === 0 && <p className="text-center text-caption text-ink-soft py-6">کالایی یافت نشد.</p>}
           {products.length > LIMIT && <p className="text-center text-micro text-ink-soft">{fa(LIMIT)} مورد اول از {fa(products.length)} نمایش داده شد؛ جست‌وجو را دقیق‌تر کنید.</p>}
-          <p className="text-micro text-ink-soft">قیمت‌ها به ریال و به‌ازای واحد پایه‌اند و فقط از ERP می‌آیند (فقط‌خواندنی).</p>
+          <p className="text-micro text-ink-soft">واحد پول و مقیاس قیمت به‌ازای واحد پایه از منبع مرجع دریافت می‌شود؛ این اطلاعات فقط‌خواندنی‌اند.</p>
         </div>
       )}
 
