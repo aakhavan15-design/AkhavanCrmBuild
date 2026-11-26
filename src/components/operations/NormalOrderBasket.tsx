@@ -33,8 +33,6 @@ const safePositiveInt = (value: unknown): number | null => {
   return Number.isSafeInteger(number) && number > 0 ? number : null;
 };
 const validClass = (value: unknown): string => typeof value === 'string' && (PRICE_CLASS_CODES as readonly string[]).includes(value) ? value : '';
-const isCrmDraft = (row: RecordRow) => String(row.sourceSystemCode || '').toUpperCase() === 'CRM'
-  && ['CRM_ORDER', 'ERP_AMENDMENT'].includes(String(row.origin || '').toUpperCase());
 
 function productForLine(products: RecordRow[], line: RecordRow) {
   const externalId = String(line.externalProductId ?? line.productId ?? line.productCode ?? '').trim();
@@ -59,10 +57,12 @@ function toEditableLine(source: RecordRow, products: RecordRow[], priceClassCode
   const sourceMode = String(source.quantityMode || '').toUpperCase();
   const quantityMode: NormalOrderQuantityMode = sourceMode === 'CARTON' || (explicitCartons !== null && unitsPerCarton !== null) ? 'CARTON' : 'BASE_UNIT';
   const enteredQuantity = quantityMode === 'CARTON' ? (explicitCartons ?? safePositiveInt(source.quantity)) : safePositiveInt(source.quantity);
-  const unitPrice = safePositiveInt(source.unitPrice ?? source.netUnitPrice ?? classPrice(product, priceClassCode)) ?? 0;
+  const rawCurrency = String(source.currencyCode ?? source.currency ?? 'IRR').trim().toUpperCase();
+  const sourcePriceIsRial = ['IRR', 'RIAL', 'RIALS', 'ریال'].includes(rawCurrency);
+  const unitPrice = (sourcePriceIsRial ? safePositiveInt(source.unitPrice ?? source.netUnitPrice) : null) ?? classPrice(product, priceClassCode) ?? 0;
   const calculated = calculateNormalOrderLine({ enteredQuantity, quantityMode, unitsPerCarton, unitPrice });
   const baseQuantity = calculated.baseQuantity ?? (quantityMode === 'BASE_UNIT' ? enteredQuantity ?? 0 : 0);
-  const lineTotalRaw = safePositiveInt(source.lineTotal ?? source.netLineAmount);
+  const lineTotalRaw = sourcePriceIsRial ? safePositiveInt(source.lineTotal ?? source.netLineAmount) : null;
   const lineTotal = lineTotalRaw ?? (Number.isSafeInteger(baseQuantity * unitPrice) ? baseQuantity * unitPrice : 0);
   return {
     id: String(source.id ?? generateSecureId('order-line')),
@@ -186,7 +186,7 @@ export function NormalOrderBasket({ state, updateState, erpOrders, crmDrafts, cu
     setCustomerId(nextId);
     const customer = customers.find(row => String(row.id) === nextId);
     const customerClass = validClass(customer?.priceClassCode);
-    if (customerClass) handlePriceClassChange(customerClass);
+    handlePriceClassChange(customerClass);
   };
   const addProduct = () => {
     if (!selectedProduct || !priceClassCode) { setNotice('ابتدا مشتری و کلاس قیمت را انتخاب کنید.'); return; }
@@ -344,7 +344,7 @@ export function NormalOrderBasket({ state, updateState, erpOrders, crmDrafts, cu
               return <article key={line.id} className={`rounded-xl border p-2.5 space-y-2 transition-colors duration-200 ${invalid ? 'border-warning/40 bg-warning-soft/30' : 'border-border bg-surface'}`}>
                 <div className="flex items-center justify-between gap-2"><div className="min-w-0"><b className="block truncate text-caption">{line.productName}</b><span className="text-micro text-text-secondary">{line.productCode || 'کد کالا نامشخص'} · فی پایه: {formatNumber(line.unitPrice)} ریال</span></div><Button size="sm" variant="ghost" onClick={() => setLines(previous => previous.filter(item => item.id !== line.id))}>حذف</Button></div>
                 <div className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-2"><div><label className="mb-1 block text-micro font-semibold">{line.quantityMode === 'CARTON' ? 'تعداد کارتن' : 'تعداد واحد پایه'}</label><NumericField value={entered} onCommit={next => updateLineQuantity(line.id, next)} ariaLabel={`تعداد ${line.productName}`} /></div><div className="text-left"><span className="block text-micro text-text-secondary">{line.quantityMode === 'CARTON' ? `${line.cartonQuantity ?? '—'} × ${line.unitsPerCarton ?? '؟'} = ${line.quantity} واحد پایه` : `${line.quantity} واحد پایه`}</span><bdi className="text-caption font-bold tabular-nums">{formatNumber(line.lineTotal)} ریال</bdi></div></div>
-                {invalid && <p className="text-micro text-warning">قلم برای ذخیره معتبر نیست؛ محصول، ضریب بسته‌بندی یا قیمت مرجع را بررسی کنید.</p>}
+                {invalid && <p className="text-micro text-warning">قلم معتبر نیست؛ محصول، ضریب بسته‌بندی، قیمت مرجع ERP و واحد پول ریالی را بررسی کنید.</p>}
               </article>;
             })}
             {lines.length === 0 && <p className="rounded-xl border border-dashed border-border p-4 text-center text-caption text-text-secondary">هنوز قلمی به سبد اضافه نشده است.</p>}
