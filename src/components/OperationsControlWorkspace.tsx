@@ -43,13 +43,6 @@ const nextId = (prefix: string) => generateSecureId(prefix);
 export function OperationsControlWorkspace({ state, updateState }: Props) {
   const navigate = useNavigate();
   const [search, setSearch] = useState('');
-  const [customerId, setCustomerId] = useState('');
-  const [productId, setProductId] = useState('');
-  const [quantity, setQuantity] = useState('');
-  const [orderNote, setOrderNote] = useState('');
-  const [dispatchName, setDispatchName] = useState('');
-  const [vehicleCapacity, setVehicleCapacity] = useState('');
-  const [distributionOutputNumber, setDistributionOutputNumber] = useState('');
 
   const { can, canOn } = useCan(state, updateState);
   const scopeOf = (record: Record<string, unknown>) => ({ ownerId: record?.ownerId || record?.createdBy, branchId: record?.branchId, territoryId: record?.territoryId, teamId: record?.teamId, tenantId: record?.tenantId });
@@ -59,10 +52,13 @@ export function OperationsControlWorkspace({ state, updateState }: Props) {
     return can('accounts', 'VIEW') ? canOn('accounts', 'VIEW', scope) : canOn('finance', 'VIEW', scope);
   });
   const ordersAll: Array<Record<string, unknown>> = state.salesOrders || [];
-  const orders: Array<Record<string, unknown>> = ordersAll.filter(o => {
+  const visibleSalesOrders: Array<Record<string, unknown>> = ordersAll.filter(o => {
     const scope = scopeOf(o);
     return can('quotes', 'VIEW') ? canOn('quotes', 'VIEW', scope) : canOn('finance', 'VIEW', scope);
   });
+  const crmOrderDrafts = visibleSalesOrders.filter(order => String(order.sourceSystemCode || '').toUpperCase() === 'CRM');
+  // پیش‌نویس‌های CRM در KPI و گزارش رسمی سفارش‌های ERP وارد نمی‌شوند.
+  const orders = visibleSalesOrders.filter(order => String(order.sourceSystemCode || '').toUpperCase() !== 'CRM');
   const dispatchPlansAll: Array<Record<string, unknown>> = state.dispatchPlans || []; // برنامه‌های آزمایشی پخش باید برچسب «آزمایشی» داشته باشند
   const dispatchPlans: Array<Record<string, unknown>> = dispatchPlansAll.filter(p => {
     const scope = scopeOf(p);
