@@ -71,6 +71,7 @@ function SuggestionStrip({ s, line, onApplyPrice, onApplyQty }: { s: LineRecover
 export function QuotePricingStep({ products, priceClassLabels, priceClassCode, onPriceClassChange, lines, setLines, onInvalidAdd }: Props) {
   const [productId, setProductId] = useState('');
   const [cartons, setCartons] = useState<number | null>(1);
+  const [quantityMode, setQuantityMode] = useState<'CARTON' | 'BASE_UNIT'>('BASE_UNIT');
   const [price, setPrice] = useState<number | null>(null);
 
   const product = products.find(p => p.id === productId);
@@ -82,15 +83,16 @@ export function QuotePricingStep({ products, priceClassLabels, priceClassCode, o
 
   // با تغییر کالا یا کلاس، فی از ERP همان کلاس پیشنهاد می‌شود؛ نبودنش خالی می‌ماند (صفر/کلاس دیگر جایگزین نمی‌شود).
   useEffect(() => { setPrice(classPrice); }, [productId, priceClassCode, classPrice]);
+  useEffect(() => { setQuantityMode(upc ? 'CARTON' : 'BASE_UNIT'); setCartons(1); }, [productId, upc]);
 
   const priceClassOptions: SelectOption[] = useMemo(() => priceClassLabels.map(c => ({ value: c.code, label: c.label })), [priceClassLabels]);
   const productOptions: SelectOption[] = useMemo(() => products.map(p => ({
     value: p.id, label: p.name, subLabel: [p.sku || p.code, p.category, p.brand].filter(Boolean).join(' · '), keywords: [p.erpId, p.description].filter(Boolean).join(' ')
   })), [products]);
 
-  const quantityMode = upc ? 'CARTON' : 'BASE_UNIT';
   const pendingBase = baseFrom(cartons, upc, quantityMode);
-  const pendingValid = !!product && pendingBase > 0 && !!price && price > 0;
+  const pendingTotal = pendingBase * (price ?? 0);
+  const pendingValid = !!product && Number.isSafeInteger(pendingBase) && pendingBase > 0 && !!price && price > 0 && Number.isSafeInteger(pendingTotal);
   const pendingInput: BalanceLineInput | null = pendingValid
     ? { key: 'pending', comparisonPrice: classPrice, floorPrice: product!.floorPrice ?? null, currencyCode: classCurrencyCode, unitPrice: price, baseQuantity: pendingBase, unitsPerCarton: upc }
     : null;
@@ -101,16 +103,19 @@ export function QuotePricingStep({ products, priceClassLabels, priceClassCode, o
   const byKey = new Map(balance.lines.map(l => [l.key, l]));
   const suggestFor = (key: string) => suggestLineRecovery(allInputs, key);
 
-  const patchLine = (i: number, patch: { cartons?: number | null; unitPrice?: number | null }) => setLines(prev => prev.map((l, idx) => {
+  const patchLine = (i: number, patch: { cartons?: number | null; unitPrice?: number | null; quantityMode?: 'CARTON' | 'BASE_UNIT' }) => setLines(prev => prev.map((l, idx) => {
     if (idx !== i) return l;
     const upcSnap = l.unitsPerCarton ?? null;
-    const nextCartons = 'cartons' in patch ? patch.cartons ?? null : (l.cartonQuantity ?? l.quantity);
-    const quantity = baseFrom(nextCartons, upcSnap, upcSnap ? 'CARTON' : 'BASE_UNIT');
+    const nextMode = patch.quantityMode ?? l.quantityMode ?? (upcSnap ? 'CARTON' : 'BASE_UNIT');
+    const currentMode = l.quantityMode ?? (upcSnap ? 'CARTON' : 'BASE_UNIT');
+    const nextCartons = 'cartons' in patch ? patch.cartons ?? null : nextMode === currentMode ? (nextMode === 'CARTON' ? l.cartonQuantity : l.quantity) : nextMode === 'BASE_UNIT' ? l.quantity : null;
+    const quantity = baseFrom(nextCartons, upcSnap, nextMode);
     const unitPrice = 'unitPrice' in patch ? patch.unitPrice ?? 0 : l.unitPrice;
+    if (!Number.isSafeInteger(quantity) || quantity <= 0 || !Number.isSafeInteger(unitPrice * quantity)) return { ...l, quantity: 0, lineTotal: 0, quantityMode: nextMode, cartonQuantity: nextMode === 'CARTON' ? null : l.cartonQuantity, lineVariance: null, balanceStatus: 'INVALID' };
     const calc = computeOrderBalance([{ key: 'x', comparisonPrice: l.erpClassUnitPrice ?? null, floorPrice: l.floorUnitPrice ?? null, currencyCode: l.erpClassCurrencyCode ?? null, unitPrice, baseQuantity: quantity }]).lines[0];
     return {
       ...l, quantity, unitPrice, lineTotal: quantity * unitPrice,
-      cartonQuantity: upcSnap ? (nextCartons && nextCartons > 0 ? nextCartons : null) : null,
+      cartonQuantity: nextMode === 'CARTON' && nextCartons && nextCartons > 0 ? nextCartons : null, quantityMode: nextMode,
       lineVariance: calc.variance, balanceStatus: calc.status
     };
   }));
@@ -123,7 +128,7 @@ export function QuotePricingStep({ products, priceClassLabels, priceClassCode, o
       productId: product.id, productName: product.name, productCode: product.sku || product.code || '',
       quantity: pendingBase, unitPrice: price, costPrice: product.costPrice, lineTotal: pendingBase * price,
       erpClassUnitPrice: classPrice, erpClassCurrencyCode: classCurrencyCode, floorUnitPrice: product.floorPrice ?? null,
-      cartonQuantity: upc ? cartons : null, unitsPerCarton: upc, lineVariance: calc.variance, balanceStatus: calc.status
+      cartonQuantity: quantityMode === 'CARTON' ? cartons : null, unitsPerCarton: upc, quantityMode, lineVariance: calc.variance, balanceStatus: calc.status
     }]);
     setCartons(1);
   };
@@ -138,7 +143,7 @@ export function QuotePricingStep({ products, priceClassLabels, priceClassCode, o
       : l.state === 'POSITIVE' ? `بالاتر از کلاس منتخب: ${formatSignedAmount(l.variance)} ${l.currencyCode || 'واحد پول نامشخص'}` : 'برابر کلاس منتخب';
 
   const pendingLine = byKey.get('pending');
-  const cartonLabel = (u: number | null | undefined) => (u ? `تعداد کارتن (هر کارتن ${fa(u)} واحد)` : 'تعداد (واحد پایه؛ ضریب بسته‌بندی نامشخص است)');
+  const cartonLabel = (u: number | null | undefined, mode: 'CARTON' | 'BASE_UNIT') => mode === 'BASE_UNIT' ? 'تعداد (واحد پایه)' : u ? `تعداد کارتن (هر کارتن ${fa(u)} واحد)` : 'تعداد کارتن نامعتبر؛ تعداد در بسته از ERP نیامده';
 
   return (
     <div className="space-y-3">
@@ -158,7 +163,9 @@ export function QuotePricingStep({ products, priceClassLabels, priceClassCode, o
           <>
             <div className="grid grid-cols-2 gap-2.5">
               <div>
-                <label className="block text-micro font-bold text-text-secondary mb-1">{cartonLabel(upc)}</label>
+                <label className="block text-micro font-bold text-text-secondary mb-1">نوع تعداد</label>
+                <select aria-label="نوع تعداد" value={quantityMode} onChange={e => setQuantityMode(e.target.value as 'CARTON' | 'BASE_UNIT')} className="w-full rounded-lg border border-border bg-surface px-2 py-2 text-caption"><option value="CARTON" disabled={!upc}>کارتن / بسته</option><option value="BASE_UNIT">واحد پایه</option></select>
+                <label className="block text-micro font-bold text-text-secondary mb-1 mt-2">{cartonLabel(upc, quantityMode)}</label>
                 <NumericField ariaLabel="تعداد" value={cartons} onCommit={setCartons} grouped={false} />
               </div>
               <div>
@@ -178,7 +185,7 @@ export function QuotePricingStep({ products, priceClassLabels, priceClassCode, o
             )}
             {pendingLine && pendingInput && <SuggestionStrip s={suggestFor('pending')} line={pendingLine}
               onApplyPrice={() => { const s = suggestFor('pending'); if (s.price) setPrice(s.price.unitPrice); }}
-              onApplyQty={() => { const s = suggestFor('pending'); const q = s.quantity; if (q && !q.unavailableReason) setCartons(q.cartons ?? q.baseQuantity); }} />}
+              onApplyQty={() => { const s = suggestFor('pending'); const q = s.quantity; if (q && !q.unavailableReason) setCartons(quantityMode === 'CARTON' ? q.cartons : q.baseQuantity); }} />}
           </>
         )}
         <Button size="sm" variant="primary" onClick={addLine} disabled={!product} className="w-full flex items-center justify-center gap-1">
@@ -201,8 +208,10 @@ export function QuotePricingStep({ products, priceClassLabels, priceClassCode, o
               </div>
               <div className="grid grid-cols-2 gap-2.5">
                 <div>
-                  <label className="block text-micro font-bold text-text-secondary mb-1">{cartonLabel(l.unitsPerCarton)}</label>
-                  <NumericField ariaLabel={`تعداد ${l.productName}`} value={(l.unitsPerCarton ? l.cartonQuantity : l.quantity) || null} grouped={false} onCommit={(n) => patchLine(i, { cartons: n })} />
+                  <label className="block text-micro font-bold text-text-secondary mb-1">نوع تعداد</label>
+                  <select aria-label={`نوع تعداد ${l.productName}`} value={l.quantityMode ?? (l.unitsPerCarton ? 'CARTON' : 'BASE_UNIT')} onChange={e => patchLine(i, { quantityMode: e.target.value as 'CARTON' | 'BASE_UNIT' })} className="w-full rounded-lg border border-border bg-surface px-2 py-2 text-caption"><option value="CARTON" disabled={!l.unitsPerCarton}>کارتن / بسته</option><option value="BASE_UNIT">واحد پایه</option></select>
+                  <label className="block text-micro font-bold text-text-secondary mb-1 mt-2">{cartonLabel(l.unitsPerCarton, l.quantityMode ?? (l.unitsPerCarton ? 'CARTON' : 'BASE_UNIT'))}</label>
+                  <NumericField ariaLabel={`تعداد ${l.productName}`} value={(l.quantityMode ?? (l.unitsPerCarton ? 'CARTON' : 'BASE_UNIT')) === 'CARTON' ? l.cartonQuantity : l.quantity} grouped={false} onCommit={(n) => patchLine(i, { cartons: n })} />
                 </div>
                 <div>
                   <label className="block text-micro font-bold text-text-secondary mb-1">فی هر واحد ({classCurrencyCode || 'واحد پول نامشخص'})</label>
@@ -215,7 +224,7 @@ export function QuotePricingStep({ products, priceClassLabels, priceClassCode, o
               </div>
               {lb && <SuggestionStrip s={sug} line={lb}
                 onApplyPrice={() => sug.price && patchLine(i, { unitPrice: sug.price.unitPrice })}
-                onApplyQty={() => { const q = sug.quantity; if (q && !q.unavailableReason) patchLine(i, { cartons: q.cartons ?? q.baseQuantity }); }} />}
+                onApplyQty={() => { const q = sug.quantity; if (q && !q.unavailableReason) patchLine(i, { cartons: (l.quantityMode ?? (l.unitsPerCarton ? 'CARTON' : 'BASE_UNIT')) === 'CARTON' ? q.cartons : q.baseQuantity }); }} />}
             </div>
           );
         })}

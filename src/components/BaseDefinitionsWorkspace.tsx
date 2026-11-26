@@ -4,7 +4,7 @@
  * داده‌های ERP فقط‌خواندنی‌اند؛ تنها چیز قابل‌ویرایش، نام نمایشی کلاس‌های قیمت است.
  */
 import React, { useMemo, useState } from 'react';
-import { Building2, Users, UsersRound, UserRound, Tags, Package, Store, Wallet, Route as RouteIcon } from 'lucide-react';
+import { Building2, Users, UsersRound, UserRound, Tags, Package, Store, Wallet, Route as RouteIcon, MapPinned, Truck, UserCheck, Landmark, BookOpen, Target, BadgePercent, Boxes, CreditCard, CircleDollarSign, Layers } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 import type { AppState } from '../types';
 import { resolvePriceClassLabels, PRICE_CLASS_CODES } from '../lib/cpqEngine';
@@ -17,7 +17,7 @@ import { cn } from '../lib/utils';
 import { formatNumber } from '../lib/format';
 
 interface Props { state: AppState; updateState: (u: (d: AppState) => AppState | void) => void }
-type TabId = 'home' | 'org' | 'users' | 'groups' | 'personnel' | 'price-classes' | 'products' | 'customers' | 'finance-codes' | 'routes';
+type TabId = 'home' | 'org' | 'users' | 'groups' | 'personnel' | 'price-classes' | 'products' | 'customers' | 'finance-codes' | 'routes' | 'geo' | 'suppliers' | 'sellers' | 'distributors' | 'drivers' | 'product-groups' | 'sales-targets' | 'commissions' | 'payment-mappings' | 'detail-groups' | 'expense-budgets' | 'salary-definitions' | 'credit-policies';
 const TABS: Array<{ id: TabId; label: string; icon: React.ElementType }> = [
   { id: 'org', label: 'سازمان و واحدها', icon: Building2 },
   { id: 'users', label: 'کاربران و نقش‌ها', icon: Users },
@@ -27,13 +27,25 @@ const TABS: Array<{ id: TabId; label: string; icon: React.ElementType }> = [
   { id: 'products', label: 'کالا و قیمت مرجع', icon: Package },
   { id: 'customers', label: 'مشتریان', icon: Store },
   { id: 'finance-codes', label: 'کدینگ و تعاریف مالی', icon: Wallet },
-  { id: 'routes', label: 'مسیرها و تورها', icon: RouteIcon }
+  { id: 'routes', label: 'مسیرها و تورها', icon: RouteIcon },
+  { id: 'geo', label: 'زون و تخصیص جغرافیایی', icon: MapPinned },
+  { id: 'suppliers', label: 'تأمین‌کنندگان', icon: Boxes },
+  { id: 'sellers', label: 'فروشندگان و ویزیتورها', icon: UserCheck },
+  { id: 'distributors', label: 'توزیع‌کنندگان', icon: Store },
+  { id: 'drivers', label: 'رانندگان و ناوگان', icon: Truck },
+  { id: 'product-groups', label: 'گروه کالا و برند', icon: Layers },
+  { id: 'sales-targets', label: 'اهداف فروش', icon: Target },
+  { id: 'commissions', label: 'طرح‌های پورسانت', icon: BadgePercent },
+  { id: 'payment-mappings', label: 'ماهیت پرداخت', icon: CreditCard },
+  { id: 'detail-groups', label: 'گروه‌های تفصیلی', icon: BookOpen },
+  { id: 'expense-budgets', label: 'بودجه و گروه هزینه', icon: Wallet },
+  { id: 'salary-definitions', label: 'تعاریف حقوق و مزایا', icon: CircleDollarSign },
+  { id: 'credit-policies', label: 'سیاست‌های اعتبار', icon: Landmark }
 ];
 const DEFINITION_GROUPS = [
-  { title: 'تعاریف کلی', items: ['org', 'users', 'groups', 'personnel'] as TabId[] },
-  { title: 'تعاریف فروش', items: ['price-classes', 'products', 'customers'] as TabId[] },
-  { title: 'تعاریف مالی', items: ['finance-codes'] as TabId[] },
-  { title: 'تعاریف میدانی', items: ['routes'] as TabId[] }
+  { title: 'تعاریف کلی', items: ['org', 'users', 'groups', 'personnel', 'routes', 'geo', 'drivers'] as TabId[] },
+  { title: 'تعاریف فروش', items: ['price-classes', 'products', 'customers', 'suppliers', 'sellers', 'distributors', 'product-groups', 'sales-targets', 'commissions'] as TabId[] },
+  { title: 'تعاریف مالی', items: ['finance-codes', 'payment-mappings', 'detail-groups', 'expense-budgets', 'salary-definitions', 'credit-policies'] as TabId[] }
 ];
 const fa = (n: unknown) => (typeof n === 'number' && Number.isFinite(n) ? formatNumber(n) : 'نامعلوم');
 const LIMIT = 100;
@@ -52,6 +64,44 @@ export function BaseDefinitionsWorkspace({ state, updateState }: Props) {
   const accounts = (state.accounts || [])
     .filter(a => canOn('accounts', 'VIEW', { ownerId: a.ownerId, branchId: a.branchId, territoryId: a.territoryId, teamId: a.teamId, tenantId: a.tenantId }))
     .filter(a => !q || [a.name, a.code, a.city, a.phone].filter(Boolean).join(' ').toLowerCase().includes(q));
+  const raw = state as unknown as Record<string, any>;
+  const rows = (key: string) => Array.isArray(raw[key]) ? raw[key] : [];
+  const supplierRows = accounts.filter(a => String(a.accountType ?? a.type ?? '').toUpperCase() === 'SUPPLIER');
+  const distributorRows = [...accounts.filter(a => String(a.accountType ?? a.type ?? '').toUpperCase() === 'DISTRIBUTOR'), ...rows('distributors')];
+  const sellerRows = rows('erpVisitRouteStaff').filter((r: any) => /SELL|VISIT|SALES/i.test(String(r.staffRoleCode ?? r.roleCode ?? r.role ?? '')));
+  const genericSections: Partial<Record<TabId, Array<{title: string; rows: any[]; available: boolean; owner: string; route?: string}>>> = {
+    geo: [
+      { title: 'زون‌های جغرافیایی', rows: rows('geoZones'), available: Array.isArray(raw.geoZones), owner: 'CRM' },
+      { title: 'تخصیص زون‌ها', rows: rows('zoneAssignments'), available: Array.isArray(raw.zoneAssignments), owner: 'CRM' },
+      { title: 'تعاریف معیار جغرافیایی', rows: rows('geoMetricDefinitions'), available: Array.isArray(raw.geoMetricDefinitions), owner: 'CRM' }
+    ],
+    suppliers: [{ title: 'تأمین‌کنندگان ERP', rows: supplierRows, available: true, owner: 'ERP · فقط‌خواندنی', route: '/accounts' }],
+    sellers: [{ title: 'فروشندگان و ویزیتورهای متصل به مسیر', rows: sellerRows, available: Array.isArray(raw.erpVisitRouteStaff), owner: 'ERP · فقط‌خواندنی', route: '/geo-intelligence' }],
+    distributors: [{ title: 'توزیع‌کنندگان', rows: distributorRows, available: Array.isArray(raw.accounts) || Array.isArray(raw.distributors), owner: 'مطابق منبع هر رکورد' }],
+    drivers: [{ title: 'رانندگان', rows: rows('drivers'), available: Array.isArray(raw.drivers), owner: 'مطابق منبع ERP/CRM', route: '/operations?tab=dispatch' }],
+    'product-groups': [
+      { title: 'گروه‌های کالا', rows: rows('productGroups'), available: Array.isArray(raw.productGroups), owner: 'ERP · فقط‌خواندنی' },
+      { title: 'برندها', rows: rows('productBrands'), available: Array.isArray(raw.productBrands), owner: 'ERP · فقط‌خواندنی' }
+    ],
+    'sales-targets': [{ title: 'اهداف فروش', rows: rows('salesTargets'), available: Array.isArray(raw.salesTargets), owner: 'CRM', route: '/reports' }],
+    commissions: [{ title: 'طرح‌های پورسانت', rows: rows('commissionPlans'), available: Array.isArray(raw.commissionPlans), owner: 'CRM · سیاست نسخه‌دار', route: '/finance' }],
+    'payment-mappings': [{ title: 'نگاشت ماهیت پرداخت', rows: rows('paymentNatureMappings'), available: Array.isArray(raw.paymentNatureMappings), owner: 'ERP/CRM · مطابق مالکیت نگاشت', route: '/finance?tab=treasury' }],
+    'detail-groups': [
+      { title: 'گروه‌های تفصیلی', rows: rows('detailGroups'), available: Array.isArray(raw.detailGroups), owner: 'ERP · فقط‌خواندنی', route: '/finance' },
+      { title: 'نگاشت هویت به تفصیلی', rows: rows('accountMapRules'), available: Array.isArray(raw.accountMapRules), owner: 'CRM · مجوزدار', route: '/finance' }
+    ],
+    'expense-budgets': [
+      { title: 'بودجه‌های هزینه', rows: rows('expenseBudgets'), available: Array.isArray(raw.expenseBudgets), owner: 'CRM · نسخه‌دار', route: '/finance' },
+      { title: 'گروه‌های گزارش هزینه', rows: rows('reportBuckets'), available: Array.isArray(raw.reportBuckets), owner: 'ERP/CRM · مطابق منبع', route: '/finance' }
+    ],
+    'salary-definitions': [
+      { title: 'پروفایل‌های حقوق', rows: rows('salaryProfiles'), available: Array.isArray(raw.salaryProfiles), owner: 'CRM · سیاست حقوق', route: '/finance' },
+      { title: 'استحقاق مرخصی', rows: rows('leaveEntitlements'), available: Array.isArray(raw.leaveEntitlements), owner: 'CRM · سیاست پرسنلی', route: '/onboarding' }
+    ],
+    'credit-policies': [{ title: 'سیاست‌های اعتبار', rows: rows('creditPolicies'), available: Array.isArray(raw.creditPolicies), owner: 'CRM/ERP · مطابق منبع', route: '/operations?tab=credit' }]
+  };
+  const genericLabel = (row: any) => String(row.name ?? row.title ?? row.label ?? row.fullName ?? row.zoneName ?? row.routeName ?? row.accountName ?? row.code ?? row.id ?? '—');
+  const genericCode = (row: any) => String(row.code ?? row.erpCode ?? row.externalId ?? row.status ?? '—');
 
   return (
     <div className="space-y-3" dir="rtl">
@@ -126,6 +176,26 @@ export function BaseDefinitionsWorkspace({ state, updateState }: Props) {
             </Card>
           ))}
           <p className="text-micro text-ink-soft">مسیرها و تورهای دریافتی از منبع مرجع در CRM فقط‌خواندنی هستند.</p>
+        </div>
+      )}
+
+
+      {genericSections[tab] && (
+        <div className="space-y-3">
+          {genericSections[tab]!.map(section => {
+            const filtered = section.rows.filter(row => !q || [genericLabel(row), genericCode(row)].join(' ').toLowerCase().includes(q));
+            return <Card key={section.title} className="p-3 space-y-2">
+              <div className="flex items-center justify-between gap-2"><h3 className="text-caption font-bold text-ink">{section.title}</h3><span className="text-micro text-ink-soft">{section.owner}</span></div>
+              {section.available ? filtered.length ? filtered.slice(0, LIMIT).map((row: any, i: number) => (
+                <div key={row.id ?? row.externalId ?? row.code ?? i} className="flex items-center justify-between gap-2 border-t border-border py-2 text-micro">
+                  <span className="font-semibold text-ink">{genericLabel(row)}</span><span className="font-mono text-ink-soft">{genericCode(row)}</span>
+                </div>
+              )) : <p className="text-micro text-ink-soft">در منبع متصل رکوردی برای نمایش وجود ندارد.</p>
+              : <p className="text-micro text-warning">جدول/Provider این موجودیت در state متصل حاضر نیست؛ وضعیت NOT IMPLEMENTED و بدون داده ساختگی.</p>}
+              {section.route && <Link to={section.route} className="inline-flex text-micro font-bold text-primary pt-1">بازکردن فضای مالک</Link>}
+            </Card>;
+          })}
+          <p className="text-micro text-ink-soft">تعاریف ERP فقط‌خواندنی‌اند. دکمهٔ ایجاد فقط برای موجودیت‌های CRM-owned و دارای فرم/endpoint واقعی نمایش داده می‌شود؛ برای این فهرست عمومی هیچ CRUD ساختگی فعال نیست.</p>
         </div>
       )}
 

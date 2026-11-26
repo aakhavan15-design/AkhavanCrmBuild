@@ -241,9 +241,9 @@
   - **P0 · PARTIAL** · 002/014 جدول Outbox و مالی CLI؛ Worker عمومی Retry/Backoff و UI پایش صف در مسیرهای server/index حاضر نیست.
 
 ## فاز ۵ — بازرگانی
-- [~] F5-01 فهرست سفارش ERP مینیمال (بدون ثبت «سفارش آزمایشی» در مسیر عملیاتی؛ داده LOCAL_TEST برچسب‌دار).
+- [~] F5-01 سبد سفارش عادی ERP: فهرست، جست‌وجو، مشاهده جزئیات/ردیف‌ها و تفکیک از CPQ. ایجاد/ویرایش رسمی SalesOrder تا API/SQL/ACK واقعی و آزمون تکرارپذیری BLOCKED / NOT VERIFIED.
   - **P1 · PARTIAL** · OperationsControlWorkspace tab orders و entityStore؛ فهرست موجود، تضمین ERP-only در تمام ورودی‌ها و کنترل وضعیت ارسال باز.
-- [~] F5-02 جزئیات سفارش + مذاکره CPQ/افزایش فروش درون آن (`phase2Flow`: isNegotiableErpOrder, evaluateOrderCpq, validateOrderForCpq, makeErpChangeRequest, applyErpChangeResponse؛ `negotiationErpLifecycle`).
+- [~] F5-02 سبد پیشنهاد فروش CPQ مستقل از سبد سفارش عادی؛ فهرست سفارش‌های ERP واجد شرایط و پیوند Quote به شناسه ERP. پیش‌پرکردن ردیف‌ها از قرارداد واحد/تعداد ERP و Push نهایی تا آزمون واقعی BLOCKED / NOT VERIFIED.
   - **P1 · PARTIAL** · در فهرست سفارشات بازرگانی، سفارش دارای شناسهٔ ERP و در مرحلهٔ مذاکره همان پیشنهاد کالای مبتنی بر سابقهٔ خریدِ مشتری و منبع همان سفارش را باز می‌کند. کالاهای با شناسهٔ ERP موجود در سفارش از پیشنهاد حذف می‌شوند. ثبت پیش‌نویس و تصمیم میز مذاکره با رسید API برقرار است. قیمت قطعی پیشنهادی، کف سود، بررسی نسخه پیش از ارسال و Push/پاسخ مجاز ERP بازند.
 - [B] F5-03 اعمال سفارش: ارسال(Push)، ابطال، بررسی اعتبار مشتری؛ پاسخ واقعی ERP.
   - **P0 · BLOCKED** · 046 و taskRequests؛ آمادگی صدور/مرجع ERP جداست؛ API مجاز Push/ابطال و پاسخ سامانه واقعی دردسترس نیست.

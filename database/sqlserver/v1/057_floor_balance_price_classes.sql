@@ -30,6 +30,9 @@ BEGIN
  );
 END;
 GO
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id=OBJECT_ID(N'crm.ExternalProduct') AND name=N'UX_ExternalProduct_TenantKey')
+ CREATE UNIQUE INDEX UX_ExternalProduct_TenantKey ON crm.ExternalProduct(TenantId,ExternalProductKey);
+GO
 IF OBJECT_ID(N'crm.ProductPriceClass',N'U') IS NULL
 BEGIN
  CREATE TABLE crm.ProductPriceClass (
@@ -49,7 +52,7 @@ BEGIN
   IsActive bit NOT NULL CONSTRAINT DF_ProductPriceClass_Active DEFAULT 1,
   CONSTRAINT PK_ProductPriceClass PRIMARY KEY(ProductPriceClassId),
   CONSTRAINT FK_ProductPriceClass_Tenant FOREIGN KEY(TenantId) REFERENCES core.Tenant(TenantId),
-  CONSTRAINT FK_ProductPriceClass_Product FOREIGN KEY(ExternalProductKey) REFERENCES crm.ExternalProduct(ExternalProductKey),
+  CONSTRAINT FK_ProductPriceClass_Product FOREIGN KEY(TenantId,ExternalProductKey) REFERENCES crm.ExternalProduct(TenantId,ExternalProductKey),
   CONSTRAINT UQ_ProductPriceClass_Version UNIQUE(TenantId,ExternalProductKey,PriceClassCode,SourceVersion),
   CONSTRAINT CK_ProductPriceClass_Code CHECK(PriceClassCode IN ('PRICE_CLASS_1','PRICE_CLASS_2','PRICE_CLASS_3','PRICE_CLASS_4','PRICE_CLASS_5')),
   CONSTRAINT CK_ProductPriceClass_Price CHECK(UnitPriceAmount>0),
@@ -74,6 +77,7 @@ IF COL_LENGTH(N'crm.QuoteLine', N'ErpClassUnitPriceAmount') IS NULL ALTER TABLE 
 IF COL_LENGTH(N'crm.QuoteLine', N'FloorUnitPriceAmount') IS NULL ALTER TABLE crm.QuoteLine ADD FloorUnitPriceAmount decimal(19,0) NULL;
 IF COL_LENGTH(N'crm.QuoteLine', N'UnitsPerCartonSnapshot') IS NULL ALTER TABLE crm.QuoteLine ADD UnitsPerCartonSnapshot int NULL;
 IF COL_LENGTH(N'crm.QuoteLine', N'CartonQuantity') IS NULL ALTER TABLE crm.QuoteLine ADD CartonQuantity decimal(19,4) NULL;
+IF COL_LENGTH(N'crm.QuoteLine', N'QuantityMode') IS NULL ALTER TABLE crm.QuoteLine ADD QuantityMode varchar(12) NULL;
 IF COL_LENGTH(N'crm.QuoteLine', N'LineVarianceAmount') IS NULL ALTER TABLE crm.QuoteLine ADD LineVarianceAmount decimal(19,0) NULL;
 IF COL_LENGTH(N'crm.QuoteLine', N'BalanceStatus') IS NULL ALTER TABLE crm.QuoteLine ADD BalanceStatus varchar(20) NULL;
 IF COL_LENGTH(N'crm.Quote', N'PriceClassCode') IS NULL ALTER TABLE crm.Quote ADD PriceClassCode varchar(20) NULL;

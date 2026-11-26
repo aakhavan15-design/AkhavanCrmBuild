@@ -523,11 +523,13 @@ export interface QuoteLineBalanceSnapshot {
   floorUnitPrice?: number | null;
   cartonQuantity?: number | null;
   unitsPerCarton?: number | null;
+  quantityMode?: 'CARTON' | 'BASE_UNIT';
   lineVariance?: number | null;
   balanceStatus?: 'OK' | 'REFERENCE_UNKNOWN' | 'INVALID';
 }
 
 export interface DraftQuoteState {
+  sourceOrderId?: string;
   step: number;
   selectedCustomerId: string;
   projectTitle: string;

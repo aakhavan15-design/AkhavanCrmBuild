@@ -16,16 +16,18 @@ import { dataSyncController } from '../services/dataSyncController';
 import { computeOrderBalance, resolvePriceClassLabels, PRICE_CLASS_CODES } from '../lib/cpqEngine';
 import { QuotePricingStep, lineToBalanceInput } from './quote/QuotePricingStep';
 import { OrderBalanceBar, formatSignedAmount } from './quote/OrderBalanceBar';
+import { isNegotiableErpOrder } from '../lib/phase2Flow';
 
 interface QuoteWizardModalProps {
   isOpen: boolean;
   onClose: () => void;
+  sourceOrderId?: string;
   state: AppState;
   updateState: (updater: (draft: AppState) => AppState | void) => void;
   onQuoteCreated?: (quoteId: ID) => void;
 }
 
-export function QuoteWizardModal({ isOpen, onClose, state, updateState, onQuoteCreated }: QuoteWizardModalProps) {
+export function QuoteWizardModal({ isOpen, onClose, sourceOrderId, state, updateState, onQuoteCreated }: QuoteWizardModalProps) {
   const [creating,setCreating]=useState(false);
   const creationBusy=useRef(false);
   const creationAttempt=useRef<{key:string;quote:Quote}|null>(null);
@@ -40,11 +42,13 @@ export function QuoteWizardModal({ isOpen, onClose, state, updateState, onQuoteC
   const visibleAccounts = (state.accounts || []).filter(account => canOn('accounts', 'VIEW', {
     ownerId: account.ownerId, branchId: account.branchId, territoryId: account.territoryId, teamId: account.teamId, tenantId: account.tenantId
   }));
+  const sourceOrder = sourceOrderId ? (state.salesOrders || []).find(order => [order.id, order.externalOrderId, order.externalId].some(value => String(value ?? '') === sourceOrderId) && isNegotiableErpOrder(order as Record<string, unknown>)) : undefined;
   const draftCustomerId = draftState?.selectedCustomerId || state.activeContextAccountId || '';
   const defaultCustomerId = visibleAccounts.some(account => account.id === draftCustomerId) ? draftCustomerId : (visibleAccounts[0]?.id || '');
 
   const [step, setStep] = useState<1 | 2 | 3 | 4>((draftState?.step as Record<string, unknown>) || 1);
   const [selectedCustomerId, setSelectedCustomerId] = useState<ID>(defaultCustomerId);
+  useEffect(() => { const customerId = String(sourceOrder?.accountId ?? sourceOrder?.customerId ?? ''); if (isOpen && sourceOrder && visibleAccounts.some(account => account.id === customerId)) setSelectedCustomerId(customerId); }, [isOpen, sourceOrderId]);
   const [projectTitle, setProjectTitle] = useState(draftState?.projectTitle || '');
   const [validUntilDays, setValidUntilDays] = useState(draftState?.validUntilDays ?? defaultValidityDays);
 
@@ -84,7 +88,7 @@ export function QuoteWizardModal({ isOpen, onClose, state, updateState, onQuoteC
       const timeout = setTimeout(() => {
         updateState(draft => {
           draft.draftQuote = {
-            step, selectedCustomerId, projectTitle, validUntilDays, lines, priceClassCode,
+            step, selectedCustomerId, projectTitle, validUntilDays, lines, priceClassCode, sourceOrderId,
             discountPercent, applyTax, paymentTerms, deliveryTerms, quoteNotes
           };
         });
@@ -133,6 +137,7 @@ export function QuoteWizardModal({ isOpen, onClose, state, updateState, onQuoteC
     if (creationBusy.current) return;
     if (!guard(state, updateState, 'quotes', 'CREATE', 'صدور پیش‌فاکتور')) return;
     if (!selectedCustomerId || !visibleAccounts.some(account => account.id === selectedCustomerId) || lines.length === 0) return;
+    if (sourceOrderId && (!sourceOrder || !isNegotiableErpOrder(sourceOrder as Record<string, unknown>))) { toast.warning('سفارش ERP دیگر واجد شرایط مذاکره نیست؛ پیشنهاد ساخته نشد.'); return; }
     if (invalidPricingLine || lines.some(line => !line.erpClassCurrencyCode) || orderBalance.currencyMismatch) { notifyInvalidLine(); return; }
     if (!discountValid) {
       updateState(draft => { if (!draft.notifications) draft.notifications = []; draft.notifications.push({ id: generateId(), title: 'درصد تخفیف نامعتبر است', message: 'درصد تخفیف باید عددی بین صفر تا صد باشد.', type: 'WARNING', read: false, createdAt: new Date().toISOString(), linkTab: 'quotes' }); });
@@ -191,6 +196,7 @@ export function QuoteWizardModal({ isOpen, onClose, state, updateState, onQuoteC
       })),
       currencyCode: orderBalance.currencyCode || undefined,
       priceClassCode,
+      externalOrderId: sourceOrder ? String(sourceOrder.externalOrderId ?? sourceOrder.externalId ?? sourceOrder.id) : undefined,
       orderBalance: orderBalance.state === 'UNKNOWN' ? null : orderBalance.total,
       orderBalanceState: orderBalance.state,
       totalAmount: grandTotal,
@@ -345,6 +351,8 @@ export function QuoteWizardModal({ isOpen, onClose, state, updateState, onQuoteC
         )}
 
         {step === 2 && (
+          <>
+          {sourceOrder && <div className="rounded-lg border border-primary/20 bg-primary/5 p-2 text-caption text-text-secondary">پیشنهاد فروش CPQ برای سفارش ERP <b className="font-mono text-primary">{String(sourceOrder.orderNumber ?? sourceOrder.documentNumber ?? sourceOrder.externalOrderId ?? sourceOrder.id)}</b> · سفارش اصلی بدون تغییر باقی می‌ماند.</div>}
           <QuotePricingStep
             products={state.externalProducts || []}
             priceClassLabels={priceClassLabels}
@@ -354,6 +362,7 @@ export function QuoteWizardModal({ isOpen, onClose, state, updateState, onQuoteC
             setLines={setLines}
             onInvalidAdd={notifyInvalidLine}
           />
+          </>
         )}
 
         {step === 3 && (
