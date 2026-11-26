@@ -59,6 +59,7 @@ function normalizeRecord(entityType: ErpEntityType, source: ErpImportRecord) {
   // کف، تعداد در کارتن و ۵ کلاس قیمت: فقط عدد صحیح مثبت ریالی؛ نامعتبر ⇒ null/حذف (هرگز صفر یا حدس).
   const productPricing = entityType === 'PRODUCT'
     ? {
+        floorPrice: null, // legacy independent floor is not the selected per-product ERP price class
         unitsPerCarton: normalizeErpPositiveInt(source.unitsPerCarton),
         priceClasses: normalizeErpPriceClasses(source as Record<string, unknown>)
       }
