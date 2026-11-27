@@ -1,0 +1,237 @@
+import React, { useEffect, useMemo, useState } from 'react';
+import { Package, Plus, Trash2, Lightbulb, Check } from 'lucide-react';
+import type { DraftQuoteState, ExternalProduct } from '../../types';
+import {
+  computeOrderBalance, suggestLineRecovery, isRialCurrencyCode,
+  type BalanceLineInput, type LineBalance, type LineRecoverySuggestion, type PriceClassLabelRow
+} from '../../lib/cpqEngine';
+import { SearchableSelect, type SelectOption } from '../ui/SearchableSelect';
+import { Button } from '../ui/Button';
+import { Select } from '../ui';
+import { cn } from '../../lib/utils';
+import { formatNumber } from '../../lib/format';
+import { NumericField } from './NumericField';
+import { OrderBalanceBar, formatSignedAmount } from './OrderBalanceBar';
+
+type DraftLine = DraftQuoteState['lines'][number];
+const fa = (n: number | null | undefined) => (typeof n === 'number' && Number.isFinite(n) ? formatNumber(n) : '—');
+
+/** قیمت مقایسه از کلاس سراسری سفارش می‌آید؛ فقط مقدار همان کالا در کلاس منتخب snapshot می‌شود. */
+export const lineToBalanceInput = (l: DraftLine, key: string): BalanceLineInput => ({
+  key, comparisonPrice: l.erpClassUnitPrice ?? null, currencyCode: l.erpClassCurrencyCode ?? null, unitPrice: l.unitPrice, baseQuantity: l.quantity, unitsPerCarton: l.unitsPerCarton ?? null
+});
+
+/** تعداد واحد پایه از ورودی کاربر: کارتن × تعداد در کارتن؛ اگر تعداد در کارتن نامعلوم باشد ورودی همان واحد پایه است (۱ فرض نمی‌شود، حالت واحد صریح نمایش داده می‌شود). */
+const baseFrom = (entered: number | null | undefined, upc: number | null | undefined, mode: 'CARTON' | 'BASE_UNIT'): number => {
+  if (entered == null || !Number.isSafeInteger(entered) || entered <= 0) return 0;
+  if (mode === 'BASE_UNIT') return entered;
+  return upc && Number.isSafeInteger(upc) && upc > 0 ? entered * upc : 0;
+};
+
+interface Props {
+  products: ExternalProduct[];
+  priceClassLabels: PriceClassLabelRow[];
+  priceClassCode: string;
+  onPriceClassChange: (code: string) => void;
+  lines: DraftLine[];
+  setLines: React.Dispatch<React.SetStateAction<DraftLine[]>>;
+  /** پیام هشدار قلم نامعتبر (همان اعلان قبلی ویزارد) */
+  onInvalidAdd: () => void;
+}
+
+function SuggestionStrip({ s, line, onApplyPrice, onApplyQty }: { s: LineRecoverySuggestion; line: LineBalance; onApplyPrice: () => void; onApplyQty: () => void }) {
+  if (s.status !== 'AVAILABLE' || !s.price) return null;
+  const q = s.quantity;
+  return (
+    <div className="rounded-xl bg-sunken border border-border p-2 space-y-1.5" aria-label="پیشنهاد جبران کسری">
+      <div className="flex items-center gap-1 text-micro font-bold text-ink-soft"><Lightbulb size={12} aria-hidden /> پیشنهاد برای رسیدن تراز کل سفارش به صفر (فقط پیشنهاد؛ اعمال با شماست)</div>
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-caption text-ink">
+          فی پیشنهادی: <b className="font-mono">{fa(s.price.unitPrice)}</b>
+          <span className="text-micro text-ink-soft"> ({formatSignedAmount(s.price.delta)} {line.currencyCode || 'واحد پول غیرریالی/نامشخص'}{s.price.deltaPercent !== null ? ` · ${formatSignedAmount(s.price.deltaPercent)}٪` : ''})</span>
+        </div>
+        <Button size="xs" variant="soft" onClick={onApplyPrice}><Check size={12} className="ml-1" />اعمال فی</Button>
+      </div>
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-caption text-ink">
+          {q && q.unavailableReason === 'PRICE_NOT_ABOVE_REFERENCE' && <span className="text-ink-soft">با همین فی (قیمت کلاس منتخب یا کمتر) افزایش تعداد کمکی نمی‌کند.</span>}
+          {q && !q.unavailableReason && q.cartons !== null && (
+            <>با همین فی: <b className="font-mono">{fa(q.cartons)}</b> کارتن <span className="text-micro text-ink-soft">({q.extraCartons ? `${formatSignedAmount(q.extraCartons)} کارتن · ` : ''}{fa(q.effectiveBaseQuantity)} واحد)</span></>
+          )}
+          {q && !q.unavailableReason && q.cartons === null && (
+            <>با همین فی: <b className="font-mono">{fa(q.baseQuantity)}</b> واحد <span className="text-micro text-ink-soft">(ضریب بسته‌بندی مشخص نیست؛ تبدیل به کارتن انجام نشد)</span></>
+          )}
+        </div>
+        {q && !q.unavailableReason && <Button size="xs" variant="soft" onClick={onApplyQty}><Check size={12} className="ml-1" />اعمال تعداد</Button>}
+      </div>
+      <div className="text-micro text-ink-soft">اختلاف فعلی سفارش: {fa(s.orderDeficit)} {line.currencyCode || 'واحد پول نامشخص'}</div>
+    </div>
+  );
+}
+
+export function QuotePricingStep({ products, priceClassLabels, priceClassCode, onPriceClassChange, lines, setLines, onInvalidAdd }: Props) {
+  const [productId, setProductId] = useState('');
+  const [cartons, setCartons] = useState<number | null>(1);
+  const [quantityMode, setQuantityMode] = useState<'CARTON' | 'BASE_UNIT'>('BASE_UNIT');
+  const [price, setPrice] = useState<number | null>(null);
+
+  const product = products.find(p => p.id === productId);
+  const classEntry = product?.priceClasses?.[priceClassCode as keyof NonNullable<ExternalProduct['priceClasses']>];
+  const classPrice = classEntry?.unitPrice ?? null;
+  const classCurrencyCode = classEntry?.currencyCode ?? (classPrice ? (product?.currencyCode ?? 'IRR') : null);
+  const classLabel = priceClassLabels.find(c => c.code === priceClassCode)?.label || priceClassCode;
+  const upc = product?.unitsPerCarton ?? null;
+
+  // با تغییر کالا یا کلاس، فی از ERP همان کلاس پیشنهاد می‌شود؛ نبودنش خالی می‌ماند (صفر/کلاس دیگر جایگزین نمی‌شود).
+  useEffect(() => { setPrice(classPrice); }, [productId, priceClassCode, classPrice]);
+  useEffect(() => { setQuantityMode(upc ? 'CARTON' : 'BASE_UNIT'); setCartons(1); }, [productId, upc]);
+
+  const priceClassOptions: SelectOption[] = useMemo(() => priceClassLabels.map(c => ({ value: c.code, label: c.label })), [priceClassLabels]);
+  const productOptions: SelectOption[] = useMemo(() => products.map(p => ({
+    value: p.id, label: p.name, subLabel: [p.sku || p.code, p.category, p.brand].filter(Boolean).join(' · '), keywords: [p.erpId, p.description].filter(Boolean).join(' ')
+  })), [products]);
+
+  const pendingBase = baseFrom(cartons, upc, quantityMode);
+  const pendingTotal = pendingBase * (price ?? 0);
+  const classPriceValid = Number.isSafeInteger(classPrice) && (classPrice as number) > 0 && isRialCurrencyCode(classCurrencyCode);
+  const pendingValid = !!product && classPriceValid && Number.isSafeInteger(pendingBase) && pendingBase > 0 && !!price && price > 0 && Number.isSafeInteger(pendingTotal);
+  const pendingInput: BalanceLineInput | null = pendingValid
+    ? { key: 'pending', comparisonPrice: classPrice, currencyCode: classCurrencyCode, unitPrice: price, baseQuantity: pendingBase, unitsPerCarton: upc }
+    : null;
+
+  const savedInputs = lines.map((l, i) => lineToBalanceInput(l, String(i)));
+  const allInputs = pendingInput ? [...savedInputs, pendingInput] : savedInputs;
+  const balance = useMemo(() => computeOrderBalance(allInputs), [JSON.stringify(allInputs)]); // eslint-disable-line react-hooks/exhaustive-deps
+  const byKey = new Map(balance.lines.map(l => [l.key, l]));
+  const suggestFor = (key: string) => suggestLineRecovery(allInputs, key);
+
+  const patchLine = (i: number, patch: { cartons?: number | null; unitPrice?: number | null; quantityMode?: 'CARTON' | 'BASE_UNIT' }) => setLines(prev => prev.map((l, idx) => {
+    if (idx !== i) return l;
+    const upcSnap = l.unitsPerCarton ?? null;
+    const nextMode = patch.quantityMode ?? l.quantityMode ?? (upcSnap ? 'CARTON' : 'BASE_UNIT');
+    const currentMode = l.quantityMode ?? (upcSnap ? 'CARTON' : 'BASE_UNIT');
+    const nextCartons = 'cartons' in patch ? patch.cartons ?? null : nextMode === currentMode ? (nextMode === 'CARTON' ? l.cartonQuantity : l.quantity) : nextMode === 'BASE_UNIT' ? l.quantity : null;
+    const quantity = baseFrom(nextCartons, upcSnap, nextMode);
+    const unitPrice = 'unitPrice' in patch ? patch.unitPrice ?? 0 : l.unitPrice;
+    if (!Number.isSafeInteger(quantity) || quantity <= 0 || !Number.isSafeInteger(unitPrice * quantity)) return { ...l, quantity: 0, lineTotal: 0, quantityMode: nextMode, cartonQuantity: nextMode === 'CARTON' ? null : l.cartonQuantity, lineVariance: null, balanceStatus: 'INVALID' };
+    const calc = computeOrderBalance([{ key: 'x', comparisonPrice: l.erpClassUnitPrice ?? null, currencyCode: l.erpClassCurrencyCode ?? null, unitPrice, baseQuantity: quantity }]).lines[0];
+    return {
+      ...l, quantity, unitPrice, lineTotal: quantity * unitPrice,
+      cartonQuantity: nextMode === 'CARTON' && nextCartons && nextCartons > 0 ? nextCartons : null, quantityMode: nextMode,
+      lineVariance: calc.variance, balanceStatus: calc.status
+    };
+  }));
+
+  const addLine = () => {
+    if (!product || !pendingValid || !price) { onInvalidAdd(); return; }
+    const calc = computeOrderBalance([{ key: 'x', comparisonPrice: classPrice, currencyCode: classCurrencyCode, unitPrice: price, baseQuantity: pendingBase }]).lines[0];
+    // افزودن با تراز منفی مجاز است؛ فروشنده می‌تواند در کالای بعدی جبران کند (هشدار فقط هنگام ذخیره).
+    setLines(prev => [...prev, {
+      productId: product.id, productName: product.name, productCode: product.sku || product.code || '',
+      quantity: pendingBase, unitPrice: price, costPrice: product.costPrice, lineTotal: pendingBase * price,
+      erpClassUnitPrice: classPrice, erpClassCurrencyCode: classCurrencyCode, cartonQuantity: quantityMode === 'CARTON' ? cartons : null, unitsPerCarton: upc, quantityMode, lineVariance: calc.variance, balanceStatus: calc.status
+    }]);
+    setCartons(1);
+  };
+
+  const rowTone = (state: LineBalance['state'] | undefined) =>
+    state === 'NEGATIVE' ? 'border-danger-line bg-danger-soft/50'
+      : state === 'POSITIVE' || state === 'ZERO' ? 'border-success-line bg-success-soft/50'
+        : 'border-border bg-surface';
+  const stateText = (l: LineBalance | undefined) => !l || l.variance === null
+    ? (l?.status === 'REFERENCE_UNKNOWN' ? 'قیمت کلاس منتخب یا واحد پول نامشخص؛ در تراز لحاظ نشد' : 'ورودی نامعتبر')
+    : l.state === 'NEGATIVE' ? `پایین‌تر از کلاس منتخب: ${formatSignedAmount(l.variance)} ${l.currencyCode || 'واحد پول نامشخص'}`
+      : l.state === 'POSITIVE' ? `بالاتر از کلاس منتخب: ${formatSignedAmount(l.variance)} ${l.currencyCode || 'واحد پول نامشخص'}` : 'برابر کلاس منتخب';
+
+  const pendingLine = byKey.get('pending');
+  const cartonLabel = (u: number | null | undefined, mode: 'CARTON' | 'BASE_UNIT') => mode === 'BASE_UNIT' ? 'تعداد (واحد پایه)' : u ? `تعداد کارتن (هر کارتن ${fa(u)} واحد)` : 'تعداد کارتن نامعتبر؛ تعداد در بسته از ERP نیامده';
+
+  return (
+    <div className="space-y-3">
+      <OrderBalanceBar balance={balance} includesPending={!!pendingInput} />
+
+      <div className="grid grid-cols-1 gap-1.5">
+        <label className="block text-caption font-bold text-text-secondary">کلاس قیمت سفارش</label>
+        <SearchableSelect options={priceClassOptions} value={priceClassCode} onChange={onPriceClassChange}
+          placeholder="انتخاب کلاس قیمت" searchPlaceholder="نام کلاس قیمت..." ariaLabel="کلاس قیمت سفارش" />
+      </div>
+
+      <div className="bg-canvas p-3 rounded-2xl border border-border space-y-2.5">
+        <span className="text-xs font-bold text-text-main flex items-center gap-1.5"><Package size={15} className="text-primary" aria-hidden /> افزودن کالا</span>
+        <SearchableSelect options={productOptions} value={productId} onChange={setProductId}
+          placeholder="انتخاب کالا" searchPlaceholder="نام، کد یا شناسه کالا..." emptyText="کالایی پیدا نشد" ariaLabel="جست‌وجوی کالا" />
+        {product && (
+          <>
+            <div className="grid grid-cols-2 gap-2.5">
+              <div>
+                <label className="block text-micro font-bold text-text-secondary mb-1">نوع تعداد</label>
+                <Select aria-label="نوع تعداد" value={quantityMode} onChange={e => setQuantityMode(e.target.value as 'CARTON' | 'BASE_UNIT')}><option value="CARTON" disabled={!upc}>کارتن / بسته</option><option value="BASE_UNIT">واحد پایه</option></Select>
+                <label className="block text-micro font-bold text-text-secondary mb-1 mt-2">{cartonLabel(upc, quantityMode)}</label>
+                <NumericField ariaLabel="تعداد" value={cartons} onCommit={setCartons} grouped={false} />
+              </div>
+              <div>
+                <label className="block text-micro font-bold text-text-secondary mb-1">فی هر واحد پایه (ریال)</label>
+                <NumericField ariaLabel="فی هر واحد" value={price} onCommit={setPrice} />
+              </div>
+            </div>
+            <div className="text-micro text-ink-soft space-y-0.5">
+              <div>قیمت مرجع کلاس {classLabel}: <b className="font-mono">{classPrice ? fa(classPrice) : 'دریافت نشده'}</b>{upc ? <> · مجموع: <b className="font-mono">{fa(pendingBase)}</b> واحد</> : null}</div>
+              {!classPrice && <div className="text-warning">قیمت کلاس منتخب این کالا دریافت نشده است؛ تراز این قلم محاسبه نمی‌شود.</div>}{!classCurrencyCode && <div className="text-warning">واحد پول این قیمت مشخص نیست؛ مقایسه و تراز قابل محاسبه نیست.</div>}
+              {(!classPrice || !classCurrencyCode) && <div className="text-warning">قیمت «{classLabel}» برای این کالا دریافت نشده؛ فی را دستی وارد کنید (جایگزین خودکار اعمال نشد).</div>}
+            </div>
+            {pendingLine && (
+              <div className={cn('rounded-xl border px-2.5 py-1.5 text-caption font-bold transition-all duration-300 ease-out', rowTone(pendingLine.state))} data-testid="pending-balance">
+                تراز این قلم: {stateText(pendingLine)}
+              </div>
+            )}
+            {pendingLine && pendingInput && <SuggestionStrip s={suggestFor('pending')} line={pendingLine}
+              onApplyPrice={() => { const s = suggestFor('pending'); if (s.price) setPrice(s.price.unitPrice); }}
+              onApplyQty={() => { const s = suggestFor('pending'); const q = s.quantity; if (q && !q.unavailableReason) setCartons((quantityMode === 'CARTON' ? q.cartons : q.baseQuantity) ?? null); }} />}
+          </>
+        )}
+        <Button size="sm" variant="primary" onClick={addLine} disabled={!product} className="w-full flex items-center justify-center gap-1">
+          <Plus size={14} /> درج در پیش‌فاکتور
+        </Button>
+      </div>
+
+      <div className="space-y-2.5" aria-label="اقلام سفارش">
+        {lines.map((l, i) => {
+          const lb = byKey.get(String(i));
+          const sug = suggestFor(String(i));
+          return (
+            <div key={i} data-testid="balance-line" data-balance-state={lb?.state} className={cn('rounded-2xl border p-3 space-y-2 transition-all duration-300 ease-out', rowTone(lb?.state))}>
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="text-compact font-bold text-text-main truncate">{l.productName}</div>
+                  <div className="text-micro text-ink-soft">{l.productCode || '—'} · قیمت مرجع کلاس منتخب: <span className="font-mono">{l.erpClassUnitPrice ? fa(l.erpClassUnitPrice) : 'نامعلوم'}</span></div>
+                </div>
+                <button aria-label="حذف قلم" onClick={() => setLines(prev => prev.filter((_, idx) => idx !== i))} className="text-danger p-2 -m-1 rounded-md cursor-pointer min-w-(--size-touch) min-h-(--size-touch) flex items-center justify-center"><Trash2 size={15} /></button>
+              </div>
+              <div className="grid grid-cols-2 gap-2.5">
+                <div>
+                  <label className="block text-micro font-bold text-text-secondary mb-1">نوع تعداد</label>
+                  <Select aria-label={`نوع تعداد ${l.productName}`} value={l.quantityMode ?? (l.unitsPerCarton ? 'CARTON' : 'BASE_UNIT')} onChange={e => patchLine(i, { quantityMode: e.target.value as 'CARTON' | 'BASE_UNIT' })}><option value="CARTON" disabled={!l.unitsPerCarton}>کارتن / بسته</option><option value="BASE_UNIT">واحد پایه</option></Select>
+                  <label className="block text-micro font-bold text-text-secondary mb-1 mt-2">{cartonLabel(l.unitsPerCarton, l.quantityMode ?? (l.unitsPerCarton ? 'CARTON' : 'BASE_UNIT'))}</label>
+                  <NumericField ariaLabel={`تعداد ${l.productName}`} value={((l.quantityMode ?? (l.unitsPerCarton ? 'CARTON' : 'BASE_UNIT')) === 'CARTON' ? l.cartonQuantity : l.quantity) ?? null} grouped={false} onCommit={(n) => patchLine(i, { cartons: n })} />
+                </div>
+                <div>
+                  <label className="block text-micro font-bold text-text-secondary mb-1">فی هر واحد ({classCurrencyCode || 'واحد پول نامشخص'})</label>
+                  <NumericField ariaLabel={`فی ${l.productName}`} value={l.unitPrice || null} onCommit={(n) => patchLine(i, { unitPrice: n })} />
+                </div>
+              </div>
+              <div className="h-1 overflow-hidden rounded-full bg-sunken/70" aria-hidden="true"><div className={cn('h-full rounded-full transition-[width,background-color] duration-300 ease-out', lb?.state === 'NEGATIVE' ? 'bg-danger' : lb?.state === 'UNKNOWN' ? 'bg-border-strong' : 'bg-success')} style={{ width: `${lb?.variance === null || !lb?.referenceAmount ? 0 : Math.min(100, Math.abs(lb.variance / lb.referenceAmount) * 100)}%` }} /></div>
+              <div className="flex items-center justify-between gap-2 text-caption">
+                <span className="text-ink-soft">مبلغ ردیف ({fa(l.quantity)} واحد): <b className="font-mono text-ink">{fa(l.lineTotal)} ریال</b></span>
+                <span className={cn('font-bold transition-colors duration-300', lb?.state === 'NEGATIVE' ? 'text-danger' : lb?.state === 'UNKNOWN' ? 'text-ink-soft' : 'text-success')}>{stateText(lb)}</span>
+              </div>
+              {lb && <SuggestionStrip s={sug} line={lb}
+                onApplyPrice={() => sug.price && patchLine(i, { unitPrice: sug.price.unitPrice })}
+                onApplyQty={() => { const q = sug.quantity; if (q && !q.unavailableReason) patchLine(i, { cartons: ((l.quantityMode ?? (l.unitsPerCarton ? 'CARTON' : 'BASE_UNIT')) === 'CARTON' ? q.cartons : q.baseQuantity) ?? null }); }} />}
+            </div>
+          );
+        })}
+        {lines.length === 0 && <div className="text-center text-caption text-ink-soft py-6">هنوز قلمی اضافه نشده است.</div>}
+      </div>
+    </div>
+  );
+}

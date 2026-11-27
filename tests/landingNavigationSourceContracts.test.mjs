@@ -61,8 +61,8 @@ test('finance analytics and user administration shortcuts respect destination RB
  assert.match(catalog,/\/reports\?tab=finance', 'finance\.reports'/);
  assert.match(catalog,/\/reports\?tab=receivables', 'finance\.reports'/);
  assert.match(navigation,/'finance\.reports': r => r\.canAccessWorkspace\('finance'\) && r\.canAccessWorkspace\('reports'\)/);
- assert.match(catalog,/\/settings\?tab=users', 'users'/);
- assert.match(catalog,/\/settings\?tab=users&sub=permissions', 'users'/);
+ assert.match(catalog,/\/definitions\?tab=users', 'users'/);
+ assert.match(catalog,/\/definitions\?tab=users&sub=permissions', 'users'/);
 });
 
 
@@ -76,6 +76,7 @@ test('deep links in every landing point to implemented and recognized workspace 
  const viewSections={
   '/finance':hierarchy.slice(hierarchy.indexOf('export const FINANCE_AREAS'),hierarchy.indexOf('export const OPERATIONS_AREAS')),
   '/operations':operations.slice(operations.indexOf('const TABS:'),operations.indexOf('const money =')),
+  '/definitions':hierarchy.slice(hierarchy.indexOf('export const DEFINITIONS_TABS'),hierarchy.indexOf('export const SETTINGS_USER_SUBS')),
   '/settings':hierarchy.slice(hierarchy.indexOf('export const SETTINGS_TABS'),hierarchy.indexOf('export function areaOf')),
   '/reports':reports.slice(reports.indexOf("['sales', 'distribution', 'team', 'inventory', 'finance', 'receivables']"),reports.indexOf("['sales', 'distribution', 'team', 'inventory', 'finance', 'receivables']")+100),
   '/onboarding':onboarding.slice(onboarding.indexOf('const TABS:'),onboarding.indexOf('const maskNid')),

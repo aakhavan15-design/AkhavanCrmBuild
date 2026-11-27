@@ -5,7 +5,7 @@
  * - Background Sync for offline queue
  * - Web Push → system notification when app is closed/background
  */
-const CACHE_NAME = 'akhavan-crm-shell-v0.12.62-push';
+const CACHE_NAME = 'akhavan-crm-shell-v0.12.63-push';
 const SHELL_ASSETS = ['/', '/index.html', '/manifest.json'];
 
 self.addEventListener('install', (event) => {

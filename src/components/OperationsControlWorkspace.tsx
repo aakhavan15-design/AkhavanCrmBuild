@@ -1,5 +1,6 @@
 import { ChartCard } from './charts/ChartCard';
 import { WorkspaceViewSwitcher } from './shared/WorkspaceViewSwitcher';
+import { NormalOrderBasket } from './operations/NormalOrderBasket';
 import React, { useMemo, useState } from 'react';
 import { DemoTrustBanner } from './shared/DemoTrustBanner';
 import { useTabParam } from '../hooks/useTabParam';
@@ -24,9 +25,6 @@ import { VerdictStrip } from './shared/VerdictStrip';
 import { DonutChart } from './charts/DonutChart';
 import { LineChart } from './charts/LineChart';
 import { useNavigate } from 'react-router-dom';
-import { isNegotiableErpOrder } from '../lib/phase2Flow';
-import { getActiveDataProvider } from '../services/dataProvider';
-import { PurchaseProductHints } from './reports/PurchaseCycleFollowUp';
 import type { AppState } from '../types';
 
 interface Props { state: AppState; updateState: (updater: (draft: AppState) => void | Partial<AppState>) => void }
@@ -45,13 +43,6 @@ const nextId = (prefix: string) => generateSecureId(prefix);
 export function OperationsControlWorkspace({ state, updateState }: Props) {
   const navigate = useNavigate();
   const [search, setSearch] = useState('');
-  const [customerId, setCustomerId] = useState('');
-  const [productId, setProductId] = useState('');
-  const [quantity, setQuantity] = useState('');
-  const [orderNote, setOrderNote] = useState('');
-  const [dispatchName, setDispatchName] = useState('');
-  const [vehicleCapacity, setVehicleCapacity] = useState('');
-  const [distributionOutputNumber, setDistributionOutputNumber] = useState('');
 
   const { can, canOn } = useCan(state, updateState);
   const scopeOf = (record: Record<string, unknown>) => ({ ownerId: record?.ownerId || record?.createdBy, branchId: record?.branchId, territoryId: record?.territoryId, teamId: record?.teamId, tenantId: record?.tenantId });
@@ -61,10 +52,13 @@ export function OperationsControlWorkspace({ state, updateState }: Props) {
     return can('accounts', 'VIEW') ? canOn('accounts', 'VIEW', scope) : canOn('finance', 'VIEW', scope);
   });
   const ordersAll: Array<Record<string, unknown>> = state.salesOrders || [];
-  const orders: Array<Record<string, unknown>> = ordersAll.filter(o => {
+  const visibleSalesOrders: Array<Record<string, unknown>> = ordersAll.filter(o => {
     const scope = scopeOf(o);
     return can('quotes', 'VIEW') ? canOn('quotes', 'VIEW', scope) : canOn('finance', 'VIEW', scope);
   });
+  const crmOrderDrafts = visibleSalesOrders.filter(order => String(order.sourceSystemCode || '').toUpperCase() === 'CRM');
+  // پیش‌نویس‌های CRM در KPI و گزارش رسمی سفارش‌های ERP وارد نمی‌شوند.
+  const orders = visibleSalesOrders.filter(order => String(order.sourceSystemCode || '').toUpperCase() !== 'CRM');
   const dispatchPlansAll: Array<Record<string, unknown>> = state.dispatchPlans || []; // برنامه‌های آزمایشی پخش باید برچسب «آزمایشی» داشته باشند
   const dispatchPlans: Array<Record<string, unknown>> = dispatchPlansAll.filter(p => {
     const scope = scopeOf(p);
@@ -311,30 +305,16 @@ export function OperationsControlWorkspace({ state, updateState }: Props) {
       )}
 
       {tab==='orders' && (
-        <div className="space-y-2">
-          {orders.map(o => {
-            const account = customers.find(customer => customer.id === (o.accountId ?? o.customerId));
-            const source = typeof o.sourceSystemCode === 'string' ? o.sourceSystemCode : '';
-            const accountId = typeof account?.id === 'string' ? account.id : '';
-            const externalId = o.externalOrderId ?? o.externalId;
-            const relevant = Boolean(getActiveDataProvider().name === 'SQLSERVER_BACKEND' && can('quotes', 'VIEW') && source.trim()
-              && typeof externalId === 'string' && externalId.trim() && isNegotiableErpOrder(o)
-              && /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(accountId));
-            const existingProducts = new Set<string>(Array.isArray(o.lines) ? o.lines
-              .flatMap(line => typeof line?.externalProductId === 'string' ? [line.externalProductId] : []) : []);
-            return <article key={String(o.id)} className="space-y-2 rounded-xl border border-border bg-surface p-3 text-xs">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <span className="font-bold font-mono text-text-main">{String(o.orderNumber || '')}</span>
-                <span className="block text-mini text-text-secondary mt-0.5">{String(o.notes || 'سفارش ثبت شده')}</span>
-              </div>
-              <span className="font-bold font-mono text-text-main">{o.totalAmount == null || o.totalAmount === '' ? 'مبلغ نامشخص' : money(Number(o.totalAmount))}</span>
-              </div>
-              {relevant && <PurchaseProductHints key={`${state.currentUserId}:${accountId}:${source}`} account={accountId} source={source} excludeProductIds={existingProducts} />}
-            </article>;
-          })}
-          {orders.length === 0 && <p className="text-xs text-text-secondary py-6 text-center">سفارشی یافت نشد.</p>}
-        </div>
+        <NormalOrderBasket
+          state={state}
+          updateState={updateState}
+          erpOrders={orders as unknown as Record<string, any>[]}
+          crmDrafts={crmOrderDrafts as unknown as Record<string, any>[]}
+          customers={customers as unknown as Record<string, any>[]}
+          canCreate={can('quotes', 'CREATE')}
+          canViewCpq={can('quotes', 'VIEW')}
+          onOpenCpq={orderId => navigate(`/quotes?sourceOrderId=${encodeURIComponent(orderId)}`)}
+        />
       )}
 
       {tab==='dispatch' && (

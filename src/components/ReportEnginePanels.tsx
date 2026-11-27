@@ -434,7 +434,7 @@ export function ReportEnginePanels({ state, visibleInvoices, visiblePayments, vi
   const activeSalesSeller=sellerNetSales.status==='AVAILABLE' ? sellerNetSales.rows.find(row=>row.key===selectedSalesSeller) : undefined;
 
   const monthlySellerAchievement=useMemo(()=>period==='month'&&sellerNetSales.status==='AVAILABLE'
-    ? sellerMonthlyAchievement(sellerNetSales.rows,(state.salesTargets||[]).filter(t=>!(t as typeof t & {deletedAt?:string;isDeleted?:boolean}).deletedAt&&!(t as typeof t & {isDeleted?:boolean}).isDeleted),asOf.slice(0,7))
+    ? sellerMonthlyAchievement(sellerNetSales.rows,(state.salesTargets||[]).filter((t): t is typeof t & { userId: string } => typeof t.userId === 'string' && t.scopeType === 'USER' && t.approvalStatus === 'APPROVED' && !(t as typeof t & {deletedAt?:string;isDeleted?:boolean}).deletedAt && !(t as typeof t & {isDeleted?:boolean}).isDeleted),asOf.slice(0,7))
     : [],[period,sellerNetSales,state.salesTargets,asOf]);
 
   const observedSalesTrend=useMemo(()=>{

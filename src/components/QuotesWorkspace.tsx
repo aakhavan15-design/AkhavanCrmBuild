@@ -1,9 +1,11 @@
 import { canEditQuoteLines } from '../lib/cpqEngine';
 import { useCan, requireActiveUser } from '../hooks/useCan';
 import { Select } from './ui';
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { getPersianStatusLabel } from '../lib/labels';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { isNegotiableErpOrder } from '../lib/phase2Flow';
+import { formatCount } from '../lib/format';
 import { AppState, Quote, QuoteLine, ID, PriceWaterfallBreakdown } from '../types';
 import { generateId, nextSequenceNumber, formatCurrency, cleanNumericInput, formatInputCurrency, parsePersianNumber, formatAppDate, toLocalDateISO } from '../lib/utils';
 import { calculateQuoteLineMargin, calculatePriceWaterfall } from '../lib/cpqEngine';
@@ -70,6 +72,8 @@ export function QuotesWorkspace({ state, updateState }: QuotesWorkspaceProps) {
     return state.quotes[0]?.id || null;
   });
   const [isWizardOpen, setIsWizardOpen] = useState(false);
+  const [sourceOrderId, setSourceOrderId] = useState<string | undefined>();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isBundleModalOpen, setIsBundleModalOpen] = useState(false);
   const [isProfitModalOpen, setIsProfitModalOpen] = useState(false);
@@ -93,6 +97,17 @@ export function QuotesWorkspace({ state, updateState }: QuotesWorkspaceProps) {
   const visibleQuotes = (state.quotes || []).filter(quote => canOn('quotes', 'VIEW', {
     ownerId: quote.ownerId, branchId: quote.branchId, territoryId: quote.territoryId, teamId: quote.teamId, tenantId: quote.tenantId
   }));
+  const salesOrders = (state.salesOrders || []) as Array<Record<string, any>>;
+  const eligibleErpOrders = salesOrders.filter((order: Record<string, any>) => isNegotiableErpOrder(order) && canOn('quotes', 'VIEW', {
+    ownerId: order.ownerId, branchId: order.branchId, territoryId: order.territoryId, teamId: order.teamId, tenantId: order.tenantId
+  }));
+  useEffect(() => {
+    const requestedOrder = searchParams.get('sourceOrderId');
+    if (!requestedOrder) return;
+    const match = eligibleErpOrders.find(order => [order.id, order.externalOrderId, order.externalId].some(value => String(value ?? '') === requestedOrder));
+    if (match) { setSourceOrderId(requestedOrder); setIsWizardOpen(true); }
+    const next = new URLSearchParams(searchParams); next.delete('sourceOrderId'); setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams, eligibleErpOrders]);
   const visibleSellerIds = new Set(visibleQuotes.map(quote => quote.ownerId).filter(Boolean));
   const quoteSellerOptions: SelectOption[] = (state.users || []).filter(user => visibleSellerIds.has(user.id)).map(user => ({ value: user.id, label: user.name, subLabel: user.employeeCode || user.username || user.roleId || '' }));
   const quoteCustomerOptions: SelectOption[] = (state.accounts || []).filter(account => canOn('accounts', 'VIEW', { ownerId: account.ownerId, branchId: account.branchId, territoryId: account.territoryId, teamId: account.teamId, tenantId: account.tenantId })).map(account => ({ value: account.id, label: account.name, subLabel: [account.code, account.city].filter(Boolean).join(' · ') }));
@@ -660,6 +675,22 @@ export function QuotesWorkspace({ state, updateState }: QuotesWorkspaceProps) {
         )}
       </Card>
 
+      <section className="rounded-xl border border-border bg-surface p-3 space-y-2" aria-label="سبد پیشنهاد فروش CPQ از سفارش‌های ERP">
+        <div className="flex items-center justify-between gap-2"><h3 className="text-sm font-bold text-text-main">سبد پیشنهاد فروش CPQ</h3><span className="text-micro text-text-secondary">{formatCount(eligibleErpOrders.length)} سفارش ERP واجد شرایط</span></div>
+        <p className="text-micro text-text-secondary">در این مسیر سفارش ERP فقط مبنای پیشنهاد و مذاکره است؛ Quote سفارش رسمی ERP ایجاد نمی‌کند.</p>
+        <div className="divide-y divide-border max-h-[28rem] overflow-auto">
+          {eligibleErpOrders.map(order => {
+            const account = state.accounts.find(item => item.id === (order.accountId ?? order.customerId));
+            const key = String(order.externalOrderId ?? order.externalId ?? order.id);
+            return <div key={String(order.id)} className="py-2 flex items-center justify-between gap-2">
+              <div className="min-w-0"><div className="text-caption font-bold text-text-main truncate">{String(order.orderNumber ?? order.documentNumber ?? key)}</div><div className="text-micro text-text-secondary truncate">{account?.name || 'مشتری نامشخص'} · {String(order.status ?? order.statusCode ?? 'وضعیت نامشخص')}</div></div>
+              <Button size="sm" variant="outline" onClick={() => { setSourceOrderId(key); setIsWizardOpen(true); }}>پیشنهاد CPQ</Button>
+            </div>;
+          })}
+          {eligibleErpOrders.length === 0 && <p className="py-3 text-caption text-text-secondary">سفارش ERP واجد شرایط مذاکره در داده مجاز موجود نیست.</p>}
+        </div>
+      </section>
+
       <section id="quote-summary-tiles" data-tour-primary className="rounded-lg border border-border/80 bg-surface px-3 py-3 space-y-3 shadow-xs" aria-label="فیلتر و خلاصه پیشنهادهای تجاری">
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
           <div
@@ -1124,7 +1155,7 @@ export function QuotesWorkspace({ state, updateState }: QuotesWorkspaceProps) {
         <ProfitModal state={state} quote={activeQuote} onClose={() => setIsProfitModalOpen(false)} />
       )}
 
-      <QuoteWizardModal isOpen={isWizardOpen} onClose={() => setIsWizardOpen(false)} state={state} updateState={updateState} onQuoteCreated={(newId) => { setActiveQuoteId(newId); navigate('/quotes'); }} />
+      <QuoteWizardModal isOpen={isWizardOpen} sourceOrderId={sourceOrderId} onClose={() => { setIsWizardOpen(false); setSourceOrderId(undefined); }} state={state} updateState={updateState} onQuoteCreated={(newId) => { setActiveQuoteId(newId); setIsWizardOpen(false); setSourceOrderId(undefined); navigate('/quotes'); }} />
 
       {activeQuote && (
         <CustomerInvoicePrint state={state} quote={activeQuote} />

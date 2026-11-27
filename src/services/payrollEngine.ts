@@ -196,6 +196,27 @@ export function calculateCommissionForSeller(
   return { achievementPercent, ratePercent, commissionAmountRials };
 }
 
+/** Resolve one unambiguous active commission plan by most-specific seller scope and effective month. */
+export function resolveCommissionPlanForSeller(plans: CommissionPlan[], user: UserAccount, periodMonth: string): CommissionPlan | undefined {
+  if (!/^\\d{4}-(0[1-9]|1[0-2])$/.test(periodMonth)) return undefined;
+  const periodStart = periodMonth + '-01';
+  const eligible = plans.filter(plan => {
+    if (!plan.isActive || (plan.effectiveFrom && plan.effectiveFrom > periodStart) || (plan.effectiveTo && plan.effectiveTo < periodStart)) return false;
+    const scope = plan.scopeType || (plan.userIds?.length ? 'USER' : plan.teamId ? 'TEAM' : plan.branchId ? 'BRANCH' : 'COMPANY');
+    if (scope === 'USER') return plan.scopeId === user.id || plan.userIds?.includes(user.id) === true;
+    if (scope === 'TEAM') return (plan.teamId || plan.scopeId) === user.teamId;
+    if (scope === 'BRANCH') return (plan.branchId || plan.scopeId) === user.branchId;
+    return scope === 'COMPANY' && !plan.userIds?.length && !plan.teamId && !plan.branchId;
+  });
+  const score = (plan: CommissionPlan) => {
+    const scope = plan.scopeType || (plan.userIds?.length ? 'USER' : plan.teamId ? 'TEAM' : plan.branchId ? 'BRANCH' : 'COMPANY');
+    return scope === 'USER' ? 4 : scope === 'TEAM' ? 3 : scope === 'BRANCH' ? 2 : 1;
+  };
+  if (!eligible.length) return undefined;
+  const highest = Math.max(...eligible.map(score));
+  const winners = eligible.filter(plan => score(plan) === highest);
+  return winners.length === 1 ? winners[0] : undefined;
+}
 export function generateEmployeePayslip(input: {
   runId: string;
   user: UserAccount;
@@ -205,6 +226,7 @@ export function generateEmployeePayslip(input: {
   approvedOvertimeHours?: number;
   approvedMissionDays?: number;
   commissionRials?: number;
+  commissionCalculationStatus?: Payslip['commissionCalculationStatus'];
   activeAdvanceRequest?: AdvanceRequest;
   unexcusedAbsenceDays?: number;
   delayMinutes?: number;
@@ -219,6 +241,7 @@ export function generateEmployeePayslip(input: {
     approvedOvertimeHours = 0,
     approvedMissionDays = 0,
     commissionRials = 0,
+    commissionCalculationStatus,
     activeAdvanceRequest,
     unexcusedAbsenceDays = 0,
     delayMinutes = 0,
@@ -287,6 +310,7 @@ export function generateEmployeePayslip(input: {
     approvedMissionDays,
     missionPayRials,
     commissionRials,
+    commissionCalculationStatus,
     totalBenefitsRials,
     grossPayRials,
     advanceDeductionRials,
@@ -301,7 +325,8 @@ export function generateEmployeePayslip(input: {
     calculationSnapshot: {
       calculatedAt: new Date().toISOString(),
       salaryProfileSnapshot: { ...salaryProfile },
-      userSnapshot: { id: user.id, name: user.name, username: user.username }
+      userSnapshot: { id: user.id, name: user.name, username: user.username },
+      commissionCalculationStatus: commissionCalculationStatus || 'UNVERIFIED'
     },
     status: 'DRAFT',
     calculatedAt: new Date().toISOString()
@@ -320,6 +345,10 @@ export function executePayrollRun(
   settledAdvanceIds: string[];
   /** کاربرانی که نه پروفایل حقوقی دارند نه حقوق ثبت‌شده؛ فیش ساختگی برایشان صادر نمی‌شود. */
   skippedUserIds: string[];
+  commissionUnavailableUserIds: string[];
+  commissionEvidenceMissingUserIds: string[];
+  commissionTargetMissingUserIds: string[];
+  commissionPlanMissingUserIds: string[];
 } {
   const users = (state.users || []).filter(u => (u.isActive ?? u.active) !== false);
   const salaryProfiles = state.salaryProfiles || [];
@@ -327,13 +356,16 @@ export function executePayrollRun(
   const invoices = state.invoices || [];
   const targets = state.salesTargets || [];
   const plans = (state.commissionPlans || []).filter(plan => plan.isActive);
-  const plan = plans.length === 1 ? plans[0] : undefined;
   const postedStatuses = new Set(['PAID','PARTIAL','UNPAID','OVERDUE','POSTED','FINAL']);
 
   const runId = generateId();
   const payslips: Payslip[] = [];
   const settledAdvanceIds: string[] = [];
   const skippedUserIds: string[] = [];
+  const commissionUnavailableUserIds: string[] = [];
+  const commissionEvidenceMissingUserIds: string[] = [];
+  const commissionTargetMissingUserIds: string[] = [];
+  const commissionPlanMissingUserIds: string[] = [];
 
   for (const user of users) {
     // Select only a policy effective on the first day of the payroll period.
@@ -375,17 +407,31 @@ export function executePayrollRun(
     });
     // Never calculate commission from gross invoice headers. Accept only an
     // explicitly reconciled seller-period net sales slice from finance.
-    const verifiedSellerSales = financialEvidence?.ledgerReconciled === true
-      && financialEvidence.periodMonth === periodMonth
-      ? financialEvidence.netSalesBySeller[user.id] : undefined;
-    const realizedSales = typeof verifiedSellerSales === 'number'
-      && Number.isFinite(verifiedSellerSales) && verifiedSellerSales >= 0
+    const evidenceReady = financialEvidence?.ledgerReconciled === true && financialEvidence.periodMonth === periodMonth;
+    const verifiedSellerSales = evidenceReady ? financialEvidence.netSalesBySeller[user.id] : undefined;
+    const realizedSales = typeof verifiedSellerSales === 'number' && Number.isSafeInteger(verifiedSellerSales) && verifiedSellerSales >= 0
       ? verifiedSellerSales : null;
-    // هدف فروش واقعی کاربر؛ نبود هدف ⇒ پورسانت صفر (نه هدف فرضی).
-    const userTarget = Number(targets.find(t => t.userId === user.id && t.periodMonth === periodMonth)?.revenueTargetRials);
-    const commissionCalc = realizedSales !== null && Number.isFinite(userTarget) && userTarget > 0
+    const matchingTargets = targets.filter(t => t.userId === user.id && t.periodMonth === periodMonth
+      && (t.scopeType === undefined || t.scopeType === 'USER')
+      && (t.kpiCode === undefined || t.kpiCode === 'NET_SALES_IRR')
+      && t.approvalStatus === 'APPROVED' && !t.productBrand && !t.territoryId
+      && Number.isSafeInteger(t.revenueTargetRials) && t.revenueTargetRials > 0);
+    const userTarget = matchingTargets.length === 1 ? matchingTargets[0].revenueTargetRials : null;
+    const plan = resolveCommissionPlanForSeller(plans, user, periodMonth);
+    let commissionCalculationStatus: NonNullable<Payslip['commissionCalculationStatus']>;
+    if (!evidenceReady) commissionCalculationStatus = 'UNVERIFIED';
+    else if (realizedSales === null) commissionCalculationStatus = 'SELLER_SALES_UNAVAILABLE';
+    else if (matchingTargets.length === 0) commissionCalculationStatus = 'TARGET_MISSING';
+    else if (matchingTargets.length > 1) commissionCalculationStatus = 'TARGET_AMBIGUOUS';
+    else if (!plan) commissionCalculationStatus = 'PLAN_MISSING';
+    else commissionCalculationStatus = 'CALCULATED';
+    const commissionCalc = commissionCalculationStatus === 'CALCULATED' && realizedSales !== null && userTarget !== null
       ? calculateCommissionForSeller(realizedSales, userTarget, plan)
       : { achievementPercent: 0, ratePercent: 0, commissionAmountRials: 0 };
+    if (commissionCalculationStatus !== 'CALCULATED') commissionUnavailableUserIds.push(user.id);
+    if (commissionCalculationStatus === 'UNVERIFIED' || commissionCalculationStatus === 'SELLER_SALES_UNAVAILABLE') commissionEvidenceMissingUserIds.push(user.id);
+    if (commissionCalculationStatus === 'TARGET_MISSING' || commissionCalculationStatus === 'TARGET_AMBIGUOUS') commissionTargetMissingUserIds.push(user.id);
+    if (commissionCalculationStatus === 'PLAN_MISSING') commissionPlanMissingUserIds.push(user.id);
 
     const payslip = generateEmployeePayslip({
       runId,
@@ -397,6 +443,7 @@ export function executePayrollRun(
       approvedOvertimeHours: 0,
       approvedMissionDays: 0,
       commissionRials: commissionCalc.commissionAmountRials,
+      commissionCalculationStatus,
       activeAdvanceRequest: activeAdvance
     });
 
@@ -425,7 +472,7 @@ export function executePayrollRun(
     idempotencyKey: `PAYROLL_RUN_${periodMonth}_${dailyBasis}`
   };
 
-  return { run, payslips, settledAdvanceIds, skippedUserIds };
+  return { run, payslips, settledAdvanceIds, skippedUserIds, commissionUnavailableUserIds, commissionEvidenceMissingUserIds, commissionTargetMissingUserIds, commissionPlanMissingUserIds };
 }
 
 export function simulatePerformanceAdjustment(input: {

@@ -686,7 +686,7 @@ export const WHATS_NEW_ITEMS: WhatsNewItem[] = [
     description: 'آستانهٔ ریزش با رقم فارسی ثبت می‌شود. برای بازگشت به پیش‌فرض، مقدار سفارشی را پاک کنید.',
     tag: 'IMPROVED',
     module: 'settings',
-    route: '/settings?tab=org',
+    route: '/definitions?tab=org',
   },
   {
     id: 'wn-paya-banking',
@@ -804,6 +804,10 @@ export function moduleForPath(pathname: string): string {
   const seg = pathname.split('/').filter(Boolean)[0] || '';
   if (!seg) return 'home';
   if (seg === 'workspace' || seg === 'planned') return 'workspace';
+  if (seg === 'design-system') return 'settings';
+  if (seg === 'definitions') return 'workspace';
+  if (seg === 'customers') return 'accounts';
+  if (seg === 'operations_control') return 'operations';
   return TOUR_MODULES.some(m => m.id === seg) ? seg : 'global';
 }
 

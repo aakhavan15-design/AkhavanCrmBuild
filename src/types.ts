@@ -505,10 +505,33 @@ export interface ExternalProduct {
   taxRatePercent?: number | null;
   /** ارزش موجودی طبق FIFO؛ فقط از دیتابیس/ERP خوانده می‌شود (CRM محاسبه نمی‌کند). undefined/null = نامشخص. */
   inventoryValueFifo?: number | null;
+  /** کف مستقل ERP به‌ازای واحد پایه، در ارز و scale اعلام‌شده از ERP. undefined/null = ERP کف نداده (نامعلوم؛ هرگز صفر نیست). */
+  /** legacy compatibility only; price floor is the selected price class of the product. */
+  floorPrice?: number | null;
+  /** تعداد واحد پایه در هر کارتن از ERP. undefined/null = نامعلوم (۱ فرض نمی‌شود). */
+  unitsPerCarton?: number | null;
+  /** ۵ کلاس قیمت ERP (در ارز و scale اعلام‌شده از ERP)؛ فقط‌خواندنی در CRM. */
+  currencyCode?: string | null;
+  priceClasses?: Partial<Record<'PRICE_CLASS_1' | 'PRICE_CLASS_2' | 'PRICE_CLASS_3' | 'PRICE_CLASS_4' | 'PRICE_CLASS_5', { unitPrice: number; label?: string; currencyCode?: string }>>;
   [key: string]: any;
 }
 
+/** اسنپ‌شات تراز روی ردیف پیش‌فاکتور (قیمت ERP بعدی تاریخچه را تغییر نمی‌دهد). */
+export interface QuoteLineBalanceSnapshot {
+  /** مقدار قیمت ERP همان کالا در کلاس سراسری انتخاب‌شده روی Quote */
+  erpClassUnitPrice?: number | null;
+  erpClassCurrencyCode?: string | null;
+  /** legacy snapshot only; no independent floor is used in CPQ. */
+  floorUnitPrice?: number | null;
+  cartonQuantity?: number | null;
+  unitsPerCarton?: number | null;
+  quantityMode?: 'CARTON' | 'BASE_UNIT';
+  lineVariance?: number | null;
+  balanceStatus?: 'OK' | 'REFERENCE_UNKNOWN' | 'INVALID';
+}
+
 export interface DraftQuoteState {
+  sourceOrderId?: string;
   step: number;
   selectedCustomerId: string;
   projectTitle: string;
@@ -521,7 +544,9 @@ export interface DraftQuoteState {
     unitPrice: number;
     costPrice: number;
     lineTotal: number;
-  }>;
+  } & QuoteLineBalanceSnapshot>;
+  /** کلاس قیمت انتخابی سفارش (پیش‌فرض از مشتری) */
+  priceClassCode?: string;
   discountPercent: string;
   applyTax: boolean;
   paymentTerms: string;
@@ -800,6 +825,7 @@ export interface Payslip {
   approvedMissionDays: number;
   missionPayRials: number;
   commissionRials: number;
+  commissionCalculationStatus?: 'CALCULATED' | 'UNVERIFIED' | 'SELLER_SALES_UNAVAILABLE' | 'TARGET_MISSING' | 'TARGET_AMBIGUOUS' | 'PLAN_MISSING';
   totalBenefitsRials: number;
   grossPayRials: number;
   advanceDeductionRials: number;
@@ -832,12 +858,20 @@ export interface PayrollRun {
 
 export interface SalesTarget {
   id: string;
-  userId: string;
+  userId?: string;
   periodMonth: string; // YYYY-MM
   revenueTargetRials: number;
   volumeTargetUnits?: number;
   productBrand?: string;
   territoryId?: string;
+  scopeType?: 'COMPANY' | 'BRANCH' | 'TEAM' | 'USER' | 'BRAND' | 'PRODUCT_GROUP' | 'ROUTE';
+  scopeId?: string;
+  kpiCode?: 'NET_SALES_IRR' | 'VOLUME_UNITS' | string;
+  approvalStatus?: 'DRAFT' | 'APPROVED' | 'REJECTED';
+  approvedBy?: string;
+  approvedAt?: string;
+  createdBy?: string;
+  updatedAt?: string;
   createdAt: string;
 }
 
@@ -853,6 +887,17 @@ export interface CommissionPlan {
   tiers: CommissionTier[];
   routeDifficultyMultiplier: number;
   isActive: boolean;
+  scopeType?: 'COMPANY' | 'BRANCH' | 'TEAM' | 'USER';
+  scopeId?: string;
+  userIds?: string[];
+  branchId?: string;
+  teamId?: string;
+  territoryId?: string;
+  effectiveFrom?: string;
+  effectiveTo?: string;
+  version?: number;
+  createdBy?: string;
+  updatedAt?: string;
 }
 
 export interface CommissionTransaction {

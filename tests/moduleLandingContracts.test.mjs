@@ -30,6 +30,10 @@ test('landing tile paths refer to registered routes and preserve ERP boundaries'
  for(const path of tiles) assert.ok(routePaths.has(path.split('?')[0]),`missing route ${path}`);
  assert.match(catalogue,/tile\('quotes',[^\n]*'\/quotes'/);
  assert.match(catalogue,/tile\('orders',[^\n]*'\/operations\?tab=orders'/);
+ assert.match(catalogue,/tile\('fin-credit-scoring',[^\n]*'\/operations\?tab=credit'/);
+ assert.match(catalogue,/tile\('fin-payments',[^\n]*'\/finance\?tab=requests'/);
+ assert.match(catalogue,/tile\('master-coding',[^\n]*'\/definitions\?tab=finance-codes'/);
+ assert.match(catalogue,/tile\('master-geo',[^\n]*'\/definitions\?tab=geo'/);
  assert.match(catalogue,/tile\('invoices',[^\n]*'\/finance\?tab=invoices'/);
 });
 test('operations and finance views each have one catalog tile under the owning workspace', () => {
@@ -38,8 +42,8 @@ test('operations and finance views each have one catalog tile under the owning w
     ['procurement', '/operations?tab=purchasing', 'ops.purchasing'],
     ['finance', '/operations?tab=profitability', 'ops.profitability'],
     ['finance', '/finance?tab=overview', 'finance'],
-    ['finance', '/reports?tab=finance', 'finance'],
-    ['finance', '/reports?tab=receivables', 'finance'],
+    ['finance', '/reports?tab=finance', 'finance.reports'],
+    ['finance', '/reports?tab=receivables', 'finance.reports'],
   ];
   const modules = [...catalogue.matchAll(/^    id: '([a-z-]+)'[\s\S]*?(?=^    id: '|^\];)/gm)];
   for (const [owner, destination, permission] of destinations) {
@@ -57,4 +61,10 @@ test('compact accessible RTL landing retains RBAC, search, icon grid and disclos
  assert.match(component,/aria-label="پاک کردن جست‌وجو"/);
  assert.match(component,/expandedGroups/);
  assert.match(component,/role="status"/);
+});
+
+test('existing payroll and payslip workspaces are linked instead of planned dead ends',()=>{
+ assert.match(catalogue,/tile\('hr-payroll'[\s\S]{0,240}'\/onboarding\?tab=payroll'/);
+ assert.match(catalogue,/tile\('hr-payslip'[\s\S]{0,240}'\/onboarding\?tab=payslips'/);
+ assert.match(read('src/components/onboarding/OnboardingAdminWorkspace.tsx'),/tab === 'payslips'/);
 });

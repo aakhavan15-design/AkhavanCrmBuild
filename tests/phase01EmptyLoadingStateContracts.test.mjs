@@ -14,7 +14,7 @@ const dataTable = read('src/components/ui/DataTable.tsx');
 for (const prop of [
   'icon?: React.ReactNode',
   'title: string',
-  'description: string',
+  'description?: string',
   'actionLabel?: string',
   'onAction?: () => void',
   'secondaryActionLabel?: string',

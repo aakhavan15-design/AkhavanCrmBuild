@@ -1,32 +1,40 @@
 import { guard, useCan } from '../hooks/useCan';
+import { formatNumber, formatMoney } from '../lib/format';
 import { computeQuoteTax } from '../lib/taxRate';
 import React, { useState, useEffect, useRef } from 'react';
 import { AppState, Quote, ID, DraftQuoteState } from '../types';
-import { generateId, nextSequenceNumber, formatCurrency, parsePersianNumber, formatInputCurrency, cleanNumericInput } from '../lib/utils';
+import { generateId, nextSequenceNumber, formatCurrency, parsePersianNumber, formatInputCurrency, cleanNumericInput, cn } from '../lib/utils';
 import { Modal } from './ui/Modal';
 import { Button } from './ui/Button';
-import { Package, CheckCircle2, ChevronRight, ChevronLeft, Plus, Trash2, Printer, Percent, ShieldCheck, FileText, Save } from 'lucide-react';
+import { CheckCircle2, ChevronRight, ChevronLeft, Trash2, Printer, Percent, ShieldCheck, FileText, Save } from 'lucide-react';
 import { CustomerInvoicePrint } from './PrintLayouts';
 import { SearchableSelect, type SelectOption } from './ui/SearchableSelect';
 import { InputControl, Checkbox } from './ui/Input';
 import { getActiveDataProvider } from '../services/dataProvider';
 import { toast } from './ui/Toast';
 import { dataSyncController } from '../services/dataSyncController';
+import { computeOrderBalance, resolvePriceClassLabels, PRICE_CLASS_CODES, isRialCurrencyCode } from '../lib/cpqEngine';
+import { prefillQuoteLinesFromErpOrder } from '../lib/cpqOrderPrefill';
+import { QuotePricingStep, lineToBalanceInput } from './quote/QuotePricingStep';
+import { OrderBalanceBar, formatSignedAmount } from './quote/OrderBalanceBar';
+import { isNegotiableErpOrder } from '../lib/phase2Flow';
 
 interface QuoteWizardModalProps {
   isOpen: boolean;
   onClose: () => void;
+  sourceOrderId?: string;
   state: AppState;
   updateState: (updater: (draft: AppState) => AppState | void) => void;
   onQuoteCreated?: (quoteId: ID) => void;
 }
 
-export function QuoteWizardModal({ isOpen, onClose, state, updateState, onQuoteCreated }: QuoteWizardModalProps) {
+
+export function QuoteWizardModal({ isOpen, onClose, sourceOrderId, state, updateState, onQuoteCreated }: QuoteWizardModalProps) {
   const [creating,setCreating]=useState(false);
   const creationBusy=useRef(false);
   const creationAttempt=useRef<{key:string;quote:Quote}|null>(null);
   const draftState = state.draftQuote;
-  const orgConfig = (state.settings as Record<string, unknown>)?.orgConfig || {};
+  const orgConfig = ((state.settings as Record<string, unknown> | undefined)?.orgConfig ?? {}) as Record<string, unknown>;
   const configuredTaxRaw = orgConfig.taxRatePercent;
   const configuredTaxRate = configuredTaxRaw !== undefined && configuredTaxRaw !== null && String(configuredTaxRaw).trim() !== '' && Number.isFinite(Number(configuredTaxRaw)) && Number(configuredTaxRaw) >= 0 && Number(configuredTaxRaw) <= 100
     ? Number(configuredTaxRaw) : null;
@@ -36,18 +44,72 @@ export function QuoteWizardModal({ isOpen, onClose, state, updateState, onQuoteC
   const visibleAccounts = (state.accounts || []).filter(account => canOn('accounts', 'VIEW', {
     ownerId: account.ownerId, branchId: account.branchId, territoryId: account.territoryId, teamId: account.teamId, tenantId: account.tenantId
   }));
+  const sourceOrders = (state.salesOrders || []) as Array<Record<string, unknown>>;
+  const sourceOrder = sourceOrderId ? sourceOrders.find((order: Record<string, unknown>) => [order.id, order.externalOrderId, order.externalId].some(value => String(value ?? '') === sourceOrderId) && isNegotiableErpOrder(order)) : undefined;
   const draftCustomerId = draftState?.selectedCustomerId || state.activeContextAccountId || '';
   const defaultCustomerId = visibleAccounts.some(account => account.id === draftCustomerId) ? draftCustomerId : (visibleAccounts[0]?.id || '');
 
   const [step, setStep] = useState<1 | 2 | 3 | 4>((draftState?.step as Record<string, unknown>) || 1);
   const [selectedCustomerId, setSelectedCustomerId] = useState<ID>(defaultCustomerId);
+  useEffect(() => { const customerId = String(sourceOrder?.accountId ?? sourceOrder?.customerId ?? ''); if (isOpen && sourceOrder && visibleAccounts.some(account => account.id === customerId)) setSelectedCustomerId(customerId); }, [isOpen, sourceOrderId]);
   const [projectTitle, setProjectTitle] = useState(draftState?.projectTitle || '');
   const [validUntilDays, setValidUntilDays] = useState(draftState?.validUntilDays ?? defaultValidityDays);
 
   const [lines, setLines] = useState<DraftQuoteState['lines']>(draftState?.lines || []);
-  const [currentProductId, setCurrentProductId] = useState<ID>(state.externalProducts[0]?.id || '');
-  const [currentQty, setCurrentQty] = useState('1');
-  const [currentPrice, setCurrentPrice] = useState(() => String(state.externalProducts[0]?.basePrice || 0));
+  const [sourceOrderUnmappedCount, setSourceOrderUnmappedCount] = useState(0);
+  const [sourceOrderLineCount, setSourceOrderLineCount] = useState(0);
+  const sourceOrderPrefillKey = useRef<string | null>(null);
+  // کلاس قیمت سفارش: پیش‌فرض از مشتری (ERP)، قابل تغییر؛ نام کلاس‌ها از ERP یا تعاریف پایه می‌آید.
+  const priceClassLabels = resolvePriceClassLabels(orgConfig.priceClassLabels as Record<string, unknown> | undefined, state.externalProducts);
+  const customerDefaultClass = (code: unknown) => (typeof code === 'string' && (PRICE_CLASS_CODES as readonly string[]).includes(code) ? code : undefined);
+  const [priceClassCode, setPriceClassCode] = useState<string>(
+    draftState?.priceClassCode || customerDefaultClass(sourceOrder?.priceClassCode) || customerDefaultClass((visibleAccounts.find(a => a.id === defaultCustomerId) as Record<string, unknown> | undefined)?.priceClassCode) || PRICE_CLASS_CODES[0]
+  );
+  const handleCustomerChange = (id: ID) => {
+    setSelectedCustomerId(id);
+    const cls = customerDefaultClass((visibleAccounts.find(a => a.id === id) as Record<string, unknown> | undefined)?.priceClassCode) || PRICE_CLASS_CODES[0];
+    handlePriceClassChange(cls);
+  };
+  // کلاس قیمت در سطح کل پیش‌فاکتور است؛ تغییر آن مرجع ERP همه اقلام را هم‌زمان تازه می‌کند.
+  const handlePriceClassChange = (code: string) => {
+    if (!(PRICE_CLASS_CODES as readonly string[]).includes(code)) return;
+    setPriceClassCode(code);
+    setLines(prev => {
+      const next = prev.map(line => {
+        const product = state.externalProducts.find(item => item.id === line.productId);
+        const entry = product?.priceClasses?.[code as keyof NonNullable<typeof product.priceClasses>];
+        const classPrice = entry?.unitPrice != null && Number.isSafeInteger(entry.unitPrice) && entry.unitPrice > 0 ? entry.unitPrice : null;
+        const rawCurrency = entry?.currencyCode ?? product?.currencyCode ?? 'IRR';
+        return { ...line, erpClassUnitPrice: classPrice, erpClassCurrencyCode: classPrice ? (isRialCurrencyCode(rawCurrency) ? 'IRR' : String(rawCurrency)) : null };
+      });
+      const balance = computeOrderBalance(next.map((line, index) => lineToBalanceInput(line, String(index))));
+      return next.map((line, index) => ({ ...line, lineVariance: balance.lines[index]?.variance ?? null, balanceStatus: balance.lines[index]?.status ?? 'REFERENCE_UNKNOWN' }));
+    });
+  };
+
+
+  // CPQ از سفارش ERP باید ردیف‌های سفارش را پیش‌پر کند؛ ردیف نامنطبق هرگز بی‌صدا حذف نمی‌شود.
+  useEffect(() => {
+    if (!isOpen) { sourceOrderPrefillKey.current = null; return; }
+    if (!sourceOrderId || !sourceOrder || sourceOrderPrefillKey.current === sourceOrderId) return;
+    sourceOrderPrefillKey.current = sourceOrderId;
+    const customerId = String(sourceOrder.accountId ?? sourceOrder.customerId ?? '');
+    const customer = visibleAccounts.find(a => a.id === customerId);
+    if (customer) setSelectedCustomerId(customerId);
+    const customerClass = customerDefaultClass((customer as Record<string, unknown> | undefined)?.priceClassCode);
+    const sourceClass = customerDefaultClass(sourceOrder.priceClassCode) || customerClass || priceClassCode;
+    if (sourceClass !== priceClassCode) setPriceClassCode(sourceClass);
+    const mapped = prefillQuoteLinesFromErpOrder(sourceOrder, state.externalProducts || [], sourceClass);
+    setSourceOrderLineCount(mapped.sourceLineCount);
+    setSourceOrderUnmappedCount(mapped.unmappedCount);
+    if (draftState?.sourceOrderId === sourceOrderId && draftState.lines.length > 0) return;
+    setLines(mapped.lines);
+    setProjectTitle(`پیشنهاد فروش سفارش ${String(sourceOrder.orderNumber ?? sourceOrder.documentNumber ?? sourceOrderId)}`);
+    setStep(2);
+    if (mapped.unmappedCount > 0) {
+      toast.warning(`${mapped.unmappedCount} قلم از ${mapped.sourceLineCount} قلم سفارش ERP به کالای مرجع یا قیمت ریالی نگاشت نشد؛ ثبت پیشنهاد تا رفع مغایرت متوقف است.`);
+    }
+  }, [isOpen, sourceOrderId, sourceOrder, state.externalProducts, visibleAccounts, draftState?.sourceOrderId, draftState?.lines, priceClassCode]);
 
   const [discountPercent, setDiscountPercent] = useState(draftState?.discountPercent || '0');
   const [applyTax, setApplyTax] = useState(draftState?.applyTax ?? true);
@@ -62,29 +124,31 @@ export function QuoteWizardModal({ isOpen, onClose, state, updateState, onQuoteC
       const timeout = setTimeout(() => {
         updateState(draft => {
           draft.draftQuote = {
-            step, selectedCustomerId, projectTitle, validUntilDays, lines,
+            step, selectedCustomerId, projectTitle, validUntilDays, lines, priceClassCode, sourceOrderId,
             discountPercent, applyTax, paymentTerms, deliveryTerms, quoteNotes
           };
         });
       }, 1000);
       return () => clearTimeout(timeout);
     }
-  }, [step, selectedCustomerId, projectTitle, validUntilDays, lines, discountPercent, applyTax, paymentTerms, deliveryTerms, quoteNotes, isOpen, updateState]);
+  }, [step, selectedCustomerId, projectTitle, validUntilDays, lines, priceClassCode, discountPercent, applyTax, paymentTerms, deliveryTerms, quoteNotes, isOpen, updateState]);
 
   if (!isOpen) return null;
 
-  const currentProduct = state.externalProducts.find(p => p.id === currentProductId) || state.externalProducts[0];
   const selectedCustomer = visibleAccounts.find(a => a.id === selectedCustomerId);
   const customerOptions: SelectOption[] = visibleAccounts.map(account => ({ value: account.id, label: account.name, subLabel: [account.code, account.city, account.phone].filter(Boolean).join(' · '), keywords: [account.address, account.nationalId].filter(Boolean).join(' ') }));
-  const productOptions: SelectOption[] = (state.externalProducts || []).map(product => ({ value: product.id, label: product.name, subLabel: [product.sku || product.code, product.category, product.brand].filter(Boolean).join(' · '), keywords: [product.erpId, product.description].filter(Boolean).join(' ') }));
 
+  // تراز نسبت به کلاس قیمت منتخب — منبع واحد: cpqEngine.computeOrderBalance (همان منطق نوار زندهٔ مرحلهٔ اقلام)
+  const orderBalance = computeOrderBalance(lines.map((l, i) => lineToBalanceInput(l, String(i))));
+  const invalidPricingLine = lines.some(l => !Number.isSafeInteger(l.quantity) || l.quantity <= 0 || !Number.isSafeInteger(l.unitPrice) || l.unitPrice <= 0 || !Number.isSafeInteger(l.lineTotal) || l.lineTotal <= 0);
+  const negativeBalance = orderBalance.state === 'NEGATIVE';
   const subtotal = lines.reduce((sum, l) => sum + l.lineTotal, 0);
   const knownCostLines = lines.filter(line => Number.isFinite(line.costPrice) && line.costPrice > 0);
   const costsComplete = lines.length > 0 && knownCostLines.length === lines.length;
   const totalCost = knownCostLines.reduce((sum, l) => sum + (l.costPrice * l.quantity), 0);
   const discountNumber = Number(discountPercent);
   const discountValid = Number.isFinite(discountNumber) && discountNumber >= 0 && discountNumber <= 100;
-  const discountVal = (subtotal * (discountValid ? discountNumber : 0)) / 100;
+  const discountVal = Math.round((subtotal * (discountValid ? discountNumber : 0)) / 100);
   const taxableAmount = Math.max(0, subtotal - discountVal);
   // مالیات هر سطر با نرخ همان کالا از ERP؛ نرخ سازمانی فقط جایگزین کالای بدون نرخ است.
   const taxResult = computeQuoteTax(lines, discountVal, new Map((state.externalProducts || []).map(p => [p.id, p])), configuredTaxRate);
@@ -94,45 +158,25 @@ export function QuoteWizardModal({ isOpen, onClose, state, updateState, onQuoteC
   const grossProfit = costsComplete ? taxableAmount - totalCost : null;
   const marginPercent = grossProfit !== null && taxableAmount > 0 ? Math.round((grossProfit / taxableAmount) * 1000) / 10 : 0;
 
-  const handleAddLineItem = () => {
-    if (!currentProduct) return;
-    const qty = parsePersianNumber(currentQty);
-    const price = parsePersianNumber(currentPrice);
-    if (!Number.isSafeInteger(qty) || qty <= 0 || !Number.isFinite(price) || price <= 0) {
-      updateState(draft => {
-        if (!draft.notifications) draft.notifications = [];
-        draft.notifications.push({
-          id: generateId(), title: 'مقادیر قلم نامعتبر است',
-          message: 'تعداد باید عدد صحیح مثبت و قیمت واحد باید مبلغ معتبر بزرگ‌تر از صفر باشد. مقدار نامعتبر با پیش‌فرض جایگزین نشد.',
-          type: 'WARNING', read: false, createdAt: new Date().toISOString(), linkTab: 'quotes'
-        });
+  const notifyInvalidLine = () => {
+    updateState(draft => {
+      if (!draft.notifications) draft.notifications = [];
+      draft.notifications.push({
+        id: generateId(), title: 'مقادیر قلم نامعتبر است',
+        message: 'تعداد باید عدد صحیح مثبت و قیمت واحد باید مبلغ معتبر بزرگ‌تر از صفر باشد. مقدار نامعتبر با پیش‌فرض جایگزین نشد.',
+        type: 'WARNING', read: false, createdAt: new Date().toISOString(), linkTab: 'quotes'
       });
-      return;
-    }
-
-    setLines(prev => [
-      ...prev,
-      {
-        productId: currentProduct.id,
-        productName: currentProduct.name,
-        productCode: currentProduct.sku || currentProduct.code || '',
-        quantity: qty,
-        unitPrice: price,
-        costPrice: currentProduct.costPrice,
-        lineTotal: qty * price
-      }
-    ]);
-    setCurrentQty('1');
-  };
-
-  const handleRemoveLine = (idx: number) => {
-    setLines(prev => prev.filter((_, i) => i !== idx));
+    });
   };
 
   const handleFinishAndCreate = async () => {
     if (creationBusy.current) return;
     if (!guard(state, updateState, 'quotes', 'CREATE', 'صدور پیش‌فاکتور')) return;
     if (!selectedCustomerId || !visibleAccounts.some(account => account.id === selectedCustomerId) || lines.length === 0) return;
+    if (sourceOrderId && (!sourceOrder || !isNegotiableErpOrder(sourceOrder as Record<string, unknown>))) { toast.warning('سفارش ERP دیگر واجد شرایط مذاکره نیست؛ پیشنهاد ساخته نشد.'); return; }
+    if (sourceOrderId && sourceOrderLineCount > 0 && sourceOrderUnmappedCount > 0) { toast.warning(`${sourceOrderUnmappedCount} قلم سفارش ERP هنوز نگاشت معتبر ندارد؛ ثبت پیشنهاد متوقف شد.`); return; }
+    if (invalidPricingLine || lines.some(line => !line.erpClassCurrencyCode) || orderBalance.currencyMismatch) { notifyInvalidLine(); return; }
+    if (![subtotal, totalCost, discountVal, grandTotal].every(Number.isSafeInteger) || subtotal < 0 || grandTotal <= 0) { toast.error('مبلغ سفارش از محدوده عدد صحیح امن خارج است؛ مقادیر را کاهش دهید.'); return; }
     if (!discountValid) {
       updateState(draft => { if (!draft.notifications) draft.notifications = []; draft.notifications.push({ id: generateId(), title: 'درصد تخفیف نامعتبر است', message: 'درصد تخفیف باید عددی بین صفر تا صد باشد.', type: 'WARNING', read: false, createdAt: new Date().toISOString(), linkTab: 'quotes' }); });
       return;
@@ -146,6 +190,16 @@ export function QuoteWizardModal({ isOpen, onClose, state, updateState, onQuoteC
       return;
     }
     if (!state.currentUserId) return;
+    // نبود قیمت کلاس برای حتی یک قلم، تراز را ناقص می‌کند و اجازه ثبت پیشنهاد نمی‌دهد.
+    if (orderBalance.excludedLineCount > 0) { toast.error(`${formatNumber(orderBalance.excludedLineCount)} قلم قیمت کلاس منتخب ریالی و معتبر ندارد؛ ابتدا قیمت مرجع کالا را از ERP دریافت کنید.`); return; }
+    // تراز منفی هشدار دارد، اما امکان ثبت پیشنهاد برای بررسی و جبران در اقلام دیگر حفظ می‌شود.
+    if (negativeBalance) {
+      const parts = [
+        negativeBalance ? `اختلاف سفارش با کلاس قیمت منتخب منفی است (کسری ${formatNumber(Math.abs(orderBalance.total))} ${orderBalance.currencyCode || 'واحد پول نامشخص'}).` : '',
+        'پیش‌فاکتور برای بررسی/تأیید ثبت می‌شود. ادامه می‌دهید؟'
+      ].filter(Boolean);
+      if (!confirm(parts.join('\n'))) return;
+    }
     const newId = generateId();
     const newQuoteNum = nextSequenceNumber('QT-', (state.quotes || []).map(x => x.quoteNumber), 1001);
     const creator = state.users.find(user => user.id === state.currentUserId);
@@ -163,15 +217,27 @@ export function QuoteWizardModal({ isOpen, onClose, state, updateState, onQuoteC
       territoryId: creator?.territoryId,
       teamId: creator?.teamId,
       tenantId: creator?.tenantId,
-      status: remote ? 'DRAFT' : !costsComplete || marginPercent < (state.settings?.quoteApprovalMarginThreshold || 15) ? 'PENDING_APPROVAL' : 'APPROVED',
+      status: remote ? 'DRAFT' : !costsComplete || negativeBalance || marginPercent < (state.settings?.quoteApprovalMarginThreshold || 15) ? 'PENDING_APPROVAL' : 'APPROVED',
       lines: lines.map(l => ({
         id: generateId(),
         productId: l.productId,
         quantity: l.quantity,
         unitPrice: l.unitPrice,
         costPrice: l.costPrice,
-        lineTotal: l.lineTotal
+        lineTotal: l.lineTotal,
+        // اسنپ‌شات تراز: تغییر بعدی قیمت ERP تاریخچهٔ این سفارش را عوض نمی‌کند.
+        erpClassUnitPrice: l.erpClassUnitPrice ?? null,
+        cartonQuantity: l.cartonQuantity ?? null,
+        unitsPerCarton: l.unitsPerCarton ?? null,
+        quantityMode: l.quantityMode ?? null,
+        lineVariance: l.lineVariance ?? null,
+        balanceStatus: l.balanceStatus
       })),
+      currencyCode: 'IRR',
+      priceClassCode,
+      externalOrderId: sourceOrder ? String(sourceOrder.externalOrderId ?? sourceOrder.externalId ?? sourceOrder.id) : undefined,
+      orderBalance: orderBalance.state === 'UNKNOWN' ? null : orderBalance.total,
+      orderBalanceState: orderBalance.state,
       totalAmount: grandTotal,
       marginPercent,
       marginCompleteness: costsComplete ? 'KNOWN' : knownCostLines.length ? 'PARTIAL' : 'UNKNOWN',
@@ -182,14 +248,14 @@ export function QuoteWizardModal({ isOpen, onClose, state, updateState, onQuoteC
     };
 
     if (remote) {
-      const key=JSON.stringify([state.currentUserId,selectedCustomerId,lines,projectTitle,paymentTerms,deliveryTerms,quoteNotes,validUntilDays,grandTotal]);
+      const key=JSON.stringify([state.currentUserId,selectedCustomerId,priceClassCode,lines,projectTitle,paymentTerms,deliveryTerms,quoteNotes,validUntilDays,grandTotal]);
       const pending=creationAttempt.current?.key===key ? creationAttempt.current.quote : finalQuote;
       creationAttempt.current={key,quote:pending};
       creationBusy.current=true;
       setCreating(true);
       try {
         finalQuote=await provider.createQuote(pending);
-        if (finalQuote?.id!==pending.id) throw new Error('رسید ثبت پیش‌فاکتور دریافت نشد.');
+        if (finalQuote?.id!==pending.id) throw new Error('رسید ذخیره پیشنهاد فروش دریافت نشد.');
         if (engine!==dataSyncController.getEngine()) return;
         if (!engine?.acknowledgeRecord('quotes',finalQuote)) await dataSyncController.retrieveFromSqlServer();
         creationAttempt.current=null;
@@ -237,35 +303,30 @@ export function QuoteWizardModal({ isOpen, onClose, state, updateState, onQuoteC
     <Modal
       isOpen={isOpen}
       onClose={()=>{if(!creating)onClose();}}
-      title="ویزارد صدور پیش‌فاکتور رسمی (پیکربندی و قیمت‌گذاری)"
+      title="پیشنهاد فروش CPQ"
       subtitle={`مرحله ${step} از ۴`}
       size="xl"
       footer={
         step < 4 ? (
-          <div className="flex justify-between items-center w-full">
-            <div className="flex gap-2">
-              <Button variant="ghost" size="sm" onClick={handleClearDraft} className="text-danger hover:bg-danger-soft">
-                <Trash2 size={16} className="ml-1" /> پاک کردن پیش‌نویس
-              </Button>
-            </div>
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm" disabled={step === 1 || creating} onClick={() => setStep(s => (s - 1) as Record<string, unknown>)}>
-                <ChevronRight size={16} className="ml-1" /> مرحله قبل
-              </Button>
-              {step < 3 ? (
-                <Button variant="primary" size="sm" onClick={() => setStep(s => (s + 1) as Record<string, unknown>)}>
-                  مرحله بعد <ChevronLeft size={16} className="mr-1" />
-                </Button>
-              ) : (
-                <Button variant="primary" size="sm" loading={creating} onClick={handleFinishAndCreate} className="bg-primary hover:bg-primary-hover">
-                  <FileText size={16} className="ml-1" /> ثبت پیش‌فاکتور
-                </Button>
-              )}
+          <div className="w-full space-y-2">
+            {step >= 2 && <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5 rounded-lg bg-canvas p-2 text-center" data-testid="quote-sticky-summary">
+              <div><span className="block text-micro text-text-secondary">اقلام</span><b className="text-caption">{formatNumber(lines.length)}</b></div>
+              <div><span className="block text-micro text-text-secondary">کارتن</span><b className="text-caption">{lines.length && lines.every(line => line.quantityMode === 'CARTON' && line.cartonQuantity != null) ? formatNumber(lines.reduce((sum, line) => sum + (line.cartonQuantity || 0), 0)) : '—'}</b></div>
+              <div><span className="block text-micro text-text-secondary">واحد پایه</span><b className="text-caption">{formatNumber(lines.reduce((sum, line) => sum + line.quantity, 0))}</b></div>
+              <div><span className="block text-micro text-text-secondary">وزن</span><b className="text-caption">{(() => { const weights = lines.map(line => { const product = state.externalProducts.find(item => item.id === line.productId); return Number(product?.unitWeightKg); }); return weights.length && weights.every(weight => Number.isFinite(weight) && weight > 0) ? `${formatNumber(lines.reduce((sum, line, index) => sum + line.quantity * weights[index], 0))} کیلو` : 'نامشخص'; })()}</b></div>
+              <div><span className="block text-micro text-text-secondary">قابل پرداخت</span><b className="text-caption font-mono">{formatNumber(grandTotal)} ریال</b></div>
+              <div><span className="block text-micro text-text-secondary">تراز کل</span><b className={cn('text-caption font-mono', orderBalance.state === 'NEGATIVE' ? 'text-danger' : orderBalance.state === 'POSITIVE' ? 'text-success' : 'text-text-secondary')}>{orderBalance.state === 'UNKNOWN' ? '—' : `${formatSignedAmount(orderBalance.total)} ریال`}</b></div>
+            </div>}
+            <div className="flex justify-between items-center w-full">
+              <div className="flex gap-2"><Button variant="ghost" size="sm" onClick={handleClearDraft} className="text-danger hover:bg-danger-soft"><Trash2 size={16} className="ml-1" /> پاک کردن پیش‌نویس</Button></div>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" onClick={onClose} disabled={creating}>انصراف</Button>
+                {step > 1 && <Button variant="outline" size="sm" disabled={creating} onClick={() => setStep(s => (s - 1) as Record<string, unknown>)}><ChevronRight size={16} className="ml-1" /> مرحله قبل</Button>}
+                {step < 3 ? <Button variant="primary" size="sm" onClick={() => setStep(s => (s + 1) as Record<string, unknown>)}>مرحله بعد <ChevronLeft size={16} className="mr-1" /></Button> : <Button variant="primary" size="sm" loading={creating} onClick={handleFinishAndCreate} className="bg-primary hover:bg-primary-hover"><FileText size={16} className="ml-1" /> ذخیره پیشنهاد فروش</Button>}
+              </div>
             </div>
           </div>
-        ) : (
-          <Button variant="outline" onClick={onClose}>اتمام و بازگشت</Button>
-        )
+        ) : <Button variant="outline" onClick={onClose}>اتمام و بازگشت</Button>
       }
     >
       <div className="space-y-6" dir="rtl">
@@ -291,7 +352,7 @@ export function QuoteWizardModal({ isOpen, onClose, state, updateState, onQuoteC
           <div className="space-y-4">
             <div>
               <label className="block text-xs font-bold text-text-main mb-1.5">انتخاب طرف حساب / مشتری سازمانی *</label>
-              <SearchableSelect options={customerOptions} value={selectedCustomerId} onChange={setSelectedCustomerId}
+              <SearchableSelect options={customerOptions} value={selectedCustomerId} onChange={handleCustomerChange}
                 placeholder="انتخاب مشتری از فهرست مجاز" searchPlaceholder="نام، کد، شهر یا شماره تماس مشتری..." emptyText="مشتری مجازی مطابق جست‌وجو پیدا نشد" ariaLabel="جست‌وجوی مشتری" />
             </div>
             {selectedCustomer && (
@@ -302,7 +363,7 @@ export function QuoteWizardModal({ isOpen, onClose, state, updateState, onQuoteC
                 </div>
                 <div className="flex justify-between text-text-secondary">
                   <span>سقف اعتبار مالی:</span>
-                  <span className="font-mono font-bold text-text-main">{(selectedCustomer.creditLimit || 0).toLocaleString('fa-IR')} ریال</span>
+                  <span className="font-mono font-bold text-text-main">{formatMoney(selectedCustomer.creditLimit || 0, selectedCustomer.currencyCode || 'واحد پول نامشخص')}</span>
                 </div>
                 <div className="flex justify-between text-text-secondary">
                   <span>آدرس و نشانی تحویل:</span>
@@ -324,62 +385,23 @@ export function QuoteWizardModal({ isOpen, onClose, state, updateState, onQuoteC
         )}
 
         {step === 2 && (
-          <div className="space-y-4">
-            <div className="bg-canvas p-4 rounded-2xl border border-border space-y-3">
-              <span className="text-xs font-bold text-text-main flex items-center gap-1.5">
-                <Package size={15} className="text-primary" /> افزودن کالا
-              </span>
-              <div className="grid grid-cols-1 sm:grid-cols-4 gap-2.5">
-                <div className="sm:col-span-2">
-                  <label className="block text-caption font-bold text-text-secondary mb-1">کالا / محصول</label>
-                  <SearchableSelect options={productOptions} value={currentProductId} onChange={(id) => { setCurrentProductId(id); const prod = state.externalProducts.find(p => p.id === id); if (prod) setCurrentPrice(String(prod.basePrice || prod.unitPrice || 0)); }}
-                    placeholder="انتخاب کالا" searchPlaceholder="نام، کد یا شناسه کالا..." emptyText="کالایی پیدا نشد" ariaLabel="جست‌وجوی کالا" />
-                </div>
-                <div>
-                  <label className="block text-caption font-bold text-text-secondary mb-1">تعداد</label>
-                  <InputControl aria-label="تعداد" type="number" min="1" value={currentQty} onChange={(e) => setCurrentQty(e.target.value)} className="text-center" />
-                </div>
-                <div>
-                  <label className="block text-caption font-bold text-text-secondary mb-1">قیمت واحد</label>
-                  <InputControl aria-label="قیمت واحد" type="text" value={currentPrice} onChange={(e) => setCurrentPrice(e.target.value)} className="text-center" />
-                </div>
-              </div>
-              <Button size="sm" variant="primary" onClick={handleAddLineItem} className="w-full flex items-center justify-center gap-1 mt-2">
-                <Plus size={14} /> درج در پیش‌فاکتور
-              </Button>
-            </div>
-
-            <div className="overflow-x-auto border border-border rounded-2xl">
-              <table className="w-full text-xs text-right">
-                <thead className="bg-canvas text-text-secondary font-bold border-b border-border">
-                  <tr>
-                    <th className="p-3">شرح کالا</th>
-                    <th className="p-3 text-center">تعداد</th>
-                    <th className="p-3 text-center">فی واحد</th>
-                    <th className="p-3 text-center">مبلغ کل</th>
-                    <th className="p-3 text-center">عملیات</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {lines.map((l, i) => (
-                    <tr key={i} className="hover:bg-canvas/50">
-                      <td className="p-3 font-bold text-text-main">{l.productName}</td>
-                      <td className="p-3 text-center font-bold text-text-main">{l.quantity}</td>
-                      <td className="p-3 text-center font-mono">{l.unitPrice.toLocaleString('fa-IR')}</td>
-                      <td className="p-3 text-center font-mono font-bold text-primary">{l.lineTotal.toLocaleString('fa-IR')}</td>
-                      <td className="p-3 text-center">
-                        <button aria-label="حذف قلم" onClick={() => handleRemoveLine(i)} className="text-status-risk hover:text-danger p-1 rounded-md transition-colors cursor-pointer"><Trash2 size={14} /></button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
+          <>
+          {sourceOrder && <div className="rounded-lg border border-primary/20 bg-primary/5 p-2 text-caption text-text-secondary">پیشنهاد فروش CPQ برای سفارش ERP <b className="font-mono text-primary">{String(sourceOrder.orderNumber ?? sourceOrder.documentNumber ?? sourceOrder.externalOrderId ?? sourceOrder.id)}</b> · سفارش اصلی بدون تغییر باقی می‌ماند. {sourceOrderLineCount > 0 ? `${formatNumber(sourceOrderLineCount - sourceOrderUnmappedCount)} از ${formatNumber(sourceOrderLineCount)} قلم نگاشت شد.` : 'ردیف‌های سفارش از منبع دریافت نشده‌اند؛ اقلام را دستی اضافه کنید.'}</div>}
+          <QuotePricingStep
+            products={state.externalProducts || []}
+            priceClassLabels={priceClassLabels}
+            priceClassCode={priceClassCode}
+            onPriceClassChange={handlePriceClassChange}
+            lines={lines}
+            setLines={setLines}
+            onInvalidAdd={notifyInvalidLine}
+          />
+          </>
         )}
 
         {step === 3 && (
           <div className="space-y-4">
+            <OrderBalanceBar balance={orderBalance} />
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-bold text-text-main mb-1.5">تخفیف کلی (درصد)</label>
@@ -392,7 +414,7 @@ export function QuoteWizardModal({ isOpen, onClose, state, updateState, onQuoteC
                 <label className="block text-xs font-bold text-text-main mb-1.5">مالیات بر ارزش افزوده</label>
                 <div className="flex items-center gap-2 pt-2">
                   <Checkbox id="applyTax" checked={applyTax} disabled={!taxKnown} onChange={(e) => setApplyTax(e.target.checked)} className="w-4" />
-                  <label htmlFor="applyTax" className="text-xs font-bold text-text-main cursor-pointer">{!taxKnown ? 'نرخ مالیات کالا نامشخص است' : `اعمال مالیات به‌تفکیک نرخ کالا (${taxResult.byRate.map(r => `${r.rate.toLocaleString('fa-IR')}٪`).join('، ') || '—'})`}</label>
+                  <label htmlFor="applyTax" className="text-xs font-bold text-text-main cursor-pointer">{!taxKnown ? 'نرخ مالیات کالا نامشخص است' : `اعمال مالیات به‌تفکیک نرخ کالا (${taxResult.byRate.map(r => `${formatNumber(r.rate)}٪`).join('، ') || '—'})`}</label>
                 </div>
                 {!taxKnown && lines.length > 0 && <p className="mt-1 text-micro text-warning">نرخ فرضی اعمال نمی‌شود؛ نرخ مالیات این کالا(ها) از ERP نیامده است.</p>}
               </div>
@@ -407,28 +429,10 @@ export function QuoteWizardModal({ isOpen, onClose, state, updateState, onQuoteC
                 <InputControl aria-label="شرایط تحویل" type="text" value={deliveryTerms} onChange={(e) => setDeliveryTerms(e.target.value)}  />
               </div>
             </div>
-            <div className="bg-text-main text-white rounded-2xl p-4 space-y-3">
-              <span className="text-xs font-bold text-accent flex items-center gap-1.5">
-                <ShieldCheck size={16} /> تحلیل مالی و حاشیه سود
-              </span>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
-                <div className="bg-white/10 p-2.5 rounded-xl">
-                  <div className="text-micro text-white/60 mb-0.5">مبلغ خام</div>
-                  <div className="text-xs font-bold font-mono">{subtotal.toLocaleString('fa-IR')}</div>
-                </div>
-                <div className="bg-white/10 p-2.5 rounded-xl">
-                  <div className="text-micro text-white/60 mb-0.5">تخفیف</div>
-                  <div className="text-xs font-bold font-mono text-status-risk">{discountVal.toLocaleString('fa-IR')}</div>
-                </div>
-                <div className="bg-white/10 p-2.5 rounded-xl">
-                  <div className="text-micro text-white/60 mb-0.5">ارزش افزوده</div>
-                  <div className="text-xs font-bold font-mono text-status-warning">{taxVal.toLocaleString('fa-IR')}</div>
-                </div>
-                <div className="bg-primary/20 border border-primary/50 p-2.5 rounded-xl">
-                  <div className="text-micro text-accent mb-0.5">مبلغ نهایی</div>
-                  <div className="text-sm font-extrabold font-mono text-white">{grandTotal.toLocaleString('fa-IR')} ریال</div>
-                </div>
-              </div>
+            <div className="rounded-xl border border-border bg-surface px-3 py-2.5 space-y-2" data-testid="summary-balance">
+              <div className="flex items-center justify-between gap-2"><span className="text-caption font-bold text-text-secondary">مبلغ قابل پرداخت</span><strong className="font-mono text-base text-text-main">{formatNumber(grandTotal)} ریال</strong></div>
+              <div className="grid grid-cols-3 gap-2 text-micro text-text-secondary"><span>مبلغ خام: {formatNumber(subtotal)} ریال</span><span>تخفیف: {formatNumber(discountVal)} ریال</span><span>مالیات: {formatNumber(taxVal)} ریال</span></div>
+              <div className="flex items-center justify-between border-t border-border pt-2"><span className="text-caption text-text-secondary">تراز کل نسبت به کلاس قیمت منتخب</span><strong className={cn('font-mono text-caption', orderBalance.state === 'NEGATIVE' ? 'text-danger' : orderBalance.state === 'POSITIVE' ? 'text-success' : 'text-text-secondary')}>{orderBalance.state === 'UNKNOWN' ? '—' : `${formatSignedAmount(orderBalance.total)} ریال`}</strong></div>
             </div>
           </div>
         )}
@@ -439,7 +443,7 @@ export function QuoteWizardModal({ isOpen, onClose, state, updateState, onQuoteC
               <div className="w-12 h-12 bg-success text-white rounded-full flex items-center justify-center mx-auto shadow-md">
                 <CheckCircle2 size={24} />
               </div>
-              <h3 className="text-base font-bold text-success">پیش‌فاکتور رسمی با موفقیت صادر شد!</h3>
+              <h3 className="text-base font-bold text-success">پیشنهاد فروش در CRM ذخیره شد</h3>
               <p className="text-xs text-text-secondary">شماره پیگیری: <span className="font-mono font-bold text-text-main">{createdQuote.quoteNumber}</span></p>
             </div>
             <div className="border border-border rounded-2xl p-4 bg-canvas max-h-(--size-340) overflow-y-auto">

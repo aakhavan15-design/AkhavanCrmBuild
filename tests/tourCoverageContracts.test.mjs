@@ -40,7 +40,7 @@ test('tour target selectors resolve to real DOM ids (or fall back to #tour-page)
 
 test('tour is mounted in App, has a header help button, and ThemeToggle is gone', () => {
   assert.match(read('src/App.tsx'), /<InteractiveTour\b/);
-  assert.match(read('src/components/Layout.tsx'), /triggerTourMenu\(\)/);
+  assert.match(read('src/components/header/FloatingHeader.tsx'), /triggerTourMenu\(\)/);
   assert.equal(fs.existsSync(new URL('../src/components/ThemeToggle.tsx', import.meta.url)), false);
 });
 
@@ -113,7 +113,7 @@ test('every routed workspace exposes a semantic page heading or shared toolbar t
     assert.ok(hasExplicitAnchor, `${module} has no semantic tour anchor in ${file}`);
     assert.ok(TOUR_MODULES.some(item => item.id === module), `${module} is not registered in tour engine`);
   }
-  assert.match(read('src/components/Layout.tsx'), /id="ttl"/, 'global shell keeps its stable header anchor');
+  assert.match(read('src/components/header/FloatingHeader.tsx'), /id="ttl"/, 'floating header keeps its stable title anchor');
 });
 
 
